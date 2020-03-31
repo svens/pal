@@ -1,0 +1,56 @@
+#pragma once // -*- C++ -*-
+
+/**
+ * \file pal/error
+ * PAL error codes
+ */
+
+#include <pal/__bits/lib>
+#include <system_error>
+
+
+__pal_begin
+
+
+#define __pal_errc(X_) \
+	X_(__0, "internal placeholder for not an error") \
+	X_(temporary_error, "temporary error")
+
+
+/**
+ * PAL error codes
+ */
+enum class errc
+{
+	#define __pal_errc_list(code, message) code,
+	__pal_errc(__pal_errc_list)
+	#undef __pal_errc_list
+};
+
+
+/**
+ * Return PAL error category. The name() virtual function returns "pal".
+ */
+const std::error_category &error_category () noexcept;
+
+
+/**
+ * Make std::error_code from error code \a ec
+ */
+inline std::error_code make_error_code (errc ec) noexcept
+{
+	return std::error_code(static_cast<int>(ec), error_category());
+}
+
+
+__pal_end
+
+
+namespace std {
+
+template <>
+struct is_error_code_enum<pal::errc>
+	: true_type
+{ };
+
+} // namespace std

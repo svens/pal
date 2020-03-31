@@ -1,0 +1,52 @@
+#pragma once // -*- C++ -*-
+
+#include <cstddef>
+#include <cstdint>
+
+
+// project namespace
+#define __pal_begin namespace pal { inline namespace v0 {
+#define __pal_end   }} // namespace pal::v0
+
+
+__pal_begin
+
+
+//
+// build OS
+//
+
+#define __pal_os_linux 0
+#define __pal_os_macos 0
+#define __pal_os_windows 0
+
+#if defined(__linux__)
+	#undef __pal_os_linux
+	#define __pal_os_linux 1
+#elif defined(__APPLE__)
+	#undef __pal_os_macos
+	#define __pal_os_macos 1
+#elif defined(_WIN32) || defined(_WIN64)
+	#undef __pal_os_windows
+	#define __pal_os_windows 1
+#endif
+
+constexpr bool is_linux_build = __pal_os_linux == 1;
+constexpr bool is_macos_build = __pal_os_macos == 1;
+constexpr bool is_windows_build = __pal_os_windows == 1;
+
+
+//
+// build configuration
+//
+
+constexpr bool is_release_build =
+#if NDEBUG
+	true
+#else
+	false
+#endif
+;
+
+
+__pal_end

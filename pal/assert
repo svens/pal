@@ -1,0 +1,51 @@
+#pragma once // -*- C++ -*-
+
+/**
+ * \file pal/assert
+ * PAL implementation of assert macro
+ */
+
+#include <pal/__bits/lib>
+#include <stdexcept>
+
+
+__pal_begin
+
+
+inline constexpr bool assert_noexcept = is_release_build;
+
+
+namespace __bits {
+
+inline void assert_impl (bool condition, const char message[])
+{
+	if constexpr (!assert_noexcept)
+	{
+		if (!condition)
+		{
+			throw std::logic_error(message);
+		}
+	}
+}
+
+#define __pal_str_impl(s) #s
+#define __pal_str(s) __pal_str_impl(s)
+#define __pal_at __FILE__ ":" __pal_str(__LINE__)
+
+} // namespace __bits
+
+
+/**
+ * \def pal_assert(condition)
+ *
+ * Check \a condition to be true. On false, throw std::logic_error. It is
+ * similar to assert() except \a condition is always evaluated. This is
+ * useful when \a condition has desired side-effects.
+ */
+#define pal_assert(condition) \
+	pal::__bits::assert_impl((condition), \
+		__pal_at ": Assertion '" #condition "' failed" \
+	)
+
+
+__pal_end
