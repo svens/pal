@@ -4,6 +4,7 @@ list(APPEND pal_sources
 	pal/assert
 	pal/error
 	pal/error.cpp
+	pal/span
 )
 
 list(APPEND pal_unittests_sources
@@ -11,4 +12,5 @@ list(APPEND pal_unittests_sources
 	pal/test.cpp
 	pal/assert.test.cpp
 	pal/error.test.cpp
+	pal/span.test.cpp
 )
