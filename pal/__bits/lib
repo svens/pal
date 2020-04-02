@@ -49,4 +49,17 @@ constexpr bool is_release_build =
 ;
 
 
+//
+// __pal_warning_suppress_XXX
+//
+
+#if _MSC_VER
+	#define __pal_warning_suppress_aligned_struct_padding \
+		__pragma(warning(suppress: 4324))
+#else
+	#define __pal_warning_suppress_aligned_struct_padding \
+		/**/
+#endif
+
+
 __pal_end
