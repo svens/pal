@@ -5,6 +5,7 @@ list(APPEND pal_sources
 	pal/error
 	pal/error.cpp
 	pal/intrusive_mpsc_queue
+	pal/intrusive_queue
 	pal/span
 )
 
@@ -14,5 +15,6 @@ list(APPEND pal_unittests_sources
 	pal/assert.test.cpp
 	pal/error.test.cpp
 	pal/intrusive_mpsc_queue.test.cpp
+	pal/intrusive_queue.test.cpp
 	pal/span.test.cpp
 )
