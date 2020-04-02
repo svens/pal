@@ -1,0 +1,130 @@
+#pragma once // -*- C++ -*-
+
+/**
+ * \file pal/intrusive_stack
+ * Intrusive stack (LIFO)
+ */
+
+#include <pal/__bits/lib>
+
+
+__pal_begin
+
+
+/**
+ * Intrusive stack hook.
+ * \see intrusive_stack
+ */
+template <typename T>
+using intrusive_stack_hook = T *;
+
+
+/**
+ * Intrusive stack (LIFO).
+ *
+ * Elements of this container must provide member address \a Next that stores
+ * opaque data managed by container. Any given time specific hook can be used
+ * only to store element in single container. Same hook can be used to store
+ * element in different containers at different times. If application needs to
+ * store element in multiple containers same time, it needs to provide
+ * multiple hooks, one per owner.
+ *
+ * Being intrusive, container itself does not deal with node allocation. It is
+ * application's responsibility to handle node management and make sure that
+ * while in container, element is kept alive and it's hook is not interfered
+ * with. Also, pushing and popping elements into/from container does not copy
+ * them, just hooks/unhooks using specified member \a Next.
+ *
+ * Usage:
+ * \code
+ * class foo
+ * {
+ *   pal::intrusive_stack_hook<foo> next;
+ *   int a;
+ *   char b;
+ * };
+ * pal::intrusive_stack<&foo::next> s;
+ *
+ * foo f;
+ * s.push(&f);
+ *
+ * auto fp = s.try_pop(); // fp == &f
+ * \endcode
+ *
+ * \note This container is not thread safe.
+ */
+template <auto Next>
+class intrusive_stack
+{
+private:
+
+	template <typename T, typename Hook, Hook T::*Member>
+	static T type_infer_helper (const intrusive_stack<Member> *);
+
+
+public:
+
+	/**
+	 * Element type of container.
+	 */
+	using value_type = decltype(
+		type_infer_helper(static_cast<intrusive_stack<Next> *>(nullptr))
+	);
+
+
+	intrusive_stack () noexcept = default;
+	~intrusive_stack () noexcept = default;
+
+	intrusive_stack (const intrusive_stack &) = delete;
+	intrusive_stack &operator= (const intrusive_stack &) = delete;
+
+
+	/**
+	 * Push new \a node to top of stack.
+	 */
+	void push (value_type *node) noexcept
+	{
+		node->*Next = top_;
+		top_ = node;
+	}
+
+
+	/**
+	 * Pop next node from top of stack. If empty, return nullptr.
+	 */
+	value_type *try_pop () noexcept
+	{
+		auto node = top_;
+		if (node)
+		{
+			top_ = top_->*Next;
+		}
+		return node;
+	}
+
+
+	/**
+	 * Return top of stack without removing it. If empty, return nullptr.
+	 */
+	value_type *top () const noexcept
+	{
+		return top_;
+	}
+
+
+	/**
+	 * Return true if stack has no elements.
+	 */
+	bool empty () const noexcept
+	{
+		return top_ == nullptr;
+	}
+
+
+private:
+
+	value_type *top_ = nullptr;
+};
+
+
+__pal_end
