@@ -29,13 +29,13 @@ enum class errc
 
 
 /**
- * Return PAL error category. The name() virtual function returns "pal".
+ * Return PAL error category. The \c name() virtual function returns "pal".
  */
 const std::error_category &error_category () noexcept;
 
 
 /**
- * Make std::error_code from error code \a ec
+ * Make \c std::error_code from error code \a ec
  */
 inline std::error_code make_error_code (errc ec) noexcept
 {

@@ -21,7 +21,7 @@ __pal_begin
 
 /**
  * Intrusive MPSC queue hook.
- * \see intrusive_mpsc_queue
+ * \see pal::intrusive_mpsc_queue
  */
 template <typename T>
 using intrusive_mpsc_queue_hook = volatile T *;
@@ -47,7 +47,7 @@ using intrusive_mpsc_queue_hook = volatile T *;
  * \code
  * class foo
  * {
- *   pal::intrusive_mpsc_queue_hook_t<foo> next;
+ *   pal::intrusive_mpsc_queue_hook<foo> next;
  *   int a;
  *   char b;
  * };

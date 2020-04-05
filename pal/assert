@@ -12,12 +12,27 @@
 __pal_begin
 
 
+/**
+ * True if pal_assert() macro is no-op.
+ */
 inline constexpr bool assert_noexcept = is_release_build;
 
+
+/**
+ * \def pal_assert(condition)
+ *
+ * Require \a condition to be true. On false, throw \c std::logic_error. It is
+ * similar to standard \c assert() macro, except condition is always evaluated.
+ */
+#define pal_assert(condition) /* internal */
+
+
+#if !defined(__DOXYGEN__) //{{{
 
 namespace __bits {
 
 inline void assert_impl (bool condition, const char message[])
+	noexcept(assert_noexcept)
 {
 	if constexpr (!assert_noexcept)
 	{
@@ -28,24 +43,19 @@ inline void assert_impl (bool condition, const char message[])
 	}
 }
 
+} // namespace __bits
+
 #define __pal_str_impl(s) #s
 #define __pal_str(s) __pal_str_impl(s)
 #define __pal_at __FILE__ ":" __pal_str(__LINE__)
 
-} // namespace __bits
-
-
-/**
- * \def pal_assert(condition)
- *
- * Check \a condition to be true. On false, throw std::logic_error. It is
- * similar to assert() except \a condition is always evaluated. This is
- * useful when \a condition has desired side-effects.
- */
+#undef pal_assert
 #define pal_assert(condition) \
 	pal::__bits::assert_impl((condition), \
 		__pal_at ": Assertion '" #condition "' failed" \
 	)
+
+#endif // __DOXYGEN__ }}}
 
 
 __pal_end
