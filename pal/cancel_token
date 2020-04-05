@@ -1,0 +1,86 @@
+#pragma once // -*- C++ -*-
+
+/**
+ * \file pal/cancel_token
+ * Cooperative cancellation mechanism.
+ */
+
+#include <pal/__bits/lib>
+#include <atomic>
+
+
+__pal_begin
+
+
+/**
+ * Cancellation request observer. It provides means to check if cancel request
+ * is made by associated cancel_source.
+ */
+class cancel_token
+{
+public:
+
+	cancel_token () = delete;
+
+	/**
+	 * Return true if cancellation is requested by associated cancel_source.
+	 */
+	bool cancel_requested () const noexcept
+	{
+		return cancelled_;
+	}
+
+
+private:
+
+	const std::atomic_bool &cancelled_;
+
+	cancel_token (const std::atomic_bool &cancelled)
+		: cancelled_(cancelled)
+	{ }
+
+	friend class cancel_source;
+};
+
+
+/**
+ * Cancellation request source. It provides means to issue a cancel request.
+ * Cancellation request is visible to all cancel_token objects created by
+ * \a this.
+ */
+class cancel_source
+{
+public:
+
+	cancel_source () = default;
+
+	cancel_source (const cancel_source &) = delete;
+	cancel_source &operator= (const cancel_source &) = delete;
+
+
+	/**
+	 * Create and return new cancellation request observer associated with
+	 * \a this cancel_source.
+	 */
+	pal::cancel_token cancel_token () noexcept
+	{
+		return {cancelled_};
+	}
+
+
+	/**
+	 * Request cancellation.
+	 */
+	void request_cancel () noexcept
+	{
+		cancelled_.store(true);
+	}
+
+
+private:
+
+	std::atomic_bool cancelled_{};
+};
+
+
+__pal_end
