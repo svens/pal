@@ -10,7 +10,7 @@ TEST_CASE("error")
 {
 	SECTION("errc")
 	{
-		#define __pal_errc_value(code, message) pal::errc::code,
+		#define __pal_errc_value(Code, Message) pal::errc::Code,
 		std::error_code ec = GENERATE(values({__pal_errc(__pal_errc_value)}));
 		#undef __pal_errc_value
 		CAPTURE(ec);

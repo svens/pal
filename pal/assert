@@ -19,12 +19,13 @@ inline constexpr bool assert_noexcept = is_release_build;
 
 
 /**
- * \def pal_assert(condition)
+ * \def pal_assert(Condition)
  *
- * Require \a condition to be true. On false, throw \c std::logic_error. It is
- * similar to standard \c assert() macro, except condition is always evaluated.
+ * Require \a Condition to be true. On false, throw \c std::logic_error. It is
+ * similar to standard \c assert() macro, except \a Condition is always
+ * evaluated.
  */
-#define pal_assert(condition) /* internal */
+#define pal_assert(Condition) /* internal */
 
 
 #if !defined(__DOXYGEN__) //{{{
@@ -45,14 +46,14 @@ inline void assert_impl (bool condition, const char message[])
 
 } // namespace __bits
 
-#define __pal_str_impl(s) #s
-#define __pal_str(s) __pal_str_impl(s)
+#define __pal_str_impl(S) #S
+#define __pal_str(S) __pal_str_impl(S)
 #define __pal_at __FILE__ ":" __pal_str(__LINE__)
 
 #undef pal_assert
-#define pal_assert(condition) \
-	pal::__bits::assert_impl((condition), \
-		__pal_at ": Assertion '" #condition "' failed" \
+#define pal_assert(Condition) \
+	pal::__bits::assert_impl((Condition), \
+		__pal_at ": Assertion '" #Condition "' failed" \
 	)
 
 #endif // __DOXYGEN__ }}}

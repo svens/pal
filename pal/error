@@ -2,7 +2,7 @@
 
 /**
  * \file pal/error
- * PAL error codes
+ * PAL errors
  */
 
 #include <pal/__bits/lib>
@@ -12,19 +12,19 @@
 __pal_begin
 
 
-#define __pal_errc(X_) \
-	X_(__0, "internal placeholder for not an error") \
-	X_(temporary_error, "temporary error")
+#define __pal_errc(Impl) \
+	Impl(__0, "internal placeholder for not an error") \
+	Impl(cancelled, "cancelled")
 
 
 /**
- * PAL error codes
+ * PAL errors
  */
-enum class errc
+enum class errc: int
 {
-	#define __pal_errc_list(code, message) code,
-	__pal_errc(__pal_errc_list)
-	#undef __pal_errc_list
+	#define __pal_errc_enum(Code, Message) Code,
+	__pal_errc(__pal_errc_enum)
+	#undef __pal_errc_enum
 };
 
 
@@ -39,7 +39,7 @@ const std::error_category &error_category () noexcept;
  */
 inline std::error_code make_error_code (errc ec) noexcept
 {
-	return std::error_code(static_cast<int>(ec), error_category());
+	return {static_cast<int>(ec), error_category()};
 }
 
 

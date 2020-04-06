@@ -7,11 +7,12 @@ __pal_begin
 
 namespace {
 
-constexpr std::string_view to_string_view (errc ec) noexcept
+constexpr std::string_view as_view (errc ec) noexcept
 {
 	switch (ec)
 	{
-		#define __pal_errc_case(code, message) case pal::errc::code: return message;
+		#define __pal_errc_case(Code, Message) \
+			case pal::errc::Code: return Message;
 		__pal_errc(__pal_errc_case)
 		#undef __pal_errc_case
 	};
@@ -23,17 +24,16 @@ constexpr std::string_view to_string_view (errc ec) noexcept
 
 const std::error_category &error_category () noexcept
 {
-	struct error_category_impl
-		: public std::error_category
+	struct error_category_impl: std::error_category
 	{
-		[[nodiscard]] const char *name () const noexcept final
+		const char *name () const noexcept final
 		{
 			return "pal";
 		}
 
-		[[nodiscard]] std::string message (int ec) const final
+		std::string message (int ec) const final
 		{
-			return std::string{to_string_view(static_cast<errc>(ec))};
+			return std::string{as_view(static_cast<errc>(ec))};
 		}
 	};
 	static const error_category_impl impl{};
