@@ -7,6 +7,12 @@ namespace {
 
 TEST_CASE("cancel_token")
 {
+	SECTION("none")
+	{
+		pal::cancel_token tok;
+		CHECK(tok.cancel_requested() == false);
+	}
+
 	SECTION("request_cancel")
 	{
 		pal::cancel_source src;

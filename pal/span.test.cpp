@@ -193,7 +193,7 @@ TEMPLATE_TEST_CASE("span", "",
 #if !__has_include(<span>)
 	SECTION("index_out_of_range")
 	{
-		if constexpr (!pal::assert_noexcept)
+		if constexpr (!pal::expect_noexcept)
 		{
 			auto span = pal::span<T, extent>(std_vector);
 			CHECK_THROWS_AS(span[-1], std::logic_error);
@@ -284,7 +284,7 @@ TEMPLATE_TEST_CASE("span", "",
 #if !__has_include(<span>)
 	SECTION("first_count_out_of_range")
 	{
-		if constexpr (!pal::assert_noexcept)
+		if constexpr (!pal::expect_noexcept)
 		{
 			auto span = pal::span<T, extent>(array);
 			CHECK_THROWS_AS(span.first(-1), std::logic_error);
@@ -323,7 +323,7 @@ TEMPLATE_TEST_CASE("span", "",
 #if !__has_include(<span>)
 	SECTION("last_count_out_of_range")
 	{
-		if constexpr (!pal::assert_noexcept)
+		if constexpr (!pal::expect_noexcept)
 		{
 			auto span = pal::span<T, extent>(array);
 			CHECK_THROWS_AS(span.last(-1), std::logic_error);
@@ -388,7 +388,7 @@ TEMPLATE_TEST_CASE("span", "",
 #if !__has_include(<span>)
 	SECTION("subspan_offset_out_of_range")
 	{
-		if constexpr (!pal::assert_noexcept)
+		if constexpr (!pal::expect_noexcept)
 		{
 			auto span = pal::span<T, extent>(array);
 			CHECK_THROWS_AS(span.subspan(-1), std::logic_error);
@@ -399,7 +399,7 @@ TEMPLATE_TEST_CASE("span", "",
 
 	SECTION("subspan_count_out_of_range")
 	{
-		if constexpr (!pal::assert_noexcept)
+		if constexpr (!pal::expect_noexcept)
 		{
 			auto span = pal::span<T, extent>(array);
 			CHECK_THROWS_AS(span.subspan(0, -2), std::logic_error);

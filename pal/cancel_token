@@ -20,23 +20,28 @@ class cancel_token
 {
 public:
 
-	cancel_token () = delete;
+	/**
+	 * Construct new token not associated to any cancel_source object.
+	 */
+	cancel_token () = default;
+
 
 	/**
-	 * Return true if cancellation is requested by associated cancel_source.
+	 * Return true if cancellation is requested by associated
+	 * cancel_source.
 	 */
 	bool cancel_requested () const noexcept
 	{
-		return cancelled_;
+		return flag_ && flag_->load(std::memory_order_relaxed);
 	}
 
 
 private:
 
-	const std::atomic_bool &cancelled_;
+	const std::atomic_bool *flag_{};
 
-	cancel_token (const std::atomic_bool &cancelled)
-		: cancelled_(cancelled)
+	cancel_token (const std::atomic_bool *flag) noexcept
+		: flag_(flag)
 	{ }
 
 	friend class cancel_source;
@@ -62,9 +67,9 @@ public:
 	 * Create and return new cancellation request observer associated with
 	 * \a this cancel_source.
 	 */
-	pal::cancel_token cancel_token () noexcept
+	pal::cancel_token cancel_token () const noexcept
 	{
-		return {cancelled_};
+		return {&flag_};
 	}
 
 
@@ -73,13 +78,13 @@ public:
 	 */
 	void request_cancel () noexcept
 	{
-		cancelled_.store(true);
+		flag_.store(true, std::memory_order_relaxed);
 	}
 
 
 private:
 
-	std::atomic_bool cancelled_{};
+	std::atomic_bool flag_{};
 };
 
 

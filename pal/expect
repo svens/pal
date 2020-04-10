@@ -1,0 +1,110 @@
+#pragma once // -*- C++ -*-
+
+/**
+ * \file pal/expect
+ * PAL implementation of assert macro
+ */
+
+#include <pal/__bits/lib>
+#include <memory>
+#include <stdexcept>
+#include <type_traits>
+
+
+__pal_begin
+
+
+/**
+ * True if pal_expect() macro is no-op.
+ */
+inline constexpr bool expect_noexcept = is_release_build;
+
+
+/**
+ * Require \a Expr to evaluate to true. Otherwise, throw \c std::logic_error.
+ * On sucess, returns result of \a Expr. If \a Expr is unique_ptr or
+ * shared_ptr, return plain contained pointer.
+ *
+ * \note It is similar to standard \c assert() macro, except \a Expr is always
+ * evaluated.
+ */
+#define pal_expect(Expr) /* internal */
+
+
+#if !defined(__DOXYGEN__) //{{{
+
+__pal_bits_begin
+
+#define __pal_str_impl(S) #S
+#define __pal_str(S) __pal_str_impl(S)
+#define __pal_at __FILE__ ":" __pal_str(__LINE__)
+
+template <typename T>
+constexpr auto expect_impl (const T &expr, const char message[], std::false_type)
+	noexcept(expect_noexcept)
+{
+	if constexpr (!expect_noexcept)
+	{
+		if (!expr)
+		{
+			throw std::logic_error(message);
+		}
+	}
+	else
+	{
+		(void)message;
+	}
+	return expr;
+}
+
+constexpr auto expect_impl (std::nullptr_t, const char message[], std::false_type)
+	noexcept(noexcept(expect_impl(false, "", std::false_type{})))
+{
+	return expect_impl<void*>(nullptr, message, std::false_type{});
+}
+
+template <typename T>
+constexpr auto expect_impl (const T &ptr, const char message[], std::true_type)
+	noexcept(noexcept(expect_impl(false, "", std::false_type{})))
+{
+	return expect_impl(std::to_address(ptr), message, std::false_type{});
+}
+
+#if 1
+
+template <typename T>
+struct is_ptr: std::is_pointer<T>::type {};
+
+template <typename T>
+struct is_ptr<std::unique_ptr<T>>: std::true_type {};
+
+template <typename T>
+struct is_ptr<std::shared_ptr<T>>: std::true_type {};
+
+#else
+
+// TODO
+template <typename T, typename = void>
+struct is_ptr: std::false_type {};
+
+template <typename T>
+struct is_ptr<T, std::void_t<decltype(std::to_address(T{}))>>: std::true_type {};
+
+#endif
+
+#undef pal_expect
+#define pal_expect(Expr) \
+	pal::__bits::expect_impl(\
+		(Expr), \
+		(pal::__bits::is_ptr<decltype(Expr)>::value \
+			? __pal_at ": Unexpected '" #Expr " == nullptr'" \
+			: __pal_at ": Unexpected '" #Expr "'"), \
+		(typename pal::__bits::is_ptr<decltype(Expr)>::type{}) \
+	)
+
+__pal_bits_end
+
+#endif // __DOXYGEN__ }}}
+
+
+__pal_end

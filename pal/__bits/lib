@@ -8,6 +8,10 @@
 #define __pal_begin namespace pal { inline namespace v0 {
 #define __pal_end   }} // namespace pal::v0
 
+// project internals namespace
+#define __pal_bits_begin namespace __bits {
+#define __pal_bits_end   } // namespace __bits
+
 
 __pal_begin
 
