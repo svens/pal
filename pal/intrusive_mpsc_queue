@@ -27,6 +27,10 @@ template <typename T>
 using intrusive_mpsc_queue_hook = volatile T *;
 
 
+template <auto Next>
+class intrusive_mpsc_queue;
+
+
 /**
  * Intrusive multiple producers single consumer queue (FIFO).
  *
@@ -61,23 +65,15 @@ using intrusive_mpsc_queue_hook = volatile T *;
  *
  * \note Method push() is thread safe but not other methods.
  */
-template <auto Next>
-class intrusive_mpsc_queue
+template <typename T, typename Hook, Hook T::*Next>
+class intrusive_mpsc_queue<Next>
 {
-private:
-
-	template <typename T, typename Hook, Hook T::*Member>
-	static T type_infer_helper (const intrusive_mpsc_queue<Member> *);
-
-
 public:
 
 	/**
 	 * Element type of container.
 	 */
-	using value_type = decltype(
-		type_infer_helper(static_cast<intrusive_mpsc_queue<Next> *>(nullptr))
-	);
+	using value_type = T;
 
 
 	intrusive_mpsc_queue () noexcept = default;

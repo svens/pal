@@ -19,6 +19,10 @@ template <typename T>
 using intrusive_stack_hook = T *;
 
 
+template <auto Next>
+class intrusive_stack;
+
+
 /**
  * Intrusive stack (LIFO).
  *
@@ -53,23 +57,15 @@ using intrusive_stack_hook = T *;
  *
  * \note This container is not thread safe.
  */
-template <auto Next>
-class intrusive_stack
+template <typename T, typename Hook, Hook T::*Next>
+class intrusive_stack<Next>
 {
-private:
-
-	template <typename T, typename Hook, Hook T::*Member>
-	static T type_infer_helper (const intrusive_stack<Member> *);
-
-
 public:
 
 	/**
 	 * Element type of container.
 	 */
-	using value_type = decltype(
-		type_infer_helper(static_cast<intrusive_stack<Next> *>(nullptr))
-	);
+	using value_type = T;
 
 
 	intrusive_stack () noexcept = default;
