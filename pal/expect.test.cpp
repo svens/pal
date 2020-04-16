@@ -2,9 +2,6 @@
 #include <pal/test>
 
 
-#include <iostream>
-
-
 namespace {
 
 
@@ -76,8 +73,8 @@ TEST_CASE("expect")
 		{
 			auto buf = new char[3];
 			std::unique_ptr<char> p{buf};
-			REQUIRE_NOTHROW(pal_expect(p));
-			CHECK(pal_expect(p) == buf);
+			REQUIRE_NOTHROW(pal_expect(p.get()));
+			CHECK(pal_expect(p.get()) == buf);
 		}
 
 		SECTION("nullptr")
@@ -85,12 +82,12 @@ TEST_CASE("expect")
 			std::unique_ptr<char> p;
 			if constexpr (pal::expect_noexcept)
 			{
-				REQUIRE_NOTHROW(pal_expect(p));
-				CHECK(pal_expect(p) == nullptr);
+				REQUIRE_NOTHROW(pal_expect(p.get()));
+				CHECK(pal_expect(p.get()) == nullptr);
 			}
 			else
 			{
-				REQUIRE_THROWS_AS(pal_expect(p), std::logic_error);
+				REQUIRE_THROWS_AS(pal_expect(p.get()), std::logic_error);
 			}
 		}
 	}
@@ -102,7 +99,7 @@ TEST_CASE("expect")
 			auto buf = new char[3];
 			std::shared_ptr<char> p{buf};
 			REQUIRE_NOTHROW(pal_expect(p));
-			CHECK(pal_expect(p) == buf);
+			CHECK(pal_expect(p).get() == buf);
 		}
 
 		SECTION("nullptr")
@@ -130,6 +127,38 @@ TEST_CASE("expect")
 		else
 		{
 			REQUIRE_THROWS_AS(pal_expect(nullptr), std::logic_error);
+		}
+	}
+
+	if constexpr (!pal::expect_noexcept)
+	{
+		using Catch::Matchers::Contains;
+
+		SECTION("without message")
+		{
+			try
+			{
+				pal_expect(1 > 2);
+				FAIL("unexpected");
+			}
+			catch (const std::logic_error &e)
+			{
+				CHECK_THAT(e.what(), Contains("1 > 2"));
+			}
+		}
+
+		SECTION("with message")
+		{
+			constexpr char message[] = "optional message";
+			try
+			{
+				pal_expect(1 > 2, message);
+				FAIL("unexpected");
+			}
+			catch (const std::logic_error &e)
+			{
+				CHECK_THAT(e.what(), Contains(message));
+			}
 		}
 	}
 }
