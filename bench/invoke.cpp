@@ -24,22 +24,29 @@ void invoke_lambda (benchmark::State &state)
 BENCHMARK(invoke_lambda);
 
 
+struct method
+{
+	benchmark::State &state_;
+
+	method (benchmark::State &state)
+		: state_(state)
+	{ }
+
+	size_t run () const noexcept
+	{
+		return r * state_.iterations();
+	}
+
+	static size_t static_run (benchmark::State &state) noexcept
+	{
+		return r * state.iterations();
+	}
+};
+
+
 void invoke_method (benchmark::State &state)
 {
-	struct op
-	{
-		benchmark::State &state_;
-
-		op (benchmark::State &state)
-			: state_(state)
-		{ }
-
-		size_t run () const noexcept
-		{
-			return r * state_.iterations();
-		}
-	} f{state};
-
+	method f{state};
 	for (auto _: state)
 	{
 		benchmark::DoNotOptimize(f.run());
@@ -48,39 +55,43 @@ void invoke_method (benchmark::State &state)
 BENCHMARK(invoke_method);
 
 
-void invoke_static_method (benchmark::State &state)
+void invoke_method_ptr (benchmark::State &state)
 {
-	struct op
-	{
-		static size_t run (benchmark::State &state) noexcept
-		{
-			return r * state.iterations();
-		}
-	} f;
-
+	method f{state};
+	auto method_ptr = &method::run;
 	for (auto _: state)
 	{
-		benchmark::DoNotOptimize(f.run(state));
+		benchmark::DoNotOptimize((f.*method_ptr)());
+	}
+}
+BENCHMARK(invoke_method_ptr);
+
+
+void invoke_static_method (benchmark::State &state)
+{
+	for (auto _: state)
+	{
+		benchmark::DoNotOptimize(method::static_run(state));
 	}
 }
 BENCHMARK(invoke_static_method);
 
 
-struct base_op
+struct virtual_method
 {
-	virtual ~base_op () noexcept = default;
+	virtual ~virtual_method () noexcept = default;
 	virtual size_t run () const noexcept = 0;
 };
 
 
 void invoke_virtual_method (benchmark::State &state)
 {
-	struct op
-		: public base_op
+	struct virtual_method_override
+		: public virtual_method
 	{
 		benchmark::State &state_;
 
-		op (benchmark::State &state)
+		virtual_method_override (benchmark::State &state)
 			: state_(state)
 		{ }
 
@@ -90,7 +101,7 @@ void invoke_virtual_method (benchmark::State &state)
 		}
 	} impl{state};
 
-	base_op &f = impl;
+	virtual_method &f = impl;
 	for (auto _: state)
 	{
 		benchmark::DoNotOptimize(f.run());
@@ -100,13 +111,13 @@ BENCHMARK(invoke_virtual_method);
 
 
 template <typename F>
-struct op
-	: public base_op
+struct virtual_method_with_callable
+	: public virtual_method
 {
 	F fn_;
 	benchmark::State &state_;
 
-	op (F fn, benchmark::State &state) noexcept
+	virtual_method_with_callable (F fn, benchmark::State &state) noexcept
 		: fn_(fn)
 		, state_(state)
 	{ }
@@ -124,8 +135,8 @@ void invoke_virtual_method_with_lambda (benchmark::State &state)
 	{
 		return r * state.iterations();
 	};
-	op<decltype(lambda)> impl{lambda, state};
-	base_op &f = impl;
+	virtual_method_with_callable<decltype(lambda)> impl{lambda, state};
+	virtual_method &f = impl;
 
 	for (auto _: state)
 	{
@@ -135,7 +146,7 @@ void invoke_virtual_method_with_lambda (benchmark::State &state)
 BENCHMARK(invoke_virtual_method_with_lambda);
 
 
-size_t f (benchmark::State &state) noexcept
+size_t function (benchmark::State &state) noexcept
 {
 	return r * state.iterations();
 }
@@ -143,7 +154,7 @@ size_t f (benchmark::State &state) noexcept
 
 void invoke_function_ptr (benchmark::State &state)
 {
-	auto fp = &f;
+	auto fp = &function;
 	for (auto _: state)
 	{
 		benchmark::DoNotOptimize((*fp)(state));
@@ -154,11 +165,7 @@ BENCHMARK(invoke_function_ptr);
 
 void invoke_std_function (benchmark::State &state)
 {
-	std::function<size_t(benchmark::State &)> f = [](benchmark::State &s)
-	{
-		return r * s.iterations();
-	};
-
+	std::function<size_t(benchmark::State &)> f = &function;
 	for (auto _: state)
 	{
 		benchmark::DoNotOptimize(f(state));
