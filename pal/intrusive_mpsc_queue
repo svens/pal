@@ -27,8 +27,10 @@ template <typename T>
 using intrusive_mpsc_queue_hook = volatile T *;
 
 
-template <auto Next>
-class intrusive_mpsc_queue;
+#if !defined(__DOXYGEN__)
+	template <auto Next>
+	class intrusive_mpsc_queue;
+#endif
 
 
 /**

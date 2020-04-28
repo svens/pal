@@ -51,7 +51,7 @@ if(Coverage)
 		COMMAND ${CMAKE_COMMAND} --build . --target test
 		COMMAND ${LCOV} ${LCOV_ARGS} --capture --no-external --derive-func-data --output-file ${CMAKE_PROJECT_NAME}-tests.info
 		COMMAND ${LCOV} ${LCOV_ARGS} --add-tracefile ${CMAKE_PROJECT_NAME}-base.info --add-tracefile ${CMAKE_PROJECT_NAME}-tests.info --output-file ${CMAKE_PROJECT_NAME}.info
-		COMMAND ${LCOV} ${LCOV_ARGS} --remove ${CMAKE_PROJECT_NAME}.info '*.test.?pp' '${PROJECT_SOURCE_DIR}/extern/*' --output-file ${CMAKE_PROJECT_NAME}.info
+		COMMAND ${LCOV} ${LCOV_ARGS} --remove ${CMAKE_PROJECT_NAME}.info '${PROJECT_SOURCE_DIR}/pal/*test*' '${PROJECT_SOURCE_DIR}/extern/*' --output-file ${CMAKE_PROJECT_NAME}.info
 		COMMAND ${LCOV} ${LCOV_ARGS} --list ${CMAKE_PROJECT_NAME}.info
 		COMMAND ${LCOV} ${LCOV_ARGS} --summary ${CMAKE_PROJECT_NAME}.info
 	)

@@ -17,20 +17,20 @@ __pal_begin
 /**
  * True if pal_expect() macro is no-op.
  */
-inline constexpr bool expect_noexcept = is_release_build;
+constexpr bool expect_noexcept = is_release_build;
 
 
 /**
  * Require \a Expr to evaluate to true. On success, returns result of \a Expr.
- * Otherwise, throw \c std::logic_error. If optional message is specified,
- * it is passed to std::logic_error constructor as parameter. If no message,
- * textual representation of \a Expr with source code location information is
- * used.
+ * Otherwise, throw \c std::logic_error. If \a OptionalMessage is specified,
+ * it is passed to std::logic_error constructor as parameter. If no
+ * \a OptionalMessage, textual representation of \a Expr with source code
+ * location information is used.
  *
  * \note It is similar to standard \c assert() macro, except \a Expr is always
  * evaluated and result is returned.
  */
-#define pal_expect(Expr, ...) /* internal */
+#define pal_expect(Expr, OptionalMessage) /* internal */
 
 
 #if !defined(__DOXYGEN__) //{{{

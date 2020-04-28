@@ -19,8 +19,10 @@ template <typename T>
 using intrusive_stack_hook = T *;
 
 
-template <auto Next>
-class intrusive_stack;
+#if !defined(__DOXYGEN__)
+	template <auto Next>
+	class intrusive_stack;
+#endif
 
 
 /**
