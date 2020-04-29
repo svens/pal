@@ -1,0 +1,144 @@
+#pragma once // -*- C++ -*-
+
+/**
+ * \file pal/task
+ * Generic task for worker
+ */
+
+#include <pal/__bits/lib>
+#include <pal/expect>
+#include <pal/intrusive_mpsc_queue>
+
+
+__pal_begin
+
+
+/**
+ * Generic task for any worker. It packages function pointer and it's argument
+ * (as generic void pointer). Task also contains control block for workers
+ * internal use. It is small enough (3 pointers) to pass around by value
+ * although passing by task pointer is still preferred.
+ *
+ * \note Task and function comparisons involve only function pointers, not
+ * user and worker data pointers.
+ */
+class task
+{
+private:
+
+	intrusive_mpsc_queue_hook<task> mpsc_next_{};
+
+public:
+
+	/// Intrusive queue of tasks
+	using mpsc_queue = intrusive_mpsc_queue<&task::mpsc_next_>;
+
+	/// Argument type for task function pointer.
+	using function_arg = void *;
+
+	/// Pointer to function of task's implementation.
+	using function_ptr = void (*)(function_arg) noexcept;
+
+
+	constexpr task () = default;
+
+
+	/// Construct new task of \a function and \a user_data pair
+	constexpr task (function_ptr function, function_arg user_data = nullptr) noexcept
+		: function_(function)
+		, user_data_(user_data)
+	{ }
+
+
+	/// Returns true if function is not null pointer.
+	constexpr operator bool () const noexcept
+	{
+		return function_ != nullptr;
+	}
+
+
+	/// Returns true if tasks \a l and \a r point to same function.
+	constexpr friend bool operator== (const task &l, const task &r)
+		noexcept
+	{
+		return l.function_ == r.function_;
+	}
+
+
+	/// Returns true if tasks \a l and \a r point to different function.
+	constexpr friend bool operator!= (const task &l, const task &r)
+		noexcept
+	{
+		return !operator==(l, r);
+	}
+
+
+	/// Returns true if task's function \a t is same as \a f.
+	constexpr friend bool operator== (const task &t, function_ptr f)
+		noexcept
+	{
+		return t.function_ == f;
+	}
+
+
+	/// Returns true if task's function \a t is not same as \a f.
+	constexpr friend bool operator!= (const task &t, function_ptr f)
+		noexcept
+	{
+		return !operator==(t, f);
+	}
+
+
+	/// Returns true if task's function \a t is same as \a f.
+	constexpr friend bool operator== (function_ptr f, const task &t)
+		noexcept
+	{
+		return operator==(t, f);
+	}
+
+
+	/// Returns true if task's function \a t is not same as \a f.
+	constexpr friend bool operator!= (function_ptr f, const task &t)
+		noexcept
+	{
+		return !operator==(t, f);
+	}
+
+
+	/// Set new function for task (keeping existing user data pointer).
+	constexpr task &operator= (function_ptr function) noexcept
+	{
+		function_ = function;
+		return *this;
+	}
+
+
+	/// Set new user data pointer.
+	constexpr void user_data (void *v) noexcept
+	{
+		user_data_ = v;
+	}
+
+
+	/// Get user data pointer.
+	constexpr void *user_data () const noexcept
+	{
+		return user_data_;
+	}
+
+
+private:
+
+	function_ptr function_{};
+	function_arg user_data_{};
+
+	void run () noexcept
+	{
+		(*pal_expect(function_))(user_data_);
+	}
+
+	friend class worker;
+};
+
+
+__pal_end

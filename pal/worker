@@ -1,0 +1,59 @@
+#pragma once // -*- C++ -*-
+
+/**
+ * \file pal/worker
+ * Simplest synchronous task executor implementation.
+ */
+
+#include <pal/__bits/lib>
+#include <pal/expect>
+#include <pal/task>
+
+
+__pal_begin
+
+
+/**
+ * Basic synchronous task executor. All submitted tasks are run immediately
+ * and pushed into completion queue.
+ */
+class worker
+{
+public:
+
+	/**
+	 * Construct new worker that pushed submitted tasks into \a completed
+	 * queue.
+	 */
+	worker (task::mpsc_queue &completed) noexcept
+		: completed_(completed)
+	{ }
+
+
+	/**
+	 * Post task \a t directly into completion queue without actually
+	 * running it.
+	 */
+	void post (task *t) noexcept
+	{
+		completed_.push(t);
+	}
+
+
+	/**
+	 * Execute task \a t and then push it into completion queue.
+	 */
+	void submit (task *t) noexcept
+	{
+		pal_expect(t)->run();
+		post(t);
+	}
+
+
+private:
+
+	task::mpsc_queue &completed_;
+};
+
+
+__pal_end
