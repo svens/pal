@@ -73,8 +73,8 @@ TEST_CASE("expect")
 		{
 			auto buf = new char[3];
 			std::unique_ptr<char> p{buf};
-			REQUIRE_NOTHROW(pal_expect(p.get()));
-			CHECK(pal_expect(p.get()) == buf);
+			REQUIRE_NOTHROW(pal_expect(p));
+			CHECK(pal_expect(p).get() == buf);
 		}
 
 		SECTION("nullptr")
@@ -82,12 +82,12 @@ TEST_CASE("expect")
 			std::unique_ptr<char> p;
 			if constexpr (pal::expect_noexcept)
 			{
-				REQUIRE_NOTHROW(pal_expect(p.get()));
-				CHECK(pal_expect(p.get()) == nullptr);
+				REQUIRE_NOTHROW(pal_expect(p));
+				CHECK(pal_expect(p) == nullptr);
 			}
 			else
 			{
-				REQUIRE_THROWS_AS(pal_expect(p.get()), std::logic_error);
+				REQUIRE_THROWS_AS(pal_expect(p), std::logic_error);
 			}
 		}
 	}

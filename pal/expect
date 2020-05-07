@@ -38,7 +38,7 @@ constexpr bool expect_noexcept = is_release_build;
 __pal_bits_begin
 
 template <typename T>
-constexpr auto expect_impl (const T &expr, const char message[], ...)
+constexpr decltype(auto) expect_impl (T &&expr, const char message[], ...)
 	noexcept(expect_noexcept)
 {
 	if constexpr (!expect_noexcept)
@@ -52,7 +52,7 @@ constexpr auto expect_impl (const T &expr, const char message[], ...)
 	{
 		(void)message;
 	}
-	return expr;
+	return std::forward<T>(expr);
 }
 
 constexpr auto expect_impl (std::nullptr_t, const char message[], ...)
