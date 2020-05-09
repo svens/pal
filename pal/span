@@ -162,8 +162,9 @@ public:
 
 
 	template <typename Container,
-		typename std::enable_if_t<
-			__bits::is_span_compatible_container_v<Container, T>, int
+		std::enable_if_t<
+			__bits::is_span_compatible_container_v<Container, T>,
+			int
 		> = 0
 	>
 	constexpr span (Container &container)
@@ -174,8 +175,9 @@ public:
 
 
 	template <typename Container,
-		typename std::enable_if_t<
-			__bits::is_span_compatible_container_v<const Container, T>, int
+		std::enable_if_t<
+			__bits::is_span_compatible_container_v<const Container, T>,
+			int
 		> = 0
 	>
 	constexpr span (const Container &container)
@@ -186,8 +188,9 @@ public:
 
 
 	template <typename U,
-		typename std::enable_if_t<
-			__bits::is_span_compatible_span_v<U, element_type>, int
+		std::enable_if_t<
+			__bits::is_span_compatible_span_v<U, element_type>,
+			int
 		> = 0
 	>
 	constexpr span (const span<U, Extent> &that) noexcept
@@ -196,8 +199,9 @@ public:
 
 
 	template <typename U,
-		typename std::enable_if_t<
-			__bits::is_span_compatible_span_v<U, element_type>, int
+		std::enable_if_t<
+			__bits::is_span_compatible_span_v<U, element_type>,
+			int
 		> = 0
 	>
 	constexpr span (const span<U, dynamic_extent> &that) noexcept
@@ -431,8 +435,9 @@ public:
 
 
 	template <typename Container,
-		typename std::enable_if_t<
-			__bits::is_span_compatible_container_v<Container, T>, int
+		std::enable_if_t<
+			__bits::is_span_compatible_container_v<Container, T>,
+			int
 		> = 0
 	>
 	constexpr span (Container &container)
@@ -442,8 +447,9 @@ public:
 
 
 	template <typename Container,
-		typename std::enable_if_t<
-			__bits::is_span_compatible_container_v<const Container, T>, int
+		std::enable_if_t<
+			__bits::is_span_compatible_container_v<const Container, T>,
+			int
 		> = 0
 	>
 	constexpr span (const Container &container)
@@ -453,8 +459,9 @@ public:
 
 
 	template <typename U, ptrdiff_t OtherExtent,
-		typename std::enable_if_t<
-			__bits::is_span_compatible_span_v<U, element_type>, int
+		std::enable_if_t<
+			__bits::is_span_compatible_span_v<U, element_type>,
+			int
 		> = 0
 	>
 	constexpr span (const span<U, OtherExtent> &that) noexcept
