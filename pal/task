@@ -2,12 +2,11 @@
 
 /**
  * \file pal/task
- * Generic task for worker
+ * Generic task for any worker type.
  */
 
 #include <pal/__bits/lib>
-#include <pal/expect>
-#include <pal/intrusive_mpsc_queue>
+#include <pal/not_null>
 
 
 __pal_begin
@@ -15,45 +14,47 @@ __pal_begin
 
 /**
  * Generic task for any worker. It packages function pointer and it's argument
- * (as generic void pointer). Task also contains control block for workers
- * internal use. It is small enough (3 pointers) to pass around by value
- * although passing by task pointer is still preferred.
+ * (as generic void pointer).
  *
  * \note Task and function comparisons involve only function pointers, not
- * user and worker data pointers.
+ * user data.
  */
 class task
 {
-private:
-
-	intrusive_mpsc_queue_hook<task> mpsc_next_{};
-
 public:
 
-	/// Intrusive queue of tasks
-	using mpsc_queue = intrusive_mpsc_queue<&task::mpsc_next_>;
-
-	/// Argument type for task function pointer.
-	using function_arg = void *;
-
-	/// Pointer to function of task's implementation.
-	using function_ptr = void (*)(function_arg) noexcept;
+	/// Pointer to task function.
+	using function_ptr = void(*)(task &)noexcept;
 
 
-	constexpr task () = default;
+	task () = delete;
 
 
-	/// Construct new task of \a function and \a user_data pair
-	constexpr task (function_ptr function, function_arg user_data = nullptr) noexcept
+	/// Construct new task of \a function.
+	constexpr task (not_null<function_ptr> function, void *data = nullptr) noexcept
 		: function_(function)
-		, user_data_(user_data)
+		, user_data_(data)
 	{ }
 
 
-	/// Returns true if function is not null pointer.
-	constexpr operator bool () const noexcept
+	/// Set new user data pointer.
+	constexpr void user_data (void *v) noexcept
 	{
-		return function_ != nullptr;
+		user_data_ = v;
+	}
+
+
+	/// Get user data pointer.
+	constexpr void *user_data () const noexcept
+	{
+		return user_data_;
+	}
+
+
+	/// Run task directly in caller's thread context.
+	void operator() () noexcept
+	{
+		(*function_)(*this);
 	}
 
 
@@ -77,7 +78,7 @@ public:
 	constexpr friend bool operator== (const task &t, function_ptr f)
 		noexcept
 	{
-		return t.function_ == f;
+		return t.function_.get() == f;
 	}
 
 
@@ -105,39 +106,10 @@ public:
 	}
 
 
-	/// Set new function for task (keeping existing user data pointer).
-	constexpr task &operator= (function_ptr function) noexcept
-	{
-		function_ = function;
-		return *this;
-	}
-
-
-	/// Set new user data pointer.
-	constexpr void user_data (void *v) noexcept
-	{
-		user_data_ = v;
-	}
-
-
-	/// Get user data pointer.
-	constexpr void *user_data () const noexcept
-	{
-		return user_data_;
-	}
-
-
 private:
 
-	function_ptr function_{};
-	function_arg user_data_{};
-
-	void run () noexcept
-	{
-		(*pal_expect(function_))(user_data_);
-	}
-
-	friend class worker;
+	not_null<function_ptr> function_;
+	void *user_data_;
 };
 
 

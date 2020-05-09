@@ -6,7 +6,7 @@
  */
 
 #include <pal/__bits/lib>
-#include <pal/expect>
+#include <pal/not_null>
 #include <pal/task>
 
 
@@ -14,45 +14,18 @@ __pal_begin
 
 
 /**
- * Basic synchronous task executor. All submitted tasks are run immediately
- * and pushed into completion queue.
+ * Basic synchronous task executor. All submitted tasks are run immediately in
+ * caller's thread context.
  */
 class worker
 {
 public:
 
-	/**
-	 * Construct new worker that pushed submitted tasks into \a completed
-	 * queue.
-	 */
-	worker (task::mpsc_queue &completed) noexcept
-		: completed_(completed)
-	{ }
-
-
-	/**
-	 * Post task \a t directly into completion queue without actually
-	 * running it.
-	 */
-	void post (task *t) noexcept
+	/// Execute task \a t.
+	void submit (not_null<task *> t) noexcept
 	{
-		completed_.push(t);
+		(*t)();
 	}
-
-
-	/**
-	 * Execute task \a t and then push it into completion queue.
-	 */
-	void submit (task *t) noexcept
-	{
-		pal_expect(t)->run();
-		post(t);
-	}
-
-
-private:
-
-	task::mpsc_queue &completed_;
 };
 
 

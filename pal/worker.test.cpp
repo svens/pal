@@ -5,16 +5,16 @@
 namespace {
 
 
-void inc_1 (void *arg) noexcept
+void inc_1 (pal::task &arg) noexcept
 {
-	auto i = static_cast<int *>(arg);
-	(*i)++;
+	auto i = static_cast<int *>(arg.user_data());
+	*i += 1;
 }
 
 
-void inc_2 (void *arg) noexcept
+void inc_2 (pal::task &arg) noexcept
 {
-	auto i = static_cast<int *>(arg);
+	auto i = static_cast<int *>(arg.user_data());
 	*i += 2;
 }
 
@@ -22,52 +22,36 @@ void inc_2 (void *arg) noexcept
 TEST_CASE("worker")
 {
 	int arg = 0;
-	pal::task i1{inc_1, &arg}, i2{inc_2, &arg};
-
-	pal::task::mpsc_queue completed;
-	CHECK(completed.try_pop() == nullptr);
-
-	pal::worker worker(completed);
-
-	SECTION("post")
-	{
-		arg = 0;
-		worker.post(&i1);
-		CHECK(completed.try_pop() == &i1);
-		CHECK(arg == 0);
-	}
+	pal::task i1{&inc_1, &arg}, i2{&inc_2, &arg};
+	pal::worker worker;
 
 	SECTION("submit")
 	{
 		arg = 0;
 		worker.submit(&i1);
-		CHECK(completed.try_pop() == &i1);
 		CHECK(arg == 1);
-	}
-
-	SECTION("multiple post")
-	{
-		arg = 2;
-		worker.post(&i1);
-		worker.post(&i2);
-		CHECK(arg == 2);
-		CHECK(completed.try_pop() == &i1);
-		CHECK(completed.try_pop() == &i2);
-		CHECK(arg == 2);
 	}
 
 	SECTION("multiple submit")
 	{
 		arg = 2;
 		worker.submit(&i1);
+		CHECK(arg == 3);
 		worker.submit(&i2);
-		CHECK(arg == 5);
-		CHECK(completed.try_pop() == &i1);
-		CHECK(completed.try_pop() == &i2);
 		CHECK(arg == 5);
 	}
 
-	CHECK(completed.try_pop() == nullptr);
+	SECTION("submit null")
+	{
+		if constexpr (!pal::expect_noexcept)
+		{
+			pal::task *t = nullptr;
+			CHECK_THROWS_AS(
+				worker.submit(t),
+				std::logic_error
+			);
+		}
+	}
 }
 
 

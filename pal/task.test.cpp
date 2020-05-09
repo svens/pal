@@ -5,87 +5,33 @@
 namespace {
 
 
-// foo & bar implementations are not used but MSVC will optimize them into
-// single function if no body
-
-
-void foo (void *arg) noexcept
+void foo (pal::task &arg) noexcept
 {
-	*static_cast<int *>(arg) = 1;
+	*static_cast<int *>(arg.user_data()) = 1;
 }
 
 
-void bar (void *arg) noexcept
+void bar (pal::task &arg) noexcept
 {
-	*static_cast<int *>(arg) = 2;
+	*static_cast<int *>(arg.user_data()) = 2;
 }
 
 
 TEST_CASE("task")
 {
-	int arg;
-	pal::task f1{foo, &arg}, f2{foo}, b{bar}, e;
+	int arg = 0;
+	pal::task f1{&foo, &arg}, f2{&foo}, b{&bar, &arg};
 
-	SECTION("operator bool")
+	SECTION("no function")
 	{
-		CHECK(f1);
-		CHECK(f2);
-		CHECK(b);
-		CHECK_FALSE(e);
-	}
-
-	SECTION("task equals")
-	{
-		CHECK(f1 == f2);
-		CHECK_FALSE(f1 == b);
-		CHECK_FALSE(f1 == e);
-		CHECK_FALSE(b == e);
-	}
-
-	SECTION("task not equals")
-	{
-		CHECK_FALSE(f1 != f2);
-		CHECK(f1 != b);
-		CHECK(f1 != e);
-		CHECK(b != e);
-	}
-
-	SECTION("function_ptr equals")
-	{
-		CHECK(foo == f1);
-		CHECK(f1 == foo);
-		CHECK_FALSE(bar == f1);
-		CHECK_FALSE(f1 == bar);
-		CHECK_FALSE(e == foo);
-		CHECK_FALSE(e == bar);
-	}
-
-	SECTION("function_ptr not equals")
-	{
-		CHECK_FALSE(foo != f1);
-		CHECK_FALSE(f1 != foo);
-		CHECK(bar != f1);
-		CHECK(f1 != bar);
-		CHECK(e != foo);
-		CHECK(e != bar);
-	}
-
-	SECTION("assign function_ptr")
-	{
-		pal::task e1;
-		CHECK(e1 == e);
-		CHECK(e1 != b);
-		CHECK(e1 != f1);
-
-		e1 = bar;
-		CHECK(e1 != e);
-		CHECK(e1 == b);
-		CHECK(e1 != f1);
-
-		e1 = foo;
-		CHECK(e1 != e);
-		CHECK(e1 != b);
-		CHECK(e1 == f1);
+		if constexpr (!pal::expect_noexcept)
+		{
+			void(*null)(pal::task &)noexcept = {};
+			CHECK_THROWS_AS(
+				pal::task{null},
+				std::logic_error
+			);
+		}
 	}
 
 	SECTION("user_data")
@@ -96,6 +42,43 @@ TEST_CASE("task")
 
 		f2.user_data(&arg);
 		CHECK(f1.user_data() == f2.user_data());
+	}
+
+	SECTION("invoke")
+	{
+		arg = 0;
+		f1();
+		CHECK(arg == 1);
+		b();
+		CHECK(arg == 2);
+	}
+
+	SECTION("task equals")
+	{
+		CHECK(f1 == f2);
+		CHECK_FALSE(f1 == b);
+	}
+
+	SECTION("task not equals")
+	{
+		CHECK_FALSE(f1 != f2);
+		CHECK(f1 != b);
+	}
+
+	SECTION("function_ptr equals")
+	{
+		CHECK(foo == f1);
+		CHECK(f1 == foo);
+		CHECK_FALSE(bar == f1);
+		CHECK_FALSE(f1 == bar);
+	}
+
+	SECTION("function_ptr not equals")
+	{
+		CHECK_FALSE(foo != f1);
+		CHECK_FALSE(f1 != foo);
+		CHECK(bar != f1);
+		CHECK(f1 != bar);
 	}
 }
 
