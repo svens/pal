@@ -6,6 +6,7 @@
  */
 
 #include <pal/__bits/lib>
+#include <pal/not_null>
 
 
 __pal_begin
@@ -80,7 +81,7 @@ public:
 	/**
 	 * Push new \a node to back of queue.
 	 */
-	void push (value_type *node) noexcept
+	void push (not_null<value_type *> node) noexcept
 	{
 		node->*Next = nullptr;
 		tail_ = tail_->*Next = node;

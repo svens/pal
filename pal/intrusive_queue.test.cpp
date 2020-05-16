@@ -82,6 +82,19 @@ TEST_CASE("intrusive_queue")
 	}
 
 
+	if constexpr (!pal::expect_noexcept)
+	{
+		SECTION("push null")
+		{
+			foo *f = nullptr;
+			CHECK_THROWS_AS(
+				queue.push(f),
+				std::logic_error
+			);
+		}
+	}
+
+
 	CHECK(queue.empty());
 	CHECK(queue.head() == nullptr);
 	CHECK(queue.try_pop() == nullptr);

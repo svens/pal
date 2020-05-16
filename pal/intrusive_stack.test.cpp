@@ -83,6 +83,19 @@ TEST_CASE("intrusive_stack")
 	}
 
 
+	if constexpr (!pal::expect_noexcept)
+	{
+		SECTION("push null")
+		{
+			foo *f = nullptr;
+			CHECK_THROWS_AS(
+				stack.push(f),
+				std::logic_error
+			);
+		}
+	}
+
+
 	CHECK(stack.empty());
 	CHECK(stack.top() == nullptr);
 	CHECK(stack.try_pop() == nullptr);

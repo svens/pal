@@ -77,6 +77,19 @@ TEST_CASE("intrusive_mpsc_queue")
 	}
 
 
+	if constexpr (!pal::expect_noexcept)
+	{
+		SECTION("push null")
+		{
+			foo *f = nullptr;
+			CHECK_THROWS_AS(
+				queue.push(f),
+				std::logic_error
+			);
+		}
+	}
+
+
 	SECTION("threaded_consumer_producer")
 	{
 		std::array<std::thread, 2> producers{};
