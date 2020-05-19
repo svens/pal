@@ -1,5 +1,7 @@
 #include <pal/task>
 #include <pal/test>
+#include <chrono>
+#include <thread>
 
 
 namespace {
@@ -80,6 +82,91 @@ TEST_CASE("task")
 		CHECK(bar != f1);
 		CHECK(f1 != bar);
 	}
+}
+
+
+TEST_CASE("task::completion_queue")
+{
+	using namespace std::chrono_literals;
+	constexpr auto moment = 5ms;
+	constexpr auto forever = 1min;
+	const auto now = std::chrono::system_clock::now();
+	const auto abs_moment = now + moment;
+	const auto abs_forever = now + forever;
+
+	int arg = 0;
+	pal::task task{foo, &arg};
+	pal::task::completion_queue queue;
+	CHECK(queue.try_get() == nullptr);
+
+	SECTION("post / try_get")
+	{
+		queue.post(task);
+		CHECK(queue.try_get() == &task);
+	}
+
+	SECTION("wait / post")
+	{
+		queue.post(task);
+		CHECK(queue.wait() == &task);
+	}
+
+	SECTION("wait / deferred post")
+	{
+		auto thread = std::thread([&]
+		{
+			std::this_thread::sleep_for(moment);
+			queue.post(task);
+		});
+		CHECK(queue.wait() == &task);
+		thread.join();
+	}
+
+	SECTION("wait_until / timeout")
+	{
+		CHECK(queue.wait_until(abs_moment) == nullptr);
+	}
+
+	SECTION("wait_until")
+	{
+		queue.post(task);
+		CHECK(queue.wait_until(abs_moment) == &task);
+	}
+
+	SECTION("wait_until / deferred post")
+	{
+		auto thread = std::thread([&]
+		{
+			std::this_thread::sleep_for(moment);
+			queue.post(task);
+		});
+		CHECK(queue.wait_until(abs_forever) == &task);
+		thread.join();
+	}
+
+	SECTION("wait_for / timeout")
+	{
+		CHECK(queue.wait_for(moment) == nullptr);
+	}
+
+	SECTION("wait_for")
+	{
+		queue.post(task);
+		CHECK(queue.wait_for(moment) == &task);
+	}
+
+	SECTION("wait_for / deferred post")
+	{
+		auto thread = std::thread([&]
+		{
+			std::this_thread::sleep_for(moment);
+			queue.post(task);
+		});
+		CHECK(queue.wait_for(forever) == &task);
+		thread.join();
+	}
+
+	CHECK(arg == 0);
 }
 
 

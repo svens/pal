@@ -2,19 +2,23 @@
 
 /**
  * \file pal/task
- * Generic task for any worker type.
+ * Generic invocable task and corresponding completion queue.
  */
 
 #include <pal/__bits/lib>
+#include <pal/intrusive_mpsc_queue>
 #include <pal/not_null>
+#include <chrono>
+#include <condition_variable>
+#include <mutex>
 
 
 __pal_begin
 
 
 /**
- * Generic task for any worker. It packages function pointer and it's argument
- * (as generic void pointer).
+ * Generic task. It packages function pointer and it's argument (as generic
+ * void pointer).
  *
  * \note Task and function comparisons involve only function pointers, not
  * user data.
@@ -22,6 +26,9 @@ __pal_begin
 class task
 {
 public:
+
+	class completion_queue;
+
 
 	/// Pointer to task function.
 	using function_ptr = void(*)(task &)noexcept;
@@ -78,7 +85,7 @@ public:
 	constexpr friend bool operator== (const task &t, function_ptr f)
 		noexcept
 	{
-		return t.function_.get() == f;
+		return t.function_ == f;
 	}
 
 
@@ -108,8 +115,106 @@ public:
 
 private:
 
-	not_null<function_ptr> function_;
+	function_ptr function_;
 	void *user_data_;
+	intrusive_mpsc_queue_hook<task> completed_{};
+};
+
+
+/**
+ * Completion queue for tasks.
+ *
+ * It uses internally MPSC lockfree queue: multiple threads can post completed
+ * tasks concurrently. Extracting enqueued tasks is synchronised using
+ * internal mutex. Rationale for using mutex instead of MPMC queue is
+ * efficient suspending caller while waiting for next task to be posted.
+ */
+class task::completion_queue
+{
+public:
+
+	/// Post task into queue and notify one waiting thread (if any).
+	void post (task &t) noexcept
+	{
+		queue_.push(&t);
+		signal_.notify_one();
+	}
+
+
+	/**
+	 * Dequeue previously posted task. If there is no task in queue,
+	 * return nullptr
+	 */
+	task *try_get ()
+	{
+		return try_get(std::lock_guard{mutex_});
+	}
+
+
+	/**
+	 * \copybrief try_get()
+	 *
+	 * If there is no task in queue, suspend caller until another thread
+	 * posts task to be dequeued.
+	 */
+	not_null<task *> wait ()
+	{
+		task *t = nullptr;
+		std::unique_lock lock{mutex_};
+		signal_.wait(
+			lock,
+			[&]{ return (t = try_get(lock)); }
+		);
+		return t;
+	}
+
+
+	/**
+	 * \copybrief try_get()
+	 *
+	 * If there is no task in queue, suspend caller until another thread
+	 * posts task to be dequeued or \a timeout_time is reached. On
+	 * timeout, nullptr is returned.
+	 */
+	template <typename Clock, typename Duration>
+	task *wait_until (const std::chrono::time_point<Clock, Duration> &timeout_time)
+	{
+		task *t = nullptr;
+		std::unique_lock lock{mutex_};
+		signal_.wait_until(
+			lock,
+			timeout_time,
+			[&]{ return (t = try_get(lock)); }
+		);
+		return t;
+	}
+
+
+	/**
+	 * \copybrief try_get()
+	 *
+	 * If there is no task in queue, suspend caller until another thread
+	 * posts task to be dequeued or timeout \a duration is reached. On
+	 * timeout, nullptr is returned.
+	 */
+	template <typename Rep, typename Period>
+	task *wait_for (const std::chrono::duration<Rep, Period> &duration)
+	{
+		return wait_until(std::chrono::steady_clock::now() + duration);
+	}
+
+
+private:
+
+	intrusive_mpsc_queue<&task::completed_> queue_{};
+	std::condition_variable signal_{};
+	std::mutex mutex_{};
+
+	template <typename Lock>
+	task *try_get (const Lock &) noexcept
+	{
+		return queue_.try_pop();
+	}
 };
 
 
