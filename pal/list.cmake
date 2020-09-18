@@ -9,8 +9,6 @@ list(APPEND pal_sources
 	pal/intrusive_stack
 	pal/not_null
 	pal/span
-	pal/task
-	pal/worker
 )
 
 list(APPEND pal_unittests_sources
@@ -23,6 +21,4 @@ list(APPEND pal_unittests_sources
 	pal/intrusive_stack.test.cpp
 	pal/not_null.test.cpp
 	pal/span.test.cpp
-	pal/task.test.cpp
-	pal/worker.test.cpp
 )
