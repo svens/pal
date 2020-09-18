@@ -66,11 +66,10 @@ void check_rvalue (std::shared_ptr<base> &&ptr)
 }
 
 
-TEMPLATE_TEST_CASE("not_null", ""
-	, base *
-	, std::unique_ptr<base>
-	, std::shared_ptr<base>
-)
+TEMPLATE_TEST_CASE("not_null", "",
+	base *,
+	std::unique_ptr<base>,
+	std::shared_ptr<base>)
 {
 	using not_null_TestType = pal::not_null<TestType>;
 	using element_type = typename not_null_TestType::element_type;

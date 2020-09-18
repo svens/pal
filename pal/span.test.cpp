@@ -14,15 +14,14 @@ constexpr ptrdiff_t N = 4;
 
 
 TEMPLATE_TEST_CASE("span", "",
-  (pal::span<uint8_t, N>),
-  (pal::span<uint16_t, N>),
-  (pal::span<uint32_t, N>),
-  (pal::span<uint64_t, N>),
-  (pal::span<uint8_t, pal::dynamic_extent>),
-  (pal::span<uint16_t, pal::dynamic_extent>),
-  (pal::span<uint32_t, pal::dynamic_extent>),
-  (pal::span<uint64_t, pal::dynamic_extent>)
-)
+	(pal::span<uint8_t, N>),
+	(pal::span<uint16_t, N>),
+	(pal::span<uint32_t, N>),
+	(pal::span<uint64_t, N>),
+	(pal::span<uint8_t, pal::dynamic_extent>),
+	(pal::span<uint16_t, pal::dynamic_extent>),
+	(pal::span<uint32_t, pal::dynamic_extent>),
+	(pal::span<uint64_t, pal::dynamic_extent>))
 {
 	using T = typename TestType::value_type;
 	constexpr auto extent = TestType::extent;
