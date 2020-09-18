@@ -19,6 +19,8 @@ jobs:
     steps:
       - uses: actions/checkout@v2
 
+      - run: cmake --version
+
       - name: Install dependencies
         run: |
           case "${{ matrix.os }}" in
@@ -46,7 +48,7 @@ jobs:
           esac
 
       - name: Generate buildsystem
-        run: cmake .. -G "${CMAKE_BUILD_GENERATOR}" -DCMAKE_CONFIGURATION_TYPES="Debug;Release"
+        run: cmake .. -G "${CMAKE_BUILD_GENERATOR}" ${CMAKE_OPTIONS} -DCMAKE_CONFIGURATION_TYPES="Debug;Release"
 
       - name: Debug build/test
         run: |
