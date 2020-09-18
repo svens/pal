@@ -45,16 +45,27 @@ jobs:
   coverage:
     needs: build
     runs-on: ubuntu-latest
+
     env:
       CC: gcc-9
       CXX: g++-9
       COV: gcov-9
+
     steps:
       - uses: actions/checkout@v2
-      - run: |
-          cmake . -DCMAKE_BUILD_TYPE=Coverage
-          cmake --build . --config Coverage
-          cmake --build . --target pal-cov
+
+      - name: Setup devenv
+        run: brew install lcov
+
+      - name: Generate buildsystem
+        run: cmake . -DCMAKE_BUILD_TYPE=Coverage
+
+      - name: Build
+        run: cmake --build . --config Coverage
+
+      - name: Coverage
+        run: cmake --build . --target pal-cov
+
       - uses: coverallsapp/github-action@master
         with:
           github-token: ${{ secrets.GITHUB_TOKEN }}
