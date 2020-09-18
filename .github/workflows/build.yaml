@@ -15,12 +15,12 @@ jobs:
     steps:
       - uses: actions/checkout@v2
 
-      - if: ${{ matrix.compiler == "gcc" }}
+      - if: ${{ matrix.compiler == 'gcc' }}
         run: |
           echo "::set-env name=CC::gcc-9"
           echo "::set-env name=CXX::g++-9"
 
-      - if: ${{ matrix.compiler == "clang" }}
+      - if: ${{ matrix.compiler == 'clang' }}
         run: |
           echo "::set-env name=CC::clang"
           echo "::set-env name=CXX::clang++"
