@@ -10,27 +10,19 @@ jobs:
 
     strategy:
       matrix:
-        #os: [macos, ubuntu]
-        #compiler: [clang, gcc]
+        os: [macos, ubuntu]
+        compiler: [clang, gcc]
+        build_type: [Debug, Release]
         include:
           - os: windows
-            compiler: msvc
+            build_type: [Debug, Release]
 
     steps:
       - uses: actions/checkout@v2
 
       - name: Install dependencies
-        run: |
-          case "${{ matrix.os }}" in
-            macos|ubuntu)
-              brew install ninja
-              echo '::set-env name=CMAKE_BUILD_GENERATOR::"Ninja Multi-Config"'
-              ;;
-            windows)
-              echo '::set-env name=CMAKE_BUILD_GENERATOR::"Visual Studio 16 2019"'
-              echo '::set-env name=CMAKE_OPTIONS::"-A x64"'
-              ;;
-          esac
+        if: matrix.os == 'macos' or matrix.os == 'ubuntu'
+        run: brew install ninja
 
       - name: Setup devenv
         run: |
@@ -46,9 +38,10 @@ jobs:
           esac
 
       - name: Generate buildsystem
-        run: cmake . -DCMAKE_CONFIGURATION_TYPES="Debug;Release"
+        run: cmake . -DCMAKE_BUILD_TYPE=${{ matrix.build_type }}
 
-      - name: Debug build/test
-        run: |
-          cmake --build . --config Debug
-          ctest -C Debug --output-on-failure
+      - name: Build
+        run: cmake --build .
+
+      - name: Test
+        run: ctest --output-on-failure
