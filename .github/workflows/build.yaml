@@ -22,8 +22,12 @@ jobs:
       - name: Install dependencies
         run: |
           case "${{ matrix.os }}" in
-            linux|macos)
+            macos|ubuntu)
               brew install ninja-build
+              echo '::set-env name=CMAKE_BUILD_GENERATOR::"Ninja Multi-Config"'
+              ;;
+            windows)
+              echo '::set-env name=CMAKE_BUILD_GENERATOR::"Visual Studio 15 2017 Win64"'
               ;;
           esac
 
@@ -33,15 +37,10 @@ jobs:
             clang)
               echo '::set-env name=CC::clang'
               echo '::set-env name=CXX::clang++'
-              echo '::set-env name=CMAKE_BUILD_GENERATOR::"Ninja Multi-Config"'
               ;;
             gcc)
               echo '::set-env name=CC::gcc-9'
               echo '::set-env name=CXX::g++-9'
-              echo '::set-env name=CMAKE_BUILD_GENERATOR::"Ninja Multi-Config"'
-              ;;
-            msvc)
-              echo '::set-env name=CMAKE_BUILD_GENERATOR::"Visual Studio 15 2017 Win64"'
               ;;
           esac
 
