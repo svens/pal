@@ -1,7 +1,7 @@
 on: [push, pull_request]
 
 jobs:
-  runs-on: ${{matrix.os}}
+  runs-on: ${{ matrix.os }}
 
   strategy:
     matrix:
@@ -19,7 +19,7 @@ jobs:
 
   steps:
     - uses: actions/checkout@v2
-    - name: Configure ${{matrix.os}} / ${{matrix.env}}
+    - name: Configure ${{ matrix.os }} / ${{ matrix.env }}
       run: cmake . -G $BUILD_GENERATOR -DCMAKE_BUILD_TYPE=$BUILD_TYPE
     - name: Build
       run: cmake --build . --config $BUILD_TYPE
