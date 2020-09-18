@@ -9,13 +9,6 @@
 #include <pal/not_null>
 #include <atomic>
 
-#if __has_include(<version>)
-	#include <version>
-#endif
-#if __cpp_lib_hardware_interference_size >= 201703
-	#include <new>
-#endif
-
 
 __pal_begin
 
@@ -153,12 +146,7 @@ private:
 	char pad_[sizeof(value_type)] = { 0 };
 
 	static constexpr size_t cache_line_size =
-		#if __cpp_lib_hardware_interference_size >= 201703
-			std::hardware_destructive_interference_size
-		#else
-			64
-		#endif
-	;
+		__pal_hardware_destructive_interference_size;
 
 	__pal_warning_suppress_aligned_struct_padding
 	alignas(cache_line_size) std::atomic<value_type *> tail_{sentry_};

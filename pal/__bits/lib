@@ -4,11 +4,38 @@
 #include <cstdint>
 
 
+//
+// std::hardware_destructive_interference_size
+//
+
+#if __has_include(<version>)
+	#include <version>
+#endif
+#if __cpp_lib_hardware_interference_size >= 201703
+	#include <new>
+	#if !defined(__APPLE__)
+		#define __pal_hardware_destructive_interference_size std::hardware_destructive_interference_size
+	#else
+		// TODO: Apple Clang defines __cpp_lib_hardware_interference_size
+		// but actually doesn't provide std::hardware_destructive_interference_size
+	#endif
+#endif
+#if !defined(__pal_hardware_destructive_interference_size)
+	#define __pal_hardware_destructive_interference_size 64
+#endif
+
+
+//
 // project namespace
+//
+
 #define __pal_begin namespace pal { inline namespace v0 {
 #define __pal_end   }} // namespace pal::v0
 
+//
 // project internals namespace
+//
+
 #define __pal_bits_begin namespace __bits {
 #define __pal_bits_end   } // namespace __bits
 
