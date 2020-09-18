@@ -19,21 +19,29 @@ jobs:
     steps:
       - uses: actions/checkout@v2
 
-      - if: ${{ matrix.compiler == 'gcc' }}
+      - name: gcc
+        if: ${{ matrix.compiler == 'gcc' }}
         run: |
           echo '::set-env name=CC::gcc-9'
           echo '::set-env name=CXX::g++-9'
           echo '::set-env name=CMAKE_BUILD_GENERATOR::"Ninja Multi-Config"'
 
-      - if: ${{ matrix.compiler == 'clang' }}
+      - name: clang
+        if: ${{ matrix.compiler == 'clang' }}
         run: |
           echo '::set-env name=CC::clang'
           echo '::set-env name=CXX::clang++'
           echo '::set-env name=CMAKE_BUILD_GENERATOR::"Ninja Multi-Config"'
 
-      - if: ${{ matrix.compiler == 'msvc' }}
+      - name: msvc
+        if: ${{ matrix.compiler == 'msvc' }}
         run: |
           echo '::set-env name=CMAKE_BUILD_GENERATOR::"Visual Studio 15 2017 Win64"'
 
-      - run: |
-          echo "CMAKE_BUILD_GENERATOR=${CMAKE_BUILD_GENERATOR}"
+      - name: Generate buildsystem
+        run: cmake .. -G "${CMAKE_BUILD_GENERATOR}" -DCMAKE_CONFIGURATION_TYPES="Debug;Release"
+
+      - name: Debug build/test
+        run: |
+          cmake --build . --config Debug
+          ctest -C Debug --output-on-failure
