@@ -19,24 +19,31 @@ jobs:
     steps:
       - uses: actions/checkout@v2
 
-      - name: gcc
-        if: ${{ matrix.compiler == 'gcc' }}
+      - name: Install dependencies
         run: |
-          echo '::set-env name=CC::gcc-9'
-          echo '::set-env name=CXX::g++-9'
-          echo '::set-env name=CMAKE_BUILD_GENERATOR::"Ninja Multi-Config"'
+          case "${{ matris.os }}" in
+            linux|macos)
+              brew install ninja-build
+              ;;
+          esac
 
-      - name: clang
-        if: ${{ matrix.compiler == 'clang' }}
+      - name: Setup devenv
         run: |
-          echo '::set-env name=CC::clang'
-          echo '::set-env name=CXX::clang++'
-          echo '::set-env name=CMAKE_BUILD_GENERATOR::"Ninja Multi-Config"'
-
-      - name: msvc
-        if: ${{ matrix.compiler == 'msvc' }}
-        run: |
-          echo '::set-env name=CMAKE_BUILD_GENERATOR::"Visual Studio 15 2017 Win64"'
+          case "${{ matrix.compiler }}" in
+            clang)
+              echo '::set-env name=CC::clang'
+              echo '::set-env name=CXX::clang++'
+              echo '::set-env name=CMAKE_BUILD_GENERATOR::"Ninja Multi-Config"'
+              ;;
+            gcc)
+              echo '::set-env name=CC::gcc-9'
+              echo '::set-env name=CXX::g++-9'
+              echo '::set-env name=CMAKE_BUILD_GENERATOR::"Ninja Multi-Config"'
+              ;;
+            msvc)
+              echo '::set-env name=CMAKE_BUILD_GENERATOR::"Visual Studio 15 2017 Win64"'
+              ;;
+          esac
 
       - name: Generate buildsystem
         run: cmake .. -G "${CMAKE_BUILD_GENERATOR}" -DCMAKE_CONFIGURATION_TYPES="Debug;Release"
