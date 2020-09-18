@@ -41,3 +41,21 @@ jobs:
 
       - name: Test
         run: ctest --build-config ${{ matrix.build_type }} --output-on-failure
+
+  coverage:
+    needs: build
+    runs-on: ubuntu-latest
+    env:
+      CC: gcc-9
+      CXX: g++-9
+      COV: gcov-9
+    steps:
+      - uses: actions/checkout@v2
+      - run: |
+          cmake . -DCMAKE_BUILD_TYPE=Coverage
+          cmake --build . --config Coverage
+          cmake --build . --target pal-cov
+      - uses: coverallsapp/github-action@master
+        with:
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+          path-to-lcov: pal.info
