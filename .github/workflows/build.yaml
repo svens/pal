@@ -23,11 +23,12 @@ jobs:
         run: |
           case "${{ matrix.os }}" in
             macos|ubuntu)
-              brew install ninja-build
+              brew install ninja
               echo '::set-env name=CMAKE_BUILD_GENERATOR::"Ninja Multi-Config"'
               ;;
             windows)
-              echo '::set-env name=CMAKE_BUILD_GENERATOR::"Visual Studio 15 2017 Win64"'
+              echo '::set-env name=CMAKE_BUILD_GENERATOR::"Visual Studio 16 2019"'
+              echo '::set-env name=CMAKE_OPTIONS::"-A Win64"'
               ;;
           esac
 
