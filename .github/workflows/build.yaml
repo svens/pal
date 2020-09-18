@@ -15,21 +15,21 @@ jobs:
     steps:
       - uses: actions/checkout@v2
 
-      - if: matrix.compiler == 'gcc'
+      - if: ${{ matrix.compiler == 'gcc' }}
         run: |
-          echo "::set-env name=CC::gcc-9"
-          echo "::set-env name=CXX::g++-9"
-          echo "::set-env name=CMAKE_BUILD_GENERATOR::'Ninja Multi-Config'"
+          echo '::set-env name=CC::gcc-9'
+          echo '::set-env name=CXX::g++-9'
+          echo '::set-env name=CMAKE_BUILD_GENERATOR::"Ninja Multi-Config"'
 
-      - if: matrix.compiler == 'clang'
+      - if: ${{ matrix.compiler == 'clang' }}
         run: |
-          echo "::set-env name=CC::clang"
-          echo "::set-env name=CXX::clang++"
-          echo "::set-env name=CMAKE_BUILD_GENERATOR::'Ninja Multi-Config'"
+          echo '::set-env name=CC::clang'
+          echo '::set-env name=CXX::clang++'
+          echo '::set-env name=CMAKE_BUILD_GENERATOR::"Ninja Multi-Config"'
 
-      - if: matrix.compiler == 'msvc'
+      - if: ${{ matrix.compiler == 'msvc' }}
         run: |
-          echo "::set-env name=CMAKE_BUILD_GENERATOR::'Visual Studio 15 2017 Win64'"
+          echo '::set-env name=CMAKE_BUILD_GENERATOR::"Visual Studio 15 2017 Win64"'
 
       - run: |
           echo "CMAKE_BUILD_GENERATOR=${CMAKE_BUILD_GENERATOR}"
