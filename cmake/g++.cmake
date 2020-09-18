@@ -14,7 +14,8 @@ if(Coverage)
 
 	find_program(LCOV lcov)
 	if(NOT LCOV)
-		message(FATAL_ERROR "Executable lcov not found")
+		message(STATUS "Disabling coverage (lcov not found)")
+		return()
 	endif()
 	set(LCOV_ARGS
 		--quiet
@@ -30,13 +31,15 @@ if(Coverage)
 	endif()
 	find_program(COV ${COV_TOOL})
 	if (NOT COV)
-		message(FATAL_ERROR "Executable $ENV{COV} not found")
+		message(STATUS "Disabling coverage ($ENV{COV} not found)")
+		return()
 	endif()
 	set(LCOV_ARGS ${LCOV_ARGS} --gcov-tool ${COV})
 
 	find_program(GENHTML genhtml)
 	if(NOT GENHTML)
-		message(FATAL_ERROR "Executable genhtml not found")
+		message(STATUS "Disabling coverage (genhtml not found)")
+		return()
 	endif()
 
 	add_custom_target(${CMAKE_PROJECT_NAME}-cov
