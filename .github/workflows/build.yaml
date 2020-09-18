@@ -46,7 +46,7 @@ jobs:
           esac
 
       - name: Generate buildsystem
-        run: cmake . -G "${CMAKE_BUILD_GENERATOR}" ${CMAKE_OPTIONS} -DCMAKE_CONFIGURATION_TYPES="Debug;Release"
+        run: cmake . -DCMAKE_CONFIGURATION_TYPES="Debug;Release"
 
       - name: Debug build/test
         run: |
