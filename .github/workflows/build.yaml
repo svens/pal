@@ -2,30 +2,28 @@ on: [push, pull_request]
 
 jobs:
   build:
-    runs-on: ${{ matrix.os }}
+    runs-on: ${{ matrix.os }}-latest
 
     strategy:
       matrix:
+        os: [macos, ubuntu]
+        compiler: [clang, gcc]
         include:
-          - os: macos-latest
-            env:
-              CC=gcc-9
-              CXX=g++-9
-          - os: macos-latest
-            env:
-              CC=clang
-              CXX=clang++
-          - os: ubuntu-latest
-            env:
-              CC=gcc-9
-              CXX=g++-9
-          - os: ubuntu-latest
-            env:
-              CC=clang
-              CXX=clang++
-          - os: windows-latest
+          - os: windows
+            compiler: msvc
 
     steps:
+      - uses: actions/checkout@v2
+
+      - if: ${{ matrix.compiler == "gcc" }}
+        run: |
+          echo "::set-env name=CC::gcc-9"
+          echo "::set-env name=CXX::g++-9"
+
+      - if: ${{ matrix.compiler == "clang" }}
+        run: |
+          echo "::set-env name=CC::clang"
+          echo "::set-env name=CXX::clang++"
+
       - run: |
-          echo CC=$CC CXX=$CXX
-          $CC --version
+          echo "CC=${CC} CXX=${CXX}"
