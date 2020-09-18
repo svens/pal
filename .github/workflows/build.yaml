@@ -21,7 +21,7 @@ jobs:
 
       - name: Install dependencies
         run: |
-          case "${{ matris.os }}" in
+          case "${{ matrix.os }}" in
             linux|macos)
               brew install ninja-build
               ;;
