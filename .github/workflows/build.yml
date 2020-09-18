@@ -1,0 +1,27 @@
+on: [push, pull_request]
+
+runs-on: ${{matrix.os}}
+strategy:
+	matrix:
+		- { os: ubuntu-latest,  env: [ BUILD_TYPE=Debug,    BUILD_GENERATOR=Ninja, CC=gcc-8,   CXX=g++-8 ] }
+		- { os: ubuntu-latest,  env: [ BUILD_TYPE=Release,  BUILD_GENERATOR=Ninja, CC=gcc-8,   CXX=g++-8 ] }
+		- { os: ubuntu-latest,  env: [ BUILD_TYPE=Debug,    BUILD_GENERATOR=Ninja, CC=clang-9, CXX=clang++-9 ] }
+		- { os: ubuntu-latest,  env: [ BUILD_TYPE=Release,  BUILD_GENERATOR=Ninja, CC=clang-9, CXX=clang++-9 ] }
+		- { os: ubuntu-latest,  env: [ BUILD_TYPE=Coverage, BUILD_GENERATOR=Ninja, CC=gcc-8,   CXX=g++-8 ] }
+		- { os: macos-latest,   env: [ BUILD_TYPE=Debug,    BUILD_GENERATOR=Ninja, CC=gcc-8,   CXX=g++-8 ] }
+		- { os: macos-latest,   env: [ BUILD_TYPE=Release,  BUILD_GENERATOR=Ninja, CC=gcc-8,   CXX=g++-8 ] }
+		- { os: macos-latest,   env: [ BUILD_TYPE=Debug,    BUILD_GENERATOR=Ninja, CC=clang, CXX=clang++ ] }
+		- { os: macos-latest,   env: [ BUILD_TYPE=Release,  BUILD_GENERATOR=Ninja, CC=clang, CXX=clang++ ] }
+		- { os: windows-latest, env: [ BUILD_TYPE=Debug,    BUILD_GENERATOR="Visual Studio 15 2017 Win64" ] }
+		- { os: windows-latest, env: [ BUILD_TYPE=Release,  BUILD_GENERATOR="Visual Studio 15 2017 Win64" ] }
+
+jobs:
+	build:
+		steps:
+			- uses: actions/checkout@v2
+			- name: Configure ${{matrix.os}} / ${{matrix.env}}
+			  run: cmake . -G $BUILD_GENERATOR -DCMAKE_BUILD_TYPE=$BUILD_TYPE
+			- name: Build
+			  run: cmake --build . --config $BUILD_TYPE
+			- name: Test
+			  run: ctest --output-on-failure
