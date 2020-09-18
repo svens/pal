@@ -103,9 +103,7 @@ public:
 	using const_pointer = const T *;
 	using const_reference = const T &;
 	using iterator = pointer;
-	using const_iterator = const_pointer;
 	using reverse_iterator = std::reverse_iterator<iterator>;
-	using const_reverse_iterator = std::reverse_iterator<const_iterator>;
 
 
 	static_assert(Extent >= 0);
@@ -249,21 +247,9 @@ public:
 	}
 
 
-	constexpr const_iterator cbegin () const noexcept
-	{
-		return begin();
-	}
-
-
 	constexpr iterator end () const noexcept
 	{
 		return data() + size();
-	}
-
-
-	constexpr const_iterator cend () const noexcept
-	{
-		return end();
 	}
 
 
@@ -273,21 +259,9 @@ public:
 	}
 
 
-	constexpr const_reverse_iterator crbegin () const noexcept
-	{
-		return rbegin();
-	}
-
-
 	constexpr reverse_iterator rend () const noexcept
 	{
 		return reverse_iterator(begin());
-	}
-
-
-	constexpr const_reverse_iterator crend () const noexcept
-	{
-		return rend();
 	}
 
 
@@ -383,9 +357,7 @@ public:
 	using const_pointer = const T *;
 	using const_reference = const T &;
 	using iterator = pointer;
-	using const_iterator = const_pointer;
 	using reverse_iterator = std::reverse_iterator<iterator>;
-	using const_reverse_iterator = std::reverse_iterator<const_iterator>;
 
 
 	static constexpr index_type extent = dynamic_extent;
@@ -508,21 +480,9 @@ public:
 	}
 
 
-	constexpr const_iterator cbegin () const noexcept
-	{
-		return begin();
-	}
-
-
 	constexpr iterator end () const noexcept
 	{
 		return data() + size();
-	}
-
-
-	constexpr const_iterator cend () const noexcept
-	{
-		return end();
 	}
 
 
@@ -532,21 +492,9 @@ public:
 	}
 
 
-	constexpr const_reverse_iterator crbegin () const noexcept
-	{
-		return rbegin();
-	}
-
-
 	constexpr reverse_iterator rend () const noexcept
 	{
 		return reverse_iterator(begin());
-	}
-
-
-	constexpr const_reverse_iterator crend () const noexcept
-	{
-		return rend();
 	}
 
 

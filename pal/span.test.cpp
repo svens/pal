@@ -7,6 +7,9 @@
 namespace {
 
 
+#if !__has_include(<span>)
+
+
 constexpr ptrdiff_t N = 4;
 
 
@@ -190,7 +193,6 @@ TEMPLATE_TEST_CASE("span", "",
 	}
 
 
-#if !__has_include(<span>)
 	SECTION("index_out_of_range")
 	{
 		if constexpr (!pal::expect_noexcept)
@@ -200,7 +202,6 @@ TEMPLATE_TEST_CASE("span", "",
 			CHECK_THROWS_AS(span[N], std::logic_error);
 		}
 	}
-#endif
 
 
 	SECTION("iterator")
@@ -215,18 +216,6 @@ TEMPLATE_TEST_CASE("span", "",
 	}
 
 
-	SECTION("const_iterator")
-	{
-		std::vector<T> data;
-		auto span = pal::span<const T, extent>(const_std_vector);
-		for (auto it = span.cbegin();  it != span.cend();  ++it)
-		{
-			data.emplace_back(*it);
-		}
-		CHECK(const_std_vector == data);
-	}
-
-
 	SECTION("reverse_iterator")
 	{
 		std::vector<T> data;
@@ -236,20 +225,6 @@ TEMPLATE_TEST_CASE("span", "",
 			data.emplace_back(*it);
 		}
 		auto reverse_data = std_vector;
-		std::reverse(reverse_data.begin(), reverse_data.end());
-		CHECK(reverse_data == data);
-	}
-
-
-	SECTION("const_reverse_iterator")
-	{
-		std::vector<T> data;
-		auto span = pal::span<const T, extent>(const_std_vector);
-		for (auto it = span.crbegin();  it != span.crend();  ++it)
-		{
-			data.emplace_back(*it);
-		}
-		auto reverse_data = const_std_vector;
 		std::reverse(reverse_data.begin(), reverse_data.end());
 		CHECK(reverse_data == data);
 	}
@@ -281,7 +256,6 @@ TEMPLATE_TEST_CASE("span", "",
 	}
 
 
-#if !__has_include(<span>)
 	SECTION("first_count_out_of_range")
 	{
 		if constexpr (!pal::expect_noexcept)
@@ -291,7 +265,6 @@ TEMPLATE_TEST_CASE("span", "",
 			CHECK_THROWS_AS(span.first(span.size() + 1), std::logic_error);
 		}
 	}
-#endif
 
 
 	SECTION("last_dynamic")
@@ -320,7 +293,6 @@ TEMPLATE_TEST_CASE("span", "",
 	}
 
 
-#if !__has_include(<span>)
 	SECTION("last_count_out_of_range")
 	{
 		if constexpr (!pal::expect_noexcept)
@@ -330,7 +302,6 @@ TEMPLATE_TEST_CASE("span", "",
 			CHECK_THROWS_AS(span.last(span.size() + 1), std::logic_error);
 		}
 	}
-#endif
 
 
 	SECTION("subspan_dynamic")
@@ -385,7 +356,6 @@ TEMPLATE_TEST_CASE("span", "",
 	}
 
 
-#if !__has_include(<span>)
 	SECTION("subspan_offset_out_of_range")
 	{
 		if constexpr (!pal::expect_noexcept)
@@ -406,7 +376,6 @@ TEMPLATE_TEST_CASE("span", "",
 			CHECK_THROWS_AS(span.subspan(0, span.size() + 1), std::logic_error);
 		}
 	}
-#endif
 
 
 	SECTION("as_bytes")
@@ -424,6 +393,9 @@ TEMPLATE_TEST_CASE("span", "",
 		CHECK(span.data() == reinterpret_cast<std::byte *>(array));
 	}
 }
+
+
+#endif
 
 
 } // namespace
