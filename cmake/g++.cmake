@@ -10,8 +10,6 @@ endif()
 if(Coverage)
 	message(STATUS "Unittests coverage build")
 
-	set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -coverage")
-
 	find_program(LCOV lcov)
 	if(NOT LCOV)
 		message(STATUS "Disabling coverage (lcov not found)")
@@ -23,6 +21,8 @@ if(Coverage)
 		--directory .
 		--rc lcov_branch_coverage=1
 	)
+
+	set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -coverage")
 
 	if(DEFINED ENV{COV})
 		set(COV_TOOL $ENV{COV})
