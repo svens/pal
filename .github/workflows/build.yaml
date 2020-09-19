@@ -55,7 +55,11 @@ jobs:
       - uses: actions/checkout@v2
 
       - name: Setup devenv
-        run: brew install lcov
+        run: |
+          brew install lcov
+          brew info lcov
+          which lcov
+          lcov --version
 
       - name: Generate buildsystem
         run: cmake . -DCMAKE_BUILD_TYPE=Coverage
