@@ -57,11 +57,11 @@ jobs:
       - name: install lcov
         run: brew install lcov
 
-      - name: info lcov
-        run: brew info lcov
-
       - name: ls lcov
         run: brew ls --verbose lcov
+
+      - name: link lcov
+        run: brew link --debug --verbose lcov
 
       - name: which lcov
         run: which lcov
