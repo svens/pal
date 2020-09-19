@@ -5,45 +5,45 @@ defaults:
     shell: bash
 
 jobs:
-  build:
-    runs-on: ${{ matrix.os }}-latest
+  #build:
+  #  runs-on: ${{ matrix.os }}-latest
 
-    strategy:
-      matrix:
-        os: [macos, ubuntu]
-        compiler: [clang, gcc]
-        build_type: [Debug, Release]
-        include:
-          - { os: windows, build_type: Debug }
-          - { os: windows, build_type: Release }
+  #  strategy:
+  #    matrix:
+  #      os: [macos, ubuntu]
+  #      compiler: [clang, gcc]
+  #      build_type: [Debug, Release]
+  #      include:
+  #        - { os: windows, build_type: Debug }
+  #        - { os: windows, build_type: Release }
 
-    steps:
-      - uses: actions/checkout@v2
+  #  steps:
+  #    - uses: actions/checkout@v2
 
-      - name: Setup devenv
-        run: |
-          case "${{ matrix.compiler }}" in
-            clang)
-              echo '::set-env name=CC::clang'
-              echo '::set-env name=CXX::clang++'
-              ;;
-            gcc)
-              echo '::set-env name=CC::gcc-9'
-              echo '::set-env name=CXX::g++-9'
-              ;;
-          esac
+  #    - name: Setup devenv
+  #      run: |
+  #        case "${{ matrix.compiler }}" in
+  #          clang)
+  #            echo '::set-env name=CC::clang'
+  #            echo '::set-env name=CXX::clang++'
+  #            ;;
+  #          gcc)
+  #            echo '::set-env name=CC::gcc-9'
+  #            echo '::set-env name=CXX::g++-9'
+  #            ;;
+  #        esac
 
-      - name: Generate buildsystem
-        run: cmake . -DCMAKE_BUILD_TYPE=${{ matrix.build_type }}
+  #    - name: Generate buildsystem
+  #      run: cmake . -DCMAKE_BUILD_TYPE=${{ matrix.build_type }}
 
-      - name: Build
-        run: cmake --build . --config ${{ matrix.build_type }}
+  #    - name: Build
+  #      run: cmake --build . --config ${{ matrix.build_type }}
 
-      - name: Test
-        run: ctest --build-config ${{ matrix.build_type }} --output-on-failure
+  #    - name: Test
+  #      run: ctest --build-config ${{ matrix.build_type }} --output-on-failure
 
   coverage:
-    needs: build
+    #needs: build
     runs-on: ubuntu-latest
 
     env:
@@ -52,25 +52,33 @@ jobs:
       COV: gcov-9
 
     steps:
-      - uses: actions/checkout@v2
+      #- uses: actions/checkout@v2
 
-      - name: Setup devenv
-        run: |
-          brew install lcov
-          brew info lcov
-          which lcov
-          lcov --version
+      - name: install lcov
+        run: brew install lcov
 
-      - name: Generate buildsystem
-        run: cmake . -DCMAKE_BUILD_TYPE=Coverage
+      - name: info lcov
+        run: brew info lcov
 
-      - name: Build
-        run: cmake --build . --config Coverage
+      - name: ls lcov
+        run: brew ls --verbose lcov
 
-      - name: Coverage
-        run: cmake --build . --target pal-cov
+      - name: which lcov
+        run: which lcov
 
-      - uses: coverallsapp/github-action@master
-        with:
-          github-token: ${{ secrets.GITHUB_TOKEN }}
-          path-to-lcov: pal.info
+      - name: lcov version
+        run: lcov --version
+
+      #- name: Generate buildsystem
+      #  run: cmake . -DCMAKE_BUILD_TYPE=Coverage
+
+      #- name: Build
+      #  run: cmake --build . --config Coverage
+
+      #- name: Coverage
+      #  run: cmake --build . --target pal-cov
+
+      #- uses: coverallsapp/github-action@master
+      #  with:
+      #    github-token: ${{ secrets.GITHUB_TOKEN }}
+      #    path-to-lcov: pal.info
