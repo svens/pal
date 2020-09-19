@@ -14,9 +14,8 @@ inline std::string case_name ()
 }
 
 
-bool on_appveyor_ci ();
-bool on_travis_ci ();
-inline const bool on_ci = on_appveyor_ci() || on_travis_ci();
+bool has_ci_environment_variable ();
+inline const bool on_ci = has_ci_environment_variable();
 
 
 struct bad_alloc_once

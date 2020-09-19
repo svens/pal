@@ -61,15 +61,9 @@ void operator delete (void *ptr, size_t) noexcept
 
 namespace pal_test {
 
-bool on_appveyor_ci ()
+bool has_ci_environment_variable ()
 {
-	static const bool has_env = (std::getenv("APPVEYOR") != nullptr);
-	return has_env;
-}
-
-bool on_travis_ci ()
-{
-	static const bool has_env = (std::getenv("TRAVIS") != nullptr);
+	static const bool has_env = (std::getenv("CI") != nullptr);
 	return has_env;
 }
 

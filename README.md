@@ -1,7 +1,8 @@
 # PAL asynchronous library for C++
 
-[![Build Status](https://travis-ci.org/svens/pal.svg?branch=master)](https://travis-ci.org/svens/pal)
+![Build](https://github.com/svens/pal/workflows/Build/test/coverage/badge.svg)
 [![Coverage](https://coveralls.io/repos/github/svens/pal/badge.svg?branch=master)](https://coveralls.io/github/svens/pal?branch=master)
+
 
 TODO
 
@@ -22,5 +23,4 @@ The source tree is organised as follows:
     |  `- module    ... per module headers/sources/tests
     |- bench        Benchmarks
     |- cmake        CMake modules
-    |- extern       External code as git submodules
-    `- scripts      Helper scripts
+    `- extern       External code as git submodules
