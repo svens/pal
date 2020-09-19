@@ -54,7 +54,10 @@ jobs:
     steps:
       #- uses: actions/checkout@v2
 
-      - name: install lcov
+      - name: install lcov (#1)
+        run: brew install lcov
+
+      - name: install lcov (#2)
         run: brew install lcov
 
       - name: ls lcov
