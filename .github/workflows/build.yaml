@@ -1,4 +1,4 @@
-name: Build/test/coverage
+name: Build
 
 on: [push, pull_request]
 
