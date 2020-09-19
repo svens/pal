@@ -52,36 +52,25 @@ jobs:
       COV: gcov-9
 
     steps:
-      #- uses: actions/checkout@v2
+      - uses: actions/checkout@v2
 
-      - name: install lcov (#1)
-        run: brew install lcov
+      - name: Setup devenv
+        run: |
+          # TODO: 1st install messes things up, 2nd fixes
+          # Seems similar to https://github.com/aws/homebrew-tap/issues/130
+          brew install lcov
+          brew install lcov
 
-      - name: install lcov (#2)
-        run: brew install lcov
+      - name: Generate buildsystem
+        run: cmake . -DCMAKE_BUILD_TYPE=Coverage
 
-      - name: ls lcov
-        run: brew ls --verbose lcov
+      - name: Build
+        run: cmake --build . --config Coverage
 
-      - name: link lcov
-        run: brew link --debug --verbose lcov
+      - name: Coverage
+        run: cmake --build . --target pal-cov
 
-      - name: which lcov
-        run: which lcov
-
-      - name: lcov version
-        run: lcov --version
-
-      #- name: Generate buildsystem
-      #  run: cmake . -DCMAKE_BUILD_TYPE=Coverage
-
-      #- name: Build
-      #  run: cmake --build . --config Coverage
-
-      #- name: Coverage
-      #  run: cmake --build . --target pal-cov
-
-      #- uses: coverallsapp/github-action@master
-      #  with:
-      #    github-token: ${{ secrets.GITHUB_TOKEN }}
-      #    path-to-lcov: pal.info
+      - uses: coverallsapp/github-action@master
+        with:
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+          path-to-lcov: pal.info
