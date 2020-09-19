@@ -1,8 +1,7 @@
 # PAL asynchronous library for C++
 
-![Build](https://github.com/svens/pal/workflows/Build/test/coverage/badge.svg)
+[![Build](https://github.com/svens/pal/workflows/Build/test/coverage/badge.svg)](https://github.com/svens/pal)
 [![Coverage](https://coveralls.io/repos/github/svens/pal/badge.svg?branch=master)](https://coveralls.io/github/svens/pal?branch=master)
-
 
 TODO
 
