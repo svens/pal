@@ -23,20 +23,23 @@ jobs:
 
       - name: Configure buildsystem
         run: |
-          echo "::debug::Setup toolchain"
-          case "${{ matrix.toolchain }}" in
-            gcc)
+          case "${{ matrix.host }}-${{ matrix.toolchain }}" in
+            ubuntu-gcc)
+              sudo apt install g++-10 cmake ninja
+              export CC=gcc-10 CXX=g++-10
+              ;;
+            ubuntu-clang)
+              sudo apt install g++-10 clang-10 cmake ninja
+              export CC=clang-10 CXX=clang++-10
+              ;;
+            macos-gcc)
               brew install gcc@10
               export CC=gcc-10 CXX=g++-10
               ;;
-            clang)
-              export CC=clang CXX=clang++
-              ;;
           esac
-          echo "::debug::Setup host"
+
           case "${{ matrix.host }}" in
             ubuntu|macos)
-              brew install ninja cmake
               cmake . -G "Ninja Multi-Config" -DCMAKE_CONFIGURATION_TYPES="Debug;Release"
               ;;
             windows)
@@ -63,10 +66,7 @@ jobs:
 
       - name: Configure buildsystem
         run: |
-          # TODO: 1st install messes things up, 2nd fixes
-          # Seems similar to https://github.com/aws/homebrew-tap/issues/130
-          brew install gcc@10 lcov ninja cmake
-          brew install lcov
+          sudo apt install g++-10 cmake ninja lcov
           CC=gcc-10 CXX=g++-10 COV=gcov-10 cmake . -DCMAKE_BUILD_TYPE=Coverage
 
       - name: Generate test coverage
