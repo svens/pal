@@ -8,32 +8,35 @@ defaults:
 
 jobs:
   build:
-    runs-on: ${{ matrix.os }}-latest
+    runs-on: ${{ matrix.host }}-latest
 
     strategy:
       matrix:
-        os: [ubuntu, macos]
-        compiler: [gcc, clang]
+        host: [ubuntu, macos]
+        toolchain: [gcc, clang]
         include:
-          - os: windows
-            compiler: msvc
+          - host: windows
+            toolchain: msvc
 
     steps:
       - uses: actions/checkout@v2
 
       - name: Configure buildsystem
         run: |
-          case "${{ matrix.compiler }}" in
+          echo "::debug::Setup toolchain"
+          case "${{ matrix.toolchain }}" in
             gcc)
-              CC=gcc-9 CXX=g++-9
+              brew install gcc@10
+              export CC=gcc-10 CXX=g++-10
               ;;
             clang)
-              CC=clang CXX=clang++
+              export CC=clang CXX=clang++
               ;;
           esac
-          case "${{ matrix.os }}" in
+          echo "::debug::Setup host"
+          case "${{ matrix.host }}" in
             ubuntu|macos)
-              brew install gcc ninja cmake
+              brew install ninja cmake
               cmake . -G "Ninja Multi-Config" -DCMAKE_CONFIGURATION_TYPES="Debug;Release"
               ;;
             windows)
@@ -62,9 +65,9 @@ jobs:
         run: |
           # TODO: 1st install messes things up, 2nd fixes
           # Seems similar to https://github.com/aws/homebrew-tap/issues/130
+          brew install gcc@10 lcov ninja cmake
           brew install lcov
-          brew install lcov
-          CC=gcc-9 CXX=g++-9 COV=gcov-9 cmake . -DCMAKE_BUILD_TYPE=Coverage
+          CC=gcc-10 CXX=g++-10 COV=gcov-10 cmake . -DCMAKE_BUILD_TYPE=Coverage
 
       - name: Generate test coverage
         run: cmake --build . --target pal-cov
