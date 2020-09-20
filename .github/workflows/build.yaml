@@ -25,15 +25,15 @@ jobs:
         run: |
           case "${{ matrix.host }}-${{ matrix.toolchain }}" in
             ubuntu-gcc)
-              sudo apt install g++-10 cmake ninja
+              sudo apt-get install --yes g++-10 cmake ninja-build
               export CC=gcc-10 CXX=g++-10
               ;;
             ubuntu-clang)
-              sudo apt install g++-10 clang-10 cmake ninja
+              sudo apt-get install --yes g++-10 clang-10 cmake ninja-build
               export CC=clang-10 CXX=clang++-10
               ;;
             macos-gcc)
-              brew install gcc@10
+              brew install gcc@10 cmake ninja
               export CC=gcc-10 CXX=g++-10
               ;;
           esac
@@ -66,7 +66,7 @@ jobs:
 
       - name: Configure buildsystem
         run: |
-          sudo apt install g++-10 cmake ninja lcov
+          sudo apt-get install --yes g++-10 cmake ninja-build lcov
           CC=gcc-10 CXX=g++-10 COV=gcov-10 cmake . -DCMAKE_BUILD_TYPE=Coverage
 
       - name: Generate test coverage
