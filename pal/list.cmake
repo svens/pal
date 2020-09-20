@@ -8,7 +8,6 @@ list(APPEND pal_sources
 	pal/intrusive_queue
 	pal/intrusive_stack
 	pal/not_null
-	pal/span
 )
 
 list(APPEND pal_unittests_sources
@@ -20,5 +19,4 @@ list(APPEND pal_unittests_sources
 	pal/intrusive_queue.test.cpp
 	pal/intrusive_stack.test.cpp
 	pal/not_null.test.cpp
-	pal/span.test.cpp
 )
