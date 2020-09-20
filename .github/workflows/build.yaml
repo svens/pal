@@ -36,6 +36,9 @@ jobs:
               brew install gcc@10 cmake ninja
               export CC=gcc-10 CXX=g++-10
               ;;
+            macos-clang)
+              brew install cmake ninja
+              ;;
           esac
 
           case "${{ matrix.host }}" in
