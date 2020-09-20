@@ -16,7 +16,7 @@ INPUT += @CMAKE_CURRENT_SOURCE_DIR@/README.md
 USE_MDFILE_AS_MAINPAGE = README.md
 
 FILE_PATTERNS = *
-EXCLUDE_PATTERNS = list.cmake */__bits/* *.cpp test *.test.* span
+EXCLUDE_PATTERNS = list.cmake */__bits/* *.cpp test *.test.*
 EXTENSION_MAPPING = no_extension=c++
 
 FULL_PATH_NAMES = YES
