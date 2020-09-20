@@ -33,7 +33,7 @@ jobs:
           esac
           case "${{ matrix.os }}" in
             ubuntu|macos)
-              brew install ninja
+              brew install gcc ninja cmake
               cmake . -G "Ninja Multi-Config" -DCMAKE_CONFIGURATION_TYPES="Debug;Release"
               ;;
             windows)
