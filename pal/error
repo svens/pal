@@ -43,6 +43,54 @@ inline std::error_code make_error_code (errc ec) noexcept
 }
 
 
+/**
+ * Helper class to catch std::error_code and throw std::system_error if there
+ * was an error.
+ */
+class throw_on_error
+{
+public:
+
+	throw_on_error () = delete;
+	throw_on_error (const throw_on_error &) = delete;
+	throw_on_error &operator= (const throw_on_error &) = delete;
+
+	/**
+	 * Construct error thrower with \a message
+	 */
+	throw_on_error (const char *message) noexcept
+		: message_(message)
+	{ }
+
+
+	/**
+	 * Throw std::system_error if error is set.
+	 */
+	~throw_on_error () noexcept(false)
+	{
+		if (error_)
+		{
+			throw std::system_error(error_, message_);
+		}
+	}
+
+
+	/**
+	 * Return mutable reference to internal error member.
+	 */
+	operator std::error_code &() noexcept
+	{
+		return error_;
+	}
+
+
+private:
+
+	std::error_code error_{};
+	const char * const message_;
+};
+
+
 __pal_end
 
 
