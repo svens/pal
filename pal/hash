@@ -24,12 +24,12 @@ constexpr uint64_t fnv_1a_64_init = 0xcbf29ce484222325ULL;
  *
  * See ThirdPartySources.txt for copyright notices.
  */
-constexpr uint64_t fnv_1a_64 (const std::byte *first, const std::byte *last,
+constexpr uint64_t fnv_1a_64 (const uint8_t *first, const uint8_t *last,
 	uint64_t h = fnv_1a_64_init) noexcept
 {
 	while (first != last)
 	{
-		h ^= std::to_integer<uint64_t>(*first++);
+		h ^= *first++;
 		h += (h << 1) + (h << 4) + (h << 5) + (h << 7) + (h << 8) + (h << 40);
 	}
 	return h;
@@ -37,10 +37,11 @@ constexpr uint64_t fnv_1a_64 (const std::byte *first, const std::byte *last,
 
 
 /// \copydoc fnv_1a_64
-constexpr uint64_t fnv_1a_64 (std::span<const std::byte> span,
+inline uint64_t fnv_1a_64 (std::span<const std::byte> span,
 	uint64_t h = fnv_1a_64_init) noexcept
 {
-	return fnv_1a_64(span.data(), span.data() + span.size_bytes(), h);
+	auto p = reinterpret_cast<const uint8_t *>(span.data());
+	return fnv_1a_64(p, p + span.size_bytes(), h);
 }
 
 
