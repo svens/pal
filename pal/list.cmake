@@ -5,6 +5,7 @@ list(APPEND pal_sources
 	pal/error
 	pal/error.cpp
 	pal/expect
+	pal/hash
 	pal/intrusive_mpsc_queue
 	pal/intrusive_queue
 	pal/intrusive_stack
@@ -17,6 +18,7 @@ list(APPEND pal_unittests_sources
 	pal/byte_order.test.cpp
 	pal/error.test.cpp
 	pal/expect.test.cpp
+	pal/hash.test.cpp
 	pal/intrusive_mpsc_queue.test.cpp
 	pal/intrusive_queue.test.cpp
 	pal/intrusive_stack.test.cpp
