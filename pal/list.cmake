@@ -10,6 +10,7 @@ list(APPEND pal_sources
 	pal/intrusive_queue
 	pal/intrusive_stack
 	pal/not_null
+	pal/string
 )
 
 list(APPEND pal_unittests_sources

@@ -1,0 +1,27 @@
+#pragma once // -*- C++ -*-
+
+/**
+ * \file pal/string
+ * Convenience string related utilities
+ */
+
+#include <pal/__bits/lib>
+#include <string>
+#include <string_view>
+#include <type_traits>
+
+
+__pal_begin
+
+
+/**
+ * std::string with custom allocator
+ */
+template <typename Allocator>
+using string = std::enable_if_t<
+	std::is_same_v<typename Allocator::value_type, char>,
+	std::basic_string<char, std::char_traits<char>, Allocator>
+>;
+
+
+__pal_end
