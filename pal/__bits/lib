@@ -53,6 +53,8 @@ __pal_begin
 #elif defined(_WIN32) || defined(_WIN64)
 	#undef __pal_os_windows
 	#define __pal_os_windows 1
+#else
+	#error "Unsupported platform"
 #endif
 
 constexpr bool is_linux_build = __pal_os_linux == 1;
