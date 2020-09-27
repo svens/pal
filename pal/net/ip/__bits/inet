@@ -1,0 +1,54 @@
+#pragma once // -*- C++ -*-
+
+#include <pal/__bits/lib>
+#include <stdexcept>
+#include <type_traits>
+
+#if __pal_os_linux || __pal_os_macos
+	#include <arpa/inet.h>
+#elif __pal_os_windows
+	#include <ws2tcpip.h>
+	#pragma comment(lib, "ws2_32")
+#endif
+
+
+__pal_begin
+
+
+namespace net::ip::__bits {
+
+
+template <typename T> constexpr int inet_v = AF_UNSPEC;
+template<> constexpr int inet_v<in_addr> = AF_INET;
+template<> constexpr int inet_v<in6_addr> = AF_INET6;
+
+
+template <typename InAddr>
+inline char *inet_ntop (const InAddr &src, char *dest, size_t size) noexcept
+{
+	if (::inet_ntop(inet_v<InAddr>, &src, dest, size))
+	{
+		while (*dest)
+		{
+			dest++;
+		}
+	}
+	else
+	{
+		dest = nullptr;
+	}
+	return dest;
+}
+
+
+template <typename InAddr>
+inline bool inet_pton (const char *src, InAddr &dest) noexcept
+{
+  return ::inet_pton(inet_v<InAddr>, src, &dest) == 1;
+}
+
+
+} // namespace net::ip::__bits
+
+
+__pal_end
