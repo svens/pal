@@ -25,3 +25,5 @@ list(APPEND pal_unittests_sources
 	pal/intrusive_stack.test.cpp
 	pal/not_null.test.cpp
 )
+
+include(pal/net/list.cmake)

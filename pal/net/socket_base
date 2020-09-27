@@ -1,0 +1,91 @@
+#pragma once // -*- C++ -*-
+
+/**
+ * \file pal/net/socket_base
+ * Base socket types and values
+ */
+
+#include <pal/__bits/lib>
+#include <pal/net/__bits/socket>
+
+
+__pal_begin
+
+
+namespace net {
+
+
+/**
+ * Initialize socket library. There is no need to call it explicitly as it is
+ * also done internally by static initialization. Only exception is when
+ * application layer own static initialization order depends on winsock
+ * library to be already loaded. It can be called multiple times.
+ *
+ * \c std::call_once is used to make sure only single call proceeds.
+ */
+inline const std::error_code &init () noexcept
+{
+	return __bits::init();
+}
+
+
+/// Common socket types and constants.
+class socket_base
+{
+public:
+
+	/// Native socket handle type
+	using native_socket = __bits::native_socket;
+
+	/// Invalid native socket handle
+	static constexpr native_socket invalid = __bits::invalid_native_socket;
+
+
+	/// \{
+	/// Socket shutdown types
+	using shutdown = __bits::shutdown;
+	/// Disable further receive operations
+	static constexpr shutdown shutdown_receive = shutdown::receive;
+	/// Disable further send operations
+	static constexpr shutdown shutdown_send = shutdown::send;
+	/// Disable furher send/receive operations
+	static constexpr shutdown shutdown_both = shutdown::both;
+	/// \}
+
+
+	/// \{
+	/// Socket state change waiting types
+	using wait = __bits::wait;
+	/// Wait for socket become readable
+	static constexpr wait wait_read = wait::read;
+	/// Wait for socket become writable
+	static constexpr wait wait_write = wait::write;
+	/// \}
+
+
+	/// \{
+	/// Bitmask flags for send/receive functions
+	using message_flags = __bits::message_flags;
+	/// Leave received data in queue
+	static constexpr message_flags peek = MSG_PEEK;
+	/// Out-of-band data
+	static constexpr message_flags out_of_band = MSG_OOB;
+	/// Send without using routing tables
+	static constexpr message_flags do_not_route = MSG_DONTROUTE;
+	/// \}
+
+
+	/// Limit on length of queue of pending incoming connections
+	static constexpr int max_listen_connections = SOMAXCONN;
+
+
+protected:
+
+	~socket_base () = default;
+};
+
+
+} // namespace net
+
+
+__pal_end

@@ -1,0 +1,9 @@
+#pragma once // -*- C++ -*-
+
+#include <pal/test>
+
+
+namespace pal_test {
+
+
+} // namespace pal_test
