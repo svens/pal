@@ -1,0 +1,435 @@
+#pragma once // -*- C++ -*-
+
+/**
+ * \file pal/net/ip/address_v6
+ * IPv6 address
+ */
+
+#include <pal/__bits/lib>
+#include <pal/net/ip/__bits/inet>
+#include <pal/net/ip/address_v4>
+#include <pal/net/error>
+#include <pal/hash>
+#include <pal/string>
+#include <array>
+#include <charconv>
+#include <ostream>
+
+
+__pal_begin
+
+
+namespace net::ip {
+
+
+/**
+ * IPv6 address.
+ */
+class address_v6
+{
+public:
+
+	/// Binary representation of IPv6 address
+	using bytes_type = std::array<uint8_t, 16>;
+
+
+	constexpr address_v6 () noexcept = default;
+	constexpr address_v6 (const address_v6 &) noexcept = default;
+	address_v6 &operator= (const address_v6 &) noexcept = default;
+
+
+	/**
+	 * Construct new address from \a value
+	 */
+	constexpr address_v6 (const bytes_type &value) noexcept
+		: addr_{value}
+	{ }
+
+
+	/**
+	 * Return binary representation of \a this address
+	 */
+	constexpr const bytes_type &to_bytes () const noexcept
+	{
+		return addr_.bytes;
+	}
+
+
+	/**
+	 * Convert \a this address to human readable textual representation by
+	 * filling range [\a first, \a last).
+	 *
+	 * On success, returns std::to_chars_result with ptr pointing at last
+	 * filled character (NUL) and ec default value initialized.
+	 *
+	 * On failure, ptr is set to \a last and ec std::errc::value_too_large.
+	 * Content of [\a first, \a last) is unspecified.
+	 */
+	std::to_chars_result to_chars (char *first, char *last) const noexcept
+	{
+		if (auto end = __bits::inet_ntop(addr_.in, first, last - first))
+		{
+			return {end, std::errc{}};
+		}
+		else
+		{
+			return {last, std::errc::value_too_large};
+		}
+	}
+
+
+	/**
+	 * Return \a this addess as human readable textual representation.
+	 */
+	template <typename Allocator = std::allocator<char>>
+	string<Allocator> to_string (const Allocator &allocator = Allocator()) const
+	{
+		string<Allocator> result(INET6_ADDRSTRLEN, '\0', allocator);
+		auto [back, _] = to_chars(result.data(), result.data() + result.size());
+		result.resize(back - result.data());
+		return result;
+	}
+
+
+	/**
+	 * Return true if \a this is unspecified address (0.0.0.0)
+	 */
+	constexpr bool is_unspecified () const noexcept
+	{
+		int i = 0;
+		for (/**/;  i < 16 && addr_.bytes[i] == 0x00;  ++i)
+		{ }
+		return i == 16;
+	}
+
+
+	/**
+	 * Return true if \a this is loopback address (127.0.0.0 - 127.255.255.255)
+	 */
+	constexpr bool is_loopback () const noexcept
+	{
+		int i = 0;
+		for (/**/;  i < 15 && addr_.bytes[i] == 0x00;  ++i)
+		{ }
+		return i == 15 && addr_.bytes[15] == 0x01;
+	}
+
+
+	/**
+	 * Return true if \a this is unicast link-local address
+	 */
+	constexpr bool is_link_local () const noexcept
+	{
+		return addr_.bytes[0] == 0xfe && (addr_.bytes[1] & 0xc0) == 0x80;
+	}
+
+
+	/**
+	 * Return true if \a this is unicast site-local address
+	 */
+	constexpr bool is_site_local () const noexcept
+	{
+		return addr_.bytes[0] == 0xfe && (addr_.bytes[1] & 0xc0) == 0xc0;
+	}
+
+
+	/**
+	 * Return true if \a this represents IPv4-mapped IPv6 address
+	 */
+	constexpr bool is_v4_mapped () const noexcept
+	{
+		return addr_.bytes[0] == 0 &&
+			addr_.bytes[1] == 0 &&
+			addr_.bytes[2] == 0 &&
+			addr_.bytes[3] == 0 &&
+			addr_.bytes[4] == 0 &&
+			addr_.bytes[5] == 0 &&
+			addr_.bytes[6] == 0 &&
+			addr_.bytes[7] == 0 &&
+			addr_.bytes[8] == 0 &&
+			addr_.bytes[9] == 0 &&
+			addr_.bytes[10] == 0xff &&
+			addr_.bytes[11] == 0xff;
+	}
+
+
+	/**
+	 * Return true if \a this is multicast address
+	 */
+	constexpr bool is_multicast () const noexcept
+	{
+		return addr_.bytes[0] == 0xff;
+	}
+
+
+	/**
+	 * Return true if \a this is multicast node-local address
+	 */
+	constexpr bool is_multicast_node_local () const noexcept
+	{
+		return is_multicast() && (addr_.bytes[1] & 0x0f) == 0x01;
+	}
+
+
+	/**
+	 * Return true if \a this is multicast link-local address
+	 */
+	constexpr bool is_multicast_link_local () const noexcept
+	{
+		return is_multicast() && (addr_.bytes[1] & 0x0f) == 0x02;
+	}
+
+
+	/**
+	 * Return true if \a this is multicast site-local address
+	 */
+	constexpr bool is_multicast_site_local () const noexcept
+	{
+		return is_multicast() && (addr_.bytes[1] & 0x0f) == 0x05;
+	}
+
+
+	/**
+	 * Return true if \a this is multicast organisation-local address
+	 */
+	constexpr bool is_multicast_org_local () const noexcept
+	{
+		return is_multicast() && (addr_.bytes[1] & 0x0f) == 0x08;
+	}
+
+
+	/**
+	 * Return true if \a this is multicat global address
+	 */
+	constexpr bool is_multicast_global () const noexcept
+	{
+		return is_multicast() && (addr_.bytes[1] & 0x0f) == 0x0e;
+	}
+
+
+	/**
+	 * Calculate hash value for \a this.
+	 */
+	constexpr uint64_t hash () const noexcept
+	{
+		return hash_128_to_64(AF_INET6,
+			fnv_1a_64(
+				addr_.bytes.data(),
+				addr_.bytes.data() + addr_.bytes.size()
+			)
+		);
+	}
+
+
+	/**
+	 * Unspecified IPv6 address
+	 */
+	static constexpr address_v6 any () noexcept
+	{
+		return {{0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0}};
+	}
+
+
+	/**
+	 * IPv6 loopback address
+	 */
+	static constexpr address_v6 loopback () noexcept
+	{
+		return {{0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,1}};
+	}
+
+
+private:
+
+	union storage
+	{
+		in6_addr in{};
+		bytes_type bytes;
+
+		constexpr storage () noexcept = default;
+
+		explicit constexpr storage (const bytes_type &value) noexcept
+			: bytes{value}
+		{ }
+	} addr_{};
+
+	friend constexpr bool operator== (const address_v6 &a, const address_v6 &b) noexcept;
+	friend constexpr bool operator< (const address_v6 &a, const address_v6 &b) noexcept;
+	friend address_v6 make_address_v6 (const char *, std::error_code &) noexcept;
+};
+
+
+/**
+ * pal::net::ip::address_v6 comparisons
+ * \{
+ */
+
+constexpr bool operator== (const address_v6 &a, const address_v6 &b) noexcept
+{
+	int i = 0;
+	for (/**/;  i != 16 && a.addr_.bytes[i] == b.addr_.bytes[i];  ++i)
+	{ }
+	return i == 16;
+}
+
+constexpr bool operator!= (const address_v6 &a, const address_v6 &b) noexcept
+{
+	return !(a == b);
+}
+
+constexpr bool operator< (const address_v6 &a, const address_v6 &b) noexcept
+{
+	int i = 0;
+	for (/**/;  i != 16 && a.addr_.bytes[i] == b.addr_.bytes[i];  ++i)
+	{ }
+	return i == 16 ? false : a.addr_.bytes[i] < b.addr_.bytes[i];
+}
+
+constexpr bool operator<= (const address_v6 &a, const address_v6 &b) noexcept
+{
+	return !(b < a);
+}
+
+constexpr bool operator> (const address_v6 &a, const address_v6 &b) noexcept
+{
+	return b < a;
+}
+
+constexpr bool operator>= (const address_v6 &a, const address_v6 &b) noexcept
+{
+	return !(a < b);
+}
+
+/// \}
+
+
+/**
+ * pal::net::ip::address_v6 stream I/O
+ */
+inline std::ostream &operator<< (std::ostream &os, const address_v6 &a)
+{
+	char text[INET6_ADDRSTRLEN];
+	a.to_chars(text, text + sizeof(text));
+	return (os << text);
+}
+
+
+/**
+ * pal::net::ip::address_v6 creation
+ * \{
+ */
+
+constexpr address_v6 make_address_v6 (const address_v6::bytes_type &v)
+{
+	return address_v6{v};
+}
+
+inline address_v6 make_address_v6 (const char *text, std::error_code &error) noexcept
+{
+	address_v6 result;
+	if (__bits::inet_pton(text, result.addr_.in))
+	{
+		error.clear();
+		return result;
+	}
+	error = std::make_error_code(std::errc::invalid_argument);
+	return {};
+}
+
+inline address_v6 make_address_v6 (const char *text)
+{
+	return make_address_v6(text, throw_on_error("make_address_v6"));
+}
+
+inline address_v6 make_address_v6 (const std::string &text, std::error_code &error) noexcept
+{
+	return make_address_v6(text.c_str(), error);
+}
+
+inline address_v6 make_address_v6 (const std::string &text)
+{
+	return make_address_v6(text.c_str());
+}
+
+inline address_v6 make_address_v6 (const std::string_view &text, std::error_code &error) noexcept
+{
+	char c_str[INET6_ADDRSTRLEN];
+	auto length = text.copy(c_str, sizeof(c_str));
+	if (length < sizeof(c_str))
+	{
+		c_str[length] = '\0';
+		return make_address_v6(c_str, error);
+	}
+	error = std::make_error_code(std::errc::invalid_argument);
+	return {};
+}
+
+inline address_v6 make_address_v6 (const std::string_view &text)
+{
+	return make_address_v6(text, throw_on_error("make_address_v6"));
+}
+
+/// \}
+
+
+/**
+ * pal::net::ip::address_v4 creation from IPv4 mapped IPv6 address
+ * \{
+ */
+
+struct v4_mapped_t {};
+constexpr v4_mapped_t v4_mapped;
+
+constexpr address_v4 make_address_v4 (v4_mapped_t,
+	const address_v6 &a,
+	std::error_code &error) noexcept
+{
+	if (a.is_v4_mapped())
+	{
+		const auto &v6b = a.to_bytes();
+		return {{v6b[12], v6b[13], v6b[14], v6b[15]}};
+	}
+	error = std::make_error_code(std::errc::invalid_argument);
+	return {};
+}
+
+constexpr address_v4 make_address_v4 (v4_mapped_t,
+	const address_v6 &a)
+{
+	if (a.is_v4_mapped())
+	{
+		const auto &v6b = a.to_bytes();
+		return {{v6b[12], v6b[13], v6b[14], v6b[15]}};
+	}
+	__bits::bad_address_cast();
+}
+
+constexpr address_v6 make_address_v6 (v4_mapped_t, const address_v4 &a) noexcept
+{
+	const auto &v4b = a.to_bytes();
+	return {{0,0,0,0,0,0,0,0,0,0,0xff,0xff,v4b[0],v4b[1],v4b[2],v4b[3]}};
+}
+
+/// \}
+
+
+} // namespace net::ip
+
+
+__pal_end
+
+
+namespace std {
+
+
+template <>
+struct hash<pal::net::ip::address_v6>
+{
+	size_t operator() (const pal::net::ip::address_v6 &a) const noexcept
+	{
+		return a.hash();
+	}
+};
+
+
+} // namespace std

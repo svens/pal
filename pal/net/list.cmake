@@ -7,6 +7,7 @@ list(APPEND pal_sources
 
 	pal/net/ip/__bits/inet
 	pal/net/ip/address_v4
+	pal/net/ip/address_v6
 )
 
 list(APPEND pal_unittests_sources
@@ -14,4 +15,5 @@ list(APPEND pal_unittests_sources
 	pal/net/init.test.cpp
 	pal/net/error.test.cpp
 	pal/net/ip/address_v4.test.cpp
+	pal/net/ip/address_v6.test.cpp
 )

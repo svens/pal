@@ -19,8 +19,8 @@ namespace net::ip::__bits {
 
 
 template <typename T> constexpr int inet_v = AF_UNSPEC;
-template<> constexpr int inet_v<in_addr> = AF_INET;
-template<> constexpr int inet_v<in6_addr> = AF_INET6;
+template<> constexpr inline int inet_v<in_addr> = AF_INET;
+template<> constexpr inline int inet_v<in6_addr> = AF_INET6;
 
 
 template <typename InAddr>

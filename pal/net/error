@@ -7,6 +7,7 @@
 
 #include <pal/__bits/lib>
 #include <pal/error>
+#include <typeinfo>
 
 
 __pal_begin
@@ -45,6 +46,28 @@ inline std::error_code make_error_code (socket_errc ec) noexcept
 {
 	return {static_cast<int>(ec), socket_category()};
 }
+
+
+namespace ip {
+
+/**
+ * Exception type thrown when invalid address casting between IPv4 and IPv6 is
+ * attempted.
+ */
+class bad_address_cast: public std::bad_cast
+{ };
+
+
+namespace __bits {
+
+[[noreturn]] inline void bad_address_cast ()
+{
+	throw ip::bad_address_cast{};
+}
+
+} // namespace __bits
+
+} // namespace ip
 
 
 } // namespace net
