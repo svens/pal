@@ -222,6 +222,19 @@ public:
 
 
 	/**
+	 * Compare \a this to \a that. Return value has same meaning as
+	 * std::memcmp.
+	 */
+	constexpr int compare (const address_v6 &that) const noexcept
+	{
+		int i = 0;
+		for (/**/;  i != 16 && addr_.bytes[i] == that.addr_.bytes[i];  ++i)
+		{ }
+		return i < 16 ? addr_.bytes[i] - that.addr_.bytes[i] : 0;
+	}
+
+
+	/**
 	 * Unspecified IPv6 address
 	 */
 	static constexpr address_v6 any () noexcept
@@ -266,38 +279,32 @@ private:
 
 constexpr bool operator== (const address_v6 &a, const address_v6 &b) noexcept
 {
-	int i = 0;
-	for (/**/;  i != 16 && a.addr_.bytes[i] == b.addr_.bytes[i];  ++i)
-	{ }
-	return i == 16;
+	return a.compare(b) == 0;
 }
 
 constexpr bool operator!= (const address_v6 &a, const address_v6 &b) noexcept
 {
-	return !(a == b);
+	return a.compare(b) != 0;
 }
 
 constexpr bool operator< (const address_v6 &a, const address_v6 &b) noexcept
 {
-	int i = 0;
-	for (/**/;  i != 16 && a.addr_.bytes[i] == b.addr_.bytes[i];  ++i)
-	{ }
-	return i == 16 ? false : a.addr_.bytes[i] < b.addr_.bytes[i];
+	return a.compare(b) < 0;
 }
 
 constexpr bool operator<= (const address_v6 &a, const address_v6 &b) noexcept
 {
-	return !(b < a);
+	return a.compare(b) <= 0;
 }
 
 constexpr bool operator> (const address_v6 &a, const address_v6 &b) noexcept
 {
-	return b < a;
+	return a.compare(b) > 0;
 }
 
 constexpr bool operator>= (const address_v6 &a, const address_v6 &b) noexcept
 {
-	return !(a < b);
+	return a.compare(b) >= 0;
 }
 
 /// \}

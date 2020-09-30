@@ -158,6 +158,17 @@ public:
 
 
 	/**
+	 * Compare \a this to \a that. Return value has same meaning as
+	 * std::memcmp.
+	 */
+	constexpr int compare (const address_v4 &that) const noexcept
+	{
+		auto a = to_uint(), b = that.to_uint();
+		return a < b ? -1 : a > b ? 1 : 0;
+	}
+
+
+	/**
 	 * Calculate hash value for \a this.
 	 */
 	constexpr uint64_t hash () const noexcept
@@ -228,32 +239,32 @@ private:
 
 constexpr bool operator== (const address_v4 &a, const address_v4 &b) noexcept
 {
-	return a.to_uint() == b.to_uint();
+	return a.compare(b) == 0;
 }
 
 constexpr bool operator!= (const address_v4 &a, const address_v4 &b) noexcept
 {
-	return !(a == b);
+	return a.compare(b) != 0;
 }
 
 constexpr bool operator< (const address_v4 &a, const address_v4 &b) noexcept
 {
-	return a.to_uint() < b.to_uint();
+	return a.compare(b) < 0;
 }
 
 constexpr bool operator<= (const address_v4 &a, const address_v4 &b) noexcept
 {
-	return !(b < a);
+	return a.compare(b) <= 0;
 }
 
 constexpr bool operator> (const address_v4 &a, const address_v4 &b) noexcept
 {
-	return b < a;
+	return a.compare(b) > 0;
 }
 
 constexpr bool operator>= (const address_v4 &a, const address_v4 &b) noexcept
 {
-	return !(a < b);
+	return a.compare(b) >= 0;
 }
 
 /// \}
