@@ -36,7 +36,14 @@ constexpr uint64_t fnv_1a_64 (const uint8_t *first, const uint8_t *last,
 }
 
 
-/// \copydoc fnv_1a_64
+/**
+ * Fowler-Noll-Vo hashing function for 64bit result.
+ *
+ * This implementation is modified copy from it's homepage at
+ * http://www.isthe.com/chongo/tech/comp/fnv/.
+ *
+ * See ThirdPartySources.txt for copyright notices.
+ */
 inline uint64_t fnv_1a_64 (std::span<const std::byte> span,
 	uint64_t h = fnv_1a_64_init) noexcept
 {

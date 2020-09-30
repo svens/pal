@@ -33,16 +33,29 @@ public:
 	using bytes_type = std::array<uint8_t, 16>;
 
 
+	/**
+	 * Construct new unspecified address.
+	 */
 	constexpr address_v6 () noexcept = default;
-	constexpr address_v6 (const address_v6 &) noexcept = default;
-	address_v6 &operator= (const address_v6 &) noexcept = default;
 
 
 	/**
-	 * Construct new address from \a value
+	 * Construct new address from \a that
 	 */
-	constexpr address_v6 (const bytes_type &value) noexcept
-		: addr_{value}
+	constexpr address_v6 (const address_v6 &that) noexcept = default;
+
+
+	/**
+	 * Assign \a this from \a that.
+	 */
+	address_v6 &operator= (const address_v6 &that) noexcept = default;
+
+
+	/**
+	 * Construct new address from \a bytes
+	 */
+	constexpr address_v6 (const bytes_type &bytes) noexcept
+		: addr_{bytes}
 	{ }
 
 
@@ -273,41 +286,52 @@ private:
 
 
 /**
- * pal::net::ip::address_v6 comparisons
- * \{
+ * Return true if \a a == \a b
  */
-
 constexpr bool operator== (const address_v6 &a, const address_v6 &b) noexcept
 {
 	return a.compare(b) == 0;
 }
 
+/**
+ * Return true if \a a != \a b
+ */
 constexpr bool operator!= (const address_v6 &a, const address_v6 &b) noexcept
 {
 	return a.compare(b) != 0;
 }
 
+/**
+ * Return true if \a a < \a b
+ */
 constexpr bool operator< (const address_v6 &a, const address_v6 &b) noexcept
 {
 	return a.compare(b) < 0;
 }
 
+/**
+ * Return true if \a a <= \a b
+ */
 constexpr bool operator<= (const address_v6 &a, const address_v6 &b) noexcept
 {
 	return a.compare(b) <= 0;
 }
 
+/**
+ * Return true if \a a > \a b
+ */
 constexpr bool operator> (const address_v6 &a, const address_v6 &b) noexcept
 {
 	return a.compare(b) > 0;
 }
 
+/**
+ * Return true if \a a >= \a b
+ */
 constexpr bool operator>= (const address_v6 &a, const address_v6 &b) noexcept
 {
 	return a.compare(b) >= 0;
 }
-
-/// \}
 
 
 /**
@@ -322,15 +346,17 @@ inline std::ostream &operator<< (std::ostream &os, const address_v6 &a)
 
 
 /**
- * pal::net::ip::address_v6 creation
- * \{
+ * Create and return address from \a bytes.
  */
-
-constexpr address_v6 make_address_v6 (const address_v6::bytes_type &v)
+constexpr address_v6 make_address_v6 (const address_v6::bytes_type &bytes)
 {
-	return address_v6{v};
+	return address_v6{bytes};
 }
 
+/**
+ * Create and return address from \a text. On failure, set \a error to
+ * \c std::errc::invalid_argument and return unspecified address.
+ */
 inline address_v6 make_address_v6 (const char *text, std::error_code &error) noexcept
 {
 	address_v6 result;
@@ -343,21 +369,37 @@ inline address_v6 make_address_v6 (const char *text, std::error_code &error) noe
 	return {};
 }
 
+/**
+ * Create and return address from \a text. On failure, throw
+ * std::system_error.
+ */
 inline address_v6 make_address_v6 (const char *text)
 {
 	return make_address_v6(text, throw_on_error("make_address_v6"));
 }
 
+/**
+ * Create and return address from \a text. On failure, set \a error to
+ * \c std::errc::invalid_argument and return unspecified address.
+ */
 inline address_v6 make_address_v6 (const std::string &text, std::error_code &error) noexcept
 {
 	return make_address_v6(text.c_str(), error);
 }
 
+/**
+ * Create and return address from \a text. On failure, throw
+ * std::system_error.
+ */
 inline address_v6 make_address_v6 (const std::string &text)
 {
 	return make_address_v6(text.c_str());
 }
 
+/**
+ * Create and return address from \a text. On failure, set \a error to
+ * \c std::errc::invalid_argument and return unspecified address.
+ */
 inline address_v6 make_address_v6 (const std::string_view &text, std::error_code &error) noexcept
 {
 	char c_str[INET6_ADDRSTRLEN];
@@ -371,22 +413,30 @@ inline address_v6 make_address_v6 (const std::string_view &text, std::error_code
 	return {};
 }
 
+/**
+ * Create and return address from \a text. On failure, throw
+ * std::system_error.
+ */
 inline address_v6 make_address_v6 (const std::string_view &text)
 {
 	return make_address_v6(text, throw_on_error("make_address_v6"));
 }
 
-/// \}
-
+/**
+ * Tag type to invoke conversion between IPv6 and IPv4-mapped IPv6 addresses.
+ */
+struct v4_mapped_t {};
 
 /**
- * pal::net::ip::address_v4 creation from IPv4 mapped IPv6 address
- * \{
+ * Tag to invoke conversion between IPv6 and IPv4-mapped IPv6 addresses.
  */
-
-struct v4_mapped_t {};
 constexpr v4_mapped_t v4_mapped;
 
+/**
+ * Create and return IPv4 address from IPv4-mapped IPv6 address. On failure,
+ * set \a error to \a std::errc::invalid_argument and return unspecified
+ * IPv4 address.
+ */
 constexpr address_v4 make_address_v4 (v4_mapped_t,
 	const address_v6 &a,
 	std::error_code &error) noexcept
@@ -400,6 +450,10 @@ constexpr address_v4 make_address_v4 (v4_mapped_t,
 	return {};
 }
 
+/**
+ * Create and return IPv4 address from IPv4-mapped IPv6 address. On failure
+ * throw bad_address_cast
+ */
 constexpr address_v4 make_address_v4 (v4_mapped_t,
 	const address_v6 &a)
 {
@@ -411,13 +465,14 @@ constexpr address_v4 make_address_v4 (v4_mapped_t,
 	__bits::bad_address_cast();
 }
 
+/**
+ * Create and return IPv4-mapped IPv6 address from IPv4 address \a a.
+ */
 constexpr address_v6 make_address_v6 (v4_mapped_t, const address_v4 &a) noexcept
 {
 	const auto &v4b = a.to_bytes();
 	return {{0,0,0,0,0,0,0,0,0,0,0xff,0xff,v4b[0],v4b[1],v4b[2],v4b[3]}};
 }
-
-/// \}
 
 
 } // namespace net::ip

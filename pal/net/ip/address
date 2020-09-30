@@ -34,8 +34,10 @@ public:
 	{ }
 
 
-	constexpr address (const address &) noexcept = default;
-	address &operator= (const address &) noexcept = default;
+	/**
+	 * Construct address as copy of \a that.
+	 */
+	constexpr address (const address &that) noexcept = default;
 
 
 	/**
@@ -56,6 +58,15 @@ public:
 	{ }
 
 
+	/**
+	 * Assign \a this from \a that.
+	 */
+	address &operator= (const address &that) noexcept = default;
+
+
+	/**
+	 * Assign \a this from \a that.
+	 */
 	address &operator= (const address_v4 &that) noexcept
 	{
 		new (&v4_) address_v4(that);
@@ -64,6 +75,9 @@ public:
 	}
 
 
+	/**
+	 * Assign \a this from \a that.
+	 */
 	address &operator= (const address_v6 &that) noexcept
 	{
 		new (&v6_) address_v6(that);
@@ -223,41 +237,52 @@ private:
 
 
 /**
- * pal::net::ip::address comparisons
- * \{
+ * Return true if \a a == \a b
  */
-
 constexpr bool operator== (const address &a, const address &b) noexcept
 {
 	return a.compare(b) == 0;
 }
 
+/**
+ * Return true if \a a != \a b
+ */
 constexpr bool operator!= (const address &a, const address &b) noexcept
 {
 	return a.compare(b) != 0;
 }
 
+/**
+ * Return true if \a a < \a b
+ */
 constexpr bool operator< (const address &a, const address &b) noexcept
 {
 	return a.compare(b) < 0;
 }
 
+/**
+ * Return true if \a a <= \a b
+ */
 constexpr bool operator<= (const address &a, const address &b) noexcept
 {
 	return a.compare(b) <= 0;
 }
 
+/**
+ * Return true if \a a > \a b
+ */
 constexpr bool operator> (const address &a, const address &b) noexcept
 {
 	return a.compare(b) > 0;
 }
 
+/**
+ * Return true if \a a >= \a b
+ */
 constexpr bool operator>= (const address &a, const address &b) noexcept
 {
 	return a.compare(b) >= 0;
 }
-
-/// \}
 
 
 /**
@@ -272,10 +297,9 @@ inline std::ostream &operator<< (std::ostream &os, const address &a)
 
 
 /**
- * pal::net::ip::address creation
- * \{
+ * Create and return address from \a text. On failure, set \a error to
+ * \c std::errc::invalid_argument and return unspecified address.
  */
-
 inline address make_address (const char *text, std::error_code &error) noexcept
 {
 	auto v6 = make_address_v6(text, error);
@@ -286,21 +310,37 @@ inline address make_address (const char *text, std::error_code &error) noexcept
 	return make_address_v4(text, error);
 }
 
+/**
+ * Create and return address from \a text. On failure, throw
+ * std::system_error.
+ */
 inline address make_address (const char *text)
 {
 	return make_address(text, throw_on_error("make_address"));
 }
 
+/**
+ * Create and return address from \a text. On failure, set \a error to
+ * \c std::errc::invalid_argument and return unspecified address.
+ */
 inline address make_address (const std::string &text, std::error_code &error) noexcept
 {
 	return make_address(text.c_str(), error);
 }
 
+/**
+ * Create and return address from \a text. On failure, throw
+ * std::system_error.
+ */
 inline address make_address (const std::string &text)
 {
 	return make_address(text.c_str());
 }
 
+/**
+ * Create and return address from \a text. On failure, set \a error to
+ * \c std::errc::invalid_argument and return unspecified address.
+ */
 inline address make_address (const std::string_view &text, std::error_code &error) noexcept
 {
 	char c_str[INET6_ADDRSTRLEN];
@@ -314,12 +354,14 @@ inline address make_address (const std::string_view &text, std::error_code &erro
 	return {};
 }
 
+/**
+ * Create and return address from \a text. On failure, throw
+ * std::system_error.
+ */
 inline address make_address (const std::string_view &text)
 {
 	return make_address(text, throw_on_error("make_address"));
 }
-
-/// \}
 
 
 } // namespace net::ip

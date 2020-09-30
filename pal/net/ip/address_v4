@@ -36,9 +36,22 @@ public:
 	using bytes_type = std::array<uint8_t, 4>;
 
 
+	/**
+	 * Construct new unspecified address.
+	 */
 	constexpr address_v4 () noexcept = default;
-	constexpr address_v4 (const address_v4 &) noexcept = default;
-	address_v4 &operator= (const address_v4 &) noexcept = default;
+
+
+	/**
+	 * Construct new address from \a that
+	 */
+	constexpr address_v4 (const address_v4 &that) noexcept = default;
+
+
+	/**
+	 * Assign \a this from \a that.
+	 */
+	address_v4 &operator= (const address_v4 &that) noexcept = default;
 
 
 	/**
@@ -50,10 +63,10 @@ public:
 
 
 	/**
-	 * Construct new address from \a value
+	 * Construct new address from \a bytes
 	 */
-	constexpr address_v4 (const bytes_type &value) noexcept
-		: addr_{value}
+	constexpr address_v4 (const bytes_type &bytes) noexcept
+		: addr_{bytes}
 	{ }
 
 
@@ -233,41 +246,52 @@ private:
 
 
 /**
- * pal::net::ip::address_v4 comparisons
- * \{
+ * Return true if \a a == \a b
  */
-
 constexpr bool operator== (const address_v4 &a, const address_v4 &b) noexcept
 {
 	return a.compare(b) == 0;
 }
 
+/**
+ * Return true if \a a != \a b
+ */
 constexpr bool operator!= (const address_v4 &a, const address_v4 &b) noexcept
 {
 	return a.compare(b) != 0;
 }
 
+/**
+ * Return true if \a a < \a b
+ */
 constexpr bool operator< (const address_v4 &a, const address_v4 &b) noexcept
 {
 	return a.compare(b) < 0;
 }
 
+/**
+ * Return true if \a a <= \a b
+ */
 constexpr bool operator<= (const address_v4 &a, const address_v4 &b) noexcept
 {
 	return a.compare(b) <= 0;
 }
 
+/**
+ * Return true if \a a > \a b
+ */
 constexpr bool operator> (const address_v4 &a, const address_v4 &b) noexcept
 {
 	return a.compare(b) > 0;
 }
 
+/**
+ * Return true if \a a >= \a b
+ */
 constexpr bool operator>= (const address_v4 &a, const address_v4 &b) noexcept
 {
 	return a.compare(b) >= 0;
 }
-
-/// \}
 
 
 /**
@@ -282,20 +306,25 @@ inline std::ostream &operator<< (std::ostream &os, const address_v4 &a)
 
 
 /**
- * pal::net::ip::address_v4 creation
- * \{
+ * Create and return address from \a bytes.
  */
-
-constexpr address_v4 make_address_v4 (const address_v4::bytes_type &v)
+constexpr address_v4 make_address_v4 (const address_v4::bytes_type &bytes)
 {
-	return address_v4{v};
+	return address_v4{bytes};
 }
 
-constexpr address_v4 make_address_v4 (const address_v4::uint_type &v)
+/**
+ * Create and return address from \a value.
+ */
+constexpr address_v4 make_address_v4 (const address_v4::uint_type &value)
 {
-	return address_v4{v};
+	return address_v4{value};
 }
 
+/**
+ * Create and return address from \a text. On failure, set \a error to
+ * \c std::errc::invalid_argument and return unspecified address.
+ */
 inline address_v4 make_address_v4 (const char *text, std::error_code &error) noexcept
 {
 	address_v4 result;
@@ -308,21 +337,37 @@ inline address_v4 make_address_v4 (const char *text, std::error_code &error) noe
 	return {};
 }
 
+/**
+ * Create and return address from \a text. On failure, throw
+ * std::system_error.
+ */
 inline address_v4 make_address_v4 (const char *text)
 {
 	return make_address_v4(text, throw_on_error("make_address_v4"));
 }
 
+/**
+ * Create and return address from \a text. On failure, set \a error to
+ * \c std::errc::invalid_argument and return unspecified address.
+ */
 inline address_v4 make_address_v4 (const std::string &text, std::error_code &error) noexcept
 {
 	return make_address_v4(text.c_str(), error);
 }
 
+/**
+ * Create and return address from \a text. On failure, throw
+ * std::system_error.
+ */
 inline address_v4 make_address_v4 (const std::string &text)
 {
 	return make_address_v4(text.c_str());
 }
 
+/**
+ * Create and return address from \a text. On failure, set \a error to
+ * \c std::errc::invalid_argument and return unspecified address.
+ */
 inline address_v4 make_address_v4 (const std::string_view &text, std::error_code &error) noexcept
 {
 	char c_str[INET_ADDRSTRLEN];
@@ -336,12 +381,14 @@ inline address_v4 make_address_v4 (const std::string_view &text, std::error_code
 	return {};
 }
 
+/**
+ * Create and return address from \a text. On failure, throw
+ * std::system_error.
+ */
 inline address_v4 make_address_v4 (const std::string_view &text)
 {
 	return make_address_v4(text, throw_on_error("make_address_v4"));
 }
-
-/// \}
 
 
 } // namespace net::ip
