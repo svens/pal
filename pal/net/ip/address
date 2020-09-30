@@ -1,0 +1,344 @@
+#pragma once // -*- C++ -*-
+
+/**
+ * \file pal/net/ip/address
+ * Version independent IP address
+ */
+
+#include <pal/__bits/lib>
+#include <pal/net/__bits/socket>
+#include <pal/net/ip/address_v4>
+#include <pal/net/ip/address_v6>
+
+
+__pal_begin
+
+
+namespace net::ip {
+
+
+/**
+ * Version independent representation of IP address. It holds either IPv4 or
+ * IPv6 address.
+ */
+class address
+{
+public:
+
+	/**
+	 * Construct new unspecified IPv4 address.
+	 */
+	constexpr address () noexcept
+		: family_{AF_INET}
+		, v4_{}
+	{ }
+
+
+	constexpr address (const address &) noexcept = default;
+	address &operator= (const address &) noexcept = default;
+
+
+	/**
+	 * Construct new address from IPv4 address \a that.
+	 */
+	constexpr address (const address_v4 &that) noexcept
+		: family_{AF_INET}
+		, v4_{that}
+	{ }
+
+
+	/**
+	 * Construct new address from IPv6 address \a that.
+	 */
+	constexpr address (const address_v6 &that) noexcept
+		: family_{AF_INET6}
+		, v6_{that}
+	{ }
+
+
+	address &operator= (const address_v4 &that) noexcept
+	{
+		new (&v4_) address_v4(that);
+		family_ = AF_INET;
+		return *this;
+	}
+
+
+	address &operator= (const address_v6 &that) noexcept
+	{
+		new (&v6_) address_v6(that);
+		family_ = AF_INET6;
+		return *this;
+	}
+
+
+	/**
+	 * Return \c true if object contains IPv4 address, otherwise \c false
+	 */
+	constexpr bool is_v4 () const noexcept
+	{
+		return family_ == AF_INET;
+	}
+
+
+	/**
+	 * Return \c true if object contains IPv6 address, otherwise \c false
+	 */
+	constexpr bool is_v6 () const noexcept
+	{
+		return family_ == AF_INET6;
+	}
+
+
+	/**
+	 * Return pointer to internal IPv4 address or nullptr if is_v4() == false
+	 */
+	constexpr const address_v4 *as_v4 () const noexcept
+	{
+		return is_v4() ? &v4_ : nullptr;
+	}
+
+
+	/**
+	 * Return pointer to internal IPv6 address or nullptr if is_v6() == false
+	 */
+	constexpr const address_v6 *as_v6 () const noexcept
+	{
+		return is_v6() ? &v6_ : nullptr;
+	}
+
+
+	/**
+	 * Return IPv4 address. Throws bad_address_cast if is_v4() == false
+	 */
+	constexpr address_v4 to_v4 () const
+	{
+		if (auto a = as_v4())
+		{
+			return *a;
+		}
+		__bits::bad_address_cast();
+	}
+
+
+	/**
+	 * Return IPv6 address. Throws bad_address_cast if is_v6() == false
+	 */
+	constexpr address_v6 to_v6 () const
+	{
+		if (auto a = as_v6())
+		{
+			return *a;
+		}
+		__bits::bad_address_cast();
+	}
+
+
+	/**
+	 * Return true if \a this is unspecified address.
+	 */
+	constexpr bool is_unspecified () const noexcept
+	{
+		return is_v4() ? v4_.is_unspecified() : v6_.is_unspecified();
+	}
+
+
+	/**
+	 * Return true if \a this is loopback address.
+	 */
+	constexpr bool is_loopback () const noexcept
+	{
+		return is_v4() ? v4_.is_loopback() : v6_.is_loopback();
+	}
+
+
+	/**
+	 * Return true if \a this is multicast address.
+	 */
+	constexpr bool is_multicast () const noexcept
+	{
+		return is_v4() ? v4_.is_multicast() : v6_.is_multicast();
+	}
+
+
+	/**
+	 * Convert \a this address to human readable textual representation by
+	 * filling range [\a first, \a last).
+	 *
+	 * On success, returns std::to_chars_result with ptr pointing at last
+	 * filled character (NUL) and ec default value initialized.
+	 *
+	 * On failure, ptr is set to \a last and ec std::errc::value_too_large.
+	 * Content of [\a first, \a last) is unspecified.
+	 */
+	std::to_chars_result to_chars (char *first, char *last) const noexcept
+	{
+		return is_v4() ? v4_.to_chars(first, last) : v6_.to_chars(first, last);
+	}
+
+
+	/**
+	 * Return \a this addess as human readable textual representation.
+	 */
+	template <typename Allocator = std::allocator<char>>
+	string<Allocator> to_string (const Allocator &allocator = Allocator()) const
+	{
+		return is_v4() ? v4_.to_string(allocator) : v6_.to_string(allocator);
+	}
+
+
+	/**
+	 * Compare \a this to \a that. Return value has same meaning as
+	 * std::memcmp.
+	 */
+	constexpr int compare (const address &that) const noexcept
+	{
+		if (family_ == that.family_)
+		{
+			return is_v4() ? v4_.compare(that.v4_) : v6_.compare(that.v6_);
+		}
+		return family_ == AF_INET ? -1 : 1;
+	}
+
+
+	/**
+	 * Calculate hash value for \a this.
+	 */
+	constexpr uint64_t hash () const noexcept
+	{
+		return is_v4() ? v4_.hash() : v6_.hash();
+	}
+
+
+private:
+
+	net::__bits::sa_family family_;
+
+	union
+	{
+		address_v4 v4_;
+		address_v6 v6_;
+	};
+};
+
+
+/**
+ * pal::net::ip::address comparisons
+ * \{
+ */
+
+constexpr bool operator== (const address &a, const address &b) noexcept
+{
+	return a.compare(b) == 0;
+}
+
+constexpr bool operator!= (const address &a, const address &b) noexcept
+{
+	return a.compare(b) != 0;
+}
+
+constexpr bool operator< (const address &a, const address &b) noexcept
+{
+	return a.compare(b) < 0;
+}
+
+constexpr bool operator<= (const address &a, const address &b) noexcept
+{
+	return a.compare(b) <= 0;
+}
+
+constexpr bool operator> (const address &a, const address &b) noexcept
+{
+	return a.compare(b) > 0;
+}
+
+constexpr bool operator>= (const address &a, const address &b) noexcept
+{
+	return a.compare(b) >= 0;
+}
+
+/// \}
+
+
+/**
+ * pal::net::ip::address stream I/O
+ */
+inline std::ostream &operator<< (std::ostream &os, const address &a)
+{
+	char text[INET6_ADDRSTRLEN];
+	a.to_chars(text, text + sizeof(text));
+	return (os << text);
+}
+
+
+/**
+ * pal::net::ip::address creation
+ * \{
+ */
+
+inline address make_address (const char *text, std::error_code &error) noexcept
+{
+	auto v6 = make_address_v6(text, error);
+	if (!error)
+	{
+		return v6;
+	}
+	return make_address_v4(text, error);
+}
+
+inline address make_address (const char *text)
+{
+	return make_address(text, throw_on_error("make_address"));
+}
+
+inline address make_address (const std::string &text, std::error_code &error) noexcept
+{
+	return make_address(text.c_str(), error);
+}
+
+inline address make_address (const std::string &text)
+{
+	return make_address(text.c_str());
+}
+
+inline address make_address (const std::string_view &text, std::error_code &error) noexcept
+{
+	char c_str[INET6_ADDRSTRLEN];
+	auto length = text.copy(c_str, sizeof(c_str));
+	if (length < sizeof(c_str))
+	{
+		c_str[length] = '\0';
+		return make_address(c_str, error);
+	}
+	error = std::make_error_code(std::errc::invalid_argument);
+	return {};
+}
+
+inline address make_address (const std::string_view &text)
+{
+	return make_address(text, throw_on_error("make_address"));
+}
+
+/// \}
+
+
+} // namespace net::ip
+
+
+__pal_end
+
+
+namespace std {
+
+
+template <>
+struct hash<pal::net::ip::address>
+{
+	size_t operator() (const pal::net::ip::address &a) const noexcept
+	{
+		return a.hash();
+	}
+};
+
+
+} // namespace std
