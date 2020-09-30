@@ -1,0 +1,103 @@
+#pragma once // -*- C++ -*-
+
+/**
+ * \file pal/net/ip/udp
+ * UDP datagram-oriented protocol
+ */
+
+#include <pal/__bits/lib>
+#include <pal/net/__bits/socket>
+
+
+__pal_begin
+
+
+namespace net::ip {
+
+
+/**
+ * Encapsulate types and flags for UDP sockets.
+ */
+class udp
+{
+public:
+
+	udp () = delete;
+
+
+	/**
+	 * UDP/IPv4 internet protocol.
+	 */
+	static constexpr udp v4 () noexcept
+	{
+		return udp{AF_INET};
+	}
+
+
+	/**
+	 * UDP/IPv6 internet protocol.
+	 */
+	static constexpr udp v6 () noexcept
+	{
+		return udp{AF_INET6};
+	}
+
+
+	/**
+	 * Return value suitable passing as domain argument for socket(2)
+	 */
+	constexpr int family () const noexcept
+	{
+		return family_;
+	}
+
+
+	/**
+	 * Return value suitable passing as type argument for socket(2)
+	 */
+	constexpr int type () const noexcept
+	{
+		return SOCK_DGRAM;
+	}
+
+
+	/**
+	 * Return value suitable passing as protocol argument for socket(2)
+	 */
+	constexpr int protocol () const noexcept
+	{
+		return IPPROTO_UDP;
+	}
+
+
+private:
+
+	int family_;
+
+	constexpr explicit udp (int family)
+		: family_{family}
+	{ }
+};
+
+
+/**
+ * Return true if \a a == \a b
+ */
+constexpr bool operator== (const udp &a, const udp &b) noexcept
+{
+	return a.family() == b.family();
+}
+
+/**
+ * Return true if \a a != \a b
+ */
+constexpr bool operator!= (const udp &a, const udp &b) noexcept
+{
+	return a.family() != b.family();
+}
+
+
+} // namespace net::ip
+
+
+__pal_end

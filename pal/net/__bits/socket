@@ -4,6 +4,7 @@
 #include <system_error>
 
 #if __pal_os_linux || __pal_os_macos
+	#include <arpa/inet.h>
 	#include <sys/socket.h>
 #elif __pal_os_windows
 	#include <winsock2.h>

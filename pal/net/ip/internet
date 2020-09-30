@@ -1,0 +1,12 @@
+#pragma once // -*- C++ -*-
+
+/**
+ * \file pal/net/ip/internet
+ * Conveniency header including all files from sal/net/ip
+ */
+
+#include <pal/net/ip/address>
+#include <pal/net/ip/address_v4>
+#include <pal/net/ip/address_v6>
+#include <pal/net/ip/tcp>
+#include <pal/net/ip/udp>

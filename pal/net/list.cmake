@@ -9,6 +9,9 @@ list(APPEND pal_sources
 	pal/net/ip/address
 	pal/net/ip/address_v4
 	pal/net/ip/address_v6
+	pal/net/ip/internet
+	pal/net/ip/tcp
+	pal/net/ip/udp
 )
 
 list(APPEND pal_unittests_sources
