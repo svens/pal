@@ -71,6 +71,24 @@ public:
 
 
 	/**
+	 * Load content of \a in into \a this.
+	 */
+	constexpr void load_from (const in_addr &in) noexcept
+	{
+		addr_.in = in;
+	}
+
+
+	/**
+	 * Store content of \a this into \a in.
+	 */
+	constexpr void store_to (in_addr &in) const noexcept
+	{
+		in = addr_.in;
+	}
+
+
+	/**
 	 * Return binary representation of \a this address
 	 */
 	constexpr const bytes_type &to_bytes () const noexcept

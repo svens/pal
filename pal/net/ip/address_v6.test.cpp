@@ -241,6 +241,15 @@ TEST_CASE("net/ip/address_v6")
 		CHECK(address.to_bytes() == as_bytes);
 	}
 
+	SECTION("load_from / store_to")
+	{
+		in6_addr in;
+		address.store_to(in);
+		pal::net::ip::address_v6 a;
+		a.load_from(in);
+		CHECK(address == a);
+	}
+
 	SECTION("properties")
 	{
 		CHECK(address.is_unspecified() == is_unspecified);

@@ -123,6 +123,15 @@ TEST_CASE("net/ip/address_v4")
 		CHECK(address_from_bytes.to_uint() == as_uint);
 	}
 
+	SECTION("load_from / store_to")
+	{
+		in_addr in;
+		address_from_bytes.store_to(in);
+		pal::net::ip::address_v4 a;
+		a.load_from(in);
+		CHECK(address_from_bytes == a);
+	}
+
 	SECTION("properties")
 	{
 		CHECK(address_from_bytes.is_unspecified() == is_unspecified);

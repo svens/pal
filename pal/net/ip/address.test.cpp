@@ -158,6 +158,28 @@ TEST_CASE("net/ip/address")
 		})
 	);
 
+	SECTION("load_from / store_to")
+	{
+		// success
+		sockaddr_storage ss;
+		addr.store_to(ss);
+		address a;
+		CHECK(a.try_load_from(ss));
+		CHECK(a == addr);
+		CHECK_NOTHROW(a.load_from(ss));
+		CHECK(a == addr);
+
+		// failure
+		ss.ss_family = AF_INET + AF_INET6;
+		CHECK_FALSE(a.try_load_from(ss));
+		CHECK(a == addr);
+		CHECK_THROWS_AS(
+			a.load_from(ss),
+			pal::net::ip::bad_address_cast
+		);
+		CHECK(a == addr);
+	}
+
 	SECTION("properties")
 	{
 		CHECK(addr.is_unspecified() == is_unspecified);
