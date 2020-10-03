@@ -7,6 +7,7 @@
 
 #include <pal/__bits/lib>
 #include <pal/net/__bits/socket>
+#include <pal/net/basic_datagram_socket>
 #include <pal/net/ip/basic_endpoint>
 
 
@@ -25,6 +26,9 @@ public:
 
 	/// UDP socket endpoint
 	using endpoint = basic_endpoint<udp>;
+
+	/// UDP datagram socket
+	using socket = basic_datagram_socket<udp>;
 
 
 	udp () = delete;

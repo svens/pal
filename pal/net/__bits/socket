@@ -2,6 +2,7 @@
 
 #include <pal/__bits/lib>
 #include <system_error>
+#include <utility>
 
 #if __pal_os_linux || __pal_os_macos
 	#include <arpa/inet.h>
@@ -58,6 +59,56 @@ enum class wait
 {
 	read,
 	write,
+};
+
+
+struct socket
+{
+	native_socket handle = invalid_native_socket;
+
+	socket () = default;
+
+	socket (const socket &) = delete;
+	socket &operator= (const socket &) = delete;
+
+	socket (native_socket handle) noexcept
+		: handle{handle}
+	{ }
+
+	socket (socket &&that) noexcept
+		: handle{std::exchange(that.handle, invalid_native_socket)}
+	{ }
+
+	~socket () noexcept
+	{
+		if (handle != invalid_native_socket)
+		{
+			std::error_code ignore_error;
+			close(ignore_error);
+		}
+	}
+
+	socket &operator= (socket &&that) noexcept
+	{
+		auto tmp{std::move(that)};
+		swap(tmp);
+		return *this;
+	}
+
+	void swap (socket &that) noexcept
+	{
+		using std::swap;
+		swap(handle, that.handle);
+	}
+
+	static socket open (
+		int domain,
+		int type,
+		int protocol,
+		std::error_code &error
+	) noexcept;
+
+	void close (std::error_code &error) noexcept;
 };
 
 

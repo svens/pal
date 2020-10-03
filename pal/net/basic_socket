@@ -1,0 +1,185 @@
+#pragma once // -*- C++ -*-
+
+/**
+ * \file pal/net/basic_socket
+ * Generic socket base class
+ */
+
+#include <pal/__bits/lib>
+#include <pal/net/error>
+#include <pal/net/socket_base>
+
+
+__pal_begin
+
+
+namespace net {
+
+
+template <typename Protocol>
+class basic_socket: public socket_base
+{
+public:
+
+	/// Socket protocol
+	using protocol_type = Protocol;
+
+	/// Socket endpoint
+	using endpoint_type = typename protocol_type::endpoint;
+
+
+	/**
+	 * Return native socket handle
+	 */
+	native_handle_type native_handle () const noexcept
+	{
+		return socket_.handle;
+	}
+
+
+	/**
+	 * Return native_handle(), setting internal handle to invalid value.
+	 */
+	native_handle_type release () noexcept
+	{
+		return std::exchange(socket_.handle, invalid);
+	}
+
+
+	/**
+	 * Return true if this socket was open by previous call to open() or
+	 * assign()
+	 */
+	bool is_open () const noexcept
+	{
+		return socket_.handle != invalid;
+	}
+
+
+	/**
+	 * Create new socket instance of \a protocol. On failure, set \a
+	 * error.
+	 */
+	void open (const protocol_type &protocol, std::error_code &error) noexcept
+	{
+		if (!is_open())
+		{
+			socket_ = __bits::socket::open(
+				protocol.family(),
+				protocol.type(),
+				protocol.protocol(),
+				error
+			);
+		}
+		else
+		{
+			error = make_error_code(socket_errc::already_open);
+		}
+	}
+
+
+	/**
+	 * Create new socket instance of \a protocol. On failure, throw
+	 * std::system_error.
+	 */
+	void open (const protocol_type &protocol)
+	{
+		open(protocol, throw_on_error("basic_socket::open"));
+	}
+
+
+	/**
+	 * Assign previously opened native socket \a handle to this socket
+	 * object. On failure, set \a error
+	 */
+	void assign (native_handle_type handle, std::error_code &error) noexcept
+	{
+		if (handle == invalid)
+		{
+			error = make_error_code(std::errc::bad_file_descriptor);
+		}
+		else if (!is_open())
+		{
+			socket_.handle = handle;
+		}
+		else
+		{
+			error = make_error_code(socket_errc::already_open);
+		}
+	}
+
+
+	/**
+	 * Assign previously opened native socket \a handle to this socket
+	 * object. On failure, throw std::system_error.
+	 */
+	void assign (native_handle_type handle)
+	{
+		assign(handle, throw_on_error("basic_socket::assign"));
+	}
+
+
+	/**
+	 * Close socket. On failure, set \a error.
+	 */
+	void close (std::error_code &error) noexcept
+	{
+		if (is_open())
+		{
+			socket_.close(error);
+		}
+		else
+		{
+			error = make_error_code(std::errc::bad_file_descriptor);
+		}
+	}
+
+
+	/**
+	 * Close socket. On failure, throw std::system_error.
+	 */
+	void close ()
+	{
+		close(throw_on_error("basic_socket::error"));
+	}
+
+
+protected:
+
+	/**
+	 * Log-level OS socket
+	 * \internal
+	 */
+	__bits::socket socket_{};
+
+	basic_socket () noexcept = default;
+	basic_socket (basic_socket &&) noexcept = default;
+	basic_socket &operator= (basic_socket &&) noexcept = default;
+	~basic_socket () = default;
+
+
+	/**
+	 * Construct new socket, acquiring \a handle. On failure, throw
+	 * std::system_error.
+	 */
+	basic_socket (native_handle_type handle)
+	{
+		assign(handle);
+	}
+
+
+	/**
+	 * Construct and open new socket using \a protocol. On failure, throw
+	 * std::system_error.
+	 */
+	basic_socket (const protocol_type &protocol)
+	{
+		open(protocol);
+	}
+};
+
+
+} // namespace net
+
+
+__pal_end

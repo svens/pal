@@ -7,6 +7,7 @@
 
 #include <pal/__bits/lib>
 #include <pal/net/__bits/socket>
+#include <pal/net/basic_stream_socket>
 #include <pal/net/ip/basic_endpoint>
 
 
@@ -25,6 +26,9 @@ public:
 
 	/// TCP socket endpoint
 	using endpoint = basic_endpoint<tcp>;
+
+	/// TCP stream socket
+	using socket = basic_stream_socket<tcp>;
 
 
 	tcp () = delete;

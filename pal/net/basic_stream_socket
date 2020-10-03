@@ -1,0 +1,62 @@
+#pragma once // -*- C++ -*-
+
+/**
+ * \file pal/net/basic_stream_socket
+ * Generic stream-oriented socket
+ */
+
+#include <pal/__bits/lib>
+#include <pal/net/error>
+#include <pal/net/basic_socket>
+
+
+__pal_begin
+
+
+namespace net {
+
+
+template <typename Protocol>
+class basic_stream_socket: public basic_socket<Protocol>
+{
+	using base = basic_socket<Protocol>;
+
+public:
+
+	/// Socket protocol
+	using protocol_type = Protocol;
+
+	/// Socket endpoint
+	using endpoint_type = typename protocol_type::endpoint;
+
+	/// Native socket handle
+	using typename base::native_handle_type;
+
+
+	/**
+	 * Create new unopened socket.
+	 */
+	basic_stream_socket () noexcept = default;
+
+
+	/**
+	 * Create new socket, acquiring native_sockte.
+	 */
+	basic_stream_socket (native_handle_type handle)
+		: base(handle)
+	{ }
+
+
+	/**
+	 * Create new socket and open it.
+	 */
+	basic_stream_socket (const protocol_type &protocol)
+		: base(protocol)
+	{ }
+};
+
+
+} // namespace net
+
+
+__pal_end
