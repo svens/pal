@@ -6,14 +6,6 @@
 namespace {
 
 
-constexpr pal::net::ip::address_v6 long_address{{
-	0xff,0xff,0xff,0xff,
-	0xff,0xff,0xff,0xff,
-	0xff,0xff,0xff,0xff,
-	0xff,0xff,0xff,0xff,
-}};
-
-
 TEST_CASE("net/ip/address_v6")
 {
 	SECTION("well-known addresses")
@@ -72,12 +64,6 @@ TEST_CASE("net/ip/address_v6")
 		auto [p, ec] = pal::net::ip::address_v6::any().to_chars(buf, buf + sizeof(buf));
 		CHECK(p == buf + sizeof(buf));
 		CHECK(ec == std::errc::value_too_large);
-	}
-
-	SECTION("to_string failure")
-	{
-		pal_test::bad_alloc_once x;
-		CHECK_THROWS_AS(long_address.to_string(), std::bad_alloc);
 	}
 
 	auto
@@ -239,15 +225,6 @@ TEST_CASE("net/ip/address_v6")
 	SECTION("ctor(bytes_type)")
 	{
 		CHECK(address.to_bytes() == as_bytes);
-	}
-
-	SECTION("load_from / store_to")
-	{
-		in6_addr in;
-		address.store_to(in);
-		pal::net::ip::address_v6 a;
-		a.load_from(in);
-		CHECK(address == a);
 	}
 
 	SECTION("properties")

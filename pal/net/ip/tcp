@@ -7,6 +7,7 @@
 
 #include <pal/__bits/lib>
 #include <pal/net/__bits/socket>
+#include <pal/net/ip/basic_endpoint>
 
 
 __pal_begin
@@ -21,6 +22,10 @@ namespace net::ip {
 class tcp
 {
 public:
+
+	/// TCP socket endpoint
+	using endpoint = basic_endpoint<tcp>;
+
 
 	tcp () = delete;
 
@@ -77,6 +82,8 @@ private:
 	constexpr explicit tcp (int family)
 		: family_{family}
 	{ }
+
+	template <typename Protocol> friend class basic_endpoint;
 };
 
 

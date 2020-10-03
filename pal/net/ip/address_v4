@@ -71,24 +71,6 @@ public:
 
 
 	/**
-	 * Load content of \a in into \a this.
-	 */
-	constexpr void load_from (const in_addr &in) noexcept
-	{
-		addr_.in = in;
-	}
-
-
-	/**
-	 * Store content of \a this into \a in.
-	 */
-	constexpr void store_to (in_addr &in) const noexcept
-	{
-		in = addr_.in;
-	}
-
-
-	/**
 	 * Return binary representation of \a this address
 	 */
 	constexpr const bytes_type &to_bytes () const noexcept
@@ -110,15 +92,15 @@ public:
 	 * Convert \a this address to human readable textual representation by
 	 * filling range [\a first, \a last).
 	 *
-	 * On success, returns std::to_chars_result with ptr pointing at last
-	 * filled character (NUL) and ec default value initialized.
+	 * On success, returns std::to_chars_result with ptr pointing at past
+	 * last filled character and ec default value initialized.
 	 *
 	 * On failure, ptr is set to \a last and ec std::errc::value_too_large.
 	 * Content of [\a first, \a last) is unspecified.
 	 */
 	std::to_chars_result to_chars (char *first, char *last) const noexcept
 	{
-		if (auto end = __bits::inet_ntop(addr_.in, first, last - first))
+		if (auto end = __bits::inet_ntop(addr_.in, first, last))
 		{
 			return {end, std::errc{}};
 		}
@@ -130,7 +112,7 @@ public:
 
 
 	/**
-	 * Return \a this addess as human readable textual representation.
+	 * Return \a this address as human readable textual representation.
 	 */
 	template <typename Allocator = std::allocator<char>>
 	string<Allocator> to_string (const Allocator &allocator = Allocator()) const
@@ -259,6 +241,7 @@ private:
 		{ }
 	} addr_{};
 
+	template <typename Protocol> friend class basic_endpoint;
 	friend address_v4 make_address_v4 (const char *, std::error_code &) noexcept;
 };
 
@@ -317,7 +300,7 @@ constexpr bool operator>= (const address_v4 &a, const address_v4 &b) noexcept
  */
 inline std::ostream &operator<< (std::ostream &os, const address_v4 &a)
 {
-	char text[INET_ADDRSTRLEN];
+	char text[INET_ADDRSTRLEN] = {};
 	a.to_chars(text, text + sizeof(text));
 	return (os << text);
 }

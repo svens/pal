@@ -65,6 +65,11 @@ namespace __bits {
 	throw ip::bad_address_cast{};
 }
 
+[[noreturn]] inline void length_error (const char *src)
+{
+	throw std::length_error(src);
+}
+
 } // namespace __bits
 
 } // namespace ip

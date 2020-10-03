@@ -1,7 +1,7 @@
 #pragma once // -*- C++ -*-
 
 /**
- * \file pal/net/ip/internet
+ * \file pal/net/internet
  * Conveniency header including all files from sal/net/ip
  */
 

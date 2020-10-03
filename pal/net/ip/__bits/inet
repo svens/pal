@@ -1,6 +1,8 @@
 #pragma once // -*- C++ -*-
 
 #include <pal/__bits/lib>
+#include <pal/byte_order>
+#include <charconv>
 #include <stdexcept>
 #include <type_traits>
 
@@ -19,25 +21,79 @@ namespace net::ip::__bits {
 
 
 template <typename T> constexpr int inet_v = AF_UNSPEC;
+
 template<> constexpr inline int inet_v<in_addr> = AF_INET;
+template<> constexpr inline int inet_v<sockaddr_in> = AF_INET;
+
 template<> constexpr inline int inet_v<in6_addr> = AF_INET6;
+template<> constexpr inline int inet_v<sockaddr_in6> = AF_INET6;
 
 
-template <typename InAddr>
-inline char *inet_ntop (const InAddr &src, char *dest, size_t size) noexcept
+template <typename InAddr,
+	std::enable_if_t<
+		std::is_same_v<InAddr, in_addr> ||
+		std::is_same_v<InAddr, in6_addr>,
+		int
+	> = 0
+>
+inline char *inet_ntop (const InAddr &src, char *first, char *last) noexcept
 {
-	if (::inet_ntop(inet_v<InAddr>, &src, dest, size))
+	if (::inet_ntop(inet_v<InAddr>, &src, first, last - first))
 	{
-		while (*dest)
+		while (*first)
 		{
-			dest++;
+			first++;
+		}
+		return first;
+	}
+	return nullptr;
+}
+
+
+namespace {
+
+inline char *add_port (uint16_t port, char *first, char *last) noexcept
+{
+	if (first + sizeof(":1") - 1 < last)
+	{
+		*first++ = ':';
+		auto [p, ec] = std::to_chars(first, last, ntoh(port));
+		if (ec == std::errc{})
+		{
+			return p;
 		}
 	}
-	else
+	return nullptr;
+}
+
+}
+
+
+inline char *inet_ntop (const sockaddr_in &src, char *first, char *last) noexcept
+{
+	if ((first = inet_ntop(src.sin_addr, first, last)) != nullptr)
 	{
-		dest = nullptr;
+		return add_port(src.sin_port, first, last);
 	}
-	return dest;
+	return nullptr;
+}
+
+
+inline char *inet_ntop (const sockaddr_in6 &src, char *first, char *last) noexcept
+{
+	if (first + sizeof("[::]:1") - 1 < last)
+	{
+		*first++ = '[';
+		if ((first = inet_ntop(src.sin6_addr, first, last)) != nullptr)
+		{
+			if (first + sizeof("]:1") - 1 < last)
+			{
+				*first++ = ']';
+				return add_port(src.sin6_port, first, last);
+			}
+		}
+	}
+	return nullptr;
 }
 
 

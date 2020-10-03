@@ -87,59 +87,6 @@ public:
 
 
 	/**
-	 * Try to load content of \a ss into \a this.
-	 * \returns true on success or false if \a ss family is not AF_INET or
-	 * AF_INET6.
-	 */
-	bool try_load_from (const sockaddr_storage &ss) noexcept
-	{
-		if (ss.ss_family == AF_INET)
-		{
-			family_ = AF_INET;
-			v4_.load_from(reinterpret_cast<const sockaddr_in &>(ss).sin_addr);
-			return true;
-		}
-		else if (ss.ss_family == AF_INET6)
-		{
-			family_ = AF_INET6;
-			v6_.load_from(reinterpret_cast<const sockaddr_in6 &>(ss).sin6_addr);
-			return true;
-		}
-		return false;
-	}
-
-
-	/**
-	 * Try to load content of \a ss into \a this.
-	 * \throws bad_address_cast if \a ss family is not AF_INET or AF_INET6.
-	 */
-	void load_from (const sockaddr_storage &ss)
-	{
-		if (!try_load_from(ss))
-		{
-			__bits::bad_address_cast();
-		}
-	}
-
-
-	/**
-	 * Store content of \a this into \a ss.
-	 */
-	void store_to (sockaddr_storage &ss) const noexcept
-	{
-		if (family_ == AF_INET)
-		{
-			v4_.store_to(reinterpret_cast<sockaddr_in &>(ss).sin_addr);
-		}
-		else
-		{
-			v6_.store_to(reinterpret_cast<sockaddr_in6 &>(ss).sin6_addr);
-		}
-		ss.ss_family = family_;
-	}
-
-
-	/**
 	 * Return \c true if object contains IPv4 address, otherwise \c false
 	 */
 	constexpr bool is_v4 () const noexcept
@@ -229,11 +176,11 @@ public:
 
 
 	/**
-	 * Convert \a this address to human readable textual representation by
-	 * filling range [\a first, \a last).
+	 * Convert \a this endpoint to human readable textual representation
+	 * by filling range [\a first, \a last).
 	 *
-	 * On success, returns std::to_chars_result with ptr pointing at last
-	 * filled character (NUL) and ec default value initialized.
+	 * On success, returns std::to_chars_result with ptr pointing at past
+	 * last filled character and ec default value initialized.
 	 *
 	 * On failure, ptr is set to \a last and ec std::errc::value_too_large.
 	 * Content of [\a first, \a last) is unspecified.
@@ -245,7 +192,7 @@ public:
 
 
 	/**
-	 * Return \a this addess as human readable textual representation.
+	 * Return \a this address as human readable textual representation.
 	 */
 	template <typename Allocator = std::allocator<char>>
 	string<Allocator> to_string (const Allocator &allocator = Allocator()) const
@@ -286,6 +233,8 @@ private:
 		address_v4 v4_;
 		address_v6 v6_;
 	};
+
+	template <typename Protocol> friend class basic_endpoint;
 };
 
 
@@ -343,7 +292,7 @@ constexpr bool operator>= (const address &a, const address &b) noexcept
  */
 inline std::ostream &operator<< (std::ostream &os, const address &a)
 {
-	char text[INET6_ADDRSTRLEN];
+	char text[INET6_ADDRSTRLEN] = {};
 	a.to_chars(text, text + sizeof(text));
 	return (os << text);
 }

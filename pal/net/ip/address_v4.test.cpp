@@ -74,25 +74,6 @@ TEST_CASE("net/ip/address_v4")
 		CHECK(ec == std::errc::value_too_large);
 	}
 
-	#if !defined(__apple_build_version__)
-
-		// XXX: this case might be impossible to trigger: some
-		// std::string implementations have short storage inside
-		// object itself, i.e. don't actually do allocation
-		// Currently Clang/MacOS seems to be one. Drop the case if it
-		// becomes common.
-
-		SECTION("to_string failure")
-		{
-			pal_test::bad_alloc_once x;
-			CHECK_THROWS_AS(
-				pal::net::ip::address_v4::broadcast().to_string(),
-				std::bad_alloc
-			);
-		}
-
-	#endif
-
 	auto [as_bytes, as_cstr, is_unspecified, is_loopback, is_multicast, is_private] = GENERATE(
 		table<pal::net::ip::address_v4::bytes_type, std::string, bool, bool, bool, bool>({
 		{ {0,0,0,0},         "0.0.0.0",         true,  false, false, false },
@@ -123,15 +104,6 @@ TEST_CASE("net/ip/address_v4")
 		CHECK(address_from_bytes.to_uint() == as_uint);
 	}
 
-	SECTION("load_from / store_to")
-	{
-		in_addr in;
-		address_from_bytes.store_to(in);
-		pal::net::ip::address_v4 a;
-		a.load_from(in);
-		CHECK(address_from_bytes == a);
-	}
-
 	SECTION("properties")
 	{
 		CHECK(address_from_bytes.is_unspecified() == is_unspecified);
@@ -155,20 +127,6 @@ TEST_CASE("net/ip/address_v4")
 		std::ostringstream oss;
 		oss << address_from_bytes;
 		CHECK(oss.str() == as_cstr);
-	}
-
-	if constexpr (false)
-	{
-		// Catch2 internal machinery gets allocation failure first
-		SECTION("operator<<(std::ostream) failure")
-		{
-			std::ostringstream oss;
-			pal_test::bad_alloc_once x;
-			CHECK_THROWS_AS(
-				(oss << address_from_bytes),
-				std::bad_alloc
-			);
-		}
 	}
 
 	SECTION("make_address_v4(bytes_type)")
