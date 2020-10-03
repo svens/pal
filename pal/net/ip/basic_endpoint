@@ -276,21 +276,20 @@ public:
 	 */
 	constexpr uint64_t hash () const noexcept
 	{
-		uint64_t h;
 		if (data_.sa_family == AF_INET)
 		{
-			h = hash_128_to_64(v4_.sin_port, v4_.sin_addr.s_addr);
+			return hash_128_to_64(AF_INET,
+				hash_128_to_64(v4_.sin_port, v4_.sin_addr.s_addr)
+			);
 		}
 		else
 		{
-			h = hash_128_to_64(v6_.sin6_port,
-				fnv_1a_64(
-					&v6_.sin6_addr.s6_addr[0],
-					&v6_.sin6_addr.s6_addr[0] + sizeof(v6_.sin6_addr.s6_addr)
-				)
+			auto first = &v6_.sin6_addr.s6_addr[0];
+			auto last = first + sizeof(v6_.sin6_addr.s6_addr);
+			return hash_128_to_64(AF_INET6,
+				hash_128_to_64(v6_.sin6_port, fnv_1a_64(first, last))
 			);
 		}
-		return hash_128_to_64(data_.sa_family, h);
 	}
 
 
