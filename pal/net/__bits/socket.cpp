@@ -5,6 +5,7 @@
 	#include <unistd.h>
 #elif __pal_os_windows
 	#include <mutex>
+	#include <ws2tcpip.h>
 #endif
 
 
@@ -233,6 +234,28 @@ void socket::bind (const void *endpoint, size_t endpoint_size, std::error_code &
 }
 
 
+namespace {
+
+sa_family socket_address_family (native_socket handle) noexcept
+{
+	WSAPROTOCOL_INFOW info;
+	int info_size = sizeof(info);
+
+	auto result = ::getsockopt(handle,
+		SOL_SOCKET,
+		SO_PROTOCOL_INFO,
+		reinterpret_cast<char *>(&info),
+		&info_size
+	);
+
+	return static_cast<sa_family>(
+		result != SOCKET_ERROR ? info.iAddressFamily : AF_UNSPEC
+	);
+}
+
+}
+
+
 void socket::local_endpoint (
 	void *endpoint,
 	size_t *endpoint_size,
@@ -245,8 +268,22 @@ void socket::local_endpoint (
 		static_cast<sockaddr *>(endpoint),
 		&size
 	);
+
+	if (error == std::errc::invalid_argument)
+	{
+		// ugly and expensive, but let's keep similar to Linux/MacOS
+		auto family = socket_address_family(handle);
+		if (family == AF_INET || family == AF_INET6)
+		{
+			static_cast<sockaddr *>(endpoint)->sa_family = family;
+			size = family == AF_INET ? sizeof(sockaddr_in) : sizeof(sockaddr_in6);
+			result = ~SOCKET_ERROR;
+		}
+	}
+
 	if (result != SOCKET_ERROR)
 	{
+		error.clear();
 		*endpoint_size = size;
 	}
 }

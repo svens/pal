@@ -197,21 +197,10 @@ TEMPLATE_TEST_CASE("net/socket", "", tcp_v4, tcp_v6, udp_v4, udp_v6)
 	{
 		SECTION("unbound")
 		{
-			auto e = socket.local_endpoint(error);
-			if constexpr (pal::is_windows_build)
-			{
-				CHECK(error == std::errc::invalid_argument);
-				CHECK_THROWS_AS(
-					socket.local_endpoint(),
-					std::system_error
-				);
-			}
-			else
-			{
-				CHECK(!error);
-				CHECK(e == any);
-				CHECK_NOTHROW(socket.local_endpoint());
-			}
+			auto ep = socket.local_endpoint(error);
+			CHECK(!error);
+			CHECK(ep == any);
+			CHECK_NOTHROW(socket.local_endpoint());
 		}
 
 		SECTION("bound")
