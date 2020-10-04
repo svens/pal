@@ -223,6 +223,35 @@ TEMPLATE_TEST_CASE("net/socket", "", tcp_v4, tcp_v6, udp_v4, udp_v6)
 			);
 		}
 	}
+
+	SECTION("remote_endpoint")
+	{
+		SECTION("connected")
+		{
+			// tested at basic_stream_socket level, no here
+		}
+
+		SECTION("disconnected")
+		{
+			socket.remote_endpoint(error);
+			CHECK(error == std::errc::not_connected);
+			CHECK_THROWS_AS(
+				socket.remote_endpoint(),
+				std::system_error
+			);
+		}
+
+		SECTION("closed")
+		{
+			socket.close();
+			socket.remote_endpoint(error);
+			CHECK(error == std::errc::bad_file_descriptor);
+			CHECK_THROWS_AS(
+				socket.remote_endpoint(),
+				std::system_error
+			);
+		}
+	}
 }
 
 

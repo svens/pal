@@ -190,6 +190,33 @@ public:
 	}
 
 
+	/**
+	 * Determine the remote endpoint associated with the socket. On
+	 * failure, set \a error and returned endpoint value is undefined.
+	 */
+	endpoint_type remote_endpoint (std::error_code &error) const noexcept
+	{
+		endpoint_type endpoint;
+		size_t size = endpoint.capacity();
+		socket_.remote_endpoint(endpoint.data(), &size, error);
+		if (!error)
+		{
+			endpoint.resize(size, error);
+		}
+		return endpoint;
+	}
+
+
+	/**
+	 * Determine the remote endpoint associated with the socket. On
+	 * failure, throw std::system_error.
+	 */
+	endpoint_type remote_endpoint () const
+	{
+		return remote_endpoint(throw_on_error("basic_socket::remote_endpoint"));
+	}
+
+
 protected:
 
 	/**

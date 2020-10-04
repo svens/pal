@@ -106,6 +106,25 @@ void socket::local_endpoint (
 }
 
 
+void socket::remote_endpoint (
+	void *endpoint,
+	size_t *endpoint_size,
+	std::error_code &error) const noexcept
+{
+	auto size = static_cast<socklen_t>(*endpoint_size);
+	auto result = call(::getpeername,
+		error,
+		handle,
+		static_cast<sockaddr *>(endpoint),
+		&size
+	);
+	if (result != -1)
+	{
+		*endpoint_size = size;
+	}
+}
+
+
 #elif __pal_os_windows //{{{1
 
 
@@ -284,6 +303,25 @@ void socket::local_endpoint (
 	if (result != SOCKET_ERROR)
 	{
 		error.clear();
+		*endpoint_size = size;
+	}
+}
+
+
+void socket::remote_endpoint (
+	void *endpoint,
+	size_t *endpoint_size,
+	std::error_code &error) const noexcept
+{
+	auto size = static_cast<socklen_t>(*endpoint_size);
+	auto result = call(::getpeername,
+		error,
+		handle,
+		static_cast<sockaddr *>(endpoint),
+		&size
+	);
+	if (result != -1)
+	{
 		*endpoint_size = size;
 	}
 }

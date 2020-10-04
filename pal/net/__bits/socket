@@ -121,6 +121,12 @@ struct socket
 		size_t *endpoint_size,
 		std::error_code &error
 	) const noexcept;
+
+	void remote_endpoint (
+		void *endpoint,
+		size_t *endpoint_size,
+		std::error_code &error
+	) const noexcept;
 };
 
 
