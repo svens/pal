@@ -140,7 +140,26 @@ public:
 	 */
 	void close ()
 	{
-		close(throw_on_error("basic_socket::error"));
+		close(throw_on_error("basic_socket::close"));
+	}
+
+
+	/**
+	 * Bind this socket to specified local \a endpoint. On failure, set \a error
+	 */
+	void bind (const endpoint_type &endpoint, std::error_code &error) noexcept
+	{
+		socket_.bind(endpoint.data(), endpoint.size(), error);
+	}
+
+
+	/**
+	 * Bind this socket to specified local \a endpoint. On failure, throw
+	 * std::system_error
+	 */
+	void bind (const endpoint_type &endpoint)
+	{
+		bind(endpoint, throw_on_error("basic_socket::bind"));
 	}
 
 

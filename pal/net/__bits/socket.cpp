@@ -75,6 +75,17 @@ void socket::close (std::error_code &error) noexcept
 }
 
 
+void socket::bind (const void *endpoint, size_t endpoint_size, std::error_code &error) noexcept
+{
+	call(::bind,
+		error,
+		handle,
+		static_cast<const sockaddr *>(endpoint),
+		endpoint_size
+	);
+}
+
+
 #elif __pal_os_windows //{{{1
 
 
@@ -184,6 +195,17 @@ void socket::close (std::error_code &error) noexcept
 {
 	call(::closesocket, error, handle);
 	handle = invalid_native_socket;
+}
+
+
+void socket::bind (const void *endpoint, size_t endpoint_size, std::error_code &error) noexcept
+{
+	call(::bind,
+		error,
+		handle,
+		static_cast<const sockaddr *>(endpoint),
+		static_cast<socklen_t>(endpoint_size)
+	);
 }
 
 

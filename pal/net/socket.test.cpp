@@ -48,6 +48,9 @@ TEMPLATE_TEST_CASE("net/socket", "", tcp_v4, tcp_v6, udp_v4, udp_v6)
 	using protocol_type = decltype(TestType::protocol());
 	using socket_type = typename protocol_type::socket;
 
+	using endpoint_type = typename socket_type::endpoint_type;
+	constexpr endpoint_type endpoint{TestType::protocol(), 3478};
+
 	SECTION("ctor")
 	{
 		socket_type socket;
@@ -64,6 +67,18 @@ TEMPLATE_TEST_CASE("net/socket", "", tcp_v4, tcp_v6, udp_v4, udp_v6)
 		CHECK_FALSE(a.is_open());
 	}
 
+	SECTION("ctor(native_handle_type)")
+	{
+		socket_type a(TestType::protocol());
+		REQUIRE(a.is_open());
+
+		socket_type b(a.native_handle());
+		CHECK(b.is_open());
+
+		// b is owner now
+		a.release();
+	}
+
 	SECTION("operator=(socket&&)")
 	{
 		socket_type a(TestType::protocol()), b;
@@ -72,6 +87,44 @@ TEMPLATE_TEST_CASE("net/socket", "", tcp_v4, tcp_v6, udp_v4, udp_v6)
 		b = std::move(a);
 		CHECK(b.is_open());
 		CHECK_FALSE(a.is_open());
+	}
+
+	SECTION("assign / release")
+	{
+		// a closed, b opened
+		socket_type a, b(TestType::protocol());;
+		CHECK(!a.is_open());
+		REQUIRE(b.is_open());
+
+		// a <- b
+		std::error_code error;
+		a.assign(b.release(), error);
+		REQUIRE(!error);
+
+		// a <- invalid
+		a.assign(pal::net::socket_base::invalid, error);
+		CHECK(error == std::errc::bad_file_descriptor);
+
+		// a <- invalid
+		CHECK_THROWS_AS(
+			a.assign(pal::net::socket_base::invalid),
+			std::system_error
+		);
+
+		// a <- reopened b
+		b.open(TestType::protocol());
+		a.assign(b.native_handle(), error);
+		CHECK(error == pal::net::socket_errc::already_open);
+
+		// a <- reopened b
+		CHECK_THROWS_AS(
+			a.assign(b.native_handle()),
+			std::system_error
+		);
+
+		// close a, a <- b
+		CHECK_NOTHROW(a.close());
+		CHECK_NOTHROW(a.assign(b.release()));
 	}
 
 	SECTION("open")
@@ -114,54 +167,28 @@ TEMPLATE_TEST_CASE("net/socket", "", tcp_v4, tcp_v6, udp_v4, udp_v6)
 		);
 	}
 
-	SECTION("assign / release")
-	{
-		// a closed, b opened
-		socket_type a, b(TestType::protocol());;
-		CHECK(!a.is_open());
-		REQUIRE(b.is_open());
+	// following tests require opened socket
+	std::error_code error;
+	socket_type socket(TestType::protocol());
+	REQUIRE(!error);
+	REQUIRE(socket.is_open());
 
-		// a <- b
-		std::error_code error;
-		a.assign(b.release(), error);
+	SECTION("bind")
+	{
+		socket.bind(endpoint, error);
 		REQUIRE(!error);
 
-		// a <- invalid
-		a.assign(pal::net::socket_base::invalid, error);
-		CHECK(error == std::errc::bad_file_descriptor);
+		socket.bind(endpoint, error);
+		CHECK(error == std::errc::invalid_argument);
 
-		// a <- invalid
 		CHECK_THROWS_AS(
-			a.assign(pal::net::socket_base::invalid),
+			socket.bind(endpoint),
 			std::system_error
 		);
 
-		// a <- reopened b
-		b.open(TestType::protocol());
-		a.assign(b.native_handle(), error);
-		CHECK(error == pal::net::socket_errc::already_open);
-
-		// a <- reopened b
-		CHECK_THROWS_AS(
-			a.assign(b.native_handle()),
-			std::system_error
-		);
-
-		// close a, a <- b
-		CHECK_NOTHROW(a.close());
-		CHECK_NOTHROW(a.assign(b.release()));
-	}
-
-	SECTION("ctor(native_handle_type)")
-	{
-		socket_type a(TestType::protocol());
-		REQUIRE(a.is_open());
-
-		socket_type b(a.native_handle());
-		CHECK(b.is_open());
-
-		// b is owner now
-		a.release();
+		socket.close();
+		socket.open(TestType::protocol());
+		CHECK_NOTHROW(socket.bind(endpoint));
 	}
 }
 

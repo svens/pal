@@ -109,6 +109,12 @@ struct socket
 	) noexcept;
 
 	void close (std::error_code &error) noexcept;
+
+	void bind (
+		const void *endpoint,
+		size_t endpoint_size,
+		std::error_code &error
+	) noexcept;
 };
 
 
