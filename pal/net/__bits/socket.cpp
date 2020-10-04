@@ -86,6 +86,25 @@ void socket::bind (const void *endpoint, size_t endpoint_size, std::error_code &
 }
 
 
+void socket::local_endpoint (
+	void *endpoint,
+	size_t *endpoint_size,
+	std::error_code &error) const noexcept
+{
+	auto size = static_cast<socklen_t>(*endpoint_size);
+	auto result = call(::getsockname,
+		error,
+		handle,
+		static_cast<sockaddr *>(endpoint),
+		&size
+	);
+	if (result != -1)
+	{
+		*endpoint_size = size;
+	}
+}
+
+
 #elif __pal_os_windows //{{{1
 
 
@@ -100,7 +119,12 @@ inline T check_result (T result, std::error_code &error) noexcept
 	}
 	else
 	{
-		error.assign(::WSAGetLastError(), std::system_category());
+		auto sys_errc = ::WSAGetLastError();
+		if (sys_errc == WSAENOTSOCK)
+		{
+			sys_errc = WSAEBADF;
+		}
+		error.assign(sys_errc, std::system_category());
 	}
 	return result;
 }
@@ -206,6 +230,25 @@ void socket::bind (const void *endpoint, size_t endpoint_size, std::error_code &
 		static_cast<const sockaddr *>(endpoint),
 		static_cast<socklen_t>(endpoint_size)
 	);
+}
+
+
+void socket::local_endpoint (
+	void *endpoint,
+	size_t *endpoint_size,
+	std::error_code &error) const noexcept
+{
+	auto size = static_cast<socklen_t>(*endpoint_size);
+	auto result = call(::getsockname,
+		error,
+		handle,
+		static_cast<sockaddr *>(endpoint),
+		&size
+	);
+	if (result != SOCKET_ERROR)
+	{
+		*endpoint_size = size;
+	}
 }
 
 

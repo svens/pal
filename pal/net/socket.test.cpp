@@ -50,6 +50,7 @@ TEMPLATE_TEST_CASE("net/socket", "", tcp_v4, tcp_v6, udp_v4, udp_v6)
 
 	using endpoint_type = typename socket_type::endpoint_type;
 	constexpr endpoint_type endpoint{TestType::protocol(), 3478};
+	constexpr endpoint_type any{TestType::protocol(), 0};
 
 	SECTION("ctor")
 	{
@@ -177,6 +178,7 @@ TEMPLATE_TEST_CASE("net/socket", "", tcp_v4, tcp_v6, udp_v4, udp_v6)
 	{
 		socket.bind(endpoint, error);
 		REQUIRE(!error);
+		CHECK(socket.local_endpoint() == endpoint);
 
 		socket.bind(endpoint, error);
 		CHECK(error == std::errc::invalid_argument);
@@ -189,6 +191,48 @@ TEMPLATE_TEST_CASE("net/socket", "", tcp_v4, tcp_v6, udp_v4, udp_v6)
 		socket.close();
 		socket.open(TestType::protocol());
 		CHECK_NOTHROW(socket.bind(endpoint));
+	}
+
+	SECTION("local_endpoint")
+	{
+		SECTION("unbound")
+		{
+			auto e = socket.local_endpoint(error);
+			if constexpr (pal::is_windows_build)
+			{
+				CHECK(error == std::errc::invalid_argument);
+				CHECK_THROWS_AS(
+					socket.local_endpoint(),
+					std::system_error
+				);
+			}
+			else
+			{
+				CHECK(!error);
+				CHECK(e == any);
+				CHECK_NOTHROW(socket.local_endpoint());
+			}
+		}
+
+		SECTION("bound")
+		{
+			socket.bind(endpoint, error);
+			REQUIRE(!error);
+			CHECK(socket.local_endpoint(error) == endpoint);
+			CHECK(!error);
+			CHECK_NOTHROW(socket.local_endpoint());
+		}
+
+		SECTION("closed")
+		{
+			socket.close();
+			socket.local_endpoint(error);
+			CHECK(error == std::errc::bad_file_descriptor);
+			CHECK_THROWS_AS(
+				socket.local_endpoint(),
+				std::system_error
+			);
+		}
 	}
 }
 
