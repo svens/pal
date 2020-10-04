@@ -10,6 +10,28 @@ TEST_CASE("net/ip/address")
 {
 	using namespace pal::net::ip;
 
+	SECTION("constexpr")
+	{
+		constexpr address a;
+		constexpr address b{a};
+		constexpr address_v4 c{address_v4::bytes_type{0,1,2,3}};
+		constexpr address d{c};
+		constexpr address_v6 e{address_v6::bytes_type{0,1,2,3,4,5,6,7,8,9,10,11,12,13,14,15}};
+		constexpr address f{e};
+		constexpr auto g = f.is_v4();
+		constexpr auto h = f.is_v6();
+		constexpr auto i = f.as_v4();
+		constexpr auto j = d.as_v6();
+		constexpr auto k = d.to_v4();
+		constexpr auto l = f.to_v6();
+		constexpr auto m = f.is_unspecified();
+		constexpr auto n = f.is_loopback();
+		constexpr auto o = f.is_multicast();
+		constexpr auto p = f.compare(d);
+		constexpr auto q = f.hash();
+		pal_test::unused(a, b, c, d, e, f, g, h, i, j, k, l, m, n, o, p, q);
+	}
+
 	SECTION("well-known addresses")
 	{
 		// V4
@@ -153,8 +175,8 @@ TEST_CASE("net/ip/address")
 			{ address_v6::any(), "::", true, false, false },
 			{ address_v4::loopback(), "127.0.0.1", false, true, false },
 			{ address_v6::loopback(), "::1", false, true, false },
-			{ address_v4({224,1,2,3}), "224.1.2.3", false, false, true },
-			{ address_v6({0xff,0,0,0,0,0,0,0,0,0,0,0,0,0,0,1}), "ff00::1", false, false, true }
+			{ address_v4{address_v4::bytes_type{224,1,2,3}}, "224.1.2.3", false, false, true },
+			{ address_v6{address_v6::bytes_type{0xff,0,0,0,0,0,0,0,0,0,0,0,0,0,0,1}}, "ff00::1", false, false, true },
 		})
 	);
 
@@ -165,17 +187,27 @@ TEST_CASE("net/ip/address")
 		CHECK(addr.is_multicast() == is_multicast);
 	}
 
-	SECTION("to_string")
+	SECTION("to_chars")
 	{
-		CHECK(addr.to_string() == c_str);
+		char buf[INET6_ADDRSTRLEN];
+		auto [p, ec] = addr.to_chars(buf, buf + sizeof(buf));
+		REQUIRE(ec == std::errc{});
+		CHECK(std::string(buf, p) == c_str);
 	}
 
 	SECTION("to_chars failure")
 	{
-		char buf[1];
-		auto [p, ec] = addr.to_chars(buf, buf + sizeof(buf));
-		CHECK(p == buf + sizeof(buf));
+		const size_t max_size = addr.to_string().size(), min_size = 0;
+		auto buf_size = GENERATE_COPY(range(min_size, max_size));
+		std::string buf(buf_size, '\0');
+		auto [p, ec] = addr.to_chars(buf.data(), buf.data() + buf.size());
 		CHECK(ec == std::errc::value_too_large);
+		CHECK(p == buf.data() + buf.size());
+	}
+
+	SECTION("to_string")
+	{
+		CHECK(addr.to_string() == c_str);
 	}
 
 	SECTION("operator<<(std::ostream)")

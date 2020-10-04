@@ -1,25 +1,54 @@
 #include <pal/net/ip/tcp>
 #include <pal/net/ip/udp>
 #include <pal/net/test>
+#include <cstring>
 #include <sstream>
 
 
 namespace {
 
 
-using tcp = pal::net::ip::tcp;
-using udp = pal::net::ip::udp;
+using namespace pal::net::ip;
 
 
 TEMPLATE_TEST_CASE("net/ip/endpoint", "", tcp, udp)
 {
 	using endpoint_type = typename TestType::endpoint;
 	using protocol_type = typename endpoint_type::protocol_type;
+	constexpr port_type port = 60000;
 
-	using address_v4 = pal::net::ip::address_v4;
-	using address_v6 = pal::net::ip::address_v6;
+	/* TODO: use family attribute in endpoint to make it truly constexpr
+	SECTION("constexpr")
+	{
+		constexpr endpoint_type a;
+		constexpr endpoint_type b(protocol_type::v4(), port);
+		constexpr endpoint_type c(address_v4::any(), port);
+		constexpr endpoint_type d(address_v6::any(), port);
 
-	constexpr pal::net::ip::port_type port = 80;
+		constexpr auto e = c.protocol();
+		constexpr auto f = d.protocol();
+
+		constexpr auto g = c.address();
+		constexpr auto h = d.address();
+
+		constexpr auto i = c.port();
+		constexpr auto j = d.port();
+
+		constexpr auto k = c.size();
+		constexpr auto l = d.size();
+
+		constexpr auto m = c.capacity();
+		constexpr auto n = d.capacity();
+
+		constexpr auto o = c.compare(d);
+		constexpr auto p = d.compare(c);
+
+		constexpr auto q = c.hash();
+		constexpr auto r = d.hash();
+
+		pal_test::unused(a, b, c, d, e, f, g, h, i, j, k, l, m, n, o, p, q, r);
+	}
+	*/
 
 	SECTION("ctor")
 	{
@@ -51,14 +80,33 @@ TEMPLATE_TEST_CASE("net/ip/endpoint", "", tcp, udp)
 		CHECK(a >= c);
 	}
 
-	auto [protocol, address, as_string] = GENERATE(
-		table<protocol_type, pal::net::ip::address, std::string>({
-		{ protocol_type::v4(), address_v4::loopback(), "127.0.0.1:80" },
-		{ protocol_type::v6(), address_v6::loopback(), "[::1]:80" },
+	using ip4 = address_v4::bytes_type;
+	using ip6 = address_v6::bytes_type;
+
+	auto [protocol, address, c_str] = GENERATE(
+		table<protocol_type, pal::net::ip::address, const char *>({
+		{
+			protocol_type::v4(),
+			address_v4::loopback(),
+			"127.0.0.1:60000"
+		},
+		{
+			protocol_type::v4(),
+			address_v4{ip4{255,255,255,255}},
+			"255.255.255.255:60000"
+		},
+		{
+			protocol_type::v6(),
+			address_v6::loopback(),
+			"[::1]:60000"
+		},
+		{
+			protocol_type::v6(),
+			address_v6{ip6{255,255,255,255,255,255,255,255,255,255,255,255,255,255,255,255}},
+			"[ffff:ffff:ffff:ffff:ffff:ffff:ffff:ffff]:60000"
+		},
 	}));
-	CAPTURE(protocol.family());
-	CAPTURE(address);
-	CAPTURE(port);
+	CAPTURE(c_str);
 
 	SECTION("ctor(protocol, port)")
 	{
@@ -160,11 +208,23 @@ TEMPLATE_TEST_CASE("net/ip/endpoint", "", tcp, udp)
 		CHECK(ep1.hash() != ep2.hash());
 	}
 
+	SECTION("to_chars")
+	{
+		endpoint_type endpoint(address, port);
+
+		CHECK(endpoint.address() == address);
+
+		char buf[INET6_ADDRSTRLEN + sizeof("[]:65535")];
+		auto [p, ec] = endpoint.to_chars(buf, buf + sizeof(buf));
+		CHECK(ec == std::errc{});
+		CHECK(std::string(buf, p) == c_str);
+	}
+
 	SECTION("to_chars failure")
 	{
 		endpoint_type endpoint(address, port);
 
-		const size_t max_size = as_string.size(), min_size = 0;
+		const size_t max_size = strlen(c_str), min_size = 0;
 		auto buf_size = GENERATE_COPY(range(min_size, max_size));
 
 		std::string buf(buf_size, '\0');
@@ -176,7 +236,7 @@ TEMPLATE_TEST_CASE("net/ip/endpoint", "", tcp, udp)
 	SECTION("to_string")
 	{
 		endpoint_type endpoint(address, port);
-		CHECK(endpoint.to_string() == as_string);
+		CHECK(endpoint.to_string() == c_str);
 	}
 
 	SECTION("ostream")
@@ -184,8 +244,7 @@ TEMPLATE_TEST_CASE("net/ip/endpoint", "", tcp, udp)
 		endpoint_type endpoint(address, port);
 		std::ostringstream oss;
 		oss << endpoint;
-		CAPTURE(oss.str().size());
-		CHECK(oss.str() == as_string);
+		CHECK(oss.str() == c_str);
 	}
 }
 

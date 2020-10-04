@@ -3,8 +3,6 @@
 #include <pal/__bits/lib>
 #include <pal/byte_order>
 #include <charconv>
-#include <stdexcept>
-#include <type_traits>
 
 #if __pal_os_linux || __pal_os_macos
 	#include <arpa/inet.h>
@@ -20,25 +18,9 @@ __pal_begin
 namespace net::ip::__bits {
 
 
-template <typename T> constexpr int inet_v = AF_UNSPEC;
-
-template<> constexpr inline int inet_v<in_addr> = AF_INET;
-template<> constexpr inline int inet_v<sockaddr_in> = AF_INET;
-
-template<> constexpr inline int inet_v<in6_addr> = AF_INET6;
-template<> constexpr inline int inet_v<sockaddr_in6> = AF_INET6;
-
-
-template <typename InAddr,
-	std::enable_if_t<
-		std::is_same_v<InAddr, in_addr> ||
-		std::is_same_v<InAddr, in6_addr>,
-		int
-	> = 0
->
-inline char *inet_ntop (const InAddr &src, char *first, char *last) noexcept
+inline char *to_text (int family, const uint8_t *bytes, char *first, char *last) noexcept
 {
-	if (::inet_ntop(inet_v<InAddr>, &src, first, last - first))
+	if (::inet_ntop(family, bytes, first, last - first))
 	{
 		while (*first)
 		{
@@ -69,9 +51,10 @@ inline char *add_port (uint16_t port, char *first, char *last) noexcept
 }
 
 
-inline char *inet_ntop (const sockaddr_in &src, char *first, char *last) noexcept
+inline char *to_text (const sockaddr_in &src, char *first, char *last) noexcept
 {
-	if ((first = inet_ntop(src.sin_addr, first, last)) != nullptr)
+	auto bytes = reinterpret_cast<const uint8_t *>(&src.sin_addr);
+	if ((first = to_text(AF_INET, bytes, first, last)) != nullptr)
 	{
 		return add_port(src.sin_port, first, last);
 	}
@@ -79,12 +62,13 @@ inline char *inet_ntop (const sockaddr_in &src, char *first, char *last) noexcep
 }
 
 
-inline char *inet_ntop (const sockaddr_in6 &src, char *first, char *last) noexcept
+inline char *to_text (const sockaddr_in6 &src, char *first, char *last) noexcept
 {
 	if (first + sizeof("[::]:1") - 1 < last)
 	{
 		*first++ = '[';
-		if ((first = inet_ntop(src.sin6_addr, first, last)) != nullptr)
+		auto bytes = reinterpret_cast<const uint8_t *>(&src.sin6_addr);
+		if ((first = to_text(AF_INET6, bytes, first, last)) != nullptr)
 		{
 			if (first + sizeof("]:1") - 1 < last)
 			{
@@ -97,10 +81,9 @@ inline char *inet_ntop (const sockaddr_in6 &src, char *first, char *last) noexce
 }
 
 
-template <typename InAddr>
-inline bool inet_pton (const char *src, InAddr &dest) noexcept
+inline bool from_text (int family, const char *src, uint8_t *bytes) noexcept
 {
-  return ::inet_pton(inet_v<InAddr>, src, &dest) == 1;
+  return ::inet_pton(family, src, bytes) == 1;
 }
 
 

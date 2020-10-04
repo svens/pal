@@ -54,18 +54,11 @@ public:
 		{
 			data_.v4.sin_family = AF_INET;
 			data_.v4.sin_port = hton(port);
-			data_.v4.sin_addr = {};
 		}
 		else
 		{
 			data_.v6.sin6_family = AF_INET6;
 			data_.v6.sin6_port = hton(port);
-			data_.v6.sin6_addr = {};
-			data_.v6.sin6_flowinfo = {};
-			data_.v6.sin6_scope_id = {};
-			#if defined(SIN6_LEN)
-				data_.v6.sin6_len = sizeof(data_.v6);
-			#endif
 		}
 	}
 
@@ -80,18 +73,19 @@ public:
 		{
 			data_.v4.sin_family = AF_INET;
 			data_.v4.sin_port = hton(port);
-			data_.v4.sin_addr = address.v4_.addr_.in;
+			data_.v4.sin_addr.s_addr = hton(address.v4_.to_uint());
 		}
 		else
 		{
 			data_.v6.sin6_family = AF_INET6;
 			data_.v6.sin6_port = hton(port);
-			data_.v6.sin6_addr = address.v6_.addr_.in;
 			data_.v6.sin6_flowinfo = {};
 			data_.v6.sin6_scope_id = {};
-			#if defined(SIN6_LEN)
-				data_.v6.sin6_len = sizeof(data_.v6);
-			#endif
+			std::copy(
+				address.v6_.bytes_.cbegin(),
+				address.v6_.bytes_.cend(),
+				&data_.v6.sin6_addr.s6_addr[0]
+			);
 		}
 	}
 
@@ -114,12 +108,18 @@ public:
 		if (is_v4())
 		{
 			a.family_ = AF_INET;
-			a.v4_.addr_.in = data_.v4.sin_addr;
+			a.v4_.bytes_ = address_v4::to_bytes(
+				ntoh(static_cast<uint32_t>(data_.v4.sin_addr.s_addr))
+			);
 		}
 		else
 		{
 			a.family_ = AF_INET6;
-			a.v6_.addr_.in = data_.v6.sin6_addr;
+			std::copy_n(
+				&data_.v6.sin6_addr.s6_addr[0],
+				a.v6_.bytes_.size(),
+				a.v6_.bytes_.begin()
+			);
 		}
 		return a;
 	}
@@ -133,12 +133,16 @@ public:
 		if (address.is_v4())
 		{
 			data_.v4.sin_family = AF_INET;
-			data_.v4.sin_addr = address.v4_.addr_.in;
+			data_.v4.sin_addr.s_addr = hton(address.v4_.to_uint());
 		}
 		else
 		{
 			data_.v6.sin6_family = AF_INET6;
-			data_.v6.sin6_addr = address.v6_.addr_.in;
+			std::copy(
+				address.v6_.bytes_.cbegin(),
+				address.v6_.bytes_.cend(),
+				&data_.v6.sin6_addr.s6_addr[0]
+			);
 		}
 	}
 
@@ -244,14 +248,14 @@ public:
 	{
 		if (is_v4())
 		{
-			if (auto end = __bits::inet_ntop(data_.v4, first, last))
+			if (auto end = __bits::to_text(data_.v4, first, last))
 			{
 				return {end, std::errc{}};
 			}
 		}
 		else
 		{
-			if (auto end = __bits::inet_ntop(data_.v6, first, last))
+			if (auto end = __bits::to_text(data_.v6, first, last))
 			{
 				return {end, std::errc{}};
 			}
@@ -330,7 +334,6 @@ private:
 		sockaddr_in v4;
 		sockaddr_in6 v6;
 	} data_;
-
 
 	constexpr bool is_v4 () const noexcept
 	{
