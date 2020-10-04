@@ -40,7 +40,7 @@ public:
 	constexpr basic_endpoint () noexcept
 		: data_{}
 	{
-		data_.sa_family = AF_INET;
+		data_.v4.sin_family = AF_INET;
 	}
 
 
@@ -48,18 +48,24 @@ public:
 	 * Construct endpoint with unspecified \a protocol family address and port 0.
 	 */
 	constexpr basic_endpoint (const protocol_type &protocol, port_type port) noexcept
+		: data_{}
 	{
 		if (protocol.family() == AF_INET)
 		{
-			v4_.sin_family = AF_INET;
-			v4_.sin_port = hton(port);
-			v4_.sin_addr = {};
+			data_.v4.sin_family = AF_INET;
+			data_.v4.sin_port = hton(port);
+			data_.v4.sin_addr = {};
 		}
 		else
 		{
-			v6_.sin6_family = AF_INET6;
-			v6_.sin6_port = hton(port);
-			v6_.sin6_addr = {};
+			data_.v6.sin6_family = AF_INET6;
+			data_.v6.sin6_port = hton(port);
+			data_.v6.sin6_addr = {};
+			data_.v6.sin6_flowinfo = {};
+			data_.v6.sin6_scope_id = {};
+			#if defined(SIN6_LEN)
+				data_.v6.sin6_len = sizeof(data_.v6);
+			#endif
 		}
 	}
 
@@ -68,18 +74,24 @@ public:
 	 * Construct endpoint with specified \a address and \a port
 	 */
 	constexpr basic_endpoint (const ip::address &address, port_type port) noexcept
+		: data_{}
 	{
-		if (address.family_ == AF_INET)
+		if (address.is_v4())
 		{
-			v4_.sin_family = AF_INET;
-			v4_.sin_port = hton(port);
-			v4_.sin_addr = address.v4_.addr_.in;
+			data_.v4.sin_family = AF_INET;
+			data_.v4.sin_port = hton(port);
+			data_.v4.sin_addr = address.v4_.addr_.in;
 		}
 		else
 		{
-			v6_.sin6_family = AF_INET6;
-			v6_.sin6_port = hton(port);
-			v6_.sin6_addr = address.v6_.addr_.in;
+			data_.v6.sin6_family = AF_INET6;
+			data_.v6.sin6_port = hton(port);
+			data_.v6.sin6_addr = address.v6_.addr_.in;
+			data_.v6.sin6_flowinfo = {};
+			data_.v6.sin6_scope_id = {};
+			#if defined(SIN6_LEN)
+				data_.v6.sin6_len = sizeof(data_.v6);
+			#endif
 		}
 	}
 
@@ -89,7 +101,7 @@ public:
 	 */
 	constexpr protocol_type protocol () const noexcept
 	{
-		return protocol_type{data_.sa_family};
+		return protocol_type{is_v4() ? AF_INET : AF_INET6};
 	}
 
 
@@ -99,15 +111,15 @@ public:
 	constexpr ip::address address () const noexcept
 	{
 		ip::address a;
-		if (data_.sa_family == AF_INET)
+		if (is_v4())
 		{
 			a.family_ = AF_INET;
-			a.v4_.addr_.in = v4_.sin_addr;
+			a.v4_.addr_.in = data_.v4.sin_addr;
 		}
 		else
 		{
 			a.family_ = AF_INET6;
-			a.v6_.addr_.in = v6_.sin6_addr;
+			a.v6_.addr_.in = data_.v6.sin6_addr;
 		}
 		return a;
 	}
@@ -118,15 +130,15 @@ public:
 	 */
 	void address (const ip::address &address) noexcept
 	{
-		if (address.family_ == AF_INET)
+		if (address.is_v4())
 		{
-			v4_.sin_family = AF_INET;
-			v4_.sin_addr = address.v4_.addr_.in;
+			data_.v4.sin_family = AF_INET;
+			data_.v4.sin_addr = address.v4_.addr_.in;
 		}
 		else
 		{
-			v6_.sin6_family = AF_INET6;
-			v6_.sin6_addr = address.v6_.addr_.in;
+			data_.v6.sin6_family = AF_INET6;
+			data_.v6.sin6_addr = address.v6_.addr_.in;
 		}
 	}
 
@@ -136,7 +148,7 @@ public:
 	 */
 	constexpr port_type port () const noexcept
 	{
-		return ntoh(v4_.sin_port);
+		return ntoh(data_.v4.sin_port);
 	}
 
 
@@ -145,7 +157,7 @@ public:
 	 */
 	void port (port_type value) noexcept
 	{
-		v4_.sin_port = hton(value);
+		data_.v4.sin_port = hton(value);
 	}
 
 
@@ -173,7 +185,7 @@ public:
 	 */
 	constexpr size_t size () const noexcept
 	{
-		return data_.sa_family == AF_INET ? sizeof(v4_) : sizeof(v6_);
+		return is_v4() ? sizeof(data_.v4) : sizeof(data_.v6);
 	}
 
 
@@ -196,7 +208,7 @@ public:
 	 */
 	constexpr size_t capacity () const noexcept
 	{
-		return (std::max)({sizeof(data_), sizeof(v4_), sizeof(v6_)});
+		return sizeof(data_);
 	}
 
 
@@ -212,16 +224,16 @@ public:
 	 */
 	std::to_chars_result to_chars (char *first, char *last) const noexcept
 	{
-		if (data_.sa_family == AF_INET)
+		if (is_v4())
 		{
-			if (auto end = __bits::inet_ntop(v4_, first, last))
+			if (auto end = __bits::inet_ntop(data_.v4, first, last))
 			{
 				return {end, std::errc{}};
 			}
 		}
 		else
 		{
-			if (auto end = __bits::inet_ntop(v6_, first, last))
+			if (auto end = __bits::inet_ntop(data_.v6, first, last))
 			{
 				return {end, std::errc{}};
 			}
@@ -249,24 +261,24 @@ public:
 	 */
 	constexpr int compare (const basic_endpoint &that) const noexcept
 	{
-		if (auto r = data_.sa_family - that.data_.sa_family)
+		if (auto r = data_.v4.sin_family - that.data_.v4.sin_family)
 		{
 			return r;
 		}
-		else if (data_.sa_family == AF_INET)
+		else if (is_v4())
 		{
-			r = v4_.sin_addr.s_addr - that.v4_.sin_addr.s_addr;
-			return r ? r : v4_.sin_port - that.v4_.sin_port;
+			r = data_.v4.sin_addr.s_addr - that.data_.v4.sin_addr.s_addr;
+			return r ? r : data_.v4.sin_port - that.data_.v4.sin_port;
 		}
 		else
 		{
-			while (r < 16 && v6_.sin6_addr.s6_addr[r] == that.v6_.sin6_addr.s6_addr[r])
+			while (r < 16 && data_.v6.sin6_addr.s6_addr[r] == that.data_.v6.sin6_addr.s6_addr[r])
 			{
 				++r;
 			}
 			return r < 16
-				? v6_.sin6_addr.s6_addr[r] - that.v6_.sin6_addr.s6_addr[r]
-				: v6_.sin6_port - that.v6_.sin6_port;
+				? data_.v6.sin6_addr.s6_addr[r] - that.data_.v6.sin6_addr.s6_addr[r]
+				: data_.v6.sin6_port - that.data_.v6.sin6_port;
 		}
 	}
 
@@ -276,18 +288,18 @@ public:
 	 */
 	constexpr uint64_t hash () const noexcept
 	{
-		if (data_.sa_family == AF_INET)
+		if (is_v4())
 		{
 			return hash_128_to_64(AF_INET,
-				hash_128_to_64(v4_.sin_port, v4_.sin_addr.s_addr)
+				hash_128_to_64(data_.v4.sin_port, data_.v4.sin_addr.s_addr)
 			);
 		}
 		else
 		{
-			auto first = &v6_.sin6_addr.s6_addr[0];
-			auto last = first + sizeof(v6_.sin6_addr.s6_addr);
+			auto first = &data_.v6.sin6_addr.s6_addr[0];
+			auto last = first + sizeof(data_.v6.sin6_addr.s6_addr);
 			return hash_128_to_64(AF_INET6,
-				hash_128_to_64(v6_.sin6_port, fnv_1a_64(first, last))
+				hash_128_to_64(data_.v6.sin6_port, fnv_1a_64(first, last))
 			);
 		}
 	}
@@ -297,10 +309,15 @@ private:
 
 	union
 	{
-		sockaddr data_;
-		sockaddr_in v4_;
-		sockaddr_in6 v6_;
-	};
+		sockaddr_in v4;
+		sockaddr_in6 v6;
+	} data_;
+
+
+	constexpr bool is_v4 () const noexcept
+	{
+		return data_.v4.sin_family == AF_INET;
+	}
 };
 
 
