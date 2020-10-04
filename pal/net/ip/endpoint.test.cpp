@@ -133,7 +133,14 @@ TEMPLATE_TEST_CASE("net/ip/endpoint", "", tcp, udp)
 	SECTION("resize")
 	{
 		endpoint_type endpoint(protocol, port);
+
+		std::error_code error;
+		endpoint.resize(endpoint.size(), error);
+		CHECK(!error);
 		CHECK_NOTHROW(endpoint.resize(endpoint.size()));
+
+		endpoint.resize(endpoint.size() * 2, error);
+		CHECK(error == pal::net::socket_errc::address_length_error);
 		CHECK_THROWS_AS(
 			endpoint.resize(endpoint.size() * 2),
 			std::length_error

@@ -190,9 +190,27 @@ public:
 
 
 	/**
-	 * Set new size for internal socket address data structure. This is
-	 * no-op and throws \c std::length_error if \a s is different from
-	 * family's sockaddr size.
+	 * Set \a new_size for internal socket address data structure. This is
+	 * no-op and sets \a error to socket_errc::address_length_error if
+	 * \a new_size is different from protocol family's sockaddr size.
+	 */
+	void resize (size_t new_size, std::error_code &error) noexcept
+	{
+		if (new_size == size())
+		{
+			error.clear();
+		}
+		else
+		{
+			error = make_error_code(socket_errc::address_length_error);
+		}
+	}
+
+
+	/**
+	 * Set \a new_size for internal socket address data structure. This is
+	 * no-op and throws \c std::length_error if \a new_size is different
+	 * from family's sockaddr size.
 	 */
 	void resize (size_t new_size)
 	{

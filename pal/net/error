@@ -18,7 +18,8 @@ namespace net {
 
 #define __pal_net_socket_errc(Impl) \
 	Impl(__0, "internal placeholder for not an error") \
-	Impl(already_open, "already open")
+	Impl(already_open, "already open") \
+	Impl(address_length_error, "address length error")
 
 
 /**
