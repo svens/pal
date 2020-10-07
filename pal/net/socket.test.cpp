@@ -245,6 +245,39 @@ TEMPLATE_TEST_CASE("net/socket", "", tcp_v4, tcp_v6, udp_v4, udp_v6)
 		}
 	}
 
+	SECTION("shutdown")
+	{
+		auto what = GENERATE(
+			pal::net::socket_base::shutdown_receive,
+			pal::net::socket_base::shutdown_send,
+			pal::net::socket_base::shutdown_both
+		);
+
+		SECTION("not connected")
+		{
+			if constexpr (std::is_same_v<protocol_type, pal::net::ip::tcp>)
+			{
+				socket.shutdown(what, error);
+				CHECK(error == std::errc::not_connected);
+				CHECK_THROWS_AS(
+					socket.shutdown(what),
+					std::system_error
+				);
+			}
+		}
+
+		SECTION("closed")
+		{
+			socket.close();
+			socket.shutdown(what, error);
+			CHECK(error == std::errc::bad_file_descriptor);
+			CHECK_THROWS_AS(
+				socket.shutdown(what),
+				std::system_error
+			);
+		}
+	}
+
 	SECTION("local_endpoint")
 	{
 		SECTION("unbound")

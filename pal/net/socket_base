@@ -43,23 +43,23 @@ public:
 
 	/// \{
 	/// Socket shutdown types
-	using shutdown = __bits::shutdown;
+	using shutdown_type = __bits::shutdown_type;
 	/// Disable further receive operations
-	static constexpr shutdown shutdown_receive = shutdown::receive;
+	static constexpr shutdown_type shutdown_receive = shutdown_type::receive;
 	/// Disable further send operations
-	static constexpr shutdown shutdown_send = shutdown::send;
+	static constexpr shutdown_type shutdown_send = shutdown_type::send;
 	/// Disable furher send/receive operations
-	static constexpr shutdown shutdown_both = shutdown::both;
+	static constexpr shutdown_type shutdown_both = shutdown_type::both;
 	/// \}
 
 
 	/// \{
 	/// Socket state change waiting types
-	using wait = __bits::wait;
+	using wait_type = __bits::wait_type;
 	/// Wait for socket become readable
-	static constexpr wait wait_read = wait::read;
+	static constexpr wait_type wait_read = wait_type::read;
 	/// Wait for socket become writable
-	static constexpr wait wait_write = wait::write;
+	static constexpr wait_type wait_write = wait_type::write;
 	/// \}
 
 

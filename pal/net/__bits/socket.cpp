@@ -101,6 +101,12 @@ void socket::connect (
 }
 
 
+void socket::shutdown (shutdown_type what, std::error_code &error) noexcept
+{
+	call(::shutdown, error, handle, static_cast<int>(what));
+}
+
+
 void socket::local_endpoint (
 	void *endpoint,
 	size_t *endpoint_size,
@@ -278,6 +284,12 @@ void socket::connect (
 		static_cast<const sockaddr *>(endpoint),
 		static_cast<socklen_t>(endpoint_size)
 	);
+}
+
+
+void socket::shutdown (shutdown_type what, std::error_code &error) noexcept
+{
+	call(::shutdown, error, handle, static_cast<int>(what));
 }
 
 

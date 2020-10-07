@@ -193,6 +193,27 @@ public:
 
 
 	/**
+	 * Shuts down all or part of a full-duplex connection for the socket
+	 * according to combination of flags \a what. On failure, set \a error
+	 */
+	void shutdown (shutdown_type what, std::error_code &error) noexcept
+	{
+		socket_.shutdown(what, error);
+	}
+
+
+	/**
+	 * Shuts down all or part of a full-duplex connection for the socket
+	 * according to combination of flags \a what. On failure, throw
+	 * std::system_error.
+	 */
+	void shutdown (shutdown_type what)
+	{
+		socket_.shutdown(what, throw_on_error("basic_socket::shutdown"));
+	}
+
+
+	/**
 	 * Determine the locally-bound endpoint associated with the socket. On
 	 * failure, set \a error and returned endpoint value is undefined.
 	 */

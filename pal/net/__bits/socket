@@ -47,7 +47,7 @@ constexpr auto SHUT_RDWR = SD_BOTH;
 #endif //}}}1
 
 
-enum class shutdown
+enum class shutdown_type
 {
 	receive = SHUT_RD,
 	send = SHUT_WR,
@@ -55,7 +55,7 @@ enum class shutdown
 };
 
 
-enum class wait
+enum class wait_type
 {
 	read,
 	write,
@@ -119,6 +119,11 @@ struct socket
 	void connect (
 		const void *endpoint,
 		size_t endpoint_size,
+		std::error_code &error
+	) noexcept;
+
+	void shutdown (
+		shutdown_type what,
 		std::error_code &error
 	) noexcept;
 
