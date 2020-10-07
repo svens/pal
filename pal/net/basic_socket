@@ -164,6 +164,35 @@ public:
 
 
 	/**
+	 * Connect this socket to specified remote \a endpoint. If socket is
+	 * not opened, it will be opened first. On failure set \a error.
+	 */
+	void connect (const endpoint_type &endpoint, std::error_code &error) noexcept
+	{
+		if (!is_open())
+		{
+			open(endpoint.protocol(), error);
+			if (error)
+			{
+				return;
+			}
+		}
+		socket_.connect(endpoint.data(), endpoint.size(), error);
+	}
+
+
+	/**
+	 * Connect this socket to specified remote \a endpoint. If socket is
+	 * not opened, it will be opened first. On failure throw
+	 * std::system_error.
+	 */
+	void connect (const endpoint_type &endpoint)
+	{
+		connect(endpoint, throw_on_error("basic_socket::connect"));
+	}
+
+
+	/**
 	 * Determine the locally-bound endpoint associated with the socket. On
 	 * failure, set \a error and returned endpoint value is undefined.
 	 */

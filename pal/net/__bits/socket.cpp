@@ -87,6 +87,20 @@ void socket::bind (const void *endpoint, size_t endpoint_size, std::error_code &
 }
 
 
+void socket::connect (
+	const void *endpoint,
+	size_t endpoint_size,
+	std::error_code &error) noexcept
+{
+	call(::connect,
+		error,
+		handle,
+		static_cast<const sockaddr *>(endpoint),
+		endpoint_size
+	);
+}
+
+
 void socket::local_endpoint (
 	void *endpoint,
 	size_t *endpoint_size,
@@ -253,6 +267,20 @@ void socket::bind (const void *endpoint, size_t endpoint_size, std::error_code &
 }
 
 
+void socket::connect (
+	const void *endpoint,
+	size_t endpoint_size,
+	std::error_code &error) noexcept
+{
+	call(::connect,
+		error,
+		handle,
+		static_cast<const sockaddr *>(endpoint),
+		static_cast<socklen_t>(endpoint_size)
+	);
+}
+
+
 namespace {
 
 sa_family socket_address_family (native_socket handle) noexcept
@@ -272,7 +300,34 @@ sa_family socket_address_family (native_socket handle) noexcept
 	);
 }
 
+bool set_family_specific_any (native_socket handle,
+	void *endpoint,
+	socklen_t *endpoint_size) noexcept
+{
+	socklen_t size = 0;
+	auto family = socket_address_family(handle);
+	if (family == AF_INET)
+	{
+		size = sizeof(sockaddr_in);
+	}
+	else if (family == AF_INET6)
+	{
+		size = sizeof(sockaddr_in6);
+	}
+
+	if (!size || size > *endpoint_size)
+	{
+		return false;
+	}
+
+	*endpoint_size = size;
+	std::memset(endpoint, 0, size);
+	static_cast<sockaddr *>(endpoint)->sa_family = family;
+
+	return true;
 }
+
+} // namespace
 
 
 void socket::local_endpoint (
@@ -290,12 +345,9 @@ void socket::local_endpoint (
 
 	if (error == std::errc::invalid_argument)
 	{
-		// ugly and expensive, but let's keep similar to Linux/MacOS
-		auto family = socket_address_family(handle);
-		if (family == AF_INET || family == AF_INET6)
+		// expensive but necessary to keep similar to Linux/MacOS
+		if (set_family_specific_any(handle, endpoint, &size))
 		{
-			static_cast<sockaddr *>(endpoint)->sa_family = family;
-			size = family == AF_INET ? sizeof(sockaddr_in) : sizeof(sockaddr_in6);
 			result = ~SOCKET_ERROR;
 		}
 	}

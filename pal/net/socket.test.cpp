@@ -9,6 +9,8 @@ namespace {
 
 struct tcp_v4
 {
+	using address_type = pal::net::ip::address_v4;
+
 	static constexpr auto protocol () noexcept
 	{
 		return pal::net::ip::tcp::v4();
@@ -18,6 +20,8 @@ struct tcp_v4
 
 struct tcp_v6
 {
+	using address_type = pal::net::ip::address_v6;
+
 	static constexpr auto protocol () noexcept
 	{
 		return pal::net::ip::tcp::v6();
@@ -27,6 +31,8 @@ struct tcp_v6
 
 struct udp_v4
 {
+	using address_type = pal::net::ip::address_v4;
+
 	static constexpr auto protocol () noexcept
 	{
 		return pal::net::ip::udp::v4();
@@ -36,6 +42,8 @@ struct udp_v4
 
 struct udp_v6
 {
+	using address_type = pal::net::ip::address_v6;
+
 	static constexpr auto protocol () noexcept
 	{
 		return pal::net::ip::udp::v6();
@@ -49,8 +57,10 @@ TEMPLATE_TEST_CASE("net/socket", "", tcp_v4, tcp_v6, udp_v4, udp_v6)
 	using socket_type = typename protocol_type::socket;
 
 	using endpoint_type = typename socket_type::endpoint_type;
-	constexpr endpoint_type endpoint{TestType::protocol(), 3478};
-	constexpr endpoint_type any{TestType::protocol(), 0};
+	const endpoint_type
+		any{TestType::protocol(), 0},
+		bind_endpoint{TestType::protocol(), 3478},
+		connect_endpoint{TestType::address_type::loopback(), 3478};
 
 	SECTION("ctor")
 	{
@@ -176,21 +186,63 @@ TEMPLATE_TEST_CASE("net/socket", "", tcp_v4, tcp_v6, udp_v4, udp_v6)
 
 	SECTION("bind")
 	{
-		socket.bind(endpoint, error);
+		socket.bind(bind_endpoint, error);
 		REQUIRE(!error);
-		CHECK(socket.local_endpoint() == endpoint);
+		CHECK(socket.local_endpoint() == bind_endpoint);
 
-		socket.bind(endpoint, error);
+		socket.bind(bind_endpoint, error);
 		CHECK(error == std::errc::invalid_argument);
 
 		CHECK_THROWS_AS(
-			socket.bind(endpoint),
+			socket.bind(bind_endpoint),
 			std::system_error
 		);
 
 		socket.close();
 		socket.open(TestType::protocol());
-		CHECK_NOTHROW(socket.bind(endpoint));
+		CHECK_NOTHROW(socket.bind(bind_endpoint));
+	}
+
+	SECTION("connect")
+	{
+		SECTION("no listener")
+		{
+			socket.connect(connect_endpoint, error);
+			if constexpr (std::is_same_v<protocol_type, pal::net::ip::tcp>)
+			{
+				CHECK(error == std::errc::connection_refused);
+				CHECK_THROWS_AS(
+					socket.connect(connect_endpoint),
+					std::system_error
+				);
+			}
+			else if (std::is_same_v<protocol_type, pal::net::ip::udp>)
+			{
+				CHECK(!error);
+				CHECK_NOTHROW(socket.connect(connect_endpoint));
+				CHECK(socket.remote_endpoint() == connect_endpoint);
+			}
+		}
+
+		SECTION("closed")
+		{
+			socket.close();
+			socket.connect(connect_endpoint, error);
+			if constexpr (std::is_same_v<protocol_type, pal::net::ip::tcp>)
+			{
+				CHECK(error == std::errc::connection_refused);
+				CHECK_THROWS_AS(
+					socket.connect(connect_endpoint),
+					std::system_error
+				);
+			}
+			else if (std::is_same_v<protocol_type, pal::net::ip::udp>)
+			{
+				CHECK(!error);
+				CHECK_NOTHROW(socket.connect(connect_endpoint));
+				CHECK(socket.remote_endpoint() == connect_endpoint);
+			}
+		}
 	}
 
 	SECTION("local_endpoint")
@@ -205,9 +257,9 @@ TEMPLATE_TEST_CASE("net/socket", "", tcp_v4, tcp_v6, udp_v4, udp_v6)
 
 		SECTION("bound")
 		{
-			socket.bind(endpoint, error);
+			socket.bind(bind_endpoint, error);
 			REQUIRE(!error);
-			CHECK(socket.local_endpoint(error) == endpoint);
+			CHECK(socket.local_endpoint(error) == bind_endpoint);
 			CHECK(!error);
 			CHECK_NOTHROW(socket.local_endpoint());
 		}
