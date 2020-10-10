@@ -339,6 +339,50 @@ public:
 	}
 
 
+	/**
+	 * Get socket non-blocking mode. This setting is cached ie if it is
+	 * changed externally, library may return incorrect value.
+	 * On failure, set \a error.
+	 */
+	bool native_non_blocking (std::error_code &error) noexcept
+	{
+		return socket_.native_non_blocking(error);
+	}
+
+
+	/**
+	 * Get socket non-blocking mode. This setting is cached ie if it is
+	 * changed externally, library may return incorrect value.
+	 * On failure, throw std::system_error.
+	 */
+	bool native_non_blocking ()
+	{
+		return native_non_blocking(
+			throw_on_error("basic_socket::native_non_blocking")
+		);
+	}
+
+
+	/**
+	 * Set socket non-blocking \a mode. On failure, set \a error.
+	 */
+	void native_non_blocking (bool mode, std::error_code &error) noexcept
+	{
+		socket_.native_non_blocking(mode, error);
+	}
+
+
+	/**
+	 * Set socket non-blocking \a mode. On failure, throw std::system_error.
+	 */
+	void native_non_blocking (bool mode)
+	{
+		native_non_blocking(mode,
+			throw_on_error("basic_socket::native_non_blocking")
+		);
+	}
+
+
 protected:
 
 	/**

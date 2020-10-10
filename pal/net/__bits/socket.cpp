@@ -2,6 +2,7 @@
 #include <pal/net/__bits/socket>
 
 #if __pal_os_linux || __pal_os_macos
+	#include <fcntl.h>
 	#include <poll.h>
 	#include <sys/ioctl.h>
 	#include <unistd.h>
@@ -72,6 +73,7 @@ void socket::close (std::error_code &error) noexcept
 		if (call(::close, error, handle) == 0 || errno != EINTR)
 		{
 			handle = invalid_native_socket;
+			flags.native_non_blocking = -1;
 			return;
 		}
 	}
@@ -175,6 +177,30 @@ size_t socket::available (std::error_code &error) const noexcept
 	unsigned long value{};
 	call(::ioctl, error, handle, FIONREAD, &value);
 	return value;
+}
+
+
+bool socket::get_native_non_blocking (std::error_code &error) const noexcept
+{
+	return O_NONBLOCK & call(::fcntl, error, handle, F_GETFL, 0);
+}
+
+
+void socket::set_native_non_blocking (bool mode, std::error_code &error) noexcept
+{
+	int flags = call(::fcntl, error, handle, F_GETFL, 0);
+	if (flags > -1)
+	{
+		if (mode)
+		{
+			flags |= O_NONBLOCK;
+		}
+		else
+		{
+			flags &= ~O_NONBLOCK;
+		}
+		call(::fcntl, error, handle, F_SETFL, 0);
+	}
 }
 
 
@@ -292,6 +318,7 @@ void socket::close (std::error_code &error) noexcept
 {
 	call(::closesocket, error, handle);
 	handle = invalid_native_socket;
+	flags.native_non_blocking = -1;
 }
 
 
@@ -445,6 +472,20 @@ size_t socket::available (std::error_code &error) const noexcept
   unsigned long value{};
   call(::ioctlsocket, error, handle, FIONBIO, &value);
   return value;
+}
+
+
+bool socket::get_native_non_blocking (std::error_code &error) const noexcept
+{
+  error.assign(WSAEOPNOTSUPP, std::system_category());
+  return {};
+}
+
+
+void socket::set_native_non_blocking (bool mode, std::error_code &error) noexcept
+{
+	unsigned long arg = mode ? 1 : 0;
+	call(::ioctlsocket, error, handle, FIONBIO, &arg);
 }
 
 

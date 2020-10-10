@@ -56,6 +56,9 @@ TEMPLATE_TEST_CASE("net/socket", "", tcp_v4, tcp_v6, udp_v4, udp_v6)
 	using protocol_type = decltype(TestType::protocol());
 	using socket_type = typename protocol_type::socket;
 
+	constexpr bool is_tcp = std::is_same_v<protocol_type, pal::net::ip::tcp>;
+	constexpr bool is_udp = std::is_same_v<protocol_type, pal::net::ip::udp>;
+
 	using endpoint_type = typename socket_type::endpoint_type;
 	const endpoint_type
 		any{TestType::protocol(), 0},
@@ -208,7 +211,7 @@ TEMPLATE_TEST_CASE("net/socket", "", tcp_v4, tcp_v6, udp_v4, udp_v6)
 		SECTION("no listener")
 		{
 			socket.connect(connect_endpoint, error);
-			if constexpr (std::is_same_v<protocol_type, pal::net::ip::tcp>)
+			if constexpr (is_tcp)
 			{
 				CHECK(error == std::errc::connection_refused);
 				CHECK_THROWS_AS(
@@ -216,7 +219,7 @@ TEMPLATE_TEST_CASE("net/socket", "", tcp_v4, tcp_v6, udp_v4, udp_v6)
 					std::system_error
 				);
 			}
-			else if (std::is_same_v<protocol_type, pal::net::ip::udp>)
+			else if (is_udp)
 			{
 				CHECK(!error);
 				CHECK_NOTHROW(socket.connect(connect_endpoint));
@@ -228,7 +231,7 @@ TEMPLATE_TEST_CASE("net/socket", "", tcp_v4, tcp_v6, udp_v4, udp_v6)
 		{
 			socket.close();
 			socket.connect(connect_endpoint, error);
-			if constexpr (std::is_same_v<protocol_type, pal::net::ip::tcp>)
+			if constexpr (is_tcp)
 			{
 				CHECK(error == std::errc::connection_refused);
 				CHECK_THROWS_AS(
@@ -236,7 +239,7 @@ TEMPLATE_TEST_CASE("net/socket", "", tcp_v4, tcp_v6, udp_v4, udp_v6)
 					std::system_error
 				);
 			}
-			else if (std::is_same_v<protocol_type, pal::net::ip::udp>)
+			else if (is_udp)
 			{
 				CHECK(!error);
 				CHECK_NOTHROW(socket.connect(connect_endpoint));
@@ -252,10 +255,17 @@ TEMPLATE_TEST_CASE("net/socket", "", tcp_v4, tcp_v6, udp_v4, udp_v6)
 
 		SECTION("wait_for")
 		{
-			CHECK(socket.wait_for(socket.wait_read, 0ms, error) == none);
+			if constexpr (is_tcp)
+			{
+				CHECK(socket.wait_for(socket.wait_read, 0ms, error) == none);
+				CHECK_NOTHROW(socket.wait_for(socket.wait_read, 0ms));
+			}
+			else if (is_udp)
+			{
+				CHECK(socket.wait_for(socket.wait_write, 0ms, error) == socket.wait_write);
+				CHECK_NOTHROW(socket.wait_for(socket.wait_write, 0ms));
+			}
 			CHECK(!error);
-
-			CHECK_NOTHROW(socket.wait_for(socket.wait_read, 0ms));
 		}
 
 		SECTION("closed")
@@ -282,7 +292,7 @@ TEMPLATE_TEST_CASE("net/socket", "", tcp_v4, tcp_v6, udp_v4, udp_v6)
 
 		SECTION("not connected")
 		{
-			if constexpr (std::is_same_v<protocol_type, pal::net::ip::tcp>)
+			if constexpr (is_tcp)
 			{
 				socket.shutdown(what, error);
 				CHECK(error == std::errc::not_connected);
@@ -376,6 +386,79 @@ TEMPLATE_TEST_CASE("net/socket", "", tcp_v4, tcp_v6, udp_v4, udp_v6)
 			socket.available(error);
 			CHECK(error == std::errc::bad_file_descriptor);
 			CHECK_THROWS_AS(socket.available(), std::system_error);
+		}
+	}
+
+	SECTION("native_non_blocking")
+	{
+		if constexpr (pal::is_windows_build)
+		{
+			socket.native_non_blocking(error);
+			CHECK(error == std::errc::operation_not_supported);
+			CHECK_THROWS_AS(socket.native_non_blocking(),
+				std::system_error
+			);
+
+			socket.native_non_blocking(true, error);
+			CHECK(!error);
+			CHECK_NOTHROW(socket.native_non_blocking(true));
+
+			socket.native_non_blocking(false, error);
+			CHECK(!error);
+			CHECK_NOTHROW(socket.native_non_blocking(false));
+		}
+		else
+		{
+			// default is off
+			CHECK_FALSE(socket.native_non_blocking(error));
+			CHECK(!error);
+			CHECK_NOTHROW(socket.native_non_blocking());
+
+			// turn on
+			socket.native_non_blocking(true, error);
+			CHECK(!error);
+			CHECK_NOTHROW(socket.native_non_blocking(true));
+
+			// check it is on
+			CHECK(socket.native_non_blocking(error));
+			CHECK(!error);
+			CHECK_NOTHROW(socket.native_non_blocking());
+
+			// turn off
+			socket.native_non_blocking(false, error);
+			CHECK(!error);
+			CHECK_NOTHROW(socket.native_non_blocking(false));
+
+			// check it is off
+			CHECK_FALSE(socket.native_non_blocking(error));
+			CHECK(!error);
+			CHECK_NOTHROW(socket.native_non_blocking());
+		}
+
+		SECTION("closed")
+		{
+			socket.close();
+			socket.native_non_blocking(error);
+			if constexpr (pal::is_windows_build)
+			{
+				CHECK(error == std::errc::operation_not_supported);
+			}
+			else
+			{
+				CHECK(error == std::errc::bad_file_descriptor);
+			}
+
+			CHECK_THROWS_AS(
+				socket.native_non_blocking(),
+				std::system_error
+			);
+
+			socket.native_non_blocking(true, error);
+			CHECK(error == std::errc::bad_file_descriptor);
+			CHECK_THROWS_AS(
+				socket.native_non_blocking(true),
+				std::system_error
+			);
 		}
 	}
 }

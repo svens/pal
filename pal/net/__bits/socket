@@ -68,6 +68,11 @@ struct socket
 {
 	native_socket handle = invalid_native_socket;
 
+	struct
+	{
+		mutable int native_non_blocking: 2 = -1;
+	} flags{};
+
 	socket () = default;
 
 	socket (const socket &) = delete;
@@ -79,6 +84,7 @@ struct socket
 
 	socket (socket &&that) noexcept
 		: handle{std::exchange(that.handle, invalid_native_socket)}
+		, flags{std::exchange(that.flags, {})}
 	{ }
 
 	~socket () noexcept
@@ -101,6 +107,7 @@ struct socket
 	{
 		using std::swap;
 		swap(handle, that.handle);
+		swap(flags, that.flags);
 	}
 
 	static socket open (
@@ -147,6 +154,31 @@ struct socket
 	) const noexcept;
 
 	size_t available (std::error_code &error) const noexcept;
+
+	bool native_non_blocking (std::error_code &error) noexcept
+	{
+		if (flags.native_non_blocking == -1)
+		{
+			auto mode = get_native_non_blocking(error);
+			if (!error)
+			{
+				flags.native_non_blocking = mode;
+			}
+		}
+		return flags.native_non_blocking;
+	}
+
+	void native_non_blocking (bool mode, std::error_code &error) noexcept
+	{
+		set_native_non_blocking(mode, error);
+		if (!error)
+		{
+			flags.native_non_blocking = mode;
+		}
+	}
+
+	bool get_native_non_blocking (std::error_code &error) const noexcept;
+	void set_native_non_blocking (bool mode, std::error_code &error) noexcept;
 };
 
 
