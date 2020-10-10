@@ -319,6 +319,26 @@ public:
 	}
 
 
+	/**
+	 * Returns number of bytes that may be read without blocking. On
+	 * failure, set \a error and returned value is undefined.
+	 */
+	size_t available (std::error_code &error) const noexcept
+	{
+		return socket_.available(error);
+	}
+
+
+	/**
+	 * Returns number of bytes that may be read without blocking. On
+	 * failure, throw std::system_error.
+	 */
+	size_t available () const
+	{
+		return available(throw_on_error("basic_socket::available"));
+	}
+
+
 protected:
 
 	/**

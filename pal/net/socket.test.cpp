@@ -364,6 +364,20 @@ TEMPLATE_TEST_CASE("net/socket", "", tcp_v4, tcp_v6, udp_v4, udp_v6)
 			);
 		}
 	}
+
+	SECTION("available")
+	{
+		CHECK(socket.available(error) == 0);
+		CHECK(!error);
+
+		SECTION("closed")
+		{
+			socket.close();
+			socket.available(error);
+			CHECK(error == std::errc::bad_file_descriptor);
+			CHECK_THROWS_AS(socket.available(), std::system_error);
+		}
+	}
 }
 
 

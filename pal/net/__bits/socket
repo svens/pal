@@ -145,6 +145,8 @@ struct socket
 		size_t *endpoint_size,
 		std::error_code &error
 	) const noexcept;
+
+	size_t available (std::error_code &error) const noexcept;
 };
 
 

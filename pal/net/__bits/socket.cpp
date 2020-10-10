@@ -2,6 +2,8 @@
 #include <pal/net/__bits/socket>
 
 #if __pal_os_linux || __pal_os_macos
+	#include <poll.h>
+	#include <sys/ioctl.h>
 	#include <unistd.h>
 #elif __pal_os_windows
 	#include <mutex>
@@ -165,6 +167,14 @@ void socket::remote_endpoint (
 	{
 		*endpoint_size = size;
 	}
+}
+
+
+size_t socket::available (std::error_code &error) const noexcept
+{
+	unsigned long value{};
+	call(::ioctl, error, handle, FIONREAD, &value);
+	return value;
 }
 
 
@@ -427,6 +437,14 @@ void socket::remote_endpoint (
 	{
 		*endpoint_size = size;
 	}
+}
+
+
+size_t socket::available (std::error_code &error) const noexcept
+{
+  unsigned long value{};
+  call(::ioctlsocket, error, handle, FIONBIO, &value);
+  return value;
 }
 
 
