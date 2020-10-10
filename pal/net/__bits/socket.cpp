@@ -101,6 +101,29 @@ void socket::connect (
 }
 
 
+wait_type socket::wait (wait_type what, int timeout_ms, std::error_code &error) noexcept
+{
+	if (handle == invalid_native_socket)
+	{
+		error.assign(EBADF, std::generic_category());
+		return {};
+	}
+
+	pollfd fd{};
+	fd.fd = handle;
+	fd.events = what;
+	auto event_count = ::poll(&fd, 1, timeout_ms);
+	if (event_count > 0)
+	{
+		fd.revents &= (POLLIN | POLLOUT | POLLERR);
+		return static_cast<wait_type>(fd.revents);
+	}
+
+	check_result(event_count, error);
+	return {};
+}
+
+
 void socket::shutdown (shutdown_type what, std::error_code &error) noexcept
 {
 	call(::shutdown, error, handle, static_cast<int>(what));
@@ -284,6 +307,22 @@ void socket::connect (
 		static_cast<const sockaddr *>(endpoint),
 		static_cast<socklen_t>(endpoint_size)
 	);
+}
+
+
+wait_type socket::wait (wait_type what, int timeout_ms, std::error_code &error) noexcept
+{
+	WSAPOLLFD fd{};
+	fd.fd = handle;
+	fd.events = static_cast<SHORT>(what);
+	auto event_count = ::WSAPoll(&fd, 1, timeout_ms);
+	if (event_count > 0)
+	{
+		fd.revents &= (POLLIN | POLLOUT | POLLERR);
+		return static_cast<wait_type>(fd.revents);
+	}
+	check_result(event_count, error);
+	return {};
 }
 
 

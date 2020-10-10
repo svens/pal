@@ -245,6 +245,33 @@ TEMPLATE_TEST_CASE("net/socket", "", tcp_v4, tcp_v6, udp_v4, udp_v6)
 		}
 	}
 
+	SECTION("wait")
+	{
+		using namespace std::chrono_literals;
+		constexpr auto none = pal::net::socket_base::wait_type{};
+
+		SECTION("wait_for")
+		{
+			CHECK(socket.wait_for(socket.wait_read, 0ms, error) == none);
+			CHECK(!error);
+
+			CHECK_NOTHROW(socket.wait_for(socket.wait_read, 0ms));
+		}
+
+		SECTION("closed")
+		{
+			socket.close();
+
+			socket.wait(socket.wait_read, error);
+			CHECK(error == std::errc::bad_file_descriptor);
+
+			CHECK_THROWS_AS(
+				socket.wait(socket.wait_write),
+				std::system_error
+			);
+		}
+	}
+
 	SECTION("shutdown")
 	{
 		auto what = GENERATE(

@@ -60,6 +60,8 @@ public:
 	static constexpr wait_type wait_read = wait_type::read;
 	/// Wait for socket become writable
 	static constexpr wait_type wait_write = wait_type::write;
+	/// Wait until socket has pending error condition
+	static constexpr wait_type wait_error = wait_type::error;
 	/// \}
 
 

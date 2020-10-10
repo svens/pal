@@ -6,6 +6,7 @@
 
 #if __pal_os_linux || __pal_os_macos
 	#include <arpa/inet.h>
+	#include <poll.h>
 	#include <sys/socket.h>
 #elif __pal_os_windows
 	#include <winsock2.h>
@@ -55,10 +56,11 @@ enum class shutdown_type
 };
 
 
-enum class wait_type
+enum wait_type: int
 {
-	read,
-	write,
+	read = POLLIN,
+	write = POLLOUT,
+	error = POLLERR,
 };
 
 
@@ -119,6 +121,11 @@ struct socket
 	void connect (
 		const void *endpoint,
 		size_t endpoint_size,
+		std::error_code &error
+	) noexcept;
+
+	wait_type wait (wait_type what,
+		int timeout_ms,
 		std::error_code &error
 	) noexcept;
 

@@ -8,6 +8,7 @@
 #include <pal/__bits/lib>
 #include <pal/net/error>
 #include <pal/net/socket_base>
+#include <chrono>
 
 
 __pal_begin
@@ -189,6 +190,57 @@ public:
 	void connect (const endpoint_type &endpoint)
 	{
 		connect(endpoint, throw_on_error("basic_socket::connect"));
+	}
+
+
+	/**
+	 * Wait socket to be ready to read or write, or to have error
+	 * conditions pending. On failure, set \a error.
+	 */
+	void wait (wait_type what, std::error_code &error) noexcept
+	{
+		socket_.wait(what, -1, error);
+	}
+
+
+	/**
+	 * Wait socket to be ready to read or write, or to have error
+	 * conditions pending. On failure, throw std::system_error
+	 */
+	void wait (wait_type what)
+	{
+		wait(what, throw_on_error("basic_socket::wait"));
+	}
+
+
+	/**
+	 * Wait up to \a timeout socket to be ready to read or write, or to
+	 * have error conditions pending. On failure, set \a error.
+	 */
+	template <typename Rep, typename Period>
+	wait_type wait_for (wait_type what,
+		const std::chrono::duration<Rep, Period> &timeout,
+		std::error_code &error) noexcept
+	{
+		auto msec = std::chrono::duration_cast<std::chrono::milliseconds>(timeout);
+		return socket_.wait(what,
+			static_cast<int>(msec.count()),
+			error
+		);
+	}
+
+
+	/**
+	 * Wait up to \a timeout socket to be ready to read or write, or to
+	 * have error conditions pending. On failure, throw std::system_error
+	 */
+	template <typename Rep, typename Period>
+	wait_type wait_for (wait_type what,
+		const std::chrono::duration<Rep, Period> &timeout)
+	{
+		return wait_for(what, timeout,
+			throw_on_error("basic_socket::wait_for")
+		);
 	}
 
 
