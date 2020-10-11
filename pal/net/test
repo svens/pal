@@ -1,9 +1,55 @@
 #pragma once // -*- C++ -*-
 
+#include <pal/net/ip/udp>
+#include <pal/net/ip/tcp>
 #include <pal/test>
 
 
 namespace pal_test {
+
+
+struct tcp_v4
+{
+	using address_type = pal::net::ip::address_v4;
+
+	static constexpr auto protocol () noexcept
+	{
+		return pal::net::ip::tcp::v4();
+	}
+};
+
+
+struct tcp_v6
+{
+	using address_type = pal::net::ip::address_v6;
+
+	static constexpr auto protocol () noexcept
+	{
+		return pal::net::ip::tcp::v6();
+	}
+};
+
+
+struct udp_v4
+{
+	using address_type = pal::net::ip::address_v4;
+
+	static constexpr auto protocol () noexcept
+	{
+		return pal::net::ip::udp::v4();
+	}
+};
+
+
+struct udp_v6
+{
+	using address_type = pal::net::ip::address_v6;
+
+	static constexpr auto protocol () noexcept
+	{
+		return pal::net::ip::udp::v6();
+	}
+};
 
 
 } // namespace pal_test

@@ -7,6 +7,7 @@
 
 #include <pal/__bits/lib>
 #include <pal/net/__bits/socket>
+#include <pal/net/error>
 
 
 __pal_begin
@@ -27,6 +28,185 @@ inline const std::error_code &init () noexcept
 {
 	return __bits::init();
 }
+
+
+/**
+ * Socket option value of type \a T
+ */
+template <typename T>
+struct socket_option_value
+{
+	socket_option_value () noexcept = default;
+
+
+	/**
+	 * Constructs socket option object with \a value.
+	 */
+	explicit socket_option_value (int value) noexcept
+		: value_(value)
+	{ }
+
+
+	/**
+	 * \returns current integer value of the socket option object.
+	 */
+	int value () const noexcept
+	{
+		return value_;
+	}
+
+
+	/**
+	 * Return pointer to value storage.
+	 */
+	template <typename Protocol>
+	void *data (const Protocol &) noexcept
+	{
+		return std::addressof(value_);
+	}
+
+
+	/**
+	 * Return pointer to value storage.
+	 */
+	template <typename Protocol>
+	const void *data (const Protocol &) const noexcept
+	{
+		return std::addressof(value_);
+	}
+
+
+	/**
+	 * Return value storage size (in bytes).
+	 */
+	template <typename Protocol>
+	size_t size (const Protocol &) const noexcept
+	{
+		return sizeof(value_);
+	}
+
+
+	/**
+	 * Set new size for socket option value storage. This method is no-op
+	 * and it sets error if \a size is different from size() return value.
+	 */
+	template <typename Protocol>
+	void resize (const Protocol &, size_t size, std::error_code &error) noexcept
+	{
+		if (size == sizeof(value_))
+		{
+			error.clear();
+		}
+		else
+		{
+			error = make_error_code(socket_errc::socket_option_length_error);
+		}
+	}
+
+
+	/**
+	 * Set new size for socket option value storage. This method is no-op
+	 * and it throws std::length_error if \a size is different from size()
+	 * return value.
+	 */
+	template <typename Protocol>
+	void resize (const Protocol &, size_t size)
+	{
+		if (size != sizeof(value_))
+		{
+			throw std::length_error("socket_option::resize");
+		}
+	}
+
+
+protected:
+
+	T value_;
+};
+
+
+/**
+ * Boolean socket option value.
+ */
+template <>
+struct socket_option_value<bool>: socket_option_value<int>
+{
+public:
+
+	socket_option_value () noexcept = default;
+
+
+	/**
+	 * Constructs socket option object with \a value.
+	 */
+	explicit socket_option_value (bool value) noexcept
+		: socket_option_value<int>(value)
+	{ }
+
+
+	/**
+	 * \returns current boolean value of the socket option object.
+	 */
+	bool value () const noexcept
+	{
+		return socket_option_value<int>::value_;
+	}
+
+
+	/**
+	 * \returns value()
+	 */
+	explicit operator bool () const noexcept
+	{
+		return value();
+	}
+
+
+	/**
+	 * \returns !value()
+	 */
+	bool operator! () const noexcept
+	{
+		return !value();
+	}
+};
+
+
+template <typename T, int Level, int Name>
+struct socket_option: socket_option_value<T>
+{
+	using socket_option_value<T>::socket_option_value;
+
+
+	/**
+	 * Sets new \a value for socket option object.
+	 */
+	socket_option &operator= (T value) noexcept
+	{
+		socket_option_value<T>::value_ = value;
+		return *this;
+	}
+
+
+	/**
+	 * \returns socket option level
+	 */
+	template <typename Protocol>
+	int level (const Protocol &) const noexcept
+	{
+		return Level;
+	}
+
+
+	/**
+	 * \returns socket option name
+	 */
+	template <typename Protocol>
+	int name (const Protocol &) const noexcept
+	{
+		return Name;
+	}
+};
 
 
 /// Common socket types and constants.

@@ -1,54 +1,10 @@
 #include <pal/net/basic_socket>
-#include <pal/net/ip/tcp>
-#include <pal/net/ip/udp>
 #include <pal/net/test>
 
 
 namespace {
 
-
-struct tcp_v4
-{
-	using address_type = pal::net::ip::address_v4;
-
-	static constexpr auto protocol () noexcept
-	{
-		return pal::net::ip::tcp::v4();
-	}
-};
-
-
-struct tcp_v6
-{
-	using address_type = pal::net::ip::address_v6;
-
-	static constexpr auto protocol () noexcept
-	{
-		return pal::net::ip::tcp::v6();
-	}
-};
-
-
-struct udp_v4
-{
-	using address_type = pal::net::ip::address_v4;
-
-	static constexpr auto protocol () noexcept
-	{
-		return pal::net::ip::udp::v4();
-	}
-};
-
-
-struct udp_v6
-{
-	using address_type = pal::net::ip::address_v6;
-
-	static constexpr auto protocol () noexcept
-	{
-		return pal::net::ip::udp::v6();
-	}
-};
+using namespace pal_test;
 
 
 TEMPLATE_TEST_CASE("net/socket", "", tcp_v4, tcp_v6, udp_v4, udp_v6)
@@ -186,7 +142,6 @@ TEMPLATE_TEST_CASE("net/socket", "", tcp_v4, tcp_v6, udp_v4, udp_v6)
 	// following tests require opened socket
 	std::error_code error;
 	socket_type socket(protocol);
-	REQUIRE(!error);
 	REQUIRE(socket.is_open());
 
 	SECTION("bind")

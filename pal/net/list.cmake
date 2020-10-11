@@ -24,6 +24,7 @@ list(APPEND pal_unittests_sources
 	pal/net/init.test.cpp
 	pal/net/error.test.cpp
 	pal/net/socket.test.cpp
+	pal/net/socket_option.test.cpp
 
 	# internet
 	pal/net/ip/address.test.cpp

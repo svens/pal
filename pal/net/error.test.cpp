@@ -38,9 +38,9 @@ TEST_CASE("net/error")
 	SECTION("unknown")
 	{
 		std::error_code ec = static_cast<pal::net::socket_errc>(
-			std::numeric_limits<
+			(std::numeric_limits<
 				std::underlying_type_t<pal::net::socket_errc>
-			>::max()
+			>::max)()
 		);
 		CHECK(ec.message() == "unknown");
 		CHECK(ec.category() == pal::net::socket_category());
