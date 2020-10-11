@@ -103,6 +103,12 @@ struct socket
 		return *this;
 	}
 
+	native_socket reset (native_socket new_handle = invalid_native_socket) noexcept
+	{
+		flags.native_non_blocking = -1;
+		return std::exchange(handle, new_handle);
+	}
+
 	void swap (socket &that) noexcept
 	{
 		using std::swap;

@@ -43,7 +43,7 @@ public:
 	 */
 	native_handle_type release () noexcept
 	{
-		return std::exchange(socket_.handle, invalid);
+		return socket_.reset();
 	}
 
 
@@ -101,7 +101,7 @@ public:
 		}
 		else if (!is_open())
 		{
-			socket_.handle = handle;
+			socket_.reset(handle);
 		}
 		else
 		{
