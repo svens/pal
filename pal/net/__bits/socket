@@ -148,6 +148,7 @@ struct socket
 	) noexcept;
 
 	void local_endpoint (
+		int family,
 		void *endpoint,
 		size_t *endpoint_size,
 		std::error_code &error

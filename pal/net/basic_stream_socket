@@ -42,8 +42,8 @@ public:
 	/**
 	 * Create new socket, acquiring native_sockte.
 	 */
-	basic_stream_socket (native_handle_type handle)
-		: base(handle)
+	basic_stream_socket (const protocol_type &protocol, native_handle_type handle)
+		: base(protocol, handle)
 	{ }
 
 

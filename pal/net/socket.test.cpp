@@ -53,7 +53,9 @@ struct udp_v6
 
 TEMPLATE_TEST_CASE("net/socket", "", tcp_v4, tcp_v6, udp_v4, udp_v6)
 {
-	using protocol_type = decltype(TestType::protocol());
+	constexpr auto protocol = TestType::protocol();
+	using protocol_type = decltype(protocol);
+
 	using socket_type = typename protocol_type::socket;
 
 	constexpr bool is_tcp = std::is_same_v<protocol_type, pal::net::ip::tcp>;
@@ -61,8 +63,8 @@ TEMPLATE_TEST_CASE("net/socket", "", tcp_v4, tcp_v6, udp_v4, udp_v6)
 
 	using endpoint_type = typename socket_type::endpoint_type;
 	const endpoint_type
-		any{TestType::protocol(), 0},
-		bind_endpoint{TestType::protocol(), 3478},
+		any{protocol, 0},
+		bind_endpoint{protocol, 3478},
 		connect_endpoint{TestType::address_type::loopback(), 3478};
 
 	SECTION("ctor")
@@ -74,7 +76,7 @@ TEMPLATE_TEST_CASE("net/socket", "", tcp_v4, tcp_v6, udp_v4, udp_v6)
 
 	SECTION("ctor(socket&&)")
 	{
-		socket_type a(TestType::protocol());
+		socket_type a(protocol);
 		REQUIRE(a.is_open());
 		auto b(std::move(a));
 		CHECK(b.is_open());
@@ -83,10 +85,10 @@ TEMPLATE_TEST_CASE("net/socket", "", tcp_v4, tcp_v6, udp_v4, udp_v6)
 
 	SECTION("ctor(native_handle_type)")
 	{
-		socket_type a(TestType::protocol());
+		socket_type a(protocol);
 		REQUIRE(a.is_open());
 
-		socket_type b(a.native_handle());
+		socket_type b(protocol, a.native_handle());
 		CHECK(b.is_open());
 
 		// b is owner now
@@ -95,7 +97,7 @@ TEMPLATE_TEST_CASE("net/socket", "", tcp_v4, tcp_v6, udp_v4, udp_v6)
 
 	SECTION("operator=(socket&&)")
 	{
-		socket_type a(TestType::protocol()), b;
+		socket_type a(protocol), b;
 		REQUIRE(a.is_open());
 		CHECK_FALSE(b.is_open());
 		b = std::move(a);
@@ -106,39 +108,39 @@ TEMPLATE_TEST_CASE("net/socket", "", tcp_v4, tcp_v6, udp_v4, udp_v6)
 	SECTION("assign / release")
 	{
 		// a closed, b opened
-		socket_type a, b(TestType::protocol());;
+		socket_type a, b(protocol);
 		CHECK(!a.is_open());
 		REQUIRE(b.is_open());
 
 		// a <- b
 		std::error_code error;
-		a.assign(b.release(), error);
+		a.assign(protocol, b.release(), error);
 		REQUIRE(!error);
 
 		// a <- invalid
-		a.assign(pal::net::socket_base::invalid, error);
+		a.assign(protocol, pal::net::socket_base::invalid, error);
 		CHECK(error == std::errc::bad_file_descriptor);
 
 		// a <- invalid
 		CHECK_THROWS_AS(
-			a.assign(pal::net::socket_base::invalid),
+			a.assign(protocol, pal::net::socket_base::invalid),
 			std::system_error
 		);
 
 		// a <- reopened b
-		b.open(TestType::protocol());
-		a.assign(b.native_handle(), error);
+		b.open(protocol);
+		a.assign(protocol, b.native_handle(), error);
 		CHECK(error == pal::net::socket_errc::already_open);
 
 		// a <- reopened b
 		CHECK_THROWS_AS(
-			a.assign(b.native_handle()),
+			a.assign(protocol, b.native_handle()),
 			std::system_error
 		);
 
 		// close a, a <- b
 		CHECK_NOTHROW(a.close());
-		CHECK_NOTHROW(a.assign(b.release()));
+		CHECK_NOTHROW(a.assign(protocol, b.release()));
 	}
 
 	SECTION("open")
@@ -146,16 +148,16 @@ TEMPLATE_TEST_CASE("net/socket", "", tcp_v4, tcp_v6, udp_v4, udp_v6)
 		socket_type socket;
 
 		std::error_code error;
-		socket.open(TestType::protocol(), error);
+		socket.open(protocol, error);
 		CHECK(!error);
 		CHECK(socket.is_open());
 
-		socket.open(TestType::protocol(), error);
+		socket.open(protocol, error);
 		CHECK(error == pal::net::socket_errc::already_open);
 		CHECK(socket.is_open());
 
 		CHECK_THROWS_AS(
-			socket.open(TestType::protocol()),
+			socket.open(protocol),
 			std::system_error
 		);
 	}
@@ -163,13 +165,13 @@ TEMPLATE_TEST_CASE("net/socket", "", tcp_v4, tcp_v6, udp_v4, udp_v6)
 	SECTION("close")
 	{
 		std::error_code error;
-		socket_type socket(TestType::protocol());
+		socket_type socket(protocol);
 		REQUIRE(socket.is_open());
 
 		socket.close(error);
 		CHECK(!error);
 
-		socket.open(TestType::protocol());
+		socket.open(protocol);
 		CHECK_NOTHROW(socket.close());
 
 		socket.close(error);
@@ -183,7 +185,7 @@ TEMPLATE_TEST_CASE("net/socket", "", tcp_v4, tcp_v6, udp_v4, udp_v6)
 
 	// following tests require opened socket
 	std::error_code error;
-	socket_type socket(TestType::protocol());
+	socket_type socket(protocol);
 	REQUIRE(!error);
 	REQUIRE(socket.is_open());
 
@@ -202,7 +204,7 @@ TEMPLATE_TEST_CASE("net/socket", "", tcp_v4, tcp_v6, udp_v4, udp_v6)
 		);
 
 		socket.close();
-		socket.open(TestType::protocol());
+		socket.open(protocol);
 		CHECK_NOTHROW(socket.bind(bind_endpoint));
 	}
 

@@ -71,6 +71,7 @@ public:
 				protocol.protocol(),
 				error
 			);
+			protocol_ = protocol;
 		}
 		else
 		{
@@ -93,7 +94,9 @@ public:
 	 * Assign previously opened native socket \a handle to this socket
 	 * object. On failure, set \a error
 	 */
-	void assign (native_handle_type handle, std::error_code &error) noexcept
+	void assign (const protocol_type &protocol,
+		native_handle_type handle,
+		std::error_code &error) noexcept
 	{
 		if (handle == invalid)
 		{
@@ -102,6 +105,7 @@ public:
 		else if (!is_open())
 		{
 			socket_.reset(handle);
+			protocol_ = protocol;
 		}
 		else
 		{
@@ -114,9 +118,9 @@ public:
 	 * Assign previously opened native socket \a handle to this socket
 	 * object. On failure, throw std::system_error.
 	 */
-	void assign (native_handle_type handle)
+	void assign (const protocol_type &protocol, native_handle_type handle)
 	{
-		assign(handle, throw_on_error("basic_socket::assign"));
+		assign(protocol, handle, throw_on_error("basic_socket::assign"));
 	}
 
 
@@ -273,7 +277,7 @@ public:
 	{
 		endpoint_type endpoint;
 		size_t size = endpoint.capacity();
-		socket_.local_endpoint(endpoint.data(), &size, error);
+		socket_.local_endpoint(protocol_.family(), endpoint.data(), &size, error);
 		if (!error)
 		{
 			endpoint.resize(size, error);
@@ -390,6 +394,7 @@ protected:
 	 * \internal
 	 */
 	__bits::socket socket_{};
+	protocol_type protocol_{endpoint_type{}.protocol()};
 
 	basic_socket () noexcept = default;
 	basic_socket (basic_socket &&) noexcept = default;
@@ -401,9 +406,9 @@ protected:
 	 * Construct new socket, acquiring \a handle. On failure, throw
 	 * std::system_error.
 	 */
-	basic_socket (native_handle_type handle)
+	basic_socket (const protocol_type &protocol, native_handle_type handle)
 	{
-		assign(handle);
+		assign(protocol, handle);
 	}
 
 

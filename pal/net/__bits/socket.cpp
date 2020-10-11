@@ -135,6 +135,7 @@ void socket::shutdown (shutdown_type what, std::error_code &error) noexcept
 
 
 void socket::local_endpoint (
+	int /*family*/,
 	void *endpoint,
 	size_t *endpoint_size,
 	std::error_code &error) const noexcept
@@ -371,29 +372,11 @@ void socket::shutdown (shutdown_type what, std::error_code &error) noexcept
 
 namespace {
 
-sa_family socket_address_family (native_socket handle) noexcept
-{
-	WSAPROTOCOL_INFOW info;
-	int info_size = sizeof(info);
-
-	auto result = ::getsockopt(handle,
-		SOL_SOCKET,
-		SO_PROTOCOL_INFO,
-		reinterpret_cast<char *>(&info),
-		&info_size
-	);
-
-	return static_cast<sa_family>(
-		result != SOCKET_ERROR ? info.iAddressFamily : AF_UNSPEC
-	);
-}
-
-bool set_family_specific_any (native_socket handle,
+bool set_family_specific_any (int family,
 	void *endpoint,
 	socklen_t *endpoint_size) noexcept
 {
 	socklen_t size = 0;
-	auto family = socket_address_family(handle);
 	if (family == AF_INET)
 	{
 		size = sizeof(sockaddr_in);
@@ -410,7 +393,8 @@ bool set_family_specific_any (native_socket handle,
 
 	*endpoint_size = size;
 	std::memset(endpoint, 0, size);
-	static_cast<sockaddr *>(endpoint)->sa_family = family;
+	static_cast<sockaddr *>(endpoint)->sa_family =
+		static_cast<sa_family>(family);
 
 	return true;
 }
@@ -419,6 +403,7 @@ bool set_family_specific_any (native_socket handle,
 
 
 void socket::local_endpoint (
+	int family,
 	void *endpoint,
 	size_t *endpoint_size,
 	std::error_code &error) const noexcept
@@ -433,8 +418,9 @@ void socket::local_endpoint (
 
 	if (error == std::errc::invalid_argument)
 	{
-		// expensive but necessary to keep similar to Linux/MacOS
-		if (set_family_specific_any(handle, endpoint, &size))
+		// On Windows querying unbound socket name returns error.
+		// Align with Linux/MacOS that return any
+		if (set_family_specific_any(family, endpoint, &size))
 		{
 			result = ~SOCKET_ERROR;
 		}
