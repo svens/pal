@@ -16,16 +16,16 @@ struct protocol_and_option: Protocol
 };
 
 template <typename Option>
-using tcp_v4_with_bool = protocol_and_option<tcp_v4, Option>;
+using tcp_v4_with = protocol_and_option<tcp_v4, Option>;
 
 template <typename Option>
-using tcp_v6_with_bool = protocol_and_option<tcp_v6, Option>;
+using tcp_v6_with = protocol_and_option<tcp_v6, Option>;
 
 template <typename Option>
-using udp_v4_with_bool = protocol_and_option<udp_v4, Option>;
+using udp_v4_with = protocol_and_option<udp_v4, Option>;
 
 template <typename Option>
-using udp_v6_with_bool = protocol_and_option<udp_v6, Option>;
+using udp_v6_with = protocol_and_option<udp_v6, Option>;
 
 
 TEMPLATE_TEST_CASE("net/socket_option", "", tcp_v4, tcp_v6, udp_v4, udp_v6)
@@ -110,16 +110,22 @@ std::error_code expected_os_error (const Protocol &, const Option &) noexcept
 		{
 			return std::make_error_code(std::errc::permission_denied);
 		}
+		else if constexpr (std::is_same_v<Option, option::send_low_watermark>)
+		{
+			return std::make_error_code(std::errc::no_protocol_option);
+		}
 	}
-	else if (pal::is_macos_build)
+	else if constexpr (pal::is_macos_build)
 	{
 		// no specializations
 		// MacOS itself swallows unknown option errors
 	}
-	else if (pal::is_windows_build)
+	else if constexpr (pal::is_windows_build)
 	{
-		#if !defined(WSAENOPROTOOPT)
+		#if !__pal_os_windows
+			// not used, just to silence compilers
 			constexpr int WSAENOPROTOOPT = ENOPROTOOPT;
+			constexpr int WSAEINVAL = EINVAL;
 		#endif
 
 		if (pal_test::is_udp_v<Protocol>)
@@ -131,12 +137,20 @@ std::error_code expected_os_error (const Protocol &, const Option &) noexcept
 			{
 				return {WSAENOPROTOOPT, std::system_category()};
 			}
+			else if constexpr (
+				std::is_same_v<Option, option::receive_low_watermark> ||
+				std::is_same_v<Option, option::send_low_watermark>)
+			{
+				return {WSAEINVAL, std::system_category()};
+			}
 		}
 		else if (pal_test::is_tcp_v<Protocol>)
 		{
 			if constexpr (
 				std::is_same_v<Option, option::broadcast> ||
-				std::is_same_v<Option, option::reuse_port>)
+				std::is_same_v<Option, option::receive_low_watermark> ||
+				std::is_same_v<Option, option::reuse_port> ||
+				std::is_same_v<Option, option::send_low_watermark>)
 			{
 				return {WSAENOPROTOOPT, std::system_category()};
 			}
@@ -148,10 +162,10 @@ std::error_code expected_os_error (const Protocol &, const Option &) noexcept
 
 TEMPLATE_PRODUCT_TEST_CASE("net/socket_option", "",
 	(
-		tcp_v4_with_bool,
-		tcp_v6_with_bool,
-		udp_v4_with_bool,
-		udp_v6_with_bool
+		tcp_v4_with,
+		tcp_v6_with,
+		udp_v4_with,
+		udp_v6_with
 	),
 	(
 		option::broadcast,
@@ -185,6 +199,82 @@ TEMPLATE_PRODUCT_TEST_CASE("net/socket_option", "",
 		socket.get_option(option, error);
 		CHECK(!error);
 		CHECK(option.value() == true);
+		CHECK_NOTHROW(socket.get_option(option));
+	}
+	else
+	{
+		CHECK_THROWS_AS(
+			socket.set_option(option),
+			std::system_error
+		);
+	}
+
+	SECTION("closed")
+	{
+		socket.close();
+
+		socket.get_option(option, error);
+		CHECK(error == std::errc::bad_file_descriptor);
+		CHECK_THROWS_AS(
+			socket.get_option(option),
+			std::system_error
+		);
+
+		socket.set_option(option, error);
+		CHECK(error == std::errc::bad_file_descriptor);
+		CHECK_THROWS_AS(
+			socket.set_option(option),
+			std::system_error
+		);
+	}
+}
+
+
+TEMPLATE_PRODUCT_TEST_CASE("net/socket_option", "",
+	(
+		tcp_v4_with,
+		tcp_v6_with,
+		udp_v4_with,
+		udp_v6_with
+	),
+	(
+		option::receive_buffer_size,
+		option::receive_low_watermark,
+		option::send_buffer_size,
+		option::send_low_watermark
+	)
+)
+{
+	constexpr auto protocol = TestType::protocol();
+	using protocol_type = decltype(protocol);
+	using socket_type = typename protocol_type::socket;
+	using option_type = typename TestType::option_type;
+
+	socket_type socket(protocol);
+	REQUIRE(socket.is_open());
+
+	int value = 4096;
+	option_type option{value};
+	std::error_code error, expected_error = expected_os_error(protocol, option);
+
+	socket.set_option(option, error);
+	CHECK(error == expected_error);
+	if (!error)
+	{
+		CHECK_NOTHROW(socket.set_option(option));
+
+		option = value/2;
+		socket.get_option(option, error);
+		CHECK(!error);
+
+		if constexpr (
+			pal::is_linux_build &&
+			!std::is_same_v<option_type, option::receive_low_watermark>)
+		{
+			value *= 2;
+		}
+		CHECK(option.value() == value);
+
 		CHECK_NOTHROW(socket.get_option(option));
 	}
 	else

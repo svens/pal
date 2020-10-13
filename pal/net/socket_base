@@ -308,6 +308,28 @@ public:
 	 */
 	using reuse_port = socket_option<bool, SOL_SOCKET, SO_REUSEPORT>;
 
+	/**
+	 * Specify the size of the receive buffer associated with socket.
+	 */
+	using receive_buffer_size = socket_option<int, SOL_SOCKET, SO_RCVBUF>;
+
+	/**
+	 * Specifies the minimum number of bytes to process for socket input
+	 * operations.
+	 */
+	using receive_low_watermark = socket_option<int, SOL_SOCKET, SO_RCVLOWAT>;
+
+	/**
+	 * Specify the size of the send buffer associated with socket.
+	 */
+	using send_buffer_size = socket_option<int, SOL_SOCKET, SO_SNDBUF>;
+
+	/**
+	 * Specifies the minimum number of bytes to process for socket output
+	 * operations.
+	 */
+	using send_low_watermark = socket_option<int, SOL_SOCKET, SO_SNDLOWAT>;
+
 	/// \}
 
 
