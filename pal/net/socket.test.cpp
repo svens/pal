@@ -11,13 +11,9 @@ TEMPLATE_TEST_CASE("net/socket", "", tcp_v4, tcp_v6, udp_v4, udp_v6)
 {
 	constexpr auto protocol = TestType::protocol();
 	using protocol_type = decltype(protocol);
-
 	using socket_type = typename protocol_type::socket;
-
-	constexpr bool is_tcp = std::is_same_v<protocol_type, pal::net::ip::tcp>;
-	constexpr bool is_udp = std::is_same_v<protocol_type, pal::net::ip::udp>;
-
 	using endpoint_type = typename socket_type::endpoint_type;
+
 	const endpoint_type
 		any{protocol, 0},
 		bind_endpoint{protocol, 3478},
@@ -168,7 +164,7 @@ TEMPLATE_TEST_CASE("net/socket", "", tcp_v4, tcp_v6, udp_v4, udp_v6)
 		SECTION("no listener")
 		{
 			socket.connect(connect_endpoint, error);
-			if constexpr (is_tcp)
+			if constexpr (pal_test::is_tcp_v<protocol_type>)
 			{
 				CHECK(error == std::errc::connection_refused);
 				CHECK_THROWS_AS(
@@ -176,7 +172,7 @@ TEMPLATE_TEST_CASE("net/socket", "", tcp_v4, tcp_v6, udp_v4, udp_v6)
 					std::system_error
 				);
 			}
-			else if (is_udp)
+			else if (pal_test::is_udp_v<protocol_type>)
 			{
 				CHECK(!error);
 				CHECK_NOTHROW(socket.connect(connect_endpoint));
@@ -188,7 +184,7 @@ TEMPLATE_TEST_CASE("net/socket", "", tcp_v4, tcp_v6, udp_v4, udp_v6)
 		{
 			socket.close();
 			socket.connect(connect_endpoint, error);
-			if constexpr (is_tcp)
+			if constexpr (pal_test::is_tcp_v<protocol_type>)
 			{
 				CHECK(error == std::errc::connection_refused);
 				CHECK_THROWS_AS(
@@ -196,7 +192,7 @@ TEMPLATE_TEST_CASE("net/socket", "", tcp_v4, tcp_v6, udp_v4, udp_v6)
 					std::system_error
 				);
 			}
-			else if (is_udp)
+			else if (pal_test::is_udp_v<protocol_type>)
 			{
 				CHECK(!error);
 				CHECK_NOTHROW(socket.connect(connect_endpoint));
@@ -212,12 +208,12 @@ TEMPLATE_TEST_CASE("net/socket", "", tcp_v4, tcp_v6, udp_v4, udp_v6)
 
 		SECTION("wait_for")
 		{
-			if constexpr (is_tcp)
+			if constexpr (pal_test::is_tcp_v<protocol_type>)
 			{
 				CHECK(socket.wait_for(socket.wait_read, 0ms, error) == none);
 				CHECK_NOTHROW(socket.wait_for(socket.wait_read, 0ms));
 			}
-			else if (is_udp)
+			else if (pal_test::is_udp_v<protocol_type>)
 			{
 				CHECK(socket.wait_for(socket.wait_write, 0ms, error) == socket.wait_write);
 				CHECK_NOTHROW(socket.wait_for(socket.wait_write, 0ms));
@@ -249,7 +245,7 @@ TEMPLATE_TEST_CASE("net/socket", "", tcp_v4, tcp_v6, udp_v4, udp_v6)
 
 		SECTION("not connected")
 		{
-			if constexpr (is_tcp)
+			if constexpr (pal_test::is_tcp_v<protocol_type>)
 			{
 				socket.shutdown(what, error);
 				CHECK(error == std::errc::not_connected);
