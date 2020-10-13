@@ -387,6 +387,62 @@ public:
 	}
 
 
+	/**
+	 * Get socket \a option. On failure, set \a error.
+	 */
+	template <typename GettableSocketOption>
+	void get_option (GettableSocketOption &option, std::error_code &error) const noexcept
+	{
+		auto size = socket_.get_option(
+			option.level(protocol_),
+			option.name(protocol_),
+			option.data(protocol_),
+			option.size(protocol_),
+			error
+		);
+		if (!error)
+		{
+			option.resize(protocol_, size, error);
+		}
+	}
+
+
+	/**
+	 * Get socket \a option. On failure, throw std::system_error.
+	 */
+	template <typename GettableSocketOption>
+	void get_option (GettableSocketOption &option) const
+	{
+		get_option(option, throw_on_error("basic_socket::get_option"));
+	}
+
+
+	/**
+	 * Set socket \a option. On failure, set \a error.
+	 */
+	template <typename SettableSocketOption>
+	void set_option (const SettableSocketOption &option, std::error_code &error) noexcept
+	{
+		socket_.set_option(
+			option.level(protocol_),
+			option.name(protocol_),
+			option.data(protocol_),
+			option.size(protocol_),
+			error
+		);
+	}
+
+
+	/**
+	 * Set socket \a option. On failure, throw std::system_error.
+	 */
+	template <typename SettableSocketOption>
+	void set_option (const SettableSocketOption &option)
+	{
+		set_option(option, throw_on_error("basic_socket::set_option"));
+	}
+
+
 protected:
 
 	/**

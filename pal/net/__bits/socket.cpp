@@ -40,6 +40,20 @@ inline T check_result (T result, std::error_code &error) noexcept
 	return result;
 }
 
+bool validate_socket_option (native_socket handle, int name,
+	std::error_code &error) noexcept
+{
+	if (handle != invalid_native_socket && name > -1)
+	{
+		return true;
+	}
+	error.assign(
+		handle == invalid_native_socket ? EBADF : ENOPROTOOPT,
+		std::system_category()
+	);
+	return false;
+}
+
 } // namespace
 
 
@@ -205,6 +219,37 @@ void socket::set_native_non_blocking (bool mode, std::error_code &error) noexcep
 }
 
 
+size_t socket::get_option (
+	int level,
+	int name,
+	void *data,
+	size_t data_size,
+	std::error_code &error) const noexcept
+{
+	if (validate_socket_option(handle, name, error))
+	{
+		socklen_t size = data_size;
+		call(::getsockopt, error, handle, level, name, data, &size);
+		return size;
+	}
+	return {};
+}
+
+
+void socket::set_option (
+	int level,
+	int name,
+	const void *data,
+	size_t data_size,
+	std::error_code &error) noexcept
+{
+	if (validate_socket_option(handle, name, error))
+	{
+		call(::setsockopt, error, handle, level, name, data, data_size);
+	}
+}
+
+
 #elif __pal_os_windows //{{{1
 
 
@@ -227,6 +272,20 @@ inline T check_result (T result, std::error_code &error) noexcept
 		error.assign(sys_errc, std::system_category());
 	}
 	return result;
+}
+
+bool validate_socket_option (native_socket handle, int name,
+	std::error_code &error) noexcept
+{
+	if (handle != invalid_native_socket && name > -1)
+	{
+		return true;
+	}
+	error.assign(
+		handle == invalid_native_socket ? WSAEBADF : WSAENOPROTOOPT,
+		std::system_category()
+	);
+	return false;
 }
 
 } // namespace
@@ -472,6 +531,55 @@ void socket::set_native_non_blocking (bool mode, std::error_code &error) noexcep
 {
 	unsigned long arg = mode ? 1 : 0;
 	call(::ioctlsocket, error, handle, FIONBIO, &arg);
+}
+
+
+size_t socket::get_option (
+	int level,
+	int name,
+	void *data,
+	size_t data_size,
+	std::error_code &error) const noexcept
+{
+	if (validate_socket_option(handle, name, error))
+	{
+		auto size = static_cast<socklen_t>(data_size);
+		call(::getsockopt,
+			error,
+			handle,
+			level,
+			name,
+			static_cast<char *>(data),
+			&size
+		);
+		if (data_size == sizeof(INT) && size == sizeof(bool))
+		{
+			size = sizeof(INT);
+		}
+		return size;
+	}
+	return {};
+}
+
+
+void socket::set_option (
+	int level,
+	int name,
+	const void *data,
+	size_t data_size,
+	std::error_code &error) noexcept
+{
+	if (validate_socket_option(handle, name, error))
+	{
+		call(::setsockopt,
+			error,
+			handle,
+			level,
+			name,
+			static_cast<const char *>(data),
+			static_cast<int>(data_size)
+		);
+	}
 }
 
 

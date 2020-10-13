@@ -48,6 +48,11 @@ constexpr auto SHUT_RDWR = SD_BOTH;
 #endif //}}}1
 
 
+#if !defined(SO_REUSEPORT)
+	#define SO_REUSEPORT (-1)
+#endif
+
+
 enum class shutdown_type
 {
 	receive = SHUT_RD,
@@ -186,6 +191,22 @@ struct socket
 
 	bool get_native_non_blocking (std::error_code &error) const noexcept;
 	void set_native_non_blocking (bool mode, std::error_code &error) noexcept;
+
+	size_t get_option (
+		int level,
+		int name,
+		void *data,
+		size_t data_size,
+		std::error_code &error
+	) const noexcept;
+
+	void set_option (
+		int level,
+		int name,
+		const void *data,
+		size_t data_size,
+		std::error_code &error
+	) noexcept;
 };
 
 

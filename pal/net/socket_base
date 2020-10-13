@@ -249,16 +249,66 @@ public:
 	/// Bitmask flags for send/receive functions
 	using message_flags = __bits::message_flags;
 	/// Leave received data in queue
-	static constexpr message_flags peek = MSG_PEEK;
+	static constexpr message_flags message_peek = MSG_PEEK;
 	/// Out-of-band data
-	static constexpr message_flags out_of_band = MSG_OOB;
+	static constexpr message_flags message_out_of_band = MSG_OOB;
 	/// Send without using routing tables
-	static constexpr message_flags do_not_route = MSG_DONTROUTE;
+	static constexpr message_flags message_do_not_route = MSG_DONTROUTE;
 	/// \}
 
 
 	/// Limit on length of queue of pending incoming connections
 	static constexpr int max_listen_connections = SOMAXCONN;
+
+
+	/// \defgroup socket_option Socket options
+	/// \{
+
+	/**
+	 * Determines whether a socket permits sending of broadcast messages,
+	 * if supported by the protocol.
+	 */
+	using broadcast = socket_option<bool, SOL_SOCKET, SO_BROADCAST>;
+
+	/**
+	 * Determines whether debugging information is recorded by the
+	 * underlying protocol.
+	 */
+	using debug = socket_option<bool, SOL_SOCKET, SO_DEBUG>;
+
+	/**
+	 * Determines whether outgoing messages bypass standard routing
+	 * facilities.
+	 */
+	using do_not_route = socket_option<bool, SOL_SOCKET, SO_DONTROUTE>;
+
+	/**
+	 * Determines whether socket permits sending of keep_alive messages,
+	 * if supported by the protocol.
+	 */
+	using keepalive = socket_option<bool, SOL_SOCKET, SO_KEEPALIVE>;
+
+	/**
+	 * Determines whether out-of-band data (also known as urgent data) is
+	 * received inline.
+	 */
+	using out_of_band_inline = socket_option<bool, SOL_SOCKET, SO_OOBINLINE>;
+
+	/**
+	 * Determines whether the validation of endpoints used for binding a
+	 * socket should allow the reuse of local endpoints, if supported by
+	 * protocol.
+	 */
+	using reuse_address = socket_option<bool, SOL_SOCKET, SO_REUSEADDR>;
+
+	/**
+	 * Determines whether the validation of ports used for binding a
+	 * socket should allow the reuse of local port, if supported by
+	 * protocol.
+	 */
+	using reuse_port = socket_option<bool, SOL_SOCKET, SO_REUSEPORT>;
+
+	/// \}
 
 
 protected:
