@@ -132,6 +132,7 @@ std::error_code expected_os_error (const Protocol &, const Option &) noexcept
 		{
 			if constexpr (
 				std::is_same_v<Option, option::keepalive> ||
+				std::is_same_v<Option, option::linger> ||
 				std::is_same_v<Option, option::out_of_band_inline> ||
 				std::is_same_v<Option, option::reuse_port>)
 			{
@@ -300,6 +301,100 @@ TEMPLATE_PRODUCT_TEST_CASE("net/socket_option", "",
 		CHECK(error == std::errc::bad_file_descriptor);
 		CHECK_THROWS_AS(
 			socket.set_option(option),
+			std::system_error
+		);
+	}
+}
+
+
+TEMPLATE_PRODUCT_TEST_CASE("net/socket_option", "",
+	(
+		tcp_v4_with,
+		tcp_v6_with,
+		udp_v4_with,
+		udp_v6_with
+	),
+	(
+		option::linger
+	)
+)
+{
+	using namespace std::chrono_literals;
+
+	constexpr auto protocol = TestType::protocol();
+	using protocol_type = decltype(protocol);
+	using socket_type = typename protocol_type::socket;
+	using option_type = typename TestType::option_type;
+
+	std::error_code error;
+
+	SECTION("methods")
+	{
+		option_type linger;
+		CHECK(linger.enabled() == false);
+		CHECK(linger.timeout() == 0s);
+
+		CHECK(linger.level(protocol) == SOL_SOCKET);
+		CHECK(linger.name(protocol) == SO_LINGER);
+		CHECK(static_cast<option_type &>(linger).data(protocol) != nullptr);
+		CHECK(static_cast<const option_type &>(linger).data(protocol) != nullptr);
+		CHECK(linger.size(protocol) == sizeof(::linger));
+
+		auto size = linger.size(protocol);
+
+		linger.resize(protocol, size, error);
+		CHECK(!error);
+
+		CHECK_NOTHROW(linger.resize(protocol, size));
+
+		linger.resize(protocol, size * 2, error);
+		CHECK(error == pal::net::socket_errc::socket_option_length_error);
+
+		CHECK_THROWS_AS(
+			linger.resize(protocol, size * 2),
+			std::length_error
+		);
+
+		linger.enabled(true);
+		linger.timeout(5s);
+		CHECK(linger.enabled() == true);
+		CHECK(linger.timeout() == 5s);
+	}
+
+	socket_type socket(protocol);
+	REQUIRE(socket.is_open());
+
+	option_type linger{true, 5s};
+	socket.set_option(linger, error);
+	CHECK(error == expected_os_error(protocol, linger));
+	if (!error)
+	{
+		CHECK_NOTHROW(socket.set_option(linger));
+
+		linger.timeout(linger.timeout() * 2);
+		socket.get_option(linger, error);
+		CHECK(!error);
+		CHECK(linger.timeout() == 5s);
+		CHECK(linger.enabled() == true);
+
+		CHECK_NOTHROW(socket.get_option(linger));
+	}
+
+	SECTION("closed")
+	{
+		socket.close();
+
+		socket.get_option(linger, error);
+		CHECK(error == std::errc::bad_file_descriptor);
+		CHECK_THROWS_AS(
+			socket.get_option(linger),
+			std::system_error
+		);
+
+		socket.set_option(linger, error);
+		CHECK(error == std::errc::bad_file_descriptor);
+		CHECK_THROWS_AS(
+			socket.set_option(linger),
 			std::system_error
 		);
 	}

@@ -17,6 +17,11 @@ __pal_begin
 namespace net {
 
 
+/**
+ * Base socket class for basic_datagram_socket<Protocol> and
+ * basic_stream_socket<Protocol> class templates. It provides functionality
+ * common to both types of socket.
+ */
 template <typename Protocol>
 class basic_socket: public socket_base
 {
@@ -446,10 +451,15 @@ public:
 protected:
 
 	/**
-	 * Log-level OS socket
+	 * Low-level OS socket
 	 * \internal
 	 */
 	__bits::socket socket_{};
+
+	/**
+	 * This socket protocol type.
+	 * \internal
+	 */
 	protocol_type protocol_{endpoint_type{}.protocol()};
 
 	basic_socket () noexcept = default;

@@ -8,6 +8,7 @@
 #include <pal/__bits/lib>
 #include <pal/net/__bits/socket>
 #include <pal/net/error>
+#include <chrono>
 
 
 __pal_begin
@@ -121,7 +122,7 @@ struct socket_option_value
 
 protected:
 
-	T value_;
+	T value_{};
 };
 
 
@@ -172,6 +173,9 @@ public:
 };
 
 
+/**
+ * Generic socket option \a Name of type T on \a Level.
+ */
 template <typename T, int Level, int Name>
 struct socket_option: socket_option_value<T>
 {
@@ -330,12 +334,72 @@ public:
 	 */
 	using send_low_watermark = socket_option<int, SOL_SOCKET, SO_SNDLOWAT>;
 
+	struct linger;
+
 	/// \}
 
 
 protected:
 
 	~socket_base () = default;
+};
+
+
+/**
+ * \ingroup socket_option
+ *
+ * Controls the behaviour when a socket is closed and unsent data is present.
+ */
+struct socket_base::linger
+	: public socket_option<::linger, SOL_SOCKET, SO_LINGER>
+{
+	linger () noexcept = default;
+
+
+	/**
+	 * Construct linger object with enabled() == \a e and timeout() == \a t
+	 */
+	linger (bool e, const std::chrono::seconds &t) noexcept
+	{
+		enabled(e);
+		timeout(t);
+	}
+
+
+	/**
+	 * \returns true if lingering is enabled.
+	 */
+	bool enabled () const noexcept
+	{
+		return value_.l_onoff;
+	}
+
+
+	/**
+	 * Sets whether lingering is enabled.
+	 */
+	void enabled (bool e) noexcept
+	{
+		value_.l_onoff = e;
+	}
+
+
+	/**
+	 * \returns lingering timeout in seconds.
+	 */
+	std::chrono::seconds timeout () const noexcept
+	{
+		return std::chrono::seconds{value_.l_linger};
+	}
+
+
+	/**
+	 * Sets lingering timeout in seconds.
+	 */
+	void timeout (const std::chrono::seconds &t) noexcept
+	{
+		value_.l_linger = static_cast<decltype(value_.l_linger)>(t.count());
+	}
 };
 
 

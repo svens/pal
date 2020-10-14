@@ -16,6 +16,10 @@ __pal_begin
 namespace net {
 
 
+/**
+ * Datagram socket that can be used to send and receive discrete messages of
+ * fixed maximum length.
+ */
 template <typename Protocol>
 class basic_datagram_socket: public basic_socket<Protocol>
 {

@@ -16,6 +16,10 @@ __pal_begin
 namespace net {
 
 
+/**
+ * Stream socket that can be used to exchange data with peer over a sequenced,
+ * reliable, bidirectional, connection-oriented byte stream.
+ */
 template <typename Protocol>
 class basic_stream_socket: public basic_socket<Protocol>
 {
