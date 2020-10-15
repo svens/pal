@@ -57,6 +57,15 @@ public:
 	basic_stream_socket (const protocol_type &protocol)
 		: base(protocol)
 	{ }
+
+
+	/**
+	 * Construct and open new socket. After construction bind to
+	 * \a endpoint. On failure, throw std::system_error.
+	 */
+	basic_stream_socket (const endpoint_type &endpoint)
+		: base(endpoint)
+	{ }
 };
 
 

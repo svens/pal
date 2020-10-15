@@ -70,13 +70,7 @@ public:
 	{
 		if (!is_open())
 		{
-			socket_ = __bits::socket::open(
-				protocol.family(),
-				protocol.type(),
-				protocol.protocol(),
-				error
-			);
-			protocol_ = protocol;
+			do_open(protocol, error);
 		}
 		else
 		{
@@ -179,15 +173,10 @@ public:
 	 */
 	void connect (const endpoint_type &endpoint, std::error_code &error) noexcept
 	{
-		if (!is_open())
+		if (is_open() || do_open(endpoint.protocol(), error))
 		{
-			open(endpoint.protocol(), error);
-			if (error)
-			{
-				return;
-			}
+			socket_.connect(endpoint.data(), endpoint.size(), error);
 		}
-		socket_.connect(endpoint.data(), endpoint.size(), error);
 	}
 
 
@@ -485,6 +474,32 @@ protected:
 	basic_socket (const protocol_type &protocol)
 	{
 		open(protocol);
+	}
+
+
+	/**
+	 * Construct and open new socket. After construction bind to \a
+	 * endpoint. On failure, throw std::system_error.
+	 */
+	basic_socket (const endpoint_type &endpoint)
+		: basic_socket(endpoint.protocol())
+	{
+		bind(endpoint);
+	}
+
+
+private:
+
+	bool do_open (const protocol_type &protocol, std::error_code &error) noexcept
+	{
+		socket_ = __bits::socket::open(
+			protocol.family(),
+			protocol.type(),
+			protocol.protocol(),
+			error
+		);
+		protocol_ = protocol;
+		return socket_.handle != invalid;
 	}
 };
 

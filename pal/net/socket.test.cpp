@@ -26,6 +26,24 @@ TEMPLATE_TEST_CASE("net/socket", "", tcp_v4, tcp_v6, udp_v4, udp_v6)
 		CHECK(socket.native_handle() == socket_type::invalid);
 	}
 
+	SECTION("ctor(protocol_type)")
+	{
+		socket_type socket(protocol);
+		CHECK(socket.is_open());
+	}
+
+	SECTION("ctor(endpoint_type)")
+	{
+		socket_type socket(bind_endpoint);
+		CHECK(socket.is_open());
+		CHECK(socket.local_endpoint() == bind_endpoint);
+
+		CHECK_THROWS_AS(
+			socket_type{bind_endpoint},
+			std::system_error
+		);
+	}
+
 	SECTION("ctor(socket&&)")
 	{
 		socket_type a(protocol);
@@ -45,6 +63,11 @@ TEMPLATE_TEST_CASE("net/socket", "", tcp_v4, tcp_v6, udp_v4, udp_v6)
 
 		// b is owner now
 		a.release();
+
+		CHECK_THROWS_AS(
+			(socket_type{protocol, pal::net::socket_base::invalid}),
+			std::system_error
+		);
 	}
 
 	SECTION("operator=(socket&&)")
