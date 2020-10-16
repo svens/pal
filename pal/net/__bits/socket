@@ -76,6 +76,7 @@ struct socket
 	struct
 	{
 		mutable int native_non_blocking: 2 = -1;
+		unsigned int enable_connection_aborted: 1 = 0;
 	} flags{};
 
 	socket () = default;
@@ -133,6 +134,11 @@ struct socket
 	void bind (
 		const void *endpoint,
 		size_t endpoint_size,
+		std::error_code &error
+	) noexcept;
+
+	void listen (
+		int backlog,
 		std::error_code &error
 	) noexcept;
 

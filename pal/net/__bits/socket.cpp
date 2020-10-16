@@ -105,6 +105,12 @@ void socket::bind (const void *endpoint, size_t endpoint_size, std::error_code &
 }
 
 
+void socket::listen (int backlog, std::error_code &error) noexcept
+{
+	call(::listen, error, handle, backlog);
+}
+
+
 void socket::connect (
 	const void *endpoint,
 	size_t endpoint_size,
@@ -390,6 +396,12 @@ void socket::bind (const void *endpoint, size_t endpoint_size, std::error_code &
 		static_cast<const sockaddr *>(endpoint),
 		static_cast<socklen_t>(endpoint_size)
 	);
+}
+
+
+void socket::listen (int backlog, std::error_code &error) noexcept
+{
+	call(::listen, error, handle, backlog);
 }
 
 

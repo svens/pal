@@ -3,6 +3,7 @@ list(APPEND pal_sources
 	pal/net/__bits/socket.cpp
 	pal/net/basic_datagram_socket
 	pal/net/basic_socket
+	pal/net/basic_socket_acceptor
 	pal/net/basic_stream_socket
 	pal/net/error
 	pal/net/error.cpp
@@ -22,6 +23,7 @@ list(APPEND pal_sources
 list(APPEND pal_unittests_sources
 	pal/net/test
 	pal/net/init.test.cpp
+	pal/net/acceptor.test.cpp
 	pal/net/error.test.cpp
 	pal/net/socket.test.cpp
 	pal/net/socket_option.test.cpp

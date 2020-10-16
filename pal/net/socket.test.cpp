@@ -58,11 +58,8 @@ TEMPLATE_TEST_CASE("net/socket", "", tcp_v4, tcp_v6, udp_v4, udp_v6)
 		socket_type a(protocol);
 		REQUIRE(a.is_open());
 
-		socket_type b(protocol, a.native_handle());
+		socket_type b(protocol, a.release());
 		CHECK(b.is_open());
-
-		// b is owner now
-		a.release();
 
 		CHECK_THROWS_AS(
 			(socket_type{protocol, pal::net::socket_base::invalid}),
@@ -145,6 +142,7 @@ TEMPLATE_TEST_CASE("net/socket", "", tcp_v4, tcp_v6, udp_v4, udp_v6)
 
 		socket.close(error);
 		CHECK(!error);
+		CHECK_FALSE(socket.is_open());
 
 		socket.open(protocol);
 		CHECK_NOTHROW(socket.close());
@@ -367,49 +365,38 @@ TEMPLATE_TEST_CASE("net/socket", "", tcp_v4, tcp_v6, udp_v4, udp_v6)
 
 	SECTION("native_non_blocking")
 	{
+		// Windows: querying non-blocking socket option is not
+		// supported at 1st; after setting, it works as expected
+
 		if constexpr (pal::is_windows_build)
 		{
-			socket.native_non_blocking(error);
-			CHECK(error == std::errc::operation_not_supported);
-			CHECK_THROWS_AS(socket.native_non_blocking(),
-				std::system_error
-			);
-
-			socket.native_non_blocking(true, error);
-			CHECK(!error);
-			CHECK_NOTHROW(socket.native_non_blocking(true));
-
 			socket.native_non_blocking(false, error);
 			CHECK(!error);
-			CHECK_NOTHROW(socket.native_non_blocking(false));
 		}
-		else
-		{
-			// default is off
-			CHECK_FALSE(socket.native_non_blocking(error));
-			CHECK(!error);
-			CHECK_NOTHROW(socket.native_non_blocking());
 
-			// turn on
-			socket.native_non_blocking(true, error);
-			CHECK(!error);
-			CHECK_NOTHROW(socket.native_non_blocking(true));
+		CHECK_FALSE(socket.native_non_blocking(error));
+		CHECK(!error);
+		CHECK_NOTHROW(socket.native_non_blocking());
 
-			// check it is on
-			CHECK(socket.native_non_blocking(error));
-			CHECK(!error);
-			CHECK_NOTHROW(socket.native_non_blocking());
+		// turn on
+		socket.native_non_blocking(true, error);
+		CHECK(!error);
+		CHECK_NOTHROW(socket.native_non_blocking(true));
 
-			// turn off
-			socket.native_non_blocking(false, error);
-			CHECK(!error);
-			CHECK_NOTHROW(socket.native_non_blocking(false));
+		// check it is on
+		CHECK(socket.native_non_blocking(error));
+		CHECK(!error);
+		CHECK_NOTHROW(socket.native_non_blocking());
 
-			// check it is off
-			CHECK_FALSE(socket.native_non_blocking(error));
-			CHECK(!error);
-			CHECK_NOTHROW(socket.native_non_blocking());
-		}
+		// turn off
+		socket.native_non_blocking(false, error);
+		CHECK(!error);
+		CHECK_NOTHROW(socket.native_non_blocking(false));
+
+		// check it is off
+		CHECK_FALSE(socket.native_non_blocking(error));
+		CHECK(!error);
+		CHECK_NOTHROW(socket.native_non_blocking());
 
 		SECTION("closed")
 		{
