@@ -229,51 +229,52 @@ TEMPLATE_TEST_CASE("net/acceptor", "", tcp_v4, tcp_v6)
 
 	SECTION("native_non_blocking")
 	{
-		// Windows: querying non-blocking socket option is not
-		// supported at 1st; after setting, it works as expected
-
 		if constexpr (pal::is_windows_build)
 		{
+			acceptor.native_non_blocking(error);
+			CHECK(error == std::errc::operation_not_supported);
+			CHECK_THROWS_AS(
+				acceptor.native_non_blocking(),
+				std::system_error
+			);
+
+			acceptor.native_non_blocking(true, error);
+			CHECK(!error);
+			CHECK_NOTHROW(acceptor.native_non_blocking(true));
+		}
+		else
+		{
+			// default is off
+			CHECK_FALSE(acceptor.native_non_blocking(error));
+			CHECK(!error);
+			CHECK_NOTHROW(acceptor.native_non_blocking());
+
+			// turn on
+			acceptor.native_non_blocking(true, error);
+			CHECK(!error);
+			CHECK_NOTHROW(acceptor.native_non_blocking(true));
+
+			// check it is on
+			CHECK(acceptor.native_non_blocking(error));
+			CHECK(!error);
+			CHECK_NOTHROW(acceptor.native_non_blocking());
+
+			// turn off
 			acceptor.native_non_blocking(false, error);
 			CHECK(!error);
+			CHECK_NOTHROW(acceptor.native_non_blocking(false));
+
+			// check it is off
+			CHECK_FALSE(acceptor.native_non_blocking(error));
+			CHECK(!error);
+			CHECK_NOTHROW(acceptor.native_non_blocking());
 		}
-
-		CHECK_FALSE(acceptor.native_non_blocking(error));
-		CHECK(!error);
-		CHECK_NOTHROW(acceptor.native_non_blocking());
-
-		// turn on
-		acceptor.native_non_blocking(true, error);
-		CHECK(!error);
-		CHECK_NOTHROW(acceptor.native_non_blocking(true));
-
-		// check it is on
-		CHECK(acceptor.native_non_blocking(error));
-		CHECK(!error);
-		CHECK_NOTHROW(acceptor.native_non_blocking());
-
-		// turn off
-		acceptor.native_non_blocking(false, error);
-		CHECK(!error);
-		CHECK_NOTHROW(acceptor.native_non_blocking(false));
-
-		// check it is off
-		CHECK_FALSE(acceptor.native_non_blocking(error));
-		CHECK(!error);
-		CHECK_NOTHROW(acceptor.native_non_blocking());
 
 		SECTION("closed")
 		{
 			acceptor.close();
 			acceptor.native_non_blocking(error);
-			if constexpr (pal::is_windows_build)
-			{
-				CHECK(error == std::errc::operation_not_supported);
-			}
-			else
-			{
-				CHECK(error == std::errc::bad_file_descriptor);
-			}
+			CHECK(error == std::errc::bad_file_descriptor);
 
 			CHECK_THROWS_AS(
 				acceptor.native_non_blocking(),

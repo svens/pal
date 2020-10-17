@@ -526,16 +526,19 @@ void socket::remote_endpoint (
 
 size_t socket::available (std::error_code &error) const noexcept
 {
-  unsigned long value{};
-  call(::ioctlsocket, error, handle, FIONBIO, &value);
-  return value;
+	unsigned long value{};
+	call(::ioctlsocket, error, handle, FIONBIO, &value);
+	return value;
 }
 
 
 bool socket::get_native_non_blocking (std::error_code &error) const noexcept
 {
-  error.assign(WSAEOPNOTSUPP, std::system_category());
-  return {};
+	error.assign(
+		handle == invalid_native_socket ? WSAEBADF : WSAEOPNOTSUPP,
+		std::system_category()
+	);
+	return {};
 }
 
 
