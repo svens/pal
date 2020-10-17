@@ -54,6 +54,24 @@ bool validate_socket_option (native_socket handle, int name,
 	return false;
 }
 
+inline void init_socket (native_socket handle) noexcept
+{
+	#if !defined(SO_NOSIGPIPE)
+		constexpr int SO_NOSIGPIPE = -1;
+	#endif
+
+	if constexpr (is_macos_build)
+	{
+		int optval = 1;
+		::setsockopt(handle,
+			SOL_SOCKET,
+			SO_NOSIGPIPE,
+			&optval,
+			sizeof(optval)
+		);
+	}
+}
+
 } // namespace
 
 
@@ -67,15 +85,10 @@ const std::error_code &init () noexcept
 socket socket::open (int domain, int type, int protocol, std::error_code &error) noexcept
 {
 	auto handle = call(::socket, error, domain, type, protocol);
-
-#if __pal_os_macos
 	if (handle != invalid_native_socket)
 	{
-		int optval = 1;
-		::setsockopt(handle, SOL_SOCKET, SO_NOSIGPIPE, &optval, sizeof(optval));
+		init_socket(handle);
 	}
-#endif
-
 	return {handle};
 }
 
@@ -122,6 +135,29 @@ void socket::connect (
 		static_cast<const sockaddr *>(endpoint),
 		endpoint_size
 	);
+}
+
+
+native_socket socket::accept (
+	void *endpoint,
+	size_t *endpoint_size,
+	std::error_code &error) noexcept
+{
+	do
+	{
+		auto new_handle = ::accept(handle,
+			static_cast<sockaddr *>(endpoint),
+			reinterpret_cast<socklen_t *>(endpoint_size)
+		);
+		if (new_handle != invalid_native_socket)
+		{
+			init_socket(new_handle);
+			error.clear();
+			return new_handle;
+		}
+	} while (errno == ECONNABORTED && !flags.enable_connection_aborted);
+
+	return check_result(invalid_native_socket, error);
 }
 
 
@@ -220,7 +256,7 @@ void socket::set_native_non_blocking (bool mode, std::error_code &error) noexcep
 		{
 			flags &= ~O_NONBLOCK;
 		}
-		call(::fcntl, error, handle, F_SETFL, 0);
+		call(::fcntl, error, handle, F_SETFL, flags);
 	}
 }
 
@@ -416,6 +452,28 @@ void socket::connect (
 		static_cast<const sockaddr *>(endpoint),
 		static_cast<socklen_t>(endpoint_size)
 	);
+}
+
+
+native_socket socket::accept (
+	void *endpoint,
+	size_t *endpoint_size,
+	std::error_code &error) noexcept
+{
+	do
+	{
+		auto new_handle = ::accept(handle,
+			static_cast<sockaddr *>(endpoint),
+			reinterpret_cast<socklen_t *>(endpoint_size)
+		);
+		if (new_handle != invalid_native_socket)
+		{
+			error.clear();
+			return new_handle;
+		}
+	} while (::WSAGetLastError() == WSAECONNABORTED && !flags.enable_connection_aborted);
+
+	return check_result(invalid_native_socket, error);
 }
 
 

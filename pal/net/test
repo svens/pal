@@ -60,4 +60,11 @@ template <typename Protocol>
 constexpr bool is_tcp_v = std::is_same_v<Protocol, pal::net::ip::tcp>;
 
 
+inline auto next_port () noexcept
+{
+	static pal::net::ip::port_type port = 1025;
+	return port++;
+}
+
+
 } // namespace pal_test

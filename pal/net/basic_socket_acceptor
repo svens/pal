@@ -259,33 +259,59 @@ public:
 	}
 
 
-#if 0
-	/// TODO
+	/**
+	 * Extract socket from the queue of pending connections of the
+	 * acceptor. On failure, set \a error.
+	 */
 	socket_type accept (std::error_code &error) noexcept
 	{
+		auto socket = socket_.accept(nullptr, 0, error);
+		if (!error)
+		{
+			return {protocol_, socket};
+		}
+		return {};
 	}
 
 
-	/// TODO
+	/**
+	 * Extract socket from the queue of pending connections of the
+	 * acceptor. On failure, throw std::system_error.
+	 */
 	socket_type accept ()
 	{
 		return accept(throw_on_error("basic_socket_acceptor::accept"));
 	}
 
 
-	/// TODO
+	/**
+	 * Extract socket from the queue of pending connections of the
+	 * acceptor and store newly accepted socket remote address into
+	 * \a endpoint. On failure, set \a error.
+	 */
 	socket_type accept (endpoint_type &endpoint, std::error_code &error) noexcept
 	{
+		auto endpoint_size = endpoint.capacity();
+		auto socket = socket_.accept(endpoint.data(), &endpoint_size, error);
+		if (!error)
+		{
+			endpoint.resize(endpoint_size);
+			return {protocol_, socket};
+		}
+		return {};
 	}
 
 
-	/// TODO
-	socket_type accept (endoint_type &endpoint)
+	/**
+	 * Extract socket from the queue of pending connections of the
+	 * acceptor and store newly accepted socket remote address into
+	 * \a endpoint. On failure, throw std::system_error
+	 */
+	socket_type accept (endpoint_type &endpoint)
 	{
 		return accept(endpoint, throw_on_error("basic_socket_acceptor::accept"));
 	}
 
-#endif
 
 
 	/**

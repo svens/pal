@@ -148,6 +148,12 @@ struct socket
 		std::error_code &error
 	) noexcept;
 
+	native_socket accept (
+		void *endpoint,
+		size_t *endpoint_size,
+		std::error_code &error
+	) noexcept;
+
 	wait_type wait (wait_type what,
 		int timeout_ms,
 		std::error_code &error

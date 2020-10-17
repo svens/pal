@@ -5,6 +5,7 @@
 namespace {
 
 using namespace pal_test;
+using namespace std::chrono_literals;
 
 
 TEMPLATE_TEST_CASE("net/acceptor", "", tcp_v4, tcp_v6)
@@ -15,9 +16,11 @@ TEMPLATE_TEST_CASE("net/acceptor", "", tcp_v4, tcp_v6)
 	using socket_type = typename protocol_type::socket;
 	using endpoint_type = typename socket_type::endpoint_type;
 
+	const auto port = next_port();
 	const endpoint_type
 		any{protocol, 0},
-		bind_endpoint{protocol, 3478};
+		bind_endpoint{protocol, port},
+		connect_endpoint{TestType::address_type::loopback(), port};
 
 	SECTION("ctor")
 	{
@@ -173,6 +176,13 @@ TEMPLATE_TEST_CASE("net/acceptor", "", tcp_v4, tcp_v6)
 	acceptor_type acceptor(protocol);
 	REQUIRE(acceptor.is_open());
 
+	auto start_listen = [&]()
+	{
+		acceptor.set_option(pal::net::socket_base::reuse_address(true));
+		acceptor.bind(bind_endpoint);
+		acceptor.listen();
+	};
+
 	SECTION("bind")
 	{
 		acceptor.bind(bind_endpoint, error);
@@ -290,6 +300,33 @@ TEMPLATE_TEST_CASE("net/acceptor", "", tcp_v4, tcp_v6)
 		}
 	}
 
+	SECTION("get_option / set_option")
+	{
+		pal::net::socket_base::reuse_address reuse_address;
+		acceptor.get_option(reuse_address);
+		CHECK(!reuse_address);
+
+		reuse_address = true;
+		acceptor.set_option(reuse_address);
+
+		reuse_address = false;
+		acceptor.get_option(reuse_address);
+		CHECK(static_cast<bool>(reuse_address));
+
+		SECTION("closed")
+		{
+			acceptor.close();
+			CHECK_THROWS_AS(
+				acceptor.get_option(reuse_address),
+				std::system_error
+			);
+			CHECK_THROWS_AS(
+				acceptor.set_option(reuse_address),
+				std::system_error
+			);
+		}
+	}
+
 	SECTION("local_endpoint")
 	{
 		SECTION("unbound")
@@ -323,12 +360,91 @@ TEMPLATE_TEST_CASE("net/acceptor", "", tcp_v4, tcp_v6)
 
 	SECTION("accept")
 	{
-		// TODO
+		socket_type a, b;
+
+		REQUIRE_NOTHROW(start_listen());
+		a.connect(connect_endpoint);
+
+		SECTION("accept(error)")
+		{
+			b = acceptor.accept(error);
+			CHECK(!error);
+		}
+
+		SECTION("accept()")
+		{
+			CHECK_NOTHROW((b = acceptor.accept()));
+		}
+
+		SECTION("accept(endpoint, error)")
+		{
+			endpoint_type endpoint;
+			b = acceptor.accept(endpoint, error);
+			CHECK(!error);
+			CHECK(endpoint == b.remote_endpoint());
+		}
+
+		SECTION("accept(endpoint)")
+		{
+			endpoint_type endpoint;
+			CHECK_NOTHROW((b = acceptor.accept(endpoint)));
+			CHECK(endpoint == b.remote_endpoint());
+		}
+
+		CHECK(b.is_open());
+		CHECK(b.remote_endpoint() == a.local_endpoint());
+		CHECK(b.local_endpoint() == a.remote_endpoint());
+	}
+
+	SECTION("accept")
+	{
+		SECTION("no connect")
+		{
+			acceptor.native_non_blocking(true);
+			REQUIRE_NOTHROW(start_listen());
+			acceptor.accept(error);
+			CHECK(error == std::errc::operation_would_block);
+		}
+
+		SECTION("closed")
+		{
+			acceptor.close();
+
+			acceptor.accept(error);
+			CHECK(error == std::errc::bad_file_descriptor);
+
+			CHECK_THROWS_AS(
+				acceptor.accept(),
+				std::system_error
+			);
+
+			endpoint_type endpoint;
+			acceptor.accept(endpoint, error);
+			CHECK(error == std::errc::bad_file_descriptor);
+
+			CHECK_THROWS_AS(
+				acceptor.accept(endpoint),
+				std::system_error
+			);
+		}
 	}
 
 	SECTION("enable_connection_aborted")
 	{
-		// TODO
+		REQUIRE_NOTHROW(start_listen());
+
+		CHECK_FALSE(acceptor.enable_connection_aborted());
+		acceptor.enable_connection_aborted(true);
+		CHECK(acceptor.enable_connection_aborted());
+
+		socket_type a;
+		a.connect(connect_endpoint);
+		a.set_option(pal::net::socket_base::linger(true, 0s));
+		a.close();
+
+		// XXX: expect ECONNABORTED with RST but does not happen
+		auto b = acceptor.accept(error);
+		CHECK(!error);
 	}
 
 	SECTION("wait")

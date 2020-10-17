@@ -14,10 +14,11 @@ TEMPLATE_TEST_CASE("net/socket", "", tcp_v4, tcp_v6, udp_v4, udp_v6)
 	using socket_type = typename protocol_type::socket;
 	using endpoint_type = typename socket_type::endpoint_type;
 
+	const auto port = next_port();
 	const endpoint_type
 		any{protocol, 0},
-		bind_endpoint{protocol, 3478},
-		connect_endpoint{TestType::address_type::loopback(), 3478};
+		bind_endpoint{protocol, port},
+		connect_endpoint{TestType::address_type::loopback(), port};
 
 	SECTION("ctor")
 	{
