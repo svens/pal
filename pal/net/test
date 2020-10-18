@@ -54,16 +54,36 @@ struct udp_v6
 
 
 template <typename Protocol>
-constexpr bool is_udp_v = std::is_same_v<Protocol, pal::net::ip::udp>;
+constexpr bool is_udp_v = std::is_base_of_v<pal::net::ip::udp, Protocol>;
 
 template <typename Protocol>
-constexpr bool is_tcp_v = std::is_same_v<Protocol, pal::net::ip::tcp>;
+constexpr bool is_tcp_v = std::is_base_of_v<pal::net::ip::tcp, Protocol>;
 
 
-inline auto next_port () noexcept
+inline pal::net::ip::port_type next_port () noexcept
 {
 	static pal::net::ip::port_type port = 1025;
 	return port++;
+}
+
+
+template <typename Protocol>
+std::pair<typename Protocol::endpoint, typename Protocol::endpoint>
+test_endpoints (const Protocol &protocol) noexcept
+{
+	typename Protocol::endpoint bind_endpoint{protocol, next_port()};
+
+	auto connect_endpoint = bind_endpoint;
+	if (bind_endpoint.address().is_v4())
+	{
+		connect_endpoint.address(pal::net::ip::address_v4::loopback());
+	}
+	else
+	{
+		connect_endpoint.address(pal::net::ip::address_v6::loopback());
+	}
+
+	return {bind_endpoint, connect_endpoint};
 }
 
 

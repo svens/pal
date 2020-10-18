@@ -48,9 +48,15 @@ constexpr auto SHUT_RDWR = SD_BOTH;
 #endif //}}}1
 
 
-#if !defined(SO_REUSEPORT)
-	#define SO_REUSEPORT (-1)
+constexpr int reuse_port =
+#if defined(SO_REUSEPORT_LB)
+	SO_REUSEPORT_LB
+#elif defined(SO_REUSEPORT)
+	SO_REUSEPORT
+#else
+	-1
 #endif
+;
 
 
 enum class shutdown_type

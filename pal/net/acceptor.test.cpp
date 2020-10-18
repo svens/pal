@@ -16,11 +16,8 @@ TEMPLATE_TEST_CASE("net/acceptor", "", tcp_v4, tcp_v6)
 	using socket_type = typename protocol_type::socket;
 	using endpoint_type = typename socket_type::endpoint_type;
 
-	const auto port = next_port();
-	const endpoint_type
-		any{protocol, 0},
-		bind_endpoint{protocol, port},
-		connect_endpoint{TestType::address_type::loopback(), port};
+	const endpoint_type any{protocol, 0};
+	auto [bind_endpoint, connect_endpoint] = test_endpoints(protocol);
 
 	SECTION("ctor")
 	{
@@ -176,15 +173,17 @@ TEMPLATE_TEST_CASE("net/acceptor", "", tcp_v4, tcp_v6)
 	acceptor_type acceptor(protocol);
 	REQUIRE(acceptor.is_open());
 
-	auto start_listen = [&]()
+	auto start_listen = [&](const auto &endpoint)
 	{
 		acceptor.set_option(pal::net::socket_base::reuse_address(true));
-		acceptor.bind(bind_endpoint);
+		acceptor.bind(endpoint);
 		acceptor.listen();
 	};
 
 	SECTION("bind")
 	{
+		bind_endpoint.port(next_port());
+
 		acceptor.bind(bind_endpoint, error);
 		REQUIRE(!error);
 		CHECK(acceptor.local_endpoint() == bind_endpoint);
@@ -362,7 +361,7 @@ TEMPLATE_TEST_CASE("net/acceptor", "", tcp_v4, tcp_v6)
 	{
 		socket_type a, b;
 
-		REQUIRE_NOTHROW(start_listen());
+		REQUIRE_NOTHROW(start_listen(bind_endpoint));
 		a.connect(connect_endpoint);
 
 		SECTION("accept(error)")
@@ -401,7 +400,7 @@ TEMPLATE_TEST_CASE("net/acceptor", "", tcp_v4, tcp_v6)
 		SECTION("no connect")
 		{
 			acceptor.native_non_blocking(true);
-			REQUIRE_NOTHROW(start_listen());
+			REQUIRE_NOTHROW(start_listen(bind_endpoint));
 			acceptor.accept(error);
 			CHECK(error == std::errc::operation_would_block);
 		}
@@ -431,7 +430,7 @@ TEMPLATE_TEST_CASE("net/acceptor", "", tcp_v4, tcp_v6)
 
 	SECTION("enable_connection_aborted")
 	{
-		REQUIRE_NOTHROW(start_listen());
+		REQUIRE_NOTHROW(start_listen(bind_endpoint));
 
 		CHECK_FALSE(acceptor.enable_connection_aborted());
 		acceptor.enable_connection_aborted(true);
@@ -449,7 +448,62 @@ TEMPLATE_TEST_CASE("net/acceptor", "", tcp_v4, tcp_v6)
 
 	SECTION("wait")
 	{
-		// TODO
+		REQUIRE_NOTHROW(start_listen(bind_endpoint));
+		acceptor.native_non_blocking(true);
+		socket_type a;
+
+		SECTION("std::error_code")
+		{
+			CHECK_FALSE(acceptor.wait_for(acceptor.wait_read, 0s, error));
+			REQUIRE(!error);
+
+			a.connect(connect_endpoint);
+
+			acceptor.wait(acceptor.wait_read, error);
+			REQUIRE(!error);
+
+			CHECK(acceptor.wait_for(acceptor.wait_read, 0s, error));
+			REQUIRE(!error);
+		}
+
+		SECTION("std::system_exception")
+		{
+			bool readable = false;
+			CHECK_NOTHROW(readable = acceptor.wait_for(acceptor.wait_read, 0s));
+			CHECK_FALSE(readable);
+
+			a.connect(connect_endpoint);
+
+			CHECK_NOTHROW(acceptor.wait(acceptor.wait_read));
+
+			CHECK_NOTHROW(readable = acceptor.wait_for(acceptor.wait_read, 0s));
+			CHECK(readable);
+		}
+
+		SECTION("closed")
+		{
+			acceptor.close();
+
+			acceptor.wait(acceptor.wait_read, error);
+			CHECK(error == std::errc::bad_file_descriptor);
+
+			CHECK_THROWS_AS(
+				acceptor.wait(acceptor.wait_read),
+				std::system_error
+			);
+
+			acceptor.wait_for(acceptor.wait_read, 0s, error);
+			CHECK(error == std::errc::bad_file_descriptor);
+
+			CHECK_THROWS_AS(
+				acceptor.wait_for(acceptor.wait_read, 0s),
+				std::system_error
+			);
+		}
+
+		// extract pending connection (if any), ignoring errors
+		acceptor.accept(error);
+		(void)error;
 	}
 }
 

@@ -310,7 +310,7 @@ public:
 	 * socket should allow the reuse of local port, if supported by
 	 * protocol.
 	 */
-	using reuse_port = socket_option<bool, SOL_SOCKET, SO_REUSEPORT>;
+	using reuse_port = socket_option<bool, SOL_SOCKET, __bits::reuse_port>;
 
 	/**
 	 * Specify the size of the receive buffer associated with socket.

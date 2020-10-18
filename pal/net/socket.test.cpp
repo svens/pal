@@ -5,6 +5,7 @@
 namespace {
 
 using namespace pal_test;
+using namespace std::chrono_literals;
 
 
 TEMPLATE_TEST_CASE("net/socket", "", tcp_v4, tcp_v6, udp_v4, udp_v6)
@@ -14,11 +15,9 @@ TEMPLATE_TEST_CASE("net/socket", "", tcp_v4, tcp_v6, udp_v4, udp_v6)
 	using socket_type = typename protocol_type::socket;
 	using endpoint_type = typename socket_type::endpoint_type;
 
-	const auto port = next_port();
-	const endpoint_type
-		any{protocol, 0},
-		bind_endpoint{protocol, port},
-		connect_endpoint{TestType::address_type::loopback(), port};
+	const endpoint_type any{protocol, 0};
+	auto [bind_endpoint, connect_endpoint] = test_endpoints(protocol);
+	CAPTURE(bind_endpoint);
 
 	SECTION("ctor")
 	{
@@ -162,6 +161,9 @@ TEMPLATE_TEST_CASE("net/socket", "", tcp_v4, tcp_v6, udp_v4, udp_v6)
 	socket_type socket(protocol);
 	REQUIRE(socket.is_open());
 
+	// doing multiple bind(2)
+	REQUIRE_NOTHROW(socket.set_option(pal::net::socket_base::reuse_address(true)));
+
 	SECTION("bind")
 	{
 		socket.bind(bind_endpoint, error);
@@ -183,30 +185,32 @@ TEMPLATE_TEST_CASE("net/socket", "", tcp_v4, tcp_v6, udp_v4, udp_v6)
 
 	SECTION("connect")
 	{
-		SECTION("no listener")
+		if constexpr (is_tcp_v<protocol_type>)
+		{
+			typename protocol_type::acceptor acceptor(bind_endpoint);
+
+			socket.connect(connect_endpoint, error);
+			CHECK(!error);
+			REQUIRE_NOTHROW((void)acceptor.accept());
+
+			CHECK_NOTHROW(socket.close());
+			CHECK_NOTHROW(socket.connect(connect_endpoint));
+			REQUIRE_NOTHROW((void)acceptor.accept());
+		}
+		else if constexpr (is_udp_v<protocol_type>)
 		{
 			socket.connect(connect_endpoint, error);
-			if constexpr (pal_test::is_tcp_v<protocol_type>)
-			{
-				CHECK(error == std::errc::connection_refused);
-				CHECK_THROWS_AS(
-					socket.connect(connect_endpoint),
-					std::system_error
-				);
-			}
-			else if (pal_test::is_udp_v<protocol_type>)
-			{
-				CHECK(!error);
-				CHECK_NOTHROW(socket.connect(connect_endpoint));
-				CHECK(socket.remote_endpoint() == connect_endpoint);
-			}
+			CHECK(!error);
+
+			CHECK_NOTHROW(socket.close());
+			CHECK_NOTHROW(socket.connect(connect_endpoint));
 		}
 
-		SECTION("closed")
+		SECTION("no listener")
 		{
 			socket.close();
 			socket.connect(connect_endpoint, error);
-			if constexpr (pal_test::is_tcp_v<protocol_type>)
+			if constexpr (is_tcp_v<protocol_type>)
 			{
 				CHECK(error == std::errc::connection_refused);
 				CHECK_THROWS_AS(
@@ -214,7 +218,7 @@ TEMPLATE_TEST_CASE("net/socket", "", tcp_v4, tcp_v6, udp_v4, udp_v6)
 					std::system_error
 				);
 			}
-			else if (pal_test::is_udp_v<protocol_type>)
+			else if (is_udp_v<protocol_type>)
 			{
 				CHECK(!error);
 				CHECK_NOTHROW(socket.connect(connect_endpoint));
@@ -225,33 +229,44 @@ TEMPLATE_TEST_CASE("net/socket", "", tcp_v4, tcp_v6, udp_v4, udp_v6)
 
 	SECTION("wait")
 	{
-		using namespace std::chrono_literals;
-		constexpr auto none = pal::net::socket_base::wait_type{};
-
-		SECTION("wait_for")
+		socket_type a;
+		if constexpr (is_tcp_v<protocol_type>)
 		{
-			if constexpr (pal_test::is_tcp_v<protocol_type>)
-			{
-				CHECK(socket.wait_for(socket.wait_read, 0ms, error) == none);
-				CHECK_NOTHROW(socket.wait_for(socket.wait_read, 0ms));
-			}
-			else if (pal_test::is_udp_v<protocol_type>)
-			{
-				CHECK(socket.wait_for(socket.wait_write, 0ms, error) == socket.wait_write);
-				CHECK_NOTHROW(socket.wait_for(socket.wait_write, 0ms));
-			}
-			CHECK(!error);
+			using acceptor_type = typename protocol_type::acceptor;
+			acceptor_type acceptor(bind_endpoint);
+			socket.connect(connect_endpoint);
+			a = acceptor.accept();
 		}
+
+		constexpr auto what = socket.wait_write;
+
+		socket.wait(what, error);
+		CHECK(!error);
+
+		CHECK_NOTHROW(socket.wait(what));
+
+		CHECK(socket.wait_for(what, 0s, error) == what);
+		CHECK(!error);
+
+		CHECK_NOTHROW(socket.wait_for(what, 0s) == what);
 
 		SECTION("closed")
 		{
 			socket.close();
 
-			socket.wait(socket.wait_read, error);
+			socket.wait(socket.wait_write, error);
 			CHECK(error == std::errc::bad_file_descriptor);
 
 			CHECK_THROWS_AS(
 				socket.wait(socket.wait_write),
+				std::system_error
+			);
+
+			socket.wait_for(socket.wait_write, 0s, error);
+			CHECK(error == std::errc::bad_file_descriptor);
+
+			CHECK_THROWS_AS(
+				socket.wait_for(socket.wait_write, 0s),
 				std::system_error
 			);
 		}
@@ -259,15 +274,37 @@ TEMPLATE_TEST_CASE("net/socket", "", tcp_v4, tcp_v6, udp_v4, udp_v6)
 
 	SECTION("shutdown")
 	{
-		auto what = GENERATE(
-			pal::net::socket_base::shutdown_receive,
-			pal::net::socket_base::shutdown_send,
-			pal::net::socket_base::shutdown_both
-		);
+		constexpr auto what = pal::net::socket_base::shutdown_both;
+
+		SECTION("connected")
+		{
+			socket_type a;
+			if constexpr (is_tcp_v<protocol_type>)
+			{
+				typename protocol_type::acceptor acceptor(bind_endpoint);
+				socket.connect(connect_endpoint);
+				a = acceptor.accept();
+			}
+			else if constexpr (is_udp_v<protocol_type>)
+			{
+				socket.connect(connect_endpoint);
+			}
+
+			SECTION("std::error_code")
+			{
+				socket.shutdown(what, error);
+				CHECK(!error);
+			}
+
+			SECTION("std::system_error")
+			{
+				CHECK_NOTHROW(socket.shutdown(what));
+			}
+		}
 
 		SECTION("not connected")
 		{
-			if constexpr (pal_test::is_tcp_v<protocol_type>)
+			if constexpr (!pal::is_windows_build || is_tcp_v<protocol_type>)
 			{
 				socket.shutdown(what, error);
 				CHECK(error == std::errc::not_connected);
@@ -325,7 +362,27 @@ TEMPLATE_TEST_CASE("net/socket", "", tcp_v4, tcp_v6, udp_v4, udp_v6)
 	{
 		SECTION("connected")
 		{
-			// tested at basic_stream_socket level, no here
+			if constexpr (is_tcp_v<protocol_type>)
+			{
+				typename protocol_type::acceptor acceptor(bind_endpoint);
+
+				socket.connect(connect_endpoint, error);
+				REQUIRE(!error);
+
+				(void)acceptor.accept(error);
+				REQUIRE(!error);
+			}
+			else if constexpr (is_udp_v<protocol_type>)
+			{
+				socket.connect(connect_endpoint, error);
+				REQUIRE(!error);
+			}
+
+			auto ep = socket.remote_endpoint(error);
+			REQUIRE(!error);
+			CHECK(ep == connect_endpoint);
+
+			CHECK_NOTHROW(socket.remote_endpoint());
 		}
 
 		SECTION("disconnected")
@@ -354,6 +411,8 @@ TEMPLATE_TEST_CASE("net/socket", "", tcp_v4, tcp_v6, udp_v4, udp_v6)
 	{
 		CHECK(socket.available(error) == 0);
 		CHECK(!error);
+
+		CHECK_NOTHROW(socket.available() == 0);
 
 		SECTION("closed")
 		{
