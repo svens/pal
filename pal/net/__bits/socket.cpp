@@ -659,6 +659,14 @@ void socket::set_option (
 #endif //}}}1
 
 
+const char *host_name (std::error_code &error) noexcept
+{
+	static char buf[256] = { '\0' };
+	call(::gethostname, error, buf, sizeof(buf) - 1);
+	return buf;
+}
+
+
 } // namespace net::__bits
 
 

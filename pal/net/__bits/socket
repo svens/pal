@@ -228,6 +228,9 @@ struct socket
 };
 
 
+const char *host_name (std::error_code &error) noexcept;
+
+
 } // namespace net::__bits
 
 

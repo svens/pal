@@ -10,3 +10,37 @@
 #include <pal/net/ip/address_v6>
 #include <pal/net/ip/tcp>
 #include <pal/net/ip/udp>
+
+
+__pal_begin
+
+
+namespace net::ip {
+
+
+/**
+ * Return standard host name for the current machine, determined as if by
+ * POSIX gethostname. On failure, set \a error.
+ */
+inline std::string_view host_name (std::error_code &error) noexcept
+{
+	error.clear();
+	static const std::string_view name = net::__bits::host_name(error);
+	return name;
+}
+
+
+/**
+ * Return standard host name for the current machine, determined as if by
+ * POSIX gethostname. On failure, throw std::system_error.
+ */
+inline std::string_view host_name ()
+{
+	return host_name(throw_on_error("error"));
+}
+
+
+} // namespace net::ip
+
+
+__pal_end
