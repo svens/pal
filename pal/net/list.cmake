@@ -33,4 +33,5 @@ list(APPEND pal_unittests_sources
 	pal/net/ip/address_v4.test.cpp
 	pal/net/ip/address_v6.test.cpp
 	pal/net/ip/endpoint.test.cpp
+	pal/net/ip/tcp.test.cpp
 )

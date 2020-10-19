@@ -5,7 +5,7 @@
 #include <utility>
 
 #if __pal_os_linux || __pal_os_macos
-	#include <arpa/inet.h>
+	#include <netinet/tcp.h>
 	#include <poll.h>
 	#include <sys/socket.h>
 #elif __pal_os_windows
