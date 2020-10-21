@@ -30,7 +30,7 @@ using udp_v6_with = protocol_and_option<udp_v6, Option>;
 
 TEMPLATE_TEST_CASE("net/socket_option", "", tcp_v4, tcp_v6, udp_v4, udp_v6)
 {
-	constexpr auto protocol = TestType::protocol();
+	constexpr auto protocol = protocol_v<TestType>;
 	std::error_code error;
 
 	SECTION("socket_option<int>")
@@ -101,8 +101,8 @@ TEMPLATE_TEST_CASE("net/socket_option", "", tcp_v4, tcp_v6, udp_v4, udp_v6)
 }
 
 
-template <typename Protocol, typename Option>
-std::error_code expected_os_error (const Protocol &, const Option &) noexcept
+template <typename TestType, typename Option>
+std::error_code expected_os_error (const Option &) noexcept
 {
 	if constexpr (pal::is_linux_build)
 	{
@@ -128,7 +128,7 @@ std::error_code expected_os_error (const Protocol &, const Option &) noexcept
 			constexpr int WSAEINVAL = EINVAL;
 		#endif
 
-		if (pal_test::is_udp_v<Protocol>)
+		if (is_udp_v<TestType>)
 		{
 			if constexpr (
 				std::is_same_v<Option, option::keepalive> ||
@@ -145,7 +145,7 @@ std::error_code expected_os_error (const Protocol &, const Option &) noexcept
 				return {WSAEINVAL, std::system_category()};
 			}
 		}
-		else if (pal_test::is_tcp_v<Protocol>)
+		else if (is_tcp_v<TestType>)
 		{
 			if constexpr (
 				std::is_same_v<Option, option::broadcast> ||
@@ -179,16 +179,14 @@ TEMPLATE_PRODUCT_TEST_CASE("net/socket_option", "",
 	)
 )
 {
-	constexpr auto protocol = TestType::protocol();
-	using protocol_type = decltype(protocol);
-	using socket_type = typename protocol_type::socket;
+	constexpr auto protocol = protocol_v<TestType>;
 	using option_type = typename TestType::option_type;
 
-	socket_type socket(protocol);
+	socket_t<TestType> socket(protocol);
 	REQUIRE(socket.is_open());
 
 	option_type option{true};
-	std::error_code error, expected_error = expected_os_error(protocol, option);
+	std::error_code error, expected_error = expected_os_error<TestType>(option);
 
 	socket.set_option(option, error);
 	CHECK(error == expected_error);
@@ -246,17 +244,15 @@ TEMPLATE_PRODUCT_TEST_CASE("net/socket_option", "",
 	)
 )
 {
-	constexpr auto protocol = TestType::protocol();
-	using protocol_type = decltype(protocol);
-	using socket_type = typename protocol_type::socket;
+	constexpr auto protocol = protocol_v<TestType>;
 	using option_type = typename TestType::option_type;
 
-	socket_type socket(protocol);
+	socket_t<TestType> socket(protocol);
 	REQUIRE(socket.is_open());
 
 	int value = 4096;
 	option_type option{value};
-	std::error_code error, expected_error = expected_os_error(protocol, option);
+	std::error_code error, expected_error = expected_os_error<TestType>(option);
 
 	socket.set_option(option, error);
 	CHECK(error == expected_error);
@@ -321,9 +317,7 @@ TEMPLATE_PRODUCT_TEST_CASE("net/socket_option", "",
 {
 	using namespace std::chrono_literals;
 
-	constexpr auto protocol = TestType::protocol();
-	using protocol_type = decltype(protocol);
-	using socket_type = typename protocol_type::socket;
+	constexpr auto protocol = protocol_v<TestType>;
 	using option_type = typename TestType::option_type;
 
 	std::error_code error;
@@ -361,12 +355,12 @@ TEMPLATE_PRODUCT_TEST_CASE("net/socket_option", "",
 		CHECK(linger.timeout() == 5s);
 	}
 
-	socket_type socket(protocol);
+	socket_t<TestType> socket(protocol);
 	REQUIRE(socket.is_open());
 
 	option_type linger{true, 5s};
 	socket.set_option(linger, error);
-	CHECK(error == expected_os_error(protocol, linger));
+	CHECK(error == expected_os_error<TestType>(linger));
 	if (!error)
 	{
 		CHECK_NOTHROW(socket.set_option(linger));

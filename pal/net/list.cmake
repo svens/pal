@@ -35,4 +35,5 @@ list(APPEND pal_unittests_sources
 	pal/net/ip/endpoint.test.cpp
 	pal/net/ip/host_name.test.cpp
 	pal/net/ip/tcp.test.cpp
+	pal/net/ip/udp.test.cpp
 )

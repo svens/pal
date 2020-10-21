@@ -11,53 +11,74 @@ namespace pal_test {
 
 struct tcp_v4
 {
+	using protocol_type = pal::net::ip::tcp;
 	using address_type = pal::net::ip::address_v4;
-
-	static constexpr auto protocol () noexcept
-	{
-		return pal::net::ip::tcp::v4();
-	}
 };
 
 
 struct tcp_v6
 {
+	using protocol_type = pal::net::ip::tcp;
 	using address_type = pal::net::ip::address_v6;
-
-	static constexpr auto protocol () noexcept
-	{
-		return pal::net::ip::tcp::v6();
-	}
 };
 
 
 struct udp_v4
 {
+	using protocol_type = pal::net::ip::udp;
 	using address_type = pal::net::ip::address_v4;
-
-	static constexpr auto protocol () noexcept
-	{
-		return pal::net::ip::udp::v4();
-	}
 };
 
 
 struct udp_v6
 {
+	using protocol_type = pal::net::ip::udp;
 	using address_type = pal::net::ip::address_v6;
-
-	static constexpr auto protocol () noexcept
-	{
-		return pal::net::ip::udp::v6();
-	}
 };
 
 
-template <typename Protocol>
-constexpr bool is_udp_v = std::is_base_of_v<pal::net::ip::udp, Protocol>;
+template <typename TestType>
+using protocol_t = typename TestType::protocol_type;
 
-template <typename Protocol>
-constexpr bool is_tcp_v = std::is_base_of_v<pal::net::ip::tcp, Protocol>;
+template <typename TestType>
+using endpoint_t = typename protocol_t<TestType>::endpoint;
+
+template <typename TestType>
+using acceptor_t = typename protocol_t<TestType>::acceptor;
+
+template <typename TestType>
+using socket_t = typename protocol_t<TestType>::socket;
+
+
+template <typename TestType>
+constexpr bool is_tcp_v = std::is_same_v<
+	typename TestType::protocol_type,
+	pal::net::ip::tcp
+>;
+
+template <typename TestType>
+constexpr bool is_udp_v = std::is_same_v<
+	typename TestType::protocol_type,
+	pal::net::ip::udp
+>;
+
+template <typename TestType>
+constexpr bool is_v4_v = std::is_same_v<
+	typename TestType::address_type,
+	pal::net::ip::address_v4
+>;
+
+template <typename TestType>
+constexpr bool is_v6_v = std::is_same_v<
+	typename TestType::address_type,
+	pal::net::ip::address_v6
+>;
+
+template <typename TestType>
+constexpr protocol_t<TestType> protocol_v = is_v4_v<TestType>
+	? protocol_t<TestType>::v4()
+	: protocol_t<TestType>::v6()
+;
 
 
 inline pal::net::ip::port_type next_port () noexcept

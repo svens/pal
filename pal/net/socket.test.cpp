@@ -10,66 +10,62 @@ using namespace std::chrono_literals;
 
 TEMPLATE_TEST_CASE("net/socket", "", tcp_v4, tcp_v6, udp_v4, udp_v6)
 {
-	constexpr auto protocol = TestType::protocol();
-	using protocol_type = decltype(protocol);
-	using socket_type = typename protocol_type::socket;
-	using endpoint_type = typename socket_type::endpoint_type;
-
-	const endpoint_type any{protocol, 0};
+	constexpr auto protocol = protocol_v<TestType>;
+	const endpoint_t<TestType> any{protocol, 0};
 	auto [bind_endpoint, connect_endpoint] = test_endpoints(protocol);
 	CAPTURE(bind_endpoint);
 
 	SECTION("ctor")
 	{
-		socket_type socket;
+		socket_t<TestType> socket;
 		CHECK_FALSE(socket.is_open());
-		CHECK(socket.native_handle() == socket_type::invalid);
+		CHECK(socket.native_handle() == socket_t<TestType>::invalid);
 	}
 
-	SECTION("ctor(protocol_type)")
+	SECTION("ctor(protocol)")
 	{
-		socket_type socket(protocol);
+		socket_t<TestType> socket(protocol);
 		CHECK(socket.is_open());
 	}
 
-	SECTION("ctor(endpoint_type)")
+	SECTION("ctor(endpoint)")
 	{
-		socket_type socket(bind_endpoint);
+		socket_t<TestType> socket(bind_endpoint);
 		CHECK(socket.is_open());
 		CHECK(socket.local_endpoint() == bind_endpoint);
 
 		CHECK_THROWS_AS(
-			socket_type{bind_endpoint},
+			socket_t<TestType>{bind_endpoint},
 			std::system_error
 		);
 	}
 
 	SECTION("ctor(socket&&)")
 	{
-		socket_type a(protocol);
+		socket_t<TestType> a(protocol);
 		REQUIRE(a.is_open());
 		auto b(std::move(a));
 		CHECK(b.is_open());
 		CHECK_FALSE(a.is_open());
 	}
 
-	SECTION("ctor(native_handle_type)")
+	SECTION("ctor(native_handle)")
 	{
-		socket_type a(protocol);
+		socket_t<TestType> a(protocol);
 		REQUIRE(a.is_open());
 
-		socket_type b(protocol, a.release());
+		socket_t<TestType> b(protocol, a.release());
 		CHECK(b.is_open());
 
 		CHECK_THROWS_AS(
-			(socket_type{protocol, pal::net::socket_base::invalid}),
+			(socket_t<TestType>{protocol, pal::net::socket_base::invalid}),
 			std::system_error
 		);
 	}
 
 	SECTION("operator=(socket&&)")
 	{
-		socket_type a(protocol), b;
+		socket_t<TestType> a(protocol), b;
 		REQUIRE(a.is_open());
 		CHECK_FALSE(b.is_open());
 		b = std::move(a);
@@ -80,7 +76,7 @@ TEMPLATE_TEST_CASE("net/socket", "", tcp_v4, tcp_v6, udp_v4, udp_v6)
 	SECTION("assign / release")
 	{
 		// a closed, b opened
-		socket_type a, b(protocol);
+		socket_t<TestType> a, b(protocol);
 		CHECK(!a.is_open());
 		REQUIRE(b.is_open());
 
@@ -117,7 +113,7 @@ TEMPLATE_TEST_CASE("net/socket", "", tcp_v4, tcp_v6, udp_v4, udp_v6)
 
 	SECTION("open")
 	{
-		socket_type socket;
+		socket_t<TestType> socket;
 
 		std::error_code error;
 		socket.open(protocol, error);
@@ -137,7 +133,7 @@ TEMPLATE_TEST_CASE("net/socket", "", tcp_v4, tcp_v6, udp_v4, udp_v6)
 	SECTION("close")
 	{
 		std::error_code error;
-		socket_type socket(protocol);
+		socket_t<TestType> socket(protocol);
 		REQUIRE(socket.is_open());
 
 		socket.close(error);
@@ -158,7 +154,7 @@ TEMPLATE_TEST_CASE("net/socket", "", tcp_v4, tcp_v6, udp_v4, udp_v6)
 
 	// following tests require opened socket
 	std::error_code error;
-	socket_type socket(protocol);
+	socket_t<TestType> socket(protocol);
 	REQUIRE(socket.is_open());
 
 	// doing multiple bind(2)
@@ -185,9 +181,9 @@ TEMPLATE_TEST_CASE("net/socket", "", tcp_v4, tcp_v6, udp_v4, udp_v6)
 
 	SECTION("connect")
 	{
-		if constexpr (is_tcp_v<protocol_type>)
+		if constexpr (is_tcp_v<TestType>)
 		{
-			typename protocol_type::acceptor acceptor(bind_endpoint);
+			acceptor_t<TestType> acceptor(bind_endpoint);
 
 			socket.connect(connect_endpoint, error);
 			CHECK(!error);
@@ -197,7 +193,7 @@ TEMPLATE_TEST_CASE("net/socket", "", tcp_v4, tcp_v6, udp_v4, udp_v6)
 			CHECK_NOTHROW(socket.connect(connect_endpoint));
 			REQUIRE_NOTHROW((void)acceptor.accept());
 		}
-		else if constexpr (is_udp_v<protocol_type>)
+		else if constexpr (is_udp_v<TestType>)
 		{
 			socket.connect(connect_endpoint, error);
 			CHECK(!error);
@@ -210,7 +206,7 @@ TEMPLATE_TEST_CASE("net/socket", "", tcp_v4, tcp_v6, udp_v4, udp_v6)
 		{
 			socket.close();
 			socket.connect(connect_endpoint, error);
-			if constexpr (is_tcp_v<protocol_type>)
+			if constexpr (is_tcp_v<TestType>)
 			{
 				CHECK(error == std::errc::connection_refused);
 				CHECK_THROWS_AS(
@@ -218,7 +214,7 @@ TEMPLATE_TEST_CASE("net/socket", "", tcp_v4, tcp_v6, udp_v4, udp_v6)
 					std::system_error
 				);
 			}
-			else if (is_udp_v<protocol_type>)
+			else if (is_udp_v<TestType>)
 			{
 				CHECK(!error);
 				CHECK_NOTHROW(socket.connect(connect_endpoint));
@@ -229,11 +225,10 @@ TEMPLATE_TEST_CASE("net/socket", "", tcp_v4, tcp_v6, udp_v4, udp_v6)
 
 	SECTION("wait")
 	{
-		socket_type a;
-		if constexpr (is_tcp_v<protocol_type>)
+		socket_t<TestType> a;
+		if constexpr (is_tcp_v<TestType>)
 		{
-			using acceptor_type = typename protocol_type::acceptor;
-			acceptor_type acceptor(bind_endpoint);
+			acceptor_t<TestType> acceptor(bind_endpoint);
 			socket.connect(connect_endpoint);
 			a = acceptor.accept();
 		}
@@ -278,14 +273,14 @@ TEMPLATE_TEST_CASE("net/socket", "", tcp_v4, tcp_v6, udp_v4, udp_v6)
 
 		SECTION("connected")
 		{
-			socket_type a;
-			if constexpr (is_tcp_v<protocol_type>)
+			socket_t<TestType> a;
+			if constexpr (is_tcp_v<TestType>)
 			{
-				typename protocol_type::acceptor acceptor(bind_endpoint);
+				acceptor_t<TestType> acceptor(bind_endpoint);
 				socket.connect(connect_endpoint);
 				a = acceptor.accept();
 			}
-			else if constexpr (is_udp_v<protocol_type>)
+			else if constexpr (is_udp_v<TestType>)
 			{
 				socket.connect(connect_endpoint);
 			}
@@ -304,7 +299,7 @@ TEMPLATE_TEST_CASE("net/socket", "", tcp_v4, tcp_v6, udp_v4, udp_v6)
 
 		SECTION("not connected")
 		{
-			if constexpr (!pal::is_windows_build || is_tcp_v<protocol_type>)
+			if constexpr (!pal::is_windows_build || is_tcp_v<TestType>)
 			{
 				socket.shutdown(what, error);
 				CHECK(error == std::errc::not_connected);
@@ -362,9 +357,9 @@ TEMPLATE_TEST_CASE("net/socket", "", tcp_v4, tcp_v6, udp_v4, udp_v6)
 	{
 		SECTION("connected")
 		{
-			if constexpr (is_tcp_v<protocol_type>)
+			if constexpr (is_tcp_v<TestType>)
 			{
-				typename protocol_type::acceptor acceptor(bind_endpoint);
+				acceptor_t<TestType> acceptor(bind_endpoint);
 
 				socket.connect(connect_endpoint, error);
 				REQUIRE(!error);
@@ -372,7 +367,7 @@ TEMPLATE_TEST_CASE("net/socket", "", tcp_v4, tcp_v6, udp_v4, udp_v6)
 				(void)acceptor.accept(error);
 				REQUIRE(!error);
 			}
-			else if constexpr (is_udp_v<protocol_type>)
+			else if constexpr (is_udp_v<TestType>)
 			{
 				socket.connect(connect_endpoint, error);
 				REQUIRE(!error);

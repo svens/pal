@@ -104,7 +104,7 @@ constexpr bool operator== (const udp &a, const udp &b) noexcept
  */
 constexpr bool operator!= (const udp &a, const udp &b) noexcept
 {
-	return a.family() != b.family();
+	return !(a == b);
 }
 
 

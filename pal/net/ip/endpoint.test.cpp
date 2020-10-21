@@ -8,14 +8,14 @@
 namespace {
 
 
+using namespace pal_test;
 using namespace pal::net::ip;
 
 
 TEMPLATE_TEST_CASE("net/ip/endpoint", "", tcp, udp)
 {
-	using endpoint_type = typename TestType::endpoint;
-	using protocol_type = typename endpoint_type::protocol_type;
 	constexpr port_type port = 60000;
+	using endpoint_type = typename TestType::endpoint;
 
 	/* TODO: use family attribute in endpoint to make it truly constexpr
 	SECTION("constexpr")
@@ -84,24 +84,24 @@ TEMPLATE_TEST_CASE("net/ip/endpoint", "", tcp, udp)
 	using ip6 = address_v6::bytes_type;
 
 	auto [protocol, address, c_str] = GENERATE(
-		table<protocol_type, pal::net::ip::address, const char *>({
+		table<TestType, pal::net::ip::address, const char *>({
 		{
-			protocol_type::v4(),
+			TestType::v4(),
 			address_v4::loopback(),
 			"127.0.0.1:60000"
 		},
 		{
-			protocol_type::v4(),
+			TestType::v4(),
 			address_v4{ip4{255,255,255,255}},
 			"255.255.255.255:60000"
 		},
 		{
-			protocol_type::v6(),
+			TestType::v6(),
 			address_v6::loopback(),
 			"[::1]:60000"
 		},
 		{
-			protocol_type::v6(),
+			TestType::v6(),
 			address_v6{ip6{255,255,255,255,255,255,255,255,255,255,255,255,255,255,255,255}},
 			"[ffff:ffff:ffff:ffff:ffff:ffff:ffff:ffff]:60000"
 		},
@@ -168,7 +168,7 @@ TEMPLATE_TEST_CASE("net/ip/endpoint", "", tcp, udp)
 	SECTION("size")
 	{
 		endpoint_type endpoint(protocol, port);
-		if (protocol == protocol_type::v4())
+		if (protocol == TestType::v4())
 		{
 			CHECK(endpoint.size() == sizeof(sockaddr_in));
 		}

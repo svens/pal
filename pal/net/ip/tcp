@@ -116,7 +116,7 @@ constexpr bool operator== (const tcp &a, const tcp &b) noexcept
  */
 constexpr bool operator!= (const tcp &a, const tcp &b) noexcept
 {
-	return a.family() != b.family();
+	return !(a == b);
 }
 
 

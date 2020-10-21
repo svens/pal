@@ -10,32 +10,27 @@ using namespace std::chrono_literals;
 
 TEMPLATE_TEST_CASE("net/acceptor", "", tcp_v4, tcp_v6)
 {
-	constexpr auto protocol = TestType::protocol();
-	using protocol_type = decltype(protocol);
-	using acceptor_type = typename protocol_type::acceptor;
-	using socket_type = typename protocol_type::socket;
-	using endpoint_type = typename socket_type::endpoint_type;
-
-	const endpoint_type any{protocol, 0};
+	constexpr auto protocol = protocol_v<TestType>;
+	const endpoint_t<TestType> any{protocol, 0};
 	auto [bind_endpoint, connect_endpoint] = test_endpoints(protocol);
 
 	SECTION("ctor")
 	{
-		acceptor_type acceptor;
+		acceptor_t<TestType> acceptor;
 		CHECK_FALSE(acceptor.is_open());
-		CHECK(acceptor.native_handle() == acceptor_type::invalid);
+		CHECK(acceptor.native_handle() == acceptor_t<TestType>::invalid);
 	}
 
-	SECTION("ctor(protocol_type)")
+	SECTION("ctor(protocol)")
 	{
-		acceptor_type acceptor(protocol);
+		acceptor_t<TestType> acceptor(protocol);
 		CHECK(acceptor.is_open());
 		CHECK(acceptor.enable_connection_aborted() == false);
 	}
 
-	SECTION("ctor(endpoint_type, true)")
+	SECTION("ctor(endpoint, true)")
 	{
-		acceptor_type acceptor(bind_endpoint);
+		acceptor_t<TestType> acceptor(bind_endpoint);
 		CHECK(acceptor.is_open());
 		CHECK(acceptor.local_endpoint() == bind_endpoint);
 		CHECK(acceptor.enable_connection_aborted() == false);
@@ -45,42 +40,42 @@ TEMPLATE_TEST_CASE("net/acceptor", "", tcp_v4, tcp_v6)
 		CHECK(static_cast<bool>(reuse_address) == true);
 	}
 
-	SECTION("ctor(endpoint_type, false)")
+	SECTION("ctor(endpoint, false)")
 	{
-		acceptor_type acceptor(bind_endpoint, false);
+		acceptor_t<TestType> acceptor(bind_endpoint, false);
 		CHECK_THROWS_AS(
-			(acceptor_type{bind_endpoint, false}),
+			(acceptor_t<TestType>{bind_endpoint, false}),
 			std::system_error
 		);
 	}
 
 	SECTION("ctor(acceptor&&)")
 	{
-		acceptor_type a(protocol);
+		acceptor_t<TestType> a(protocol);
 		REQUIRE(a.is_open());
 		auto b(std::move(a));
 		CHECK(b.is_open());
 		CHECK_FALSE(a.is_open());
 	}
 
-	SECTION("ctor(native_handle_type)")
+	SECTION("ctor(native_handle)")
 	{
-		acceptor_type a(protocol);
+		acceptor_t<TestType> a(protocol);
 		REQUIRE(a.is_open());
 		CHECK(a.enable_connection_aborted() == false);
 
-		acceptor_type b(protocol, a.release());
+		acceptor_t<TestType> b(protocol, a.release());
 		CHECK(b.is_open());
 
 		CHECK_THROWS_AS(
-			(acceptor_type{protocol, pal::net::socket_base::invalid}),
+			(acceptor_t<TestType>{protocol, pal::net::socket_base::invalid}),
 			std::system_error
 		);
 	}
 
 	SECTION("operator=(acceptor&&)")
 	{
-		acceptor_type a(protocol), b;
+		acceptor_t<TestType> a(protocol), b;
 		REQUIRE(a.is_open());
 		CHECK_FALSE(b.is_open());
 		b = std::move(a);
@@ -91,7 +86,7 @@ TEMPLATE_TEST_CASE("net/acceptor", "", tcp_v4, tcp_v6)
 	SECTION("assign / release")
 	{
 		// a closed, b opened
-		acceptor_type a, b(protocol);
+		acceptor_t<TestType> a, b(protocol);
 		CHECK(!a.is_open());
 		REQUIRE(b.is_open());
 
@@ -128,7 +123,7 @@ TEMPLATE_TEST_CASE("net/acceptor", "", tcp_v4, tcp_v6)
 
 	SECTION("open")
 	{
-		acceptor_type acceptor;
+		acceptor_t<TestType> acceptor;
 
 		std::error_code error;
 		acceptor.open(protocol, error);
@@ -149,7 +144,7 @@ TEMPLATE_TEST_CASE("net/acceptor", "", tcp_v4, tcp_v6)
 	SECTION("close")
 	{
 		std::error_code error;
-		acceptor_type acceptor(protocol);
+		acceptor_t<TestType> acceptor(protocol);
 		REQUIRE(acceptor.is_open());
 
 		acceptor.close(error);
@@ -170,7 +165,7 @@ TEMPLATE_TEST_CASE("net/acceptor", "", tcp_v4, tcp_v6)
 
 	// all following tests require opened acceptor
 	std::error_code error;
-	acceptor_type acceptor(protocol);
+	acceptor_t<TestType> acceptor(protocol);
 	REQUIRE(acceptor.is_open());
 
 	auto start_listen = [&](const auto &endpoint)
@@ -359,7 +354,7 @@ TEMPLATE_TEST_CASE("net/acceptor", "", tcp_v4, tcp_v6)
 
 	SECTION("accept")
 	{
-		socket_type a, b;
+		socket_t<TestType> a, b;
 
 		REQUIRE_NOTHROW(start_listen(bind_endpoint));
 		a.connect(connect_endpoint);
@@ -377,7 +372,7 @@ TEMPLATE_TEST_CASE("net/acceptor", "", tcp_v4, tcp_v6)
 
 		SECTION("accept(endpoint, error)")
 		{
-			endpoint_type endpoint;
+			endpoint_t<TestType> endpoint;
 			b = acceptor.accept(endpoint, error);
 			CHECK(!error);
 			CHECK(endpoint == b.remote_endpoint());
@@ -385,7 +380,7 @@ TEMPLATE_TEST_CASE("net/acceptor", "", tcp_v4, tcp_v6)
 
 		SECTION("accept(endpoint)")
 		{
-			endpoint_type endpoint;
+			endpoint_t<TestType> endpoint;
 			CHECK_NOTHROW((b = acceptor.accept(endpoint)));
 			CHECK(endpoint == b.remote_endpoint());
 		}
@@ -417,7 +412,7 @@ TEMPLATE_TEST_CASE("net/acceptor", "", tcp_v4, tcp_v6)
 				std::system_error
 			);
 
-			endpoint_type endpoint;
+			endpoint_t<TestType> endpoint;
 			acceptor.accept(endpoint, error);
 			CHECK(error == std::errc::bad_file_descriptor);
 
@@ -436,7 +431,7 @@ TEMPLATE_TEST_CASE("net/acceptor", "", tcp_v4, tcp_v6)
 		acceptor.enable_connection_aborted(true);
 		CHECK(acceptor.enable_connection_aborted());
 
-		socket_type a;
+		socket_t<TestType> a;
 		a.connect(connect_endpoint);
 		a.set_option(pal::net::socket_base::linger(true, 0s));
 		a.close();
@@ -450,7 +445,7 @@ TEMPLATE_TEST_CASE("net/acceptor", "", tcp_v4, tcp_v6)
 	{
 		REQUIRE_NOTHROW(start_listen(bind_endpoint));
 		acceptor.native_non_blocking(true);
-		socket_type a;
+		socket_t<TestType> a;
 
 		SECTION("std::error_code")
 		{
