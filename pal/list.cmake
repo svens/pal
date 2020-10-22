@@ -1,6 +1,7 @@
 list(APPEND pal_sources
 	pal/__bits/lib
 	pal/__bits/platform_sdk
+	pal/buffer
 	pal/byte_order
 	pal/error
 	pal/error.cpp
@@ -16,6 +17,7 @@ list(APPEND pal_sources
 list(APPEND pal_unittests_sources
 	pal/test
 	pal/test.cpp
+	pal/buffer.test.cpp
 	pal/byte_order.test.cpp
 	pal/error.test.cpp
 	pal/expect.test.cpp

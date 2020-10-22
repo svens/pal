@@ -1,0 +1,142 @@
+#pragma once // -*- C++ -*-
+
+/**
+ * \file pal/buffer
+ * Mutable and const buffers representing continuous memory region.
+ */
+
+#include <pal/__bits/lib>
+#include <algorithm>
+
+
+__pal_begin
+
+
+/**
+ * Class mutable_buffer represents mutable continuous memory region
+ * [data(), data() + size())
+ */
+class mutable_buffer
+{
+public:
+
+	/**
+	 * Construct new buffer with data() == nullptr and size() == 0.
+	 */
+	mutable_buffer () noexcept = default;
+
+
+	/**
+	 * Construct new buffer with \a data and \a size.
+	 */
+	mutable_buffer (void *data, size_t size) noexcept
+		: data_(data)
+		, size_(size)
+	{ }
+
+
+	/**
+	 * Returns pointer to beginning of memory region.
+	 */
+	void *data () const noexcept
+	{
+		return data_;
+	}
+
+
+	/**
+	 * Returns size of memory region.
+	 */
+	size_t size () const noexcept
+	{
+		return size_;
+	}
+
+
+	/**
+	 * Set data to data() + min(n, size()) and size to size() - min(n, size())
+	 */
+	mutable_buffer &operator+= (size_t n) noexcept
+	{
+		n = (std::min)(n, size_);
+		data_ = static_cast<char *>(data_) + n;
+		size_ -= n;
+		return *this;
+	}
+
+private:
+
+	void *data_{};
+	size_t size_{};
+};
+
+
+/**
+ * Class const_buffer represents continuous memory region
+ * [data(), data() + size())
+ */
+class const_buffer
+{
+public:
+
+	/**
+	 * Construct new buffer with data() == nullptr and size() == 0.
+	 */
+	const_buffer () noexcept = default;
+
+
+	/**
+	 * Construct new buffer with \a data and \a size.
+	 */
+	const_buffer (void *data, size_t size) noexcept
+		: data_(data)
+		, size_(size)
+	{ }
+
+
+	/**
+	 * Construct new buffer from that.
+	 */
+	const_buffer (const mutable_buffer &that) noexcept
+		: data_(that.data())
+		, size_(that.size())
+	{ }
+
+
+	/**
+	 * Returns pointer to beginning of memory region.
+	 */
+	void *data () const noexcept
+	{
+		return data_;
+	}
+
+
+	/**
+	 * Returns size of memory region.
+	 */
+	size_t size () const noexcept
+	{
+		return size_;
+	}
+
+
+	/**
+	 * Set data to data() + min(n, size()) and size to size() - min(n, size())
+	 */
+	const_buffer &operator+= (size_t n) noexcept
+	{
+		n = (std::min)(n, size_);
+		data_ = static_cast<char *>(data_) + n;
+		size_ -= n;
+		return *this;
+	}
+
+private:
+
+	void *data_{};
+	size_t size_{};
+};
+
+
+__pal_end
