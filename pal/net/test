@@ -3,6 +3,7 @@
 #include <pal/net/ip/udp>
 #include <pal/net/ip/tcp>
 #include <pal/test>
+#include <random>
 #include <type_traits>
 
 
@@ -81,9 +82,29 @@ constexpr protocol_t<TestType> protocol_v = is_v4_v<TestType>
 ;
 
 
+constexpr pal::net::ip::port_type min_port = 1024, max_port = 65535;
+
+
+inline pal::net::ip::port_type base_port () noexcept
+{
+	std::random_device rdev;
+	std::default_random_engine eng(rdev());
+	std::uniform_int_distribution<pal::net::ip::port_type> dist(min_port, max_port);
+	return dist(eng);
+}
+
+
 inline pal::net::ip::port_type next_port () noexcept
 {
-	static pal::net::ip::port_type port = 1025;
+	static pal::net::ip::port_type port = base_port();
+	if (port > max_port)
+	{
+		port = min_port;
+	}
+	else if (port < min_port)
+	{
+		port = min_port;
+	}
 	return port++;
 }
 

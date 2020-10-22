@@ -13,6 +13,7 @@ TEMPLATE_TEST_CASE("net/acceptor", "", tcp_v4, tcp_v6)
 	constexpr auto protocol = protocol_v<TestType>;
 	const endpoint_t<TestType> any{protocol, 0};
 	auto [bind_endpoint, connect_endpoint] = test_endpoints(protocol);
+	CAPTURE(bind_endpoint);
 
 	SECTION("ctor")
 	{
@@ -211,7 +212,6 @@ TEMPLATE_TEST_CASE("net/acceptor", "", tcp_v4, tcp_v6)
 		}
 
 		acceptor.listen(3, error);
-		CAPTURE(error);
 		REQUIRE(!error);
 
 		CHECK(acceptor.local_endpoint() != any);
