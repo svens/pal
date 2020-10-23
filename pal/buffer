@@ -139,4 +139,64 @@ private:
 };
 
 
+/**
+ * \defgroup buffer_sequence_access Buffer sequence access
+ * \{
+ */
+
+/// Return address of \a buffer
+inline const mutable_buffer *buffer_sequence_begin (const mutable_buffer &buffer) noexcept
+{
+	return std::addressof(buffer);
+}
+
+/// Return address of \a buffer
+inline const const_buffer *buffer_sequence_begin (const const_buffer &buffer) noexcept
+{
+	return std::addressof(buffer);
+}
+
+/// Return address past of \a buffer
+inline const mutable_buffer *buffer_sequence_end (const mutable_buffer &buffer) noexcept
+{
+	return std::addressof(buffer) + 1;
+}
+
+/// Return address past of \a buffer
+inline const const_buffer *buffer_sequence_end (const const_buffer &buffer) noexcept
+{
+	return std::addressof(buffer) + 1;
+}
+
+/// Return address of first buffer in \a c.
+template <typename C>
+auto buffer_sequence_begin (C &c) noexcept -> decltype(std::begin(c))
+{
+	return std::begin(c);
+}
+
+/// Return address of first buffer in \a c.
+template <typename C>
+auto buffer_sequence_begin (const C &c) noexcept -> decltype(std::begin(c))
+{
+	return std::begin(c);
+}
+
+/// Return address past of last buffer in \a c.
+template <typename C>
+auto buffer_sequence_end (C &c) noexcept -> decltype(std::end(c))
+{
+	return std::end(c);
+}
+
+/// Return address past of last buffer in \a c.
+template <typename C>
+auto buffer_sequence_end (const C &c) noexcept -> decltype(std::end(c))
+{
+	return std::end(c);
+}
+
+/// \}
+
+
 __pal_end
