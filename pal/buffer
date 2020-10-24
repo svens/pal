@@ -6,7 +6,11 @@
  */
 
 #include <pal/__bits/lib>
-#include <iterator>
+#include <algorithm>
+#include <array>
+#include <string>
+#include <string_view>
+#include <vector>
 
 
 __pal_begin
@@ -58,10 +62,7 @@ public:
 	 */
 	mutable_buffer &operator+= (size_t n) noexcept
 	{
-		if (n > size_)
-		{
-			n = size_;
-		}
+		n = (std::min)(n, size_);
 		data_ = static_cast<char *>(data_) + n;
 		size_ -= n;
 		return *this;
@@ -129,10 +130,7 @@ public:
 	 */
 	const_buffer &operator+= (size_t n) noexcept
 	{
-		if (n > size_)
-		{
-			n = size_;
-		}
+		n = (std::min)(n, size_);
 		data_ = static_cast<const char *>(data_) + n;
 		size_ -= n;
 		return *this;
@@ -143,6 +141,232 @@ private:
 	const void *data_{};
 	size_t size_{};
 };
+
+
+/**
+ * \defgroup buffer_creation Buffer creation functions
+ * \{
+ */
+
+namespace __bits {
+
+template <typename T>
+inline mutable_buffer mbuf (T *data, size_t n) noexcept
+{
+	return {n ? data : nullptr, n * sizeof(T)};
+}
+
+template <typename T>
+inline const_buffer cbuf (const T *data, size_t n) noexcept
+{
+	return {n ? data : nullptr, n * sizeof(T)};
+}
+
+} // namespace __bits
+
+
+/// \returns mutable_buffer constructed from \a buffer
+inline mutable_buffer buffer (const mutable_buffer &buffer) noexcept
+{
+	return buffer;
+}
+
+/// \returns mutable_buffer constructed from \a buffer using \a bytes
+inline mutable_buffer buffer (const mutable_buffer &buffer, size_t bytes) noexcept
+{
+	return {buffer.data(), (std::min)(buffer.size(), bytes)};
+}
+
+/// \returns const_buffer constructed from \a buffer
+inline const_buffer buffer (const const_buffer &buffer) noexcept
+{
+	return buffer;
+}
+
+/// \returns const_buffer constructed from \a buffer using \a bytes
+inline const_buffer buffer (const const_buffer &buffer, size_t bytes) noexcept
+{
+	return {buffer.data(), (std::min)(buffer.size(), bytes)};
+}
+
+/// \returns mutable_buffer constructed from \a data using \a bytes
+inline mutable_buffer buffer (void *data, size_t bytes) noexcept
+{
+	return {data, bytes};
+}
+
+/// \returns const_buffer constructed from \a data using \a bytes
+inline const_buffer buffer (const void *data, size_t bytes) noexcept
+{
+	return {data, bytes};
+}
+
+/// \returns mutable_buffer from \a data using \a N elements
+template <typename T, size_t N>
+inline mutable_buffer buffer (T (&data)[N]) noexcept
+{
+	return __bits::mbuf(data, N);
+}
+
+/// \returns const_buffer from \a data using \a N elements
+template <typename T, size_t N>
+inline const_buffer buffer (const T (&data)[N]) noexcept
+{
+	return __bits::cbuf(data, N);
+}
+
+/// \returns mutable_buffer from \a data using all elements
+template <typename T, size_t N>
+inline mutable_buffer buffer (std::array<T, N> &data) noexcept
+{
+	return __bits::mbuf(data.data(), N);
+}
+
+/// \returns const_buffer from \a data using all elements
+template <typename T, size_t N>
+inline const_buffer buffer (std::array<const T, N> &data) noexcept
+{
+	return __bits::cbuf(data.data(), N);
+}
+
+/// \returns const_buffer from \a data using all elements
+template <typename T, size_t N>
+inline const_buffer buffer (const std::array<T, N> &data) noexcept
+{
+	return __bits::cbuf(data.data(), N);
+}
+
+/// \returns mutable_buffer from \a data using all elements
+template <typename T, typename Allocator>
+inline mutable_buffer buffer (std::vector<T, Allocator> &data) noexcept
+{
+	return __bits::mbuf(data.data(), data.size());
+}
+
+/// \returns const_buffer from \a data using all elements
+template <typename T, typename Allocator>
+inline const_buffer buffer (const std::vector<T, Allocator> &data) noexcept
+{
+	return __bits::cbuf(data.data(), data.size());
+}
+
+/// \returns mutable_buffer from \a data using all characters
+template <typename Char, typename Traits, typename Allocator>
+inline mutable_buffer buffer (std::basic_string<Char, Traits, Allocator> &data) noexcept
+{
+	return __bits::mbuf(data.data(), data.size());
+}
+
+/// \returns const_buffer from \a data using all characters
+template <typename Char, typename Traits, typename Allocator>
+inline const_buffer buffer (const std::basic_string<Char, Traits, Allocator> &data) noexcept
+{
+	return __bits::cbuf(data.data(), data.size());
+}
+
+/// \returns const_buffer from \a data using all characters
+template <typename Char, typename Traits>
+inline const_buffer buffer (std::basic_string_view<Char, Traits> data) noexcept
+{
+	return __bits::cbuf(data.data(), data.size());
+}
+
+/// \returns mutable_buffer from \a data using first \a bytes
+template <typename T, size_t N>
+inline mutable_buffer buffer (T (&data)[N], size_t bytes) noexcept
+{
+	return buffer(buffer(data), bytes);
+}
+
+/// \returns const_buffer from \a data using first \a bytes
+template <typename T, size_t N>
+inline const_buffer buffer (const T (&data)[N], size_t bytes) noexcept
+{
+	return buffer(buffer(data), bytes);
+}
+
+/// \returns mutable_buffer from \a data using first \a bytes
+template <typename T, size_t N>
+inline mutable_buffer buffer (
+	std::array<T, N> &data,
+	size_t bytes) noexcept
+{
+	return buffer(buffer(data), bytes);
+}
+
+/// \returns const_buffer from \a data using first \a bytes
+template <typename T, size_t N>
+inline const_buffer buffer (
+	std::array<const T, N> &data,
+	size_t bytes) noexcept
+{
+	return buffer(buffer(data), bytes);
+}
+
+/// \returns const_buffer from \a data using first \a bytes
+template <typename T, size_t N>
+inline const_buffer buffer (
+	const std::array<T, N> &data,
+	size_t bytes) noexcept
+{
+	return buffer(buffer(data), bytes);
+}
+
+/// \returns mutable_buffer from \a data using first \a bytes
+template <typename T, typename Allocator>
+inline mutable_buffer buffer (
+	std::vector<T, Allocator> &data,
+	size_t bytes) noexcept
+{
+	return buffer(buffer(data), bytes);
+}
+
+/// \returns const_buffer from \a data using first \a bytes
+template <typename T, typename Allocator>
+inline const_buffer buffer (
+	const std::vector<T, Allocator> &data,
+	size_t bytes) noexcept
+{
+	return buffer(buffer(data), bytes);
+}
+
+/**
+ * \returns mutable_buffer from \a data using first \a bytes (which is not
+ * necessarily same as number of characters)
+ */
+template <typename Char, typename Traits, typename Allocator>
+inline mutable_buffer buffer (
+	std::basic_string<Char, Traits, Allocator> &data,
+	size_t bytes) noexcept
+{
+	return buffer(buffer(data), bytes);
+}
+
+/**
+ * \returns const_buffer from \a data using first \a bytes (which is not
+ * necessarily same as number of characters)
+ */
+template <typename Char, typename Traits, typename Allocator>
+inline const_buffer buffer (
+	const std::basic_string<Char, Traits, Allocator> &data,
+	size_t bytes) noexcept
+{
+	return buffer(buffer(data), bytes);
+}
+
+/**
+ * \returns const_buffer from \a data using first \a bytes (which is not
+ * necessarily same as number of characters)
+ */
+template <typename Char, typename Traits>
+inline const_buffer buffer (
+	std::basic_string_view<Char, Traits> data,
+	size_t bytes) noexcept
+{
+	return buffer(buffer(data), bytes);
+}
+
+/// \}
 
 
 /**
