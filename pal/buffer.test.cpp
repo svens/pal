@@ -57,6 +57,53 @@ TEMPLATE_TEST_CASE("buffer", "",
 		CHECK(buffer.size() == 0);
 	}
 
+	SECTION("+")
+	{
+		SECTION("empty")
+		{
+			TestType b1 = empty + 1;
+			CHECK(b1.data() == nullptr);
+			CHECK(b1.size() == 0);
+
+			TestType b2 = 1 + empty;
+			CHECK(b2.data() == b1.data());
+			CHECK(b2.size() == b1.size());
+		}
+
+		SECTION("partial")
+		{
+			TestType b1 = buffer_2 + 1;
+			CHECK(b1.data() == &data_2[1]);
+			CHECK(b1.size() == 1);
+
+			TestType b2 = 1 + buffer_2;
+			CHECK(b2.data() == b1.data());
+			CHECK(b2.size() == b1.size());
+		}
+
+		SECTION("end")
+		{
+			TestType b1 = buffer_2 + 2;
+			CHECK(b1.data() == &data_2[2]);
+			CHECK(b1.size() == 0);
+
+			TestType b2 = 2 + buffer_2;
+			CHECK(b2.data() == b1.data());
+			CHECK(b2.size() == b1.size());
+		}
+
+		SECTION("overflow")
+		{
+			TestType b1 = buffer_2 + (std::numeric_limits<size_t>::max)();
+			CHECK(b1.data() == &data_2[2]);
+			CHECK(b1.size() == 0);
+
+			TestType b2 = (std::numeric_limits<size_t>::max)() + buffer_2;
+			CHECK(b2.data() == b1.data());
+			CHECK(b2.size() == b1.size());
+		}
+	}
+
 	SECTION("buffer_sequence_{begin,end}(1)")
 	{
 		CHECK(pal::buffer_sequence_begin(empty) == &empty);
@@ -107,26 +154,6 @@ TEST_CASE("buffer")
 		CHECK(buffer.data() == data);
 		CHECK(buffer.size() == size);
 	}
-
-	/*
-	SECTION("int *, 0")
-	{
-		int data[2] = { 1, 2, };
-		auto buffer = pal::buffer(data, 0);
-		CHECK(std::is_same_v<decltype(buffer), pal::mutable_buffer>);
-		CHECK(buffer.data() == nullptr);
-		CHECK(buffer.size() == 0);
-	}
-
-	SECTION("const int *, 0")
-	{
-		const int data[2] = { 1, 2, };
-		auto buffer = pal::buffer(data, 0);
-		CHECK(std::is_same_v<decltype(buffer), pal::const_buffer>);
-		CHECK(buffer.data() == nullptr);
-		CHECK(buffer.size() == 0);
-	}
-	*/
 
 	SECTION("T (&)[Size]")
 	{

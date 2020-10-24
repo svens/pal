@@ -144,6 +144,40 @@ private:
 
 
 /**
+ * \defgroup buffer_arithmetic Buffer arithmetic
+ * \{
+ */
+
+/// \returns mutable_buffer(buffer.data() + n, buffer.size() - n)
+inline mutable_buffer operator+ (const mutable_buffer &buffer, size_t n) noexcept
+{
+	n = (std::min)(buffer.size(), n);
+	return {static_cast<char *>(buffer.data()) + n, buffer.size() - n};
+}
+
+/// \returns mutable_buffer(buffer.data() + n, buffer.size() - n)
+inline mutable_buffer operator+ (size_t n, const mutable_buffer &buffer) noexcept
+{
+	return buffer + n;
+}
+
+/// \returns const_buffer(buffer.data() + n, buffer.size() - n)
+inline const_buffer operator+ (const const_buffer &buffer, size_t n) noexcept
+{
+	n = (std::min)(buffer.size(), n);
+	return {static_cast<const char *>(buffer.data()) + n, buffer.size() - n};
+}
+
+/// \returns const_buffer(buffer.data() + n, buffer.size() - n)
+inline const_buffer operator+ (size_t n, const const_buffer &buffer) noexcept
+{
+	return buffer + n;
+}
+
+/// \}
+
+
+/**
  * \defgroup buffer_creation Buffer creation functions
  * \{
  */
