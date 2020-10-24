@@ -205,4 +205,19 @@ auto buffer_sequence_end (const C &c) noexcept -> decltype(std::end(c))
 /// \}
 
 
+/// \returns total size of all \a buffers.
+template <typename ConstBufferSequence>
+size_t buffer_size (const ConstBufferSequence &buffers) noexcept
+{
+	size_t total_size = 0;
+	auto i = buffer_sequence_begin(buffers);
+	const auto end = buffer_sequence_end(buffers);
+	while (i != end)
+	{
+		total_size += const_buffer(*i++).size();
+	}
+	return total_size;
+}
+
+
 __pal_end

@@ -76,6 +76,16 @@ TEMPLATE_TEST_CASE("buffer", "",
 		CHECK(pal::buffer_sequence_begin(cbuffers) == &cbuffers[0]);
 		CHECK(pal::buffer_sequence_end(cbuffers) == &cbuffers[3]);
 	}
+
+	SECTION("buffer_sequence_size")
+	{
+		CHECK(pal::buffer_size(empty) == empty.size());
+		CHECK(pal::buffer_size(buffer_1) == buffer_1.size());
+		CHECK(pal::buffer_size(buffer_2) == buffer_2.size());
+
+		TestType buffers[] = { empty, buffer_1, buffer_2 };
+		CHECK(pal::buffer_size(buffers) == 3);
+	}
 }
 
 
