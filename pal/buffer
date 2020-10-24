@@ -6,7 +6,7 @@
  */
 
 #include <pal/__bits/lib>
-#include <algorithm>
+#include <iterator>
 
 
 __pal_begin
@@ -58,7 +58,10 @@ public:
 	 */
 	mutable_buffer &operator+= (size_t n) noexcept
 	{
-		n = (std::min)(n, size_);
+		if (n > size_)
+		{
+			n = size_;
+		}
 		data_ = static_cast<char *>(data_) + n;
 		size_ -= n;
 		return *this;
@@ -88,7 +91,7 @@ public:
 	/**
 	 * Construct new buffer with \a data and \a size.
 	 */
-	const_buffer (void *data, size_t size) noexcept
+	const_buffer (const void *data, size_t size) noexcept
 		: data_(data)
 		, size_(size)
 	{ }
@@ -106,7 +109,7 @@ public:
 	/**
 	 * Returns pointer to beginning of memory region.
 	 */
-	void *data () const noexcept
+	const void *data () const noexcept
 	{
 		return data_;
 	}
@@ -126,15 +129,18 @@ public:
 	 */
 	const_buffer &operator+= (size_t n) noexcept
 	{
-		n = (std::min)(n, size_);
-		data_ = static_cast<char *>(data_) + n;
+		if (n > size_)
+		{
+			n = size_;
+		}
+		data_ = static_cast<const char *>(data_) + n;
 		size_ -= n;
 		return *this;
 	}
 
 private:
 
-	void *data_{};
+	const void *data_{};
 	size_t size_{};
 };
 
