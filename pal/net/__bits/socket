@@ -1,10 +1,13 @@
 #pragma once // -*- C++ -*-
 
 #include <pal/__bits/lib>
+#include <pal/buffer>
+#include <array>
 #include <system_error>
 #include <utility>
 
 #if __pal_os_linux || __pal_os_macos
+	#include <limits.h>
 	#include <netinet/tcp.h>
 	#include <poll.h>
 	#include <sys/socket.h>
@@ -27,10 +30,61 @@ const std::error_code &init () noexcept;
 #if __pal_os_linux || __pal_os_macos //{{{1
 
 using native_socket = int;
-static constexpr native_socket invalid_native_socket = -1;
+constexpr native_socket invalid_native_socket = -1;
 
 using sa_family = ::sa_family_t;
 using message_flags = int;
+
+constexpr int iov_max_length =
+	#if defined(IOV_MAX)
+		IOV_MAX
+	#elif defined(UIO_MAXIOV)
+		UIO_MAXIOV
+	#else
+		16
+	#endif
+;
+
+// Note: there are lot of const_cast going on: not nice but actual
+// const-correctness goes on layer above
+struct message: ::msghdr
+{
+	std::array<iovec, iov_max_length> iov{};
+
+	template <typename BufferSequence>
+	message (const BufferSequence &buffers) noexcept
+		: msghdr()
+	{
+		msg_iov = iov.data();
+		auto it = buffer_sequence_begin(buffers);
+		const auto end = buffer_sequence_end(buffers);
+		while (it != end && static_cast<size_t>(msg_iovlen) != iov.size())
+		{
+			iov[msg_iovlen].iov_base = const_cast<void *>(it->data());
+			iov[msg_iovlen].iov_len = it->size();
+			++msg_iovlen;
+			++it;
+		}
+	}
+
+	template <typename BufferSequence>
+	message (const BufferSequence &buffers, void *name, size_t namelen) noexcept
+		: message(buffers)
+	{
+		msg_name = name;
+		msg_namelen = namelen;
+	}
+
+	template <typename BufferSequence>
+	message (const BufferSequence &buffers, const void *name, size_t namelen) noexcept
+		: message(buffers, const_cast<void *>(name), namelen)
+	{ }
+
+	size_t endpoint_size () const noexcept
+	{
+		return msg_namelen;
+	}
+};
 
 #elif __pal_os_windows //{{{1
 
@@ -44,6 +98,51 @@ using message_flags = DWORD;
 constexpr auto SHUT_RD = SD_RECEIVE;
 constexpr auto SHUT_WR = SD_SEND;
 constexpr auto SHUT_RDWR = SD_BOTH;
+
+constexpr int iov_max_length = 16;
+
+// Windows WSASendMsg supports only UDP & raw sockets.
+// Using WSASendTo/WSARecvFrom/WSASend/WSARecv instead.
+struct message
+{
+	std::array<WSABUF, iov_max_length> iov{};
+	DWORD iov_len{};
+	sockaddr *name{};
+	INT namelen{};
+
+	template <typename BufferSequence>
+	message (const BufferSequence &buffers) noexcept
+	{
+		iov_len = 0;
+		auto it = buffer_sequence_begin(buffers);
+		const auto end = buffer_sequence_end(buffers);
+		while (it != end && iov_len != iov.size())
+		{
+			iov[iov_len].buf = static_cast<char *>(const_cast<void *>(it->data()));
+			iov[iov_len].len = static_cast<ULONG>(it->size());
+			++iov_len;
+			++it;
+		}
+	}
+
+	template <typename BufferSequence>
+	message (const BufferSequence &buffers, void *name, size_t namelen) noexcept
+		: message(buffers)
+	{
+		this->name = static_cast<sockaddr *>(name);
+		this->namelen = static_cast<INT>(namelen);
+	}
+
+	template <typename BufferSequence>
+	message (const BufferSequence &buffers, const void *name, size_t namelen) noexcept
+		: message(buffers, const_cast<void *>(name), namelen)
+	{ }
+
+	size_t endpoint_size () const noexcept
+	{
+		return namelen;
+	}
+};
 
 #endif //}}}1
 
@@ -223,6 +322,18 @@ struct socket
 		int name,
 		const void *data,
 		size_t data_size,
+		std::error_code &error
+	) noexcept;
+
+	size_t receive (
+		message &msg,
+		message_flags flags,
+		std::error_code &error
+	) noexcept;
+
+	size_t send (
+		const message &msg,
+		message_flags flags,
 		std::error_code &error
 	) noexcept;
 };

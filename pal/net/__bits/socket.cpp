@@ -35,6 +35,12 @@ inline T check_result (T result, std::error_code &error) noexcept
 	}
 	else
 	{
+		if (errno == EDESTADDRREQ)
+		{
+			// to unify with Windows (harder other way around,
+			// would need differentiate UDP & TCP sockets)
+			errno = ENOTCONN;
+		}
 		error.assign(errno, std::generic_category());
 	}
 	return result;
@@ -289,6 +295,24 @@ void socket::set_option (
 	{
 		call(::setsockopt, error, handle, level, name, data, data_size);
 	}
+}
+
+
+size_t socket::receive (
+	message &msg,
+	message_flags flags,
+	std::error_code &error) noexcept
+{
+	return call(::recvmsg, error, handle, &msg, flags);
+}
+
+
+size_t socket::send (
+	const message &msg,
+	message_flags flags,
+	std::error_code &error) noexcept
+{
+	return call(::sendmsg, error, handle, &msg, flags);
 }
 
 
@@ -653,6 +677,78 @@ void socket::set_option (
 			static_cast<int>(data_size)
 		);
 	}
+}
+
+
+size_t socket::receive (
+	message &msg,
+	message_flags ioflags,
+	std::error_code &error) noexcept
+{
+	DWORD received = 0;
+	if (msg.name)
+	{
+		call(::WSARecvFrom, error,
+			handle,
+			msg.iov.data(),
+			msg.iov_len,
+			&received,
+			&ioflags,
+			msg.name,
+			&msg.namelen,
+			nullptr,
+			nullptr
+		);
+	}
+	else
+	{
+		call(::WSARecv, error,
+			handle,
+			msg.iov.data(),
+			msg.iov_len,
+			&received,
+			&ioflags,
+			nullptr,
+			nullptr
+		);
+	}
+	return received;
+}
+
+
+size_t socket::send (
+	const message &msg,
+	message_flags ioflags,
+	std::error_code &error) noexcept
+{
+	DWORD sent = 0;
+	if (msg.name)
+	{
+		call(::WSASendTo, error,
+			handle,
+			const_cast<WSABUF *>(msg.iov.data()),
+			msg.iov_len,
+			&sent,
+			ioflags,
+			msg.name,
+			msg.namelen,
+			nullptr,
+			nullptr
+		);
+	}
+	else
+	{
+		call(::WSASend, error,
+			handle,
+			const_cast<WSABUF *>(msg.iov.data()),
+			msg.iov_len,
+			&sent,
+			ioflags,
+			nullptr,
+			nullptr
+		);
+	}
+	return sent;
 }
 
 

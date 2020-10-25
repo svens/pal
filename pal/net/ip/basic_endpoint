@@ -45,7 +45,7 @@ public:
 
 
 	/**
-	 * Construct endpoint with unspecified \a protocol family address and port 0.
+	 * Construct endpoint with unspecified \a protocol family address and \a port.
 	 */
 	constexpr basic_endpoint (const protocol_type &protocol, port_type port) noexcept
 		: data_{}
