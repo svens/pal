@@ -66,6 +66,130 @@ public:
 	basic_stream_socket (const endpoint_type &endpoint)
 		: base(endpoint)
 	{ }
+
+
+	//
+	// receive
+	//
+
+
+	/**
+	 * Read data from socket into \a buffers. Returns number of bytes
+	 * received. On failure, set \a error and return value is undefined.
+	 */
+	template <typename MutableBufferSequence>
+	size_t receive (const MutableBufferSequence &buffers,
+		socket_base::message_flags flags,
+		std::error_code &error) noexcept
+	{
+		__bits::message message(buffers);
+		if (message.msg_size > 0)
+		{
+			return base::socket_.receive(message, flags, error);
+		}
+		error.clear();
+		return 0;
+	}
+
+
+	/**
+	 * Read data from socket into \a buffers. Returns number of bytes
+	 * received. On failure, throw std::system_error.
+	 */
+	template <typename MutableBufferSequence>
+	size_t receive (const MutableBufferSequence &buffers,
+		socket_base::message_flags flags)
+	{
+		return receive(buffers, flags,
+			throw_on_error("basic_datagram_socket::receive")
+		);
+	}
+
+
+	/**
+	 * Read data from socket into \a buffers. Returns number of bytes
+	 * received. On failure, set \a error and return value is undefined.
+	 */
+	template <typename MutableBufferSequence>
+	size_t receive (const MutableBufferSequence &buffers,
+		std::error_code &error) noexcept
+	{
+		return receive(buffers, socket_base::message_flags{}, error);
+	}
+
+
+	/**
+	 * Read data from socket into \a buffers. Returns number of bytes
+	 * received. On failure, throw std::system_error.
+	 */
+	template <typename MutableBufferSequence>
+	size_t receive (const MutableBufferSequence &buffers)
+	{
+		return receive(buffers, socket_base::message_flags{});
+	}
+
+
+	//
+	// send
+	//
+
+
+	/**
+	 * Send data from \a buffers using this socket. Returns number of
+	 * bytes sent. On failure set \a std::error and return value is
+	 * undefined.
+	 */
+	template <typename ConstBufferSequence>
+	size_t send (const ConstBufferSequence &buffers,
+		socket_base::message_flags flags,
+		std::error_code &error) noexcept
+	{
+		__bits::message message(buffers);
+		if (message.msg_size > 0)
+		{
+			return base::socket_.send(message, flags, error);
+		}
+		error.clear();
+		return 0;
+	}
+
+
+	/**
+	 * Send data from \a buffers using this socket. Returns number of
+	 * bytes sent. On failure throw std::system_error.
+	 */
+	template <typename ConstBufferSequence>
+	size_t send (const ConstBufferSequence &buffers,
+		socket_base::message_flags flags)
+	{
+		return send(buffers, flags,
+			throw_on_error("basic_datagram_socket::send")
+		);
+	}
+
+
+	/**
+	 * Send data from \a buffers using this socket. Returns number of
+	 * bytes sent. On failure set \a std::error and return value is
+	 * undefined.
+	 */
+	template <typename ConstBufferSequence>
+	size_t send (const ConstBufferSequence &buffers,
+		std::error_code &error) noexcept
+	{
+		return send(buffers, socket_base::message_flags{}, error);
+	}
+
+
+	/**
+	 * Send data from \a buffers using this socket. Returns number of
+	 * bytes sent. On failure throw std::system_error.
+	 */
+	template <typename ConstBufferSequence>
+	size_t send (const ConstBufferSequence &buffers)
+	{
+		return send(buffers, socket_base::message_flags{});
+	}
 };
 
 

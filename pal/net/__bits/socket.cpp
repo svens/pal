@@ -303,6 +303,9 @@ int socket::receive (
 	message_flags flags,
 	std::error_code &error) noexcept
 {
+	#if defined(MSG_NOSIGNAL)
+		flags |= MSG_NOSIGNAL;
+	#endif
 	return call(::recvmsg, error, handle, &msg, flags);
 }
 
@@ -312,6 +315,9 @@ int socket::send (
 	message_flags flags,
 	std::error_code &error) noexcept
 {
+	#if defined(MSG_NOSIGNAL)
+		flags |= MSG_NOSIGNAL;
+	#endif
 	return call(::sendmsg, error, handle, &msg, flags);
 }
 
