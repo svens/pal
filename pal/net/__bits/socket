@@ -50,6 +50,7 @@ constexpr int iov_max_length =
 struct message: ::msghdr
 {
 	std::array<iovec, iov_max_length> iov{};
+	size_t msg_size{};
 
 	template <typename BufferSequence>
 	message (const BufferSequence &buffers) noexcept
@@ -62,6 +63,7 @@ struct message: ::msghdr
 		{
 			iov[msg_iovlen].iov_base = const_cast<void *>(it->data());
 			iov[msg_iovlen].iov_len = it->size();
+			msg_size += it->size();
 			++msg_iovlen;
 			++it;
 		}
@@ -79,11 +81,6 @@ struct message: ::msghdr
 	message (const BufferSequence &buffers, const void *name, size_t namelen) noexcept
 		: message(buffers, const_cast<void *>(name), namelen)
 	{ }
-
-	size_t endpoint_size () const noexcept
-	{
-		return msg_namelen;
-	}
 };
 
 #elif __pal_os_windows //{{{1
@@ -107,8 +104,9 @@ struct message
 {
 	std::array<WSABUF, iov_max_length> iov{};
 	DWORD iov_len{};
-	sockaddr *name{};
-	INT namelen{};
+	size_t msg_size{};
+	sockaddr *msg_name{};
+	INT msg_namelen{};
 
 	template <typename BufferSequence>
 	message (const BufferSequence &buffers) noexcept
@@ -120,6 +118,7 @@ struct message
 		{
 			iov[iov_len].buf = static_cast<char *>(const_cast<void *>(it->data()));
 			iov[iov_len].len = static_cast<ULONG>(it->size());
+			msg_size += it->size();
 			++iov_len;
 			++it;
 		}
@@ -129,19 +128,14 @@ struct message
 	message (const BufferSequence &buffers, void *name, size_t namelen) noexcept
 		: message(buffers)
 	{
-		this->name = static_cast<sockaddr *>(name);
-		this->namelen = static_cast<INT>(namelen);
+		msg_name = static_cast<sockaddr *>(name);
+		msg_namelen = static_cast<INT>(namelen);
 	}
 
 	template <typename BufferSequence>
 	message (const BufferSequence &buffers, const void *name, size_t namelen) noexcept
 		: message(buffers, const_cast<void *>(name), namelen)
 	{ }
-
-	size_t endpoint_size () const noexcept
-	{
-		return namelen;
-	}
 };
 
 #endif //}}}1
@@ -325,13 +319,13 @@ struct socket
 		std::error_code &error
 	) noexcept;
 
-	size_t receive (
+	int receive (
 		message &msg,
 		message_flags flags,
 		std::error_code &error
 	) noexcept;
 
-	size_t send (
+	int send (
 		const message &msg,
 		message_flags flags,
 		std::error_code &error

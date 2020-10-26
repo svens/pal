@@ -298,7 +298,7 @@ void socket::set_option (
 }
 
 
-size_t socket::receive (
+int socket::receive (
 	message &msg,
 	message_flags flags,
 	std::error_code &error) noexcept
@@ -307,7 +307,7 @@ size_t socket::receive (
 }
 
 
-size_t socket::send (
+int socket::send (
 	const message &msg,
 	message_flags flags,
 	std::error_code &error) noexcept
@@ -680,29 +680,30 @@ void socket::set_option (
 }
 
 
-size_t socket::receive (
+int socket::receive (
 	message &msg,
 	message_flags ioflags,
 	std::error_code &error) noexcept
 {
+	int result;
 	DWORD received = 0;
-	if (msg.name)
+	if (msg.msg_name)
 	{
-		call(::WSARecvFrom, error,
+		result = call(::WSARecvFrom, error,
 			handle,
 			msg.iov.data(),
 			msg.iov_len,
 			&received,
 			&ioflags,
-			msg.name,
-			&msg.namelen,
+			msg.msg_name,
+			&msg.msg_namelen,
 			nullptr,
 			nullptr
 		);
 	}
 	else
 	{
-		call(::WSARecv, error,
+		result = call(::WSARecv, error,
 			handle,
 			msg.iov.data(),
 			msg.iov_len,
@@ -712,33 +713,34 @@ size_t socket::receive (
 			nullptr
 		);
 	}
-	return received;
+	return result != SOCKET_ERROR ? received : -1;
 }
 
 
-size_t socket::send (
+int socket::send (
 	const message &msg,
 	message_flags ioflags,
 	std::error_code &error) noexcept
 {
+	int result;
 	DWORD sent = 0;
-	if (msg.name)
+	if (msg.msg_name)
 	{
-		call(::WSASendTo, error,
+		result = call(::WSASendTo, error,
 			handle,
 			const_cast<WSABUF *>(msg.iov.data()),
 			msg.iov_len,
 			&sent,
 			ioflags,
-			msg.name,
-			msg.namelen,
+			msg.msg_name,
+			msg.msg_namelen,
 			nullptr,
 			nullptr
 		);
 	}
 	else
 	{
-		call(::WSASend, error,
+		result = call(::WSASend, error,
 			handle,
 			const_cast<WSABUF *>(msg.iov.data()),
 			msg.iov_len,
@@ -748,7 +750,7 @@ size_t socket::send (
 			nullptr
 		);
 	}
-	return sent;
+	return result != SOCKET_ERROR ? sent : -1;
 }
 
 

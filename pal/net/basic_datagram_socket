@@ -86,9 +86,9 @@ public:
 	{
 		__bits::message message(buffers, sender.data(), sender.capacity());
 		auto result = base::socket_.receive(message, flags, error);
-		if (!error)
+		if (result >= 0)
 		{
-			sender.resize(message.endpoint_size(), error);
+			sender.resize(message.msg_namelen, error);
 		}
 		return result;
 	}
