@@ -82,14 +82,37 @@ constexpr protocol_t<TestType> protocol_v = is_v4_v<TestType>
 ;
 
 
-constexpr pal::net::ip::port_type min_port = 1024, max_port = 65535;
+constexpr pal::net::ip::port_type min_port () noexcept
+{
+	if constexpr (pal::is_release_build)
+	{
+		return 1024;
+	}
+	else
+	{
+		return 65535/2;
+	}
+}
+
+
+constexpr pal::net::ip::port_type max_port () noexcept
+{
+	if constexpr (pal::is_release_build)
+	{
+		return 65535/2 - 1;
+	}
+	else
+	{
+		return 65535;
+	}
+}
 
 
 inline pal::net::ip::port_type base_port () noexcept
 {
 	std::random_device rdev;
 	std::default_random_engine eng(rdev());
-	std::uniform_int_distribution<pal::net::ip::port_type> dist(min_port, max_port);
+	std::uniform_int_distribution<pal::net::ip::port_type> dist(min_port(), max_port());
 	return dist(eng);
 }
 
@@ -97,13 +120,13 @@ inline pal::net::ip::port_type base_port () noexcept
 inline pal::net::ip::port_type next_port () noexcept
 {
 	static pal::net::ip::port_type port = base_port();
-	if (port > max_port)
+	if (port > max_port())
 	{
-		port = min_port;
+		port = min_port();
 	}
-	else if (port < min_port)
+	else if (port < min_port())
 	{
-		port = min_port;
+		port = min_port();
 	}
 	return port++;
 }
