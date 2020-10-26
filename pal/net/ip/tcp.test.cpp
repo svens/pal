@@ -162,14 +162,22 @@ TEMPLATE_TEST_CASE("net/ip/tcp", "", tcp_v4, tcp_v6)
 			CHECK(!error);
 		}
 
+		SECTION("close")
+		{
+			a.send(send_msg);
+			a.close();
+			CHECK(b.receive(recv_msg, error) == send_msg_size);
+			CHECK(b.receive(recv_msg, error) == 0);
+		}
+
 		SECTION("closed")
 		{
 			a.close();
-			a.send(send_msg[0], error);
+			a.send(send_msg, error);
 			CHECK(error == std::errc::bad_file_descriptor);
 
 			CHECK_THROWS_AS(
-				a.send(send_msg[0]),
+				a.send(send_msg),
 				std::system_error
 			);
 
