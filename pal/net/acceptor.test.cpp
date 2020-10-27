@@ -12,7 +12,8 @@ TEMPLATE_TEST_CASE("net/acceptor", "", tcp_v4, tcp_v6)
 {
 	constexpr auto protocol = protocol_v<TestType>;
 	const endpoint_t<TestType> any{protocol, 0};
-	auto [bind_endpoint, connect_endpoint] = test_endpoints(protocol);
+
+	auto bind_endpoint = next_endpoint(protocol);
 	CAPTURE(bind_endpoint);
 
 	SECTION("ctor")
@@ -169,19 +170,16 @@ TEMPLATE_TEST_CASE("net/acceptor", "", tcp_v4, tcp_v6)
 	acceptor_t<TestType> acceptor(protocol);
 	REQUIRE(acceptor.is_open());
 
-	auto start_listen = [&](const auto &endpoint)
+	auto start_listen = [](auto &acceptor, auto &endpoint) -> auto
 	{
-		acceptor.set_option(pal::net::socket_base::reuse_address(true));
-		acceptor.bind(endpoint);
+		auto connect_endpoint = bind_available_port(acceptor, endpoint);
 		acceptor.listen();
+		return connect_endpoint;
 	};
 
 	SECTION("bind")
 	{
-		bind_endpoint.port(next_port());
-
-		acceptor.bind(bind_endpoint, error);
-		REQUIRE(!error);
+		REQUIRE_NOTHROW(bind_available_port(acceptor, bind_endpoint));
 		CHECK(acceptor.local_endpoint() == bind_endpoint);
 
 		acceptor.bind(bind_endpoint, error);
@@ -199,17 +197,7 @@ TEMPLATE_TEST_CASE("net/acceptor", "", tcp_v4, tcp_v6)
 
 	SECTION("listen")
 	{
-		// Windows requires bound socket for listen()
-		// Linux & MacOS bind implicitly to random port
-
-		if constexpr (pal::is_windows_build)
-		{
-			acceptor.bind(bind_endpoint);
-		}
-		else
-		{
-			CHECK(acceptor.local_endpoint() == any);
-		}
+		REQUIRE_NOTHROW(bind_available_port(acceptor, bind_endpoint));
 
 		acceptor.listen(3, error);
 		REQUIRE(!error);
@@ -333,8 +321,7 @@ TEMPLATE_TEST_CASE("net/acceptor", "", tcp_v4, tcp_v6)
 
 		SECTION("bound")
 		{
-			acceptor.bind(bind_endpoint, error);
-			REQUIRE(!error);
+			REQUIRE_NOTHROW(bind_available_port(acceptor, bind_endpoint));
 			CHECK(acceptor.local_endpoint(error) == bind_endpoint);
 			CHECK(!error);
 			CHECK_NOTHROW(acceptor.local_endpoint());
@@ -356,8 +343,7 @@ TEMPLATE_TEST_CASE("net/acceptor", "", tcp_v4, tcp_v6)
 	{
 		socket_t<TestType> a, b;
 
-		REQUIRE_NOTHROW(start_listen(bind_endpoint));
-		a.connect(connect_endpoint);
+		a.connect(start_listen(acceptor, bind_endpoint));
 
 		SECTION("accept(error)")
 		{
@@ -395,7 +381,7 @@ TEMPLATE_TEST_CASE("net/acceptor", "", tcp_v4, tcp_v6)
 		SECTION("no connect")
 		{
 			acceptor.native_non_blocking(true);
-			REQUIRE_NOTHROW(start_listen(bind_endpoint));
+			start_listen(acceptor, bind_endpoint);
 			acceptor.accept(error);
 			CHECK(error == std::errc::operation_would_block);
 		}
@@ -425,14 +411,12 @@ TEMPLATE_TEST_CASE("net/acceptor", "", tcp_v4, tcp_v6)
 
 	SECTION("enable_connection_aborted")
 	{
-		REQUIRE_NOTHROW(start_listen(bind_endpoint));
-
 		CHECK_FALSE(acceptor.enable_connection_aborted());
 		acceptor.enable_connection_aborted(true);
 		CHECK(acceptor.enable_connection_aborted());
 
 		socket_t<TestType> a;
-		a.connect(connect_endpoint);
+		a.connect(start_listen(acceptor, bind_endpoint));
 		a.set_option(pal::net::socket_base::linger(true, 0s));
 		a.close();
 
@@ -443,8 +427,9 @@ TEMPLATE_TEST_CASE("net/acceptor", "", tcp_v4, tcp_v6)
 
 	SECTION("wait")
 	{
-		REQUIRE_NOTHROW(start_listen(bind_endpoint));
 		acceptor.native_non_blocking(true);
+		auto connect_endpoint = start_listen(acceptor, bind_endpoint);
+
 		socket_t<TestType> a;
 
 		SECTION("std::error_code")

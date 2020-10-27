@@ -8,6 +8,24 @@ namespace {
 using namespace pal_test;
 
 
+template <typename Protocol>
+inline auto socket_pair (const Protocol &protocol)
+	-> std::pair<typename Protocol::socket, typename Protocol::socket>
+{
+	auto bind_endpoint = next_endpoint(protocol);
+	CAPTURE(bind_endpoint);
+
+	typename Protocol::acceptor acceptor(protocol);
+	bind_available_port(acceptor, bind_endpoint);
+	acceptor.listen();
+
+	typename Protocol::socket a(protocol);
+	a.connect(to_loopback(bind_endpoint));
+
+	return {std::move(a), acceptor.accept()};
+}
+
+
 TEMPLATE_TEST_CASE("net/ip/tcp", "", tcp_v4, tcp_v6)
 {
 	constexpr auto protocol = protocol_v<TestType>;
@@ -62,11 +80,7 @@ TEMPLATE_TEST_CASE("net/ip/tcp", "", tcp_v4, tcp_v6)
 
 		pal::net::socket_base::message_flags recv_flags{}, send_flags{};
 
-		auto [bind_endpoint, connect_endpoint] = test_endpoints(protocol);
-		acceptor_t<TestType> acceptor(bind_endpoint);
-		socket_t<TestType> a(protocol);
-		a.connect(connect_endpoint);
-		auto b = acceptor.accept();
+		auto [a, b] = socket_pair(protocol);
 
 		SECTION("single noexcept")
 		{

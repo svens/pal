@@ -82,73 +82,69 @@ constexpr protocol_t<TestType> protocol_v = is_v4_v<TestType>
 ;
 
 
-constexpr pal::net::ip::port_type min_port () noexcept
-{
-	if constexpr (pal::is_release_build)
-	{
-		return 1024;
-	}
-	else
-	{
-		return 65535/2;
-	}
-}
-
-
-constexpr pal::net::ip::port_type max_port () noexcept
-{
-	if constexpr (pal::is_release_build)
-	{
-		return 65535/2 - 1;
-	}
-	else
-	{
-		return 65535;
-	}
-}
+constexpr pal::net::ip::port_type min_port = 1024, max_port = 65535;
 
 
 inline pal::net::ip::port_type base_port () noexcept
 {
 	std::random_device rdev;
 	std::default_random_engine eng(rdev());
-	std::uniform_int_distribution<pal::net::ip::port_type> dist(min_port(), max_port());
+	std::uniform_int_distribution<pal::net::ip::port_type> dist(min_port, max_port);
 	return dist(eng);
 }
 
 
 inline pal::net::ip::port_type next_port () noexcept
 {
-	static pal::net::ip::port_type port = base_port();
-	if (port > max_port())
+	static auto port = base_port();
+	if (port < min_port || port > max_port)
 	{
-		port = min_port();
-	}
-	else if (port < min_port())
-	{
-		port = min_port();
+		port = min_port;
 	}
 	return port++;
 }
 
 
 template <typename Protocol>
-std::pair<typename Protocol::endpoint, typename Protocol::endpoint>
-test_endpoints (const Protocol &protocol) noexcept
+inline typename Protocol::endpoint next_endpoint (const Protocol &protocol) noexcept
 {
-	typename Protocol::endpoint bind_endpoint{protocol, next_port()};
+	return {protocol, next_port()};
+}
 
-	auto connect_endpoint = bind_endpoint;
-	if (bind_endpoint.address().is_v4())
+
+template <typename Endpoint>
+Endpoint to_loopback (Endpoint endpoint)
+{
+	if (endpoint.address().is_v4())
 	{
-		connect_endpoint.address(pal::net::ip::address_v4::loopback());
+		endpoint.address(pal::net::ip::address_v4::loopback());
 	}
 	else
 	{
-		connect_endpoint.address(pal::net::ip::address_v6::loopback());
+		endpoint.address(pal::net::ip::address_v6::loopback());
+	}
+	return endpoint;
+}
+
+
+template <typename Bindable>
+typename Bindable::endpoint_type bind_available_port (Bindable &bindable,
+	typename Bindable::endpoint_type &endpoint)
+{
+	constexpr size_t max_tries = max_port - min_port;
+
+	std::error_code error;
+	for (auto tries_left = max_tries;  tries_left;  tries_left--)
+	{
+		bindable.bind(endpoint, error);
+		if (!error)
+		{
+			return to_loopback(endpoint);
+		}
+		endpoint.port(next_port());
 	}
 
-	return {bind_endpoint, connect_endpoint};
+	throw std::system_error(error, "bind_available_port");
 }
 
 

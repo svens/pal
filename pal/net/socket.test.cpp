@@ -12,8 +12,11 @@ TEMPLATE_TEST_CASE("net/socket", "", tcp_v4, tcp_v6, udp_v4, udp_v6)
 {
 	constexpr auto protocol = protocol_v<TestType>;
 	const endpoint_t<TestType> any{protocol, 0};
-	auto [bind_endpoint, connect_endpoint] = test_endpoints(protocol);
+
+	auto bind_endpoint = next_endpoint(protocol);
 	CAPTURE(bind_endpoint);
+
+	auto connect_endpoint = to_loopback(bind_endpoint);
 
 	SECTION("ctor")
 	{
@@ -157,13 +160,9 @@ TEMPLATE_TEST_CASE("net/socket", "", tcp_v4, tcp_v6, udp_v4, udp_v6)
 	socket_t<TestType> socket(protocol);
 	REQUIRE(socket.is_open());
 
-	// doing multiple bind(2)
-	REQUIRE_NOTHROW(socket.set_option(pal::net::socket_base::reuse_address(true)));
-
 	SECTION("bind")
 	{
-		socket.bind(bind_endpoint, error);
-		REQUIRE(!error);
+		REQUIRE_NOTHROW(bind_available_port(socket, bind_endpoint));
 		CHECK(socket.local_endpoint() == bind_endpoint);
 
 		socket.bind(bind_endpoint, error);
@@ -183,7 +182,9 @@ TEMPLATE_TEST_CASE("net/socket", "", tcp_v4, tcp_v6, udp_v4, udp_v6)
 	{
 		if constexpr (is_tcp_v<TestType>)
 		{
-			acceptor_t<TestType> acceptor(bind_endpoint);
+			acceptor_t<TestType> acceptor(protocol);
+			connect_endpoint = bind_available_port(acceptor, bind_endpoint);
+			acceptor.listen();
 
 			socket.connect(connect_endpoint, error);
 			CHECK(!error);
@@ -228,7 +229,9 @@ TEMPLATE_TEST_CASE("net/socket", "", tcp_v4, tcp_v6, udp_v4, udp_v6)
 		socket_t<TestType> a;
 		if constexpr (is_tcp_v<TestType>)
 		{
-			acceptor_t<TestType> acceptor(bind_endpoint);
+			acceptor_t<TestType> acceptor(protocol);
+			connect_endpoint = bind_available_port(acceptor, bind_endpoint);
+			acceptor.listen();
 			socket.connect(connect_endpoint);
 			a = acceptor.accept();
 		}
@@ -276,7 +279,9 @@ TEMPLATE_TEST_CASE("net/socket", "", tcp_v4, tcp_v6, udp_v4, udp_v6)
 			socket_t<TestType> a;
 			if constexpr (is_tcp_v<TestType>)
 			{
-				acceptor_t<TestType> acceptor(bind_endpoint);
+				acceptor_t<TestType> acceptor(protocol);
+				connect_endpoint = bind_available_port(acceptor, bind_endpoint);
+				acceptor.listen();
 				socket.connect(connect_endpoint);
 				a = acceptor.accept();
 			}
@@ -334,8 +339,7 @@ TEMPLATE_TEST_CASE("net/socket", "", tcp_v4, tcp_v6, udp_v4, udp_v6)
 
 		SECTION("bound")
 		{
-			socket.bind(bind_endpoint, error);
-			REQUIRE(!error);
+			REQUIRE_NOTHROW(bind_available_port(socket, bind_endpoint));
 			CHECK(socket.local_endpoint(error) == bind_endpoint);
 			CHECK(!error);
 			CHECK_NOTHROW(socket.local_endpoint());

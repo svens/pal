@@ -14,8 +14,12 @@ TEMPLATE_TEST_CASE("net/ip/udp", "", udp_v4, udp_v6)
 	std::error_code error;
 
 	endpoint_t<TestType> endpoint;
-	auto [bind_endpoint, connect_endpoint] = test_endpoints(protocol);
-	socket_t<TestType> receiver(bind_endpoint), sender(protocol);
+	auto bind_endpoint = next_endpoint(protocol);
+	CAPTURE(bind_endpoint);
+
+	socket_t<TestType> receiver(protocol), sender(protocol);
+	bind_available_port(receiver, bind_endpoint);
+	const auto connect_endpoint = to_loopback(bind_endpoint);
 
 	const std::string_view send_buf[] = { "hello", ", ", "world" };
 	std::array send_msg =
