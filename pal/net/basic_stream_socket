@@ -1,0 +1,199 @@
+#pragma once // -*- C++ -*-
+
+/**
+ * \file pal/net/basic_stream_socket
+ * Generic stream-oriented socket
+ */
+
+#include <pal/__bits/lib>
+#include <pal/net/error>
+#include <pal/net/basic_socket>
+
+
+__pal_begin
+
+
+namespace net {
+
+
+/**
+ * Stream socket that can be used to exchange data with peer over a sequenced,
+ * reliable, bidirectional, connection-oriented byte stream.
+ */
+template <typename Protocol>
+class basic_stream_socket: public basic_socket<Protocol>
+{
+	using base = basic_socket<Protocol>;
+
+public:
+
+	/// Socket protocol
+	using protocol_type = Protocol;
+
+	/// Socket endpoint
+	using endpoint_type = typename protocol_type::endpoint;
+
+	/// Native socket handle
+	using typename base::native_handle_type;
+
+
+	/**
+	 * Create new unopened socket.
+	 */
+	basic_stream_socket () noexcept = default;
+
+
+	/**
+	 * Create new socket, acquiring native_sockte.
+	 */
+	basic_stream_socket (const protocol_type &protocol, native_handle_type handle)
+		: base(protocol, handle)
+	{ }
+
+
+	/**
+	 * Create new socket and open it.
+	 */
+	basic_stream_socket (const protocol_type &protocol)
+		: base(protocol)
+	{ }
+
+
+	/**
+	 * Construct and open new socket. After construction bind to
+	 * \a endpoint. On failure, throw std::system_error.
+	 */
+	basic_stream_socket (const endpoint_type &endpoint)
+		: base(endpoint)
+	{ }
+
+
+	//
+	// receive
+	//
+
+
+	/**
+	 * Read data from socket into \a buffers. Returns number of bytes
+	 * received. On failure, set \a error and return value is undefined.
+	 */
+	template <typename MutableBufferSequence>
+	size_t receive (const MutableBufferSequence &buffers,
+		socket_base::message_flags flags,
+		std::error_code &error) noexcept
+	{
+		__bits::message message(buffers);
+		if (message.msg_size > 0)
+		{
+			return base::socket_.receive(message, flags, error);
+		}
+		error.clear();
+		return 0;
+	}
+
+
+	/**
+	 * Read data from socket into \a buffers. Returns number of bytes
+	 * received. On failure, throw std::system_error.
+	 */
+	template <typename MutableBufferSequence>
+	size_t receive (const MutableBufferSequence &buffers,
+		socket_base::message_flags flags)
+	{
+		return receive(buffers, flags,
+			throw_on_error("basic_datagram_socket::receive")
+		);
+	}
+
+
+	/**
+	 * Read data from socket into \a buffers. Returns number of bytes
+	 * received. On failure, set \a error and return value is undefined.
+	 */
+	template <typename MutableBufferSequence>
+	size_t receive (const MutableBufferSequence &buffers,
+		std::error_code &error) noexcept
+	{
+		return receive(buffers, socket_base::message_flags{}, error);
+	}
+
+
+	/**
+	 * Read data from socket into \a buffers. Returns number of bytes
+	 * received. On failure, throw std::system_error.
+	 */
+	template <typename MutableBufferSequence>
+	size_t receive (const MutableBufferSequence &buffers)
+	{
+		return receive(buffers, socket_base::message_flags{});
+	}
+
+
+	//
+	// send
+	//
+
+
+	/**
+	 * Send data from \a buffers using this socket. Returns number of
+	 * bytes sent. On failure set \a std::error and return value is
+	 * undefined.
+	 */
+	template <typename ConstBufferSequence>
+	size_t send (const ConstBufferSequence &buffers,
+		socket_base::message_flags flags,
+		std::error_code &error) noexcept
+	{
+		__bits::message message(buffers);
+		if (message.msg_size > 0)
+		{
+			return base::socket_.send(message, flags, error);
+		}
+		error.clear();
+		return 0;
+	}
+
+
+	/**
+	 * Send data from \a buffers using this socket. Returns number of
+	 * bytes sent. On failure throw std::system_error.
+	 */
+	template <typename ConstBufferSequence>
+	size_t send (const ConstBufferSequence &buffers,
+		socket_base::message_flags flags)
+	{
+		return send(buffers, flags,
+			throw_on_error("basic_datagram_socket::send")
+		);
+	}
+
+
+	/**
+	 * Send data from \a buffers using this socket. Returns number of
+	 * bytes sent. On failure set \a std::error and return value is
+	 * undefined.
+	 */
+	template <typename ConstBufferSequence>
+	size_t send (const ConstBufferSequence &buffers,
+		std::error_code &error) noexcept
+	{
+		return send(buffers, socket_base::message_flags{}, error);
+	}
+
+
+	/**
+	 * Send data from \a buffers using this socket. Returns number of
+	 * bytes sent. On failure throw std::system_error.
+	 */
+	template <typename ConstBufferSequence>
+	size_t send (const ConstBufferSequence &buffers)
+	{
+		return send(buffers, socket_base::message_flags{});
+	}
+};
+
+
+} // namespace net
+
+
+__pal_end

@@ -1,0 +1,93 @@
+#pragma once // -*- C++ -*-
+
+#include <pal/__bits/lib>
+#include <pal/byte_order>
+#include <charconv>
+
+#if __pal_os_linux || __pal_os_macos
+	#include <arpa/inet.h>
+#elif __pal_os_windows
+	#include <ws2tcpip.h>
+	#pragma comment(lib, "ws2_32")
+#endif
+
+
+__pal_begin
+
+
+namespace net::ip::__bits {
+
+
+inline char *to_text (int family, const uint8_t *bytes, char *first, char *last) noexcept
+{
+	if (::inet_ntop(family, bytes, first, last - first))
+	{
+		while (*first)
+		{
+			first++;
+		}
+		return first;
+	}
+	return nullptr;
+}
+
+
+namespace {
+
+inline char *add_port (uint16_t port, char *first, char *last) noexcept
+{
+	if (first + sizeof(":1") - 1 < last)
+	{
+		*first++ = ':';
+		auto [p, ec] = std::to_chars(first, last, ntoh(port));
+		if (ec == std::errc{})
+		{
+			return p;
+		}
+	}
+	return nullptr;
+}
+
+}
+
+
+inline char *to_text (const sockaddr_in &src, char *first, char *last) noexcept
+{
+	auto bytes = reinterpret_cast<const uint8_t *>(&src.sin_addr);
+	if ((first = to_text(AF_INET, bytes, first, last)) != nullptr)
+	{
+		return add_port(src.sin_port, first, last);
+	}
+	return nullptr;
+}
+
+
+inline char *to_text (const sockaddr_in6 &src, char *first, char *last) noexcept
+{
+	if (first + sizeof("[::]:1") - 1 < last)
+	{
+		*first++ = '[';
+		auto bytes = reinterpret_cast<const uint8_t *>(&src.sin6_addr);
+		if ((first = to_text(AF_INET6, bytes, first, last)) != nullptr)
+		{
+			if (first + sizeof("]:1") - 1 < last)
+			{
+				*first++ = ']';
+				return add_port(src.sin6_port, first, last);
+			}
+		}
+	}
+	return nullptr;
+}
+
+
+inline bool from_text (int family, const char *src, uint8_t *bytes) noexcept
+{
+  return ::inet_pton(family, src, bytes) == 1;
+}
+
+
+} // namespace net::ip::__bits
+
+
+__pal_end

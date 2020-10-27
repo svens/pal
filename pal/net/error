@@ -1,0 +1,93 @@
+#pragma once // -*- C++ -*-
+
+/**
+ * \file pal/net/error
+ * PAL net errors
+ */
+
+#include <pal/__bits/lib>
+#include <pal/error>
+#include <typeinfo>
+
+
+__pal_begin
+
+
+namespace net {
+
+
+#define __pal_net_socket_errc(Impl) \
+	Impl(__0, "internal placeholder for not an error") \
+	Impl(already_open, "already open") \
+	Impl(address_length_error, "address length error") \
+	Impl(socket_option_length_error, "socket option length error")
+
+
+/**
+ * PAL socket errors
+ */
+enum class socket_errc: int
+{
+	#define __pal_net_socket_errc_enum(Code, Message) Code,
+	__pal_net_socket_errc(__pal_net_socket_errc_enum)
+	#undef __pal_net_socket_errc_enum
+};
+
+
+/**
+ * Return reference to socket error category. The \c name() virtual function
+ * returns string "socket".
+ */
+const std::error_category &socket_category () noexcept;
+
+
+/**
+ * Make \c std::error_code from socket_errc \a ec
+ */
+inline std::error_code make_error_code (socket_errc ec) noexcept
+{
+	return {static_cast<int>(ec), socket_category()};
+}
+
+
+namespace ip {
+
+/**
+ * Exception type thrown when invalid address casting between IPv4 and IPv6 is
+ * attempted.
+ */
+class bad_address_cast: public std::bad_cast
+{ };
+
+
+namespace __bits {
+
+[[noreturn]] inline void bad_address_cast ()
+{
+	throw ip::bad_address_cast{};
+}
+
+[[noreturn]] inline void length_error (const char *src)
+{
+	throw std::length_error(src);
+}
+
+} // namespace __bits
+
+} // namespace ip
+
+
+} // namespace net
+
+
+__pal_end
+
+
+namespace std {
+
+template <>
+struct is_error_code_enum<pal::net::socket_errc>
+	: true_type
+{ };
+
+} // namespace std

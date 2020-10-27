@@ -1,0 +1,443 @@
+#pragma once // -*- C++ -*-
+
+/**
+ * \file pal/net/ip/basic_endpoint
+ * IP endpoint (address/port pair)
+ */
+
+#include <pal/__bits/lib>
+#include <pal/net/error>
+#include <pal/net/ip/address>
+#include <pal/byte_order>
+
+
+__pal_begin
+
+
+namespace net::ip {
+
+
+/// Port number type
+using port_type = uint16_t;
+
+
+/**
+ * Protocol-specific address/port pair. Endpoints are used to identity sources
+ * and destinations for socket connections and datagrams.
+ */
+template <typename Protocol>
+class basic_endpoint
+{
+public:
+
+	/// Endpoint's internet protocol.
+	using protocol_type = Protocol;
+
+
+	/**
+	 * Construct endpoint with unspecified Protocol::v4() address and port 0.
+	 */
+	constexpr basic_endpoint () noexcept
+		: data_{}
+	{
+		data_.v4.sin_family = AF_INET;
+	}
+
+
+	/**
+	 * Construct endpoint with unspecified \a protocol family address and \a port.
+	 */
+	constexpr basic_endpoint (const protocol_type &protocol, port_type port) noexcept
+		: data_{}
+	{
+		if (protocol.family() == AF_INET)
+		{
+			data_.v4.sin_family = AF_INET;
+			data_.v4.sin_port = hton(port);
+		}
+		else
+		{
+			data_.v6.sin6_family = AF_INET6;
+			data_.v6.sin6_port = hton(port);
+		}
+	}
+
+
+	/**
+	 * Construct endpoint with specified \a address and \a port
+	 */
+	constexpr basic_endpoint (const ip::address &address, port_type port) noexcept
+		: data_{}
+	{
+		if (address.is_v4())
+		{
+			data_.v4.sin_family = AF_INET;
+			data_.v4.sin_port = hton(port);
+			data_.v4.sin_addr.s_addr = hton(address.v4_.to_uint());
+		}
+		else
+		{
+			data_.v6.sin6_family = AF_INET6;
+			data_.v6.sin6_port = hton(port);
+			data_.v6.sin6_flowinfo = {};
+			data_.v6.sin6_scope_id = {};
+			std::copy(
+				address.v6_.bytes_.cbegin(),
+				address.v6_.bytes_.cend(),
+				&data_.v6.sin6_addr.s6_addr[0]
+			);
+		}
+	}
+
+
+	/**
+	 * Return endpoint's protocol.
+	 */
+	constexpr protocol_type protocol () const noexcept
+	{
+		return protocol_type{is_v4() ? AF_INET : AF_INET6};
+	}
+
+
+	/**
+	 * Return endpoint's address.
+	 */
+	constexpr ip::address address () const noexcept
+	{
+		ip::address a;
+		if (is_v4())
+		{
+			a.family_ = AF_INET;
+			a.v4_.bytes_ = address_v4::to_bytes(
+				ntoh(static_cast<uint32_t>(data_.v4.sin_addr.s_addr))
+			);
+		}
+		else
+		{
+			a.family_ = AF_INET6;
+			std::copy_n(
+				&data_.v6.sin6_addr.s6_addr[0],
+				a.v6_.bytes_.size(),
+				a.v6_.bytes_.begin()
+			);
+		}
+		return a;
+	}
+
+
+	/**
+	 * Set new endpoint \a address. Port is unchanged.
+	 */
+	void address (const ip::address &address) noexcept
+	{
+		if (address.is_v4())
+		{
+			data_.v4.sin_family = AF_INET;
+			data_.v4.sin_addr.s_addr = hton(address.v4_.to_uint());
+		}
+		else
+		{
+			data_.v6.sin6_family = AF_INET6;
+			std::copy(
+				address.v6_.bytes_.cbegin(),
+				address.v6_.bytes_.cend(),
+				&data_.v6.sin6_addr.s6_addr[0]
+			);
+		}
+	}
+
+
+	/**
+	 * Return endpoint's port (in host byte order).
+	 */
+	constexpr port_type port () const noexcept
+	{
+		return ntoh(data_.v4.sin_port);
+	}
+
+
+	/**
+	 * Set new endpoint's port \a value (in host byte order).
+	 */
+	void port (port_type value) noexcept
+	{
+		data_.v4.sin_port = hton(value);
+	}
+
+
+	/**
+	 * Return mutable pointer to generic socket address data.
+	 */
+	void *data () noexcept
+	{
+		return &data_;
+	}
+
+
+	/**
+	 * Return immutable pointer to generic socket address data.
+	 */
+	const void *data () const noexcept
+	{
+		return &data_;
+	}
+
+
+	/**
+	 * Return size of socket address data structure (specific to address
+	 * family).
+	 */
+	constexpr size_t size () const noexcept
+	{
+		return is_v4() ? sizeof(data_.v4) : sizeof(data_.v6);
+	}
+
+
+	/**
+	 * Set \a new_size for internal socket address data structure. This is
+	 * no-op and sets \a error to socket_errc::address_length_error if
+	 * \a new_size is different from protocol family's sockaddr size.
+	 */
+	void resize (size_t new_size, std::error_code &error) noexcept
+	{
+		if (new_size == size())
+		{
+			error.clear();
+		}
+		else
+		{
+			error = make_error_code(socket_errc::address_length_error);
+		}
+	}
+
+
+	/**
+	 * Set \a new_size for internal socket address data structure. This is
+	 * no-op and throws \c std::length_error if \a new_size is different
+	 * from family's sockaddr size.
+	 */
+	void resize (size_t new_size)
+	{
+		if (new_size != size())
+		{
+			__bits::length_error("basic_endpoint::resize");
+		}
+	}
+
+
+	/**
+	 * Return family-independent sockaddr data structure size.
+	 */
+	constexpr size_t capacity () const noexcept
+	{
+		return sizeof(data_);
+	}
+
+
+	/**
+	 * Convert \a this endpoint to human readable textual representation
+	 * by filling range [\a first, \a last).
+	 *
+	 * On success, returns std::to_chars_result with ptr pointing at past
+	 * last filled character and ec default value initialized.
+	 *
+	 * On failure, ptr is set to \a last and ec std::errc::value_too_large.
+	 * Content of [\a first, \a last) is unspecified.
+	 */
+	std::to_chars_result to_chars (char *first, char *last) const noexcept
+	{
+		if (is_v4())
+		{
+			if (auto end = __bits::to_text(data_.v4, first, last))
+			{
+				return {end, std::errc{}};
+			}
+		}
+		else
+		{
+			if (auto end = __bits::to_text(data_.v6, first, last))
+			{
+				return {end, std::errc{}};
+			}
+		}
+		return {last, std::errc::value_too_large};
+	}
+
+
+	/**
+	 * Return \a this endpoint as human readable textual representation.
+	 */
+	template <typename Allocator = std::allocator<char>>
+	string<Allocator> to_string (const Allocator &allocator = Allocator()) const
+	{
+		string<Allocator> result(INET6_ADDRSTRLEN + sizeof("[]:65535"), '\0', allocator);
+		auto [back, _] = to_chars(result.data(), result.data() + result.size());
+		result.resize(back - result.data());
+		return result;
+	}
+
+
+	/**
+	 * Compare \a this to \a that. Return value has same meaning as
+	 * std::memcmp.
+	 */
+	constexpr int compare (const basic_endpoint &that) const noexcept
+	{
+		if (auto r = data_.v4.sin_family - that.data_.v4.sin_family)
+		{
+			return r;
+		}
+		else if (is_v4())
+		{
+			r = data_.v4.sin_addr.s_addr - that.data_.v4.sin_addr.s_addr;
+			return r ? r : data_.v4.sin_port - that.data_.v4.sin_port;
+		}
+		else
+		{
+			while (r < 16 && data_.v6.sin6_addr.s6_addr[r] == that.data_.v6.sin6_addr.s6_addr[r])
+			{
+				++r;
+			}
+			return r < 16
+				? data_.v6.sin6_addr.s6_addr[r] - that.data_.v6.sin6_addr.s6_addr[r]
+				: data_.v6.sin6_port - that.data_.v6.sin6_port;
+		}
+	}
+
+
+	/**
+	 * Calculate hash value for \a this.
+	 */
+	constexpr uint64_t hash () const noexcept
+	{
+		if (is_v4())
+		{
+			return hash_128_to_64(AF_INET,
+				hash_128_to_64(data_.v4.sin_port, data_.v4.sin_addr.s_addr)
+			);
+		}
+		else
+		{
+			auto first = &data_.v6.sin6_addr.s6_addr[0];
+			auto last = first + sizeof(data_.v6.sin6_addr.s6_addr);
+			return hash_128_to_64(AF_INET6,
+				hash_128_to_64(data_.v6.sin6_port, fnv_1a_64(first, last))
+			);
+		}
+	}
+
+
+private:
+
+	union
+	{
+		sockaddr_in v4;
+		sockaddr_in6 v6;
+	} data_;
+
+	constexpr bool is_v4 () const noexcept
+	{
+		return data_.v4.sin_family == AF_INET;
+	}
+};
+
+
+/**
+ * Return true if \a a == \a b
+ */
+template <typename Protocol>
+constexpr bool operator== (
+	const basic_endpoint<Protocol> &a,
+	const basic_endpoint<Protocol> &b) noexcept
+{
+	return a.compare(b) == 0;
+}
+
+/**
+ * Return true if \a a != \a b
+ */
+template <typename Protocol>
+constexpr bool operator!= (
+	const basic_endpoint<Protocol> &a,
+	const basic_endpoint<Protocol> &b) noexcept
+{
+	return a.compare(b) != 0;
+}
+
+/**
+ * Return true if \a a < \a b
+ */
+template <typename Protocol>
+constexpr bool operator< (
+	const basic_endpoint<Protocol> &a,
+	const basic_endpoint<Protocol> &b) noexcept
+{
+	return a.compare(b) < 0;
+}
+
+/**
+ * Return true if \a a <= \a b
+ */
+template <typename Protocol>
+constexpr bool operator<= (
+	const basic_endpoint<Protocol> &a,
+	const basic_endpoint<Protocol> &b) noexcept
+{
+	return a.compare(b) <= 0;
+}
+
+/**
+ * Return true if \a a > \a b
+ */
+template <typename Protocol>
+constexpr bool operator> (
+	const basic_endpoint<Protocol> &a,
+	const basic_endpoint<Protocol> &b) noexcept
+{
+	return a.compare(b) > 0;
+}
+
+/**
+ * Return true if \a a >= \a b
+ */
+template <typename Protocol>
+constexpr bool operator>= (
+	const basic_endpoint<Protocol> &a,
+	const basic_endpoint<Protocol> &b) noexcept
+{
+	return a.compare(b) >= 0;
+}
+
+
+/**
+ * pal::net::ip::basic_endpoint<Protocol> stream I/O
+ */
+template <typename Protocol>
+inline std::ostream &operator<< (std::ostream &os, const basic_endpoint<Protocol> &a)
+{
+	char text[INET6_ADDRSTRLEN + sizeof("[]:65535")] = {};
+	a.to_chars(text, text + sizeof(text));
+	return (os << text);
+}
+
+
+} // namespace net::ip
+
+
+__pal_end
+
+
+namespace std {
+
+
+template <typename Protocol>
+struct hash<pal::net::ip::basic_endpoint<Protocol>>
+{
+	size_t operator() (const pal::net::ip::basic_endpoint<Protocol> &a) const noexcept
+	{
+		return a.hash();
+	}
+};
+
+
+} // namespace std

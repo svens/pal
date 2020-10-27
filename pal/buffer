@@ -1,0 +1,481 @@
+#pragma once // -*- C++ -*-
+
+/**
+ * \file pal/buffer
+ * Mutable and const buffers representing continuous memory region.
+ */
+
+#include <pal/__bits/lib>
+#include <algorithm>
+#include <array>
+#include <string>
+#include <string_view>
+#include <vector>
+
+
+__pal_begin
+
+
+/**
+ * Class mutable_buffer represents mutable continuous memory region
+ * [data(), data() + size())
+ */
+class mutable_buffer
+{
+public:
+
+	/**
+	 * Construct new buffer with data() == nullptr and size() == 0.
+	 */
+	mutable_buffer () noexcept = default;
+
+
+	/**
+	 * Construct new buffer with \a data and \a size.
+	 */
+	mutable_buffer (void *data, size_t size) noexcept
+		: data_(data)
+		, size_(size)
+	{ }
+
+
+	/**
+	 * Returns pointer to beginning of memory region.
+	 */
+	void *data () const noexcept
+	{
+		return data_;
+	}
+
+
+	/**
+	 * Returns size of memory region.
+	 */
+	size_t size () const noexcept
+	{
+		return size_;
+	}
+
+
+	/**
+	 * Set data to data() + min(n, size()) and size to size() - min(n, size())
+	 */
+	mutable_buffer &operator+= (size_t n) noexcept
+	{
+		n = (std::min)(n, size_);
+		data_ = static_cast<char *>(data_) + n;
+		size_ -= n;
+		return *this;
+	}
+
+private:
+
+	void *data_{};
+	size_t size_{};
+};
+
+
+/**
+ * Class const_buffer represents continuous memory region
+ * [data(), data() + size())
+ */
+class const_buffer
+{
+public:
+
+	/**
+	 * Construct new buffer with data() == nullptr and size() == 0.
+	 */
+	const_buffer () noexcept = default;
+
+
+	/**
+	 * Construct new buffer with \a data and \a size.
+	 */
+	const_buffer (const void *data, size_t size) noexcept
+		: data_(data)
+		, size_(size)
+	{ }
+
+
+	/**
+	 * Construct new buffer from that.
+	 */
+	const_buffer (const mutable_buffer &that) noexcept
+		: data_(that.data())
+		, size_(that.size())
+	{ }
+
+
+	/**
+	 * Returns pointer to beginning of memory region.
+	 */
+	const void *data () const noexcept
+	{
+		return data_;
+	}
+
+
+	/**
+	 * Returns size of memory region.
+	 */
+	size_t size () const noexcept
+	{
+		return size_;
+	}
+
+
+	/**
+	 * Set data to data() + min(n, size()) and size to size() - min(n, size())
+	 */
+	const_buffer &operator+= (size_t n) noexcept
+	{
+		n = (std::min)(n, size_);
+		data_ = static_cast<const char *>(data_) + n;
+		size_ -= n;
+		return *this;
+	}
+
+private:
+
+	const void *data_{};
+	size_t size_{};
+};
+
+
+/**
+ * \defgroup buffer_arithmetic Buffer arithmetic
+ * \{
+ */
+
+/// \returns mutable_buffer(buffer.data() + n, buffer.size() - n)
+inline mutable_buffer operator+ (const mutable_buffer &buffer, size_t n) noexcept
+{
+	n = (std::min)(buffer.size(), n);
+	return {static_cast<char *>(buffer.data()) + n, buffer.size() - n};
+}
+
+/// \returns mutable_buffer(buffer.data() + n, buffer.size() - n)
+inline mutable_buffer operator+ (size_t n, const mutable_buffer &buffer) noexcept
+{
+	return buffer + n;
+}
+
+/// \returns const_buffer(buffer.data() + n, buffer.size() - n)
+inline const_buffer operator+ (const const_buffer &buffer, size_t n) noexcept
+{
+	n = (std::min)(buffer.size(), n);
+	return {static_cast<const char *>(buffer.data()) + n, buffer.size() - n};
+}
+
+/// \returns const_buffer(buffer.data() + n, buffer.size() - n)
+inline const_buffer operator+ (size_t n, const const_buffer &buffer) noexcept
+{
+	return buffer + n;
+}
+
+/// \}
+
+
+/**
+ * \defgroup buffer_creation Buffer creation functions
+ * \{
+ */
+
+namespace __bits {
+
+template <typename T>
+inline mutable_buffer mbuf (T *data, size_t n) noexcept
+{
+	return {n ? data : nullptr, n * sizeof(T)};
+}
+
+template <typename T>
+inline const_buffer cbuf (const T *data, size_t n) noexcept
+{
+	return {n ? data : nullptr, n * sizeof(T)};
+}
+
+} // namespace __bits
+
+
+/// \returns mutable_buffer constructed from \a buffer
+inline mutable_buffer buffer (const mutable_buffer &buffer) noexcept
+{
+	return buffer;
+}
+
+/// \returns mutable_buffer constructed from \a buffer using \a bytes
+inline mutable_buffer buffer (const mutable_buffer &buffer, size_t bytes) noexcept
+{
+	return {buffer.data(), (std::min)(buffer.size(), bytes)};
+}
+
+/// \returns const_buffer constructed from \a buffer
+inline const_buffer buffer (const const_buffer &buffer) noexcept
+{
+	return buffer;
+}
+
+/// \returns const_buffer constructed from \a buffer using \a bytes
+inline const_buffer buffer (const const_buffer &buffer, size_t bytes) noexcept
+{
+	return {buffer.data(), (std::min)(buffer.size(), bytes)};
+}
+
+/// \returns mutable_buffer constructed from \a data using \a bytes
+inline mutable_buffer buffer (void *data, size_t bytes) noexcept
+{
+	return {data, bytes};
+}
+
+/// \returns const_buffer constructed from \a data using \a bytes
+inline const_buffer buffer (const void *data, size_t bytes) noexcept
+{
+	return {data, bytes};
+}
+
+/// \returns mutable_buffer from \a data using \a N elements
+template <typename T, size_t N>
+inline mutable_buffer buffer (T (&data)[N]) noexcept
+{
+	return __bits::mbuf(data, N);
+}
+
+/// \returns const_buffer from \a data using \a N elements
+template <typename T, size_t N>
+inline const_buffer buffer (const T (&data)[N]) noexcept
+{
+	return __bits::cbuf(data, N);
+}
+
+/// \returns mutable_buffer from \a data using all elements
+template <typename T, size_t N>
+inline mutable_buffer buffer (std::array<T, N> &data) noexcept
+{
+	return __bits::mbuf(data.data(), N);
+}
+
+/// \returns const_buffer from \a data using all elements
+template <typename T, size_t N>
+inline const_buffer buffer (std::array<const T, N> &data) noexcept
+{
+	return __bits::cbuf(data.data(), N);
+}
+
+/// \returns const_buffer from \a data using all elements
+template <typename T, size_t N>
+inline const_buffer buffer (const std::array<T, N> &data) noexcept
+{
+	return __bits::cbuf(data.data(), N);
+}
+
+/// \returns mutable_buffer from \a data using all elements
+template <typename T, typename Allocator>
+inline mutable_buffer buffer (std::vector<T, Allocator> &data) noexcept
+{
+	return __bits::mbuf(data.data(), data.size());
+}
+
+/// \returns const_buffer from \a data using all elements
+template <typename T, typename Allocator>
+inline const_buffer buffer (const std::vector<T, Allocator> &data) noexcept
+{
+	return __bits::cbuf(data.data(), data.size());
+}
+
+/// \returns mutable_buffer from \a data using all characters
+template <typename Char, typename Traits, typename Allocator>
+inline mutable_buffer buffer (std::basic_string<Char, Traits, Allocator> &data) noexcept
+{
+	return __bits::mbuf(data.data(), data.size());
+}
+
+/// \returns const_buffer from \a data using all characters
+template <typename Char, typename Traits, typename Allocator>
+inline const_buffer buffer (const std::basic_string<Char, Traits, Allocator> &data) noexcept
+{
+	return __bits::cbuf(data.data(), data.size());
+}
+
+/// \returns const_buffer from \a data using all characters
+template <typename Char, typename Traits>
+inline const_buffer buffer (std::basic_string_view<Char, Traits> data) noexcept
+{
+	return __bits::cbuf(data.data(), data.size());
+}
+
+/// \returns mutable_buffer from \a data using first \a bytes
+template <typename T, size_t N>
+inline mutable_buffer buffer (T (&data)[N], size_t bytes) noexcept
+{
+	return buffer(buffer(data), bytes);
+}
+
+/// \returns const_buffer from \a data using first \a bytes
+template <typename T, size_t N>
+inline const_buffer buffer (const T (&data)[N], size_t bytes) noexcept
+{
+	return buffer(buffer(data), bytes);
+}
+
+/// \returns mutable_buffer from \a data using first \a bytes
+template <typename T, size_t N>
+inline mutable_buffer buffer (
+	std::array<T, N> &data,
+	size_t bytes) noexcept
+{
+	return buffer(buffer(data), bytes);
+}
+
+/// \returns const_buffer from \a data using first \a bytes
+template <typename T, size_t N>
+inline const_buffer buffer (
+	std::array<const T, N> &data,
+	size_t bytes) noexcept
+{
+	return buffer(buffer(data), bytes);
+}
+
+/// \returns const_buffer from \a data using first \a bytes
+template <typename T, size_t N>
+inline const_buffer buffer (
+	const std::array<T, N> &data,
+	size_t bytes) noexcept
+{
+	return buffer(buffer(data), bytes);
+}
+
+/// \returns mutable_buffer from \a data using first \a bytes
+template <typename T, typename Allocator>
+inline mutable_buffer buffer (
+	std::vector<T, Allocator> &data,
+	size_t bytes) noexcept
+{
+	return buffer(buffer(data), bytes);
+}
+
+/// \returns const_buffer from \a data using first \a bytes
+template <typename T, typename Allocator>
+inline const_buffer buffer (
+	const std::vector<T, Allocator> &data,
+	size_t bytes) noexcept
+{
+	return buffer(buffer(data), bytes);
+}
+
+/**
+ * \returns mutable_buffer from \a data using first \a bytes (which is not
+ * necessarily same as number of characters)
+ */
+template <typename Char, typename Traits, typename Allocator>
+inline mutable_buffer buffer (
+	std::basic_string<Char, Traits, Allocator> &data,
+	size_t bytes) noexcept
+{
+	return buffer(buffer(data), bytes);
+}
+
+/**
+ * \returns const_buffer from \a data using first \a bytes (which is not
+ * necessarily same as number of characters)
+ */
+template <typename Char, typename Traits, typename Allocator>
+inline const_buffer buffer (
+	const std::basic_string<Char, Traits, Allocator> &data,
+	size_t bytes) noexcept
+{
+	return buffer(buffer(data), bytes);
+}
+
+/**
+ * \returns const_buffer from \a data using first \a bytes (which is not
+ * necessarily same as number of characters)
+ */
+template <typename Char, typename Traits>
+inline const_buffer buffer (
+	std::basic_string_view<Char, Traits> data,
+	size_t bytes) noexcept
+{
+	return buffer(buffer(data), bytes);
+}
+
+/// \}
+
+
+/**
+ * \defgroup buffer_sequence_access Buffer sequence access
+ * \{
+ */
+
+/// Return address of \a buffer
+inline const mutable_buffer *buffer_sequence_begin (const mutable_buffer &buffer) noexcept
+{
+	return std::addressof(buffer);
+}
+
+/// Return address of \a buffer
+inline const const_buffer *buffer_sequence_begin (const const_buffer &buffer) noexcept
+{
+	return std::addressof(buffer);
+}
+
+/// Return address past of \a buffer
+inline const mutable_buffer *buffer_sequence_end (const mutable_buffer &buffer) noexcept
+{
+	return std::addressof(buffer) + 1;
+}
+
+/// Return address past of \a buffer
+inline const const_buffer *buffer_sequence_end (const const_buffer &buffer) noexcept
+{
+	return std::addressof(buffer) + 1;
+}
+
+/// Return address of first buffer in \a c.
+template <typename C>
+auto buffer_sequence_begin (C &c) noexcept -> decltype(std::begin(c))
+{
+	return std::begin(c);
+}
+
+/// Return address of first buffer in \a c.
+template <typename C>
+auto buffer_sequence_begin (const C &c) noexcept -> decltype(std::begin(c))
+{
+	return std::begin(c);
+}
+
+/// Return address past of last buffer in \a c.
+template <typename C>
+auto buffer_sequence_end (C &c) noexcept -> decltype(std::end(c))
+{
+	return std::end(c);
+}
+
+/// Return address past of last buffer in \a c.
+template <typename C>
+auto buffer_sequence_end (const C &c) noexcept -> decltype(std::end(c))
+{
+	return std::end(c);
+}
+
+/// \}
+
+
+/// \returns total size of all \a buffers.
+template <typename ConstBufferSequence>
+size_t buffer_size (const ConstBufferSequence &buffers) noexcept
+{
+	size_t total_size = 0;
+	auto i = buffer_sequence_begin(buffers);
+	const auto end = buffer_sequence_end(buffers);
+	while (i != end)
+	{
+		total_size += const_buffer(*i++).size();
+	}
+	return total_size;
+}
+
+
+__pal_end

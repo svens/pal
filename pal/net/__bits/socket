@@ -1,0 +1,342 @@
+#pragma once // -*- C++ -*-
+
+#include <pal/__bits/lib>
+#include <pal/buffer>
+#include <array>
+#include <system_error>
+#include <utility>
+
+#if __pal_os_linux || __pal_os_macos
+	#include <limits.h>
+	#include <netinet/tcp.h>
+	#include <poll.h>
+	#include <sys/socket.h>
+#elif __pal_os_windows
+	#include <winsock2.h>
+	#include <mswsock.h>
+	#pragma comment(lib, "ws2_32")
+#endif
+
+
+__pal_begin
+
+
+namespace net::__bits {
+
+
+const std::error_code &init () noexcept;
+
+
+#if __pal_os_linux || __pal_os_macos //{{{1
+
+using native_socket = int;
+constexpr native_socket invalid_native_socket = -1;
+
+using sa_family = ::sa_family_t;
+using message_flags = int;
+
+constexpr int iov_max_length =
+	#if defined(IOV_MAX)
+		IOV_MAX
+	#elif defined(UIO_MAXIOV)
+		UIO_MAXIOV
+	#else
+		16
+	#endif
+;
+
+// Note: there are lot of const_cast going on: not nice but actual
+// const-correctness goes on layer above
+struct message: ::msghdr
+{
+	std::array<iovec, iov_max_length> iov{};
+	size_t msg_size{};
+
+	template <typename BufferSequence>
+	message (const BufferSequence &buffers) noexcept
+		: msghdr()
+	{
+		msg_iov = iov.data();
+		auto it = buffer_sequence_begin(buffers);
+		const auto end = buffer_sequence_end(buffers);
+		while (it != end && static_cast<size_t>(msg_iovlen) != iov.size())
+		{
+			iov[msg_iovlen].iov_base = const_cast<void *>(it->data());
+			iov[msg_iovlen].iov_len = it->size();
+			msg_size += it->size();
+			++msg_iovlen;
+			++it;
+		}
+	}
+
+	template <typename BufferSequence>
+	message (const BufferSequence &buffers, void *name, size_t namelen) noexcept
+		: message(buffers)
+	{
+		msg_name = name;
+		msg_namelen = namelen;
+	}
+
+	template <typename BufferSequence>
+	message (const BufferSequence &buffers, const void *name, size_t namelen) noexcept
+		: message(buffers, const_cast<void *>(name), namelen)
+	{ }
+};
+
+#elif __pal_os_windows //{{{1
+
+using native_socket = SOCKET;
+static constexpr native_socket invalid_native_socket = INVALID_SOCKET;
+
+using socklen_t = int;
+using sa_family = ::ADDRESS_FAMILY;
+using message_flags = DWORD;
+
+constexpr auto SHUT_RD = SD_RECEIVE;
+constexpr auto SHUT_WR = SD_SEND;
+constexpr auto SHUT_RDWR = SD_BOTH;
+
+constexpr int iov_max_length = 16;
+
+// Windows WSASendMsg supports only UDP & raw sockets.
+// Using WSASendTo/WSARecvFrom/WSASend/WSARecv instead.
+struct message
+{
+	std::array<WSABUF, iov_max_length> iov{};
+	DWORD iov_len{};
+	size_t msg_size{};
+	sockaddr *msg_name{};
+	INT msg_namelen{};
+
+	template <typename BufferSequence>
+	message (const BufferSequence &buffers) noexcept
+	{
+		iov_len = 0;
+		auto it = buffer_sequence_begin(buffers);
+		const auto end = buffer_sequence_end(buffers);
+		while (it != end && iov_len != iov.size())
+		{
+			iov[iov_len].buf = static_cast<char *>(const_cast<void *>(it->data()));
+			iov[iov_len].len = static_cast<ULONG>(it->size());
+			msg_size += it->size();
+			++iov_len;
+			++it;
+		}
+	}
+
+	template <typename BufferSequence>
+	message (const BufferSequence &buffers, void *name, size_t namelen) noexcept
+		: message(buffers)
+	{
+		msg_name = static_cast<sockaddr *>(name);
+		msg_namelen = static_cast<INT>(namelen);
+	}
+
+	template <typename BufferSequence>
+	message (const BufferSequence &buffers, const void *name, size_t namelen) noexcept
+		: message(buffers, const_cast<void *>(name), namelen)
+	{ }
+};
+
+#endif //}}}1
+
+
+constexpr int reuse_port =
+#if defined(SO_REUSEPORT_LB)
+	SO_REUSEPORT_LB
+#elif defined(SO_REUSEPORT)
+	SO_REUSEPORT
+#else
+	-1
+#endif
+;
+
+
+enum class shutdown_type
+{
+	receive = SHUT_RD,
+	send = SHUT_WR,
+	both = SHUT_RDWR,
+};
+
+
+enum wait_type: int
+{
+	read = POLLIN,
+	write = POLLOUT,
+	error = POLLERR,
+};
+
+
+struct socket
+{
+	native_socket handle = invalid_native_socket;
+
+	struct
+	{
+		mutable int native_non_blocking: 2 = -1;
+		unsigned int enable_connection_aborted: 1 = 0;
+	} flags{};
+
+	socket () = default;
+
+	socket (const socket &) = delete;
+	socket &operator= (const socket &) = delete;
+
+	socket (native_socket handle) noexcept
+		: handle{handle}
+	{ }
+
+	socket (socket &&that) noexcept
+		: handle{std::exchange(that.handle, invalid_native_socket)}
+		, flags{std::exchange(that.flags, {})}
+	{ }
+
+	~socket () noexcept
+	{
+		if (handle != invalid_native_socket)
+		{
+			std::error_code ignore_error;
+			close(ignore_error);
+		}
+	}
+
+	socket &operator= (socket &&that) noexcept
+	{
+		auto tmp{std::move(that)};
+		swap(tmp);
+		return *this;
+	}
+
+	native_socket reset (native_socket new_handle = invalid_native_socket) noexcept
+	{
+		flags.native_non_blocking = -1;
+		return std::exchange(handle, new_handle);
+	}
+
+	void swap (socket &that) noexcept
+	{
+		using std::swap;
+		swap(handle, that.handle);
+		swap(flags, that.flags);
+	}
+
+	static socket open (
+		int domain,
+		int type,
+		int protocol,
+		std::error_code &error
+	) noexcept;
+
+	void close (std::error_code &error) noexcept;
+
+	void bind (
+		const void *endpoint,
+		size_t endpoint_size,
+		std::error_code &error
+	) noexcept;
+
+	void listen (
+		int backlog,
+		std::error_code &error
+	) noexcept;
+
+	void connect (
+		const void *endpoint,
+		size_t endpoint_size,
+		std::error_code &error
+	) noexcept;
+
+	native_socket accept (
+		void *endpoint,
+		size_t *endpoint_size,
+		std::error_code &error
+	) noexcept;
+
+	wait_type wait (wait_type what,
+		int timeout_ms,
+		std::error_code &error
+	) noexcept;
+
+	void shutdown (
+		shutdown_type what,
+		std::error_code &error
+	) noexcept;
+
+	void local_endpoint (
+		int family,
+		void *endpoint,
+		size_t *endpoint_size,
+		std::error_code &error
+	) const noexcept;
+
+	void remote_endpoint (
+		void *endpoint,
+		size_t *endpoint_size,
+		std::error_code &error
+	) const noexcept;
+
+	size_t available (std::error_code &error) const noexcept;
+
+	bool native_non_blocking (std::error_code &error) noexcept
+	{
+		if (flags.native_non_blocking == -1)
+		{
+			auto mode = get_native_non_blocking(error);
+			if (!error)
+			{
+				flags.native_non_blocking = mode;
+			}
+		}
+		return flags.native_non_blocking;
+	}
+
+	void native_non_blocking (bool mode, std::error_code &error) noexcept
+	{
+		set_native_non_blocking(mode, error);
+		if (!error)
+		{
+			flags.native_non_blocking = mode;
+		}
+	}
+
+	bool get_native_non_blocking (std::error_code &error) const noexcept;
+	void set_native_non_blocking (bool mode, std::error_code &error) noexcept;
+
+	size_t get_option (
+		int level,
+		int name,
+		void *data,
+		size_t data_size,
+		std::error_code &error
+	) const noexcept;
+
+	void set_option (
+		int level,
+		int name,
+		const void *data,
+		size_t data_size,
+		std::error_code &error
+	) noexcept;
+
+	int receive (
+		message &msg,
+		message_flags flags,
+		std::error_code &error
+	) noexcept;
+
+	int send (
+		const message &msg,
+		message_flags flags,
+		std::error_code &error
+	) noexcept;
+};
+
+
+const char *host_name (std::error_code &error) noexcept;
+
+
+} // namespace net::__bits
+
+
+__pal_end

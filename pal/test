@@ -34,4 +34,9 @@ struct bad_alloc_once
 };
 
 
+template <typename... T>
+constexpr void unused (T...)
+{ }
+
+
 } // namespace pal_test

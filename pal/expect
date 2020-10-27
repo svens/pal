@@ -35,7 +35,7 @@ constexpr bool expect_noexcept = is_release_build;
 
 #if !defined(__DOXYGEN__) //{{{
 
-__pal_bits_begin
+namespace __bits {
 
 template <typename T>
 constexpr decltype(auto) expect_impl (T &&expr, const char message[], ...)
@@ -92,7 +92,7 @@ constexpr bool is_pointer_v = std::is_pointer<T>::value || is_like_pointer_v<T>;
 		? __pal_at ": Unexpected '" #Expr " == nullptr'" \
 		: __pal_at ": Unexpected '" #Expr "'")
 
-__pal_bits_end
+} // namespace __bits
 
 #endif // __DOXYGEN__ }}}
 

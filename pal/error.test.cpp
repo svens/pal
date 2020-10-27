@@ -42,6 +42,28 @@ TEST_CASE("error")
 		CHECK(ec.category() == pal::error_category());
 		CHECK(ec.category().name() == std::string{"pal"});
 	}
+
+
+	SECTION("throw_on_error - do not throw")
+	{
+		auto do_not_throw = []()
+		{
+			pal::throw_on_error x("message");
+		};
+		CHECK_NOTHROW(do_not_throw());
+	}
+
+
+	SECTION("throw_on_error - do throw")
+	{
+		auto do_throw = []()
+		{
+			pal::throw_on_error x("message");
+			static_cast<std::error_code &>(x) =
+				std::make_error_code(std::errc::not_enough_memory);
+		};
+		CHECK_THROWS_AS(do_throw(), std::system_error);
+	}
 }
 
 

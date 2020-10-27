@@ -250,7 +250,7 @@ constexpr auto operator>= (const not_null<L> &l, const not_null<R> &r)
 
 #if !defined(__DOXYGEN__)
 
-__pal_bits_begin
+namespace __bits {
 
 template <typename Pointer>
 constexpr auto make_not_null (Pointer &&ptr, const char message[])
@@ -267,7 +267,7 @@ constexpr auto make_not_null (Pointer &&ptr, const char message[])
 #define pal_not_null(Pointer) \
 	pal::__bits::make_not_null((Pointer), __pal_at ": unexpected nullptr")
 
-__pal_bits_end
+} // namespace __bits
 
 #endif // !defined(__DOXYGEN__)
 
