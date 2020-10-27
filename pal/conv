@@ -1,0 +1,59 @@
+#pragma once // -*- C++ -*-
+
+/**
+ * \file pal/conv
+ * Encoding/decoding functions (base64, hex)
+ */
+
+#include <pal/__bits/lib>
+#include <pal/buffer>
+#include <system_error>
+
+
+__pal_begin
+
+
+struct conv_result
+{
+	size_t size;
+	std::errc ec;
+};
+
+
+/**
+ * Encode \a source as base64 into \a dest.
+ *
+ * On success, returns conv_result with value-initialised \a ec and \a size
+ * has number of characters written into \a dest.
+ *
+ * On error, \a ec is set to \a std::errc::value_too_large and \a size is set
+ * to zero. Content of \a dest is not modified.
+ */
+conv_result to_base64 (
+	const mutable_buffer &dest,
+	const const_buffer &source
+) noexcept;
+
+
+/**
+ * Decode base64-encoded \a source into \a dest.
+ *
+ * On success, returns conv_result with value-initialised \a ec and \a size
+ * has number of characters written \a into dest.
+ *
+ * Error cases:
+ * - \a dest buffer too small:
+ *   set \a ec = \c std::errc::value_too_large and size to zero
+ * - \a source buffer length error (not divisible by 4):
+ *   set \a ec = \c std::errc::message_size and size to zero
+ * - decoding error:
+ *   set \a ec = \c std::invalid_argument and size to offset where invalid
+ *   character was found in \a source
+ */
+conv_result from_base64 (
+	const mutable_buffer &dest,
+	const const_buffer &source
+) noexcept;
+
+
+__pal_end

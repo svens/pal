@@ -3,6 +3,8 @@ list(APPEND pal_sources
 	pal/__bits/platform_sdk
 	pal/buffer
 	pal/byte_order
+	pal/conv
+	pal/conv_base64.cpp
 	pal/error
 	pal/error.cpp
 	pal/expect
@@ -19,6 +21,7 @@ list(APPEND pal_unittests_sources
 	pal/test.cpp
 	pal/buffer.test.cpp
 	pal/byte_order.test.cpp
+	pal/conv.test.cpp
 	pal/error.test.cpp
 	pal/expect.test.cpp
 	pal/hash.test.cpp
