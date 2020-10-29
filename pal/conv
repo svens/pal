@@ -13,47 +13,93 @@
 __pal_begin
 
 
-struct conv_result
+/**
+ * Encoding/decoding conversion output size estimation result.
+ */
+struct conv_size_result
 {
-	size_t size;
+	/// Estimated maximum size for conversion output.
+	size_t estimated_max_size;
+
+	/// Error during size estimation or empty value if no error.
 	std::errc ec;
 };
 
 
 /**
- * Encode \a source as base64 into \a dest.
- *
- * On success, returns conv_result with value-initialised \a ec and \a size
- * has number of characters written into \a dest.
- *
- * On error, \a ec is set to \a std::errc::value_too_large and \a size is set
- * to zero. Content of \a dest is not modified.
+ * Encoding/decoding conversion result.
  */
-conv_result to_base64 (
-	const mutable_buffer &dest,
-	const const_buffer &source
-) noexcept;
+struct conv_result
+{
+	/// Last read position.
+	const char *last_in;
+
+	/// Last write position.
+	char *last_out;
+};
 
 
 /**
- * Decode base64-encoded \a source into \a dest.
+ * Return required output range size when doing base64 encoding of input range
+ * [\a first, \a last).
  *
- * On success, returns conv_result with value-initialised \a ec and \a size
- * has number of characters written \a into dest.
- *
- * Error cases:
- * - \a dest buffer too small:
- *   set \a ec = \c std::errc::value_too_large and size to zero
- * - \a source buffer length error (not divisible by 4):
- *   set \a ec = \c std::errc::message_size and size to zero
- * - decoding error:
- *   set \a ec = \c std::invalid_argument and size to offset where invalid
- *   character was found in \a source
+ * \note Returned \a ec has always default value.
  */
-conv_result from_base64 (
-	const mutable_buffer &dest,
-	const const_buffer &source
-) noexcept;
+constexpr conv_size_result to_base64_size (const char *first, const char *last) noexcept
+{
+	size_t input_size = last - first;
+	return
+	{
+		((input_size * 4 / 3) + 3) & ~3,
+		{}
+	};
+}
+
+
+/**
+ * Return required output range size when doing base64 decoding of input range
+ * [\a first, \a last).
+ *
+ * If input range size is not valid for base64-encoded blob, ec is set to \a
+ * std::errc::invalid_argument and \a estimated_max_size has undefined value.
+ */
+constexpr conv_size_result from_base64_size (const char *first, const char *last) noexcept
+{
+	size_t input_size = last - first;
+	return
+	{
+		input_size / 4 * 3,
+		input_size % 4 == 0 ? std::errc{} : std::errc::invalid_argument
+	};
+}
+
+
+/**
+ * Encode range [\a first, \a last), writing result into \a out. During
+ * conversion, there is no output range checking. It is application
+ * responsibility to ensure sufficient output space using function
+ * \c to_base64_size()
+ *
+ * On success, returns conv_result with \e last_in as last read position
+ * (equals \a last), and \e last_out as last write position.
+ */
+conv_result to_base64 (const char *first, const char *last, char *out) noexcept;
+
+
+/**
+ * Decode base64-encoded blob in [\a first, \a last), writing result into \a out.
+ * During conversion, there is no output range checking. It is application
+ * responsibility to ensure there is sufficient output space using function
+ * \c from_base64_size().
+ *
+ * On success, returns conv_result with \e last_in as last read position
+ * (equals \a last), and \e last_out as last write position.
+ *
+ * On failure, \a last_in does not equal to \a last but points to erroneous
+ * base64 value. \a last_out points to one past last successfully decoded
+ * character position.
+ */
+conv_result from_base64 (const char *first, const char *last, char *out) noexcept;
 
 
 __pal_end

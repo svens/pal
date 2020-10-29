@@ -4,74 +4,49 @@
 __pal_begin
 
 
-conv_result to_base64 (
-	const mutable_buffer &dest,
-	const const_buffer &source) noexcept
+conv_result to_base64 (const char *first, const char *last, char *out) noexcept
 {
-	const auto encoded_size = (((source.size() * 4) / 3) + 3) & ~3;
-	if (encoded_size > dest.size())
-	{
-		return {0, std::errc::value_too_large};
-	}
-
 	static constexpr uint8_t map[] =
 		"ABCDEFGHIJKLMNOPQRSTUVWXYZ"
 		"abcdefghijklmnopqrstuvwxyz"
 		"0123456789"
 		"+/";
 
-	auto to = static_cast<uint8_t *>(dest.data());
-	auto from = static_cast<const uint8_t *>(source.data());
-	const auto mod = source.size() % 3;
-	const auto end = from + source.size() - mod;
+	conv_result result{last, nullptr};
 
-	for (/**/;  from != end;  from += 3)
+	const auto mod = (last - first) % 3;
+	last -= mod;
+
+	for (/**/;  first != last;  first += 3)
 	{
-		*to++ = map[from[0] >> 2];
-		*to++ = map[((from[0] << 4) | (from[1] >> 4)) & 0b00111111];
-		*to++ = map[((from[1] << 2) | (from[2] >> 6)) & 0b00111111];
-		*to++ = map[from[2] & 0b00111111];
+		*out++ = map[first[0] >> 2];
+		*out++ = map[((first[0] << 4) | (first[1] >> 4)) & 0b00111111];
+		*out++ = map[((first[1] << 2) | (first[2] >> 6)) & 0b00111111];
+		*out++ = map[first[2] & 0b00111111];
 	}
 
 	if (mod == 1)
 	{
-		*to++ = map[from[0] >> 2];
-		*to++ = map[((from[0] << 4)) & 0b00111111];
-		*to++ = '=';
-		*to++ = '=';
+		*out++ = map[first[0] >> 2];
+		*out++ = map[((first[0] << 4)) & 0b00111111];
+		*out++ = '=';
+		*out++ = '=';
 	}
 	else if (mod == 2)
 	{
-		*to++ = map[from[0] >> 2];
-		*to++ = map[((from[0] << 4) | (from[1] >> 4)) & 0b00111111];
-		*to++ = map[(from[1] << 2) & 0b00111111];
-		*to++ = '=';
+		*out++ = map[first[0] >> 2];
+		*out++ = map[((first[0] << 4) | (first[1] >> 4)) & 0b00111111];
+		*out++ = map[(first[1] << 2) & 0b00111111];
+		*out++ = '=';
 	}
 
-	return {encoded_size, {}};
+	result.last_out = out;
+	return result;
 }
 
 
-conv_result from_base64 (
-	const mutable_buffer &dest,
-	const const_buffer &source) noexcept
+conv_result from_base64 (const char *first, const char *last, char *out) noexcept
 {
-	if (!source.size())
-	{
-		return {0, std::errc{}};
-	}
-	else if (source.size() % 4 != 0)
-	{
-		return {0, std::errc::message_size};
-	}
-
-	const auto end = static_cast<const uint8_t *>(source.data()) + source.size();
-	auto pad_size = (end[-1] == '=') + (end[-2] == '=');
-	if (dest.size() < (source.size() - pad_size) * 3 / 4)
-	{
-		return {0, std::errc::value_too_large};
-	}
-
 	static constexpr uint8_t map[] =
 		// _0  _1  _2  _3  _4  _5  _6  _7  _8  _9  _a  _b  _c  _d  _e  _f
 		"\xff\xff\xff\xff\xff\xff\xff\xff\xff\xff\xff\xff\xff\xff\xff\xff" // 0_
@@ -92,18 +67,20 @@ conv_result from_base64 (
 		"\xff\xff\xff\xff\xff\xff\xff\xff\xff\xff\xff\xff\xff\xff\xff\xff" // f_
 	;
 
-	auto from = static_cast<const uint8_t *>(source.data());
-	auto to = static_cast<uint8_t *>(dest.data());
+	int pad = last >= first + 2 ? (last[-1] == '=') + (last[-2] == '=') : 0;
+	auto in = reinterpret_cast<const uint8_t *>(first);
+	const auto end = in + ((last - first - pad) / 4) * 4;
 
-	for (auto e = from + ((source.size() - pad_size) / 4) * 4;  from != e;  from += 4)
+	while (in != end)
 	{
-		auto b0 = map[from[0]], b1 = map[from[1]], b2 = map[from[2]], b3 = map[from[3]];
+		auto b0 = map[in[0]], b1 = map[in[1]], b2 = map[in[2]], b3 = map[in[3]];
 		if (b0 != 0xff && b1 != 0xff && b2 != 0xff && b3 != 0xff)
 		{
 			auto v = (b0 << 18) | (b1 << 12) | (b2 << 6) | b3;
-			*to++ = (v >> 16) & 0xff;
-			*to++ = (v >> 8) & 0xff;
-			*to++ = v & 0xff;
+			*out++ = (v >> 16) & 0xff;
+			*out++ = (v >> 8) & 0xff;
+			*out++ = v & 0xff;
+			in += 4;
 		}
 		else
 		{
@@ -111,36 +88,28 @@ conv_result from_base64 (
 		}
 	}
 
-	for (auto it = from, e = end;  it != e;  ++it)
+	for (auto i = in, e = reinterpret_cast<const uint8_t *>(last);  i != e;  ++i)
 	{
-		if (*it != '=' && map[*it] == 0xff)
+		if (*i != '=' && map[*i] == 0xff)
 		{
-			return
-			{
-				static_cast<size_t>(it - static_cast<const uint8_t *>(source.data())),
-				std::errc::invalid_argument
-			};
+			return {reinterpret_cast<const char *>(i), out};
 		}
 	}
 
-	if (pad_size == 1)
+	if (pad == 1)
 	{
-		auto v = (map[from[0]] << 18) | (map[from[1]] << 12) | (map[from[2]] << 6);
-		*to++ = (v >> 16) & 0xff;
-		*to++ = (v >> 8) & 0xff;
-		from += 3;
+		auto v = (map[in[0]] << 18) | (map[in[1]] << 12) | (map[in[2]] << 6);
+		*out++ = (v >> 16) & 0xff;
+		*out++ = (v >> 8) & 0xff;
+		in += 3;
 	}
-	else if (pad_size == 2)
+	else if (pad == 2)
 	{
-		*to++ = ((map[from[0]] << 18) | (map[from[1]] << 12)) >> 16;
-		from += 2;
+		*out++ = ((map[in[0]] << 18) | (map[in[1]] << 12)) >> 16;
+		in += 2;
 	}
 
-	return
-	{
-		static_cast<size_t>(to - static_cast<uint8_t *>(dest.data())),
-		std::errc{}
-	};
+	return {reinterpret_cast<const char *>(in) + pad, out};
 }
 
 
