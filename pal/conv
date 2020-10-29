@@ -39,6 +39,9 @@ struct conv_result
 };
 
 
+// Base64 {{{1
+
+
 /**
  * Return required output range size when doing base64 encoding of input range
  * [\a first, \a last).
@@ -75,8 +78,8 @@ constexpr conv_size_result from_base64_size (const char *first, const char *last
 
 
 /**
- * Encode range [\a first, \a last), writing result into \a out. During
- * conversion, there is no output range checking. It is application
+ * Encode range [\a first, \a last) as base64, writing result into \a out.
+ * During conversion, there is no output range checking. It is application
  * responsibility to ensure sufficient output space using function
  * \c to_base64_size()
  *
@@ -100,6 +103,70 @@ conv_result to_base64 (const char *first, const char *last, char *out) noexcept;
  * character position.
  */
 conv_result from_base64 (const char *first, const char *last, char *out) noexcept;
+
+
+// Hex {{{1
+
+
+/**
+ * Return required output range size when doing hex encoding of input range
+ * [\a first, \a last).
+ *
+ * \note Returned \a ec has always default value.
+ */
+constexpr conv_size_result to_hex_size (const char *first, const char *last) noexcept
+{
+	return {static_cast<size_t>(last - first) * 2, {}};
+}
+
+
+/**
+ * Return required output range size when doing hex decoding of input range
+ * [\a first, \a last).
+ *
+ * If input range size is not valid for hex-encoded blob, ec is set to \a
+ * std::errc::invalid_argument and \a estimated_max_size has undefined value.
+ */
+constexpr conv_size_result from_hex_size (const char *first, const char *last) noexcept
+{
+	size_t input_size = last - first;
+	return
+	{
+		input_size / 2,
+		input_size % 2 == 0 ? std::errc{} : std::errc::invalid_argument
+	};
+}
+
+
+/**
+ * Encode range [\a first, \a last) as hex, writing result into \a out. During
+ * conversion, there is no output range checking. It is application
+ * responsibility to ensure sufficient output space using function
+ * \c to_hex_size()
+ *
+ * On success, returns conv_result with \e last_in as last read position
+ * (equals \a last), and \e last_out as last write position.
+ */
+conv_result to_hex (const char *first, const char *last, char *out) noexcept;
+
+
+/**
+ * Decode hex-encoded blob in [\a first, \a last), writing result into \a out.
+ * During conversion, there is no output range checking. It is application
+ * responsibility to ensure there is sufficient output space using function
+ * \c from_hex_size().
+ *
+ * On success, returns conv_result with \e last_in as last read position
+ * (equals \a last), and \e last_out as last write position.
+ *
+ * On failure, \a last_in does not equal to \a last but points to erroneous
+ * hex value. \a last_out points to one past last successfully decoded
+ * character position.
+ */
+conv_result from_hex (const char *first, const char *last, char *out) noexcept;
+
+
+// }}}1
 
 
 __pal_end

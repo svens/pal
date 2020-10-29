@@ -104,8 +104,60 @@ struct base64
 };
 
 
+struct hex
+{
+	static inline const success_type::list success =
+	{
+		{"", ""},
+		{"hex_string", "6865785f737472696e67"},
+		{"HEX_STRING", "4845585f535452494e47"},
+		{"hex\nstring", "6865780a737472696e67"},
+		{"hello, world", "68656c6c6f2c20776f726c64"},
+	};
+
+	static inline const size_failure_type::list size_failure =
+	{
+		{ "7" },
+		{ "746" },
+	};
+
+	static inline const from_failure_type::list from_failure =
+	{
+		{ ".4657374", 0 },
+		{ "7.657374", 1 },
+		{ "74.57374", 2 },
+		{ "746.7374", 3 },
+		{ "7465.374", 4 },
+		{ "74657.74", 5 },
+		{ "746573.4", 6 },
+		{ "7465737.", 7 },
+	};
+
+	static pal::conv_result to (const std::string_view &in, char *out) noexcept
+	{
+		return pal::to_hex(in.data(), in.data() + in.size(), out);
+	}
+
+	static pal::conv_size_result to_size (const std::string_view &in) noexcept
+	{
+		return pal::to_hex_size(in.data(), in.data() + in.size());
+	}
+
+	static pal::conv_result from (const std::string_view &in, char *out) noexcept
+	{
+		return pal::from_hex(in.data(), in.data() + in.size(), out);
+	}
+
+	static pal::conv_size_result from_size (const std::string_view &in) noexcept
+	{
+		return pal::from_hex_size(in.data(), in.data() + in.size());
+	}
+};
+
+
 TEMPLATE_TEST_CASE("conv", "",
-	base64)
+	base64,
+	hex)
 {
 	char buf[1024];
 
