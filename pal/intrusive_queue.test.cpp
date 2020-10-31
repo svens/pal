@@ -19,6 +19,128 @@ TEST_CASE("intrusive_queue")
 	CHECK(queue.try_pop() == nullptr);
 
 
+	SECTION("ctor(&&)")
+	{
+		foo f1, f2;
+		queue.push(&f1);
+		queue.push(&f2);
+
+		auto q{std::move(queue)};
+		CHECK(q.try_pop() == &f1);
+		CHECK(q.try_pop() == &f2);
+		CHECK(q.empty());
+	}
+
+
+	SECTION("ctor(&&) from empty")
+	{
+		auto q{std::move(queue)};
+		CHECK(q.empty());
+	}
+
+
+	SECTION("operator=(&&)")
+	{
+		foo f1, f2;
+		queue.push(&f1);
+
+		foo::queue q;
+		q.push(&f2);
+
+		q = std::move(queue);
+
+		CHECK(q.try_pop() == &f1);
+		CHECK(q.empty());
+	}
+
+
+	SECTION("operator=(&&) to empty")
+	{
+		foo f1, f2;
+		queue.push(&f1);
+		queue.push(&f2);
+
+		foo::queue q;
+		q = std::move(queue);
+		CHECK(q.try_pop() == &f1);
+		CHECK(q.try_pop() == &f2);
+		CHECK(q.empty());
+	}
+
+
+	SECTION("operator=(&&) from empty")
+	{
+		foo f1, f2;
+		foo::queue q;
+		q.push(&f1);
+		q.push(&f2);
+
+		q = std::move(queue);
+		CHECK(q.empty());
+	}
+
+
+	SECTION("operator=(&&) from empty to empty")
+	{
+		foo::queue q;
+		q = std::move(queue);
+		CHECK(q.empty());
+	}
+
+
+	SECTION("splice")
+	{
+		foo f1, f2;
+
+		foo::queue q;
+		q.push(&f1);
+
+		queue.push(&f2);
+
+		q.splice(std::move(queue));
+		CHECK(q.try_pop() == &f1);
+		CHECK(q.try_pop() == &f2);
+		CHECK(q.empty());
+	}
+
+
+	SECTION("splice to empty")
+	{
+		foo f1, f2;
+		queue.push(&f1);
+		queue.push(&f2);
+
+		foo::queue q;
+		q.splice(std::move(queue));
+		CHECK(q.try_pop() == &f1);
+		CHECK(q.try_pop() == &f2);
+		CHECK(q.empty());
+	}
+
+
+	SECTION("splice from empty")
+	{
+		foo f1, f2;
+		foo::queue q;
+		q.push(&f1);
+		q.push(&f2);
+
+		q.splice(std::move(queue));
+
+		CHECK(q.try_pop() == &f1);
+		CHECK(q.try_pop() == &f2);
+		CHECK(q.empty());
+	}
+
+
+	SECTION("splice from empty to empty")
+	{
+		foo::queue q;
+		q.splice(std::move(queue));
+		CHECK(q.empty());
+	}
+
+
 	SECTION("single_push_pop")
 	{
 		foo f;

@@ -79,6 +79,52 @@ public:
 
 
 	/**
+	 * Construct new intrusive_queue by moving all elements from \a that
+	 * to \a this.
+	 */
+	intrusive_queue (intrusive_queue &&that) noexcept
+	{
+		if (!that.empty())
+		{
+			head_->*Next = std::exchange(that.head_->*Next, nullptr);
+			tail_ = std::exchange(that.tail_, that.head_);
+		}
+	}
+
+
+	/**
+	 * Move all elements from \a that to \a this. All existing elements
+	 * are dropped.
+	 */
+	intrusive_queue &operator= (intrusive_queue &&that) noexcept
+	{
+		if (!that.empty())
+		{
+			head_->*Next = std::exchange(that.head_->*Next, nullptr);
+			tail_ = std::exchange(that.tail_, that.head_);
+		}
+		else if (!empty())
+		{
+			tail_ = head_;
+		}
+		return *this;
+	}
+
+
+	/**
+	 * Move all elements from \a that to end of \a this.
+	 */
+	void splice (intrusive_queue &&that) noexcept
+	{
+		if (!that.empty())
+		{
+			tail_->*Next = std::exchange(that.head_->*Next, nullptr);
+			tail_ = std::exchange(that.tail_, that.head_);
+		}
+	}
+
+
+	/**
 	 * Push new \a node to back of queue.
 	 */
 	void push (not_null<value_type *> node) noexcept
