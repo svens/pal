@@ -40,10 +40,12 @@ public:
 	using typename socket_base::native_handle_type;
 
 
+#if !defined(__DOXYGEN__)
 	basic_socket_acceptor () noexcept = default;
 	basic_socket_acceptor (basic_socket_acceptor &&) noexcept = default;
 	basic_socket_acceptor &operator= (basic_socket_acceptor &&) noexcept = default;
 	~basic_socket_acceptor () = default;
+#endif
 
 
 	/**

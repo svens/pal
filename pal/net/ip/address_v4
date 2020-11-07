@@ -35,6 +35,7 @@ public:
 	/// Binary representation of IPv4 address
 	struct bytes_type: std::array<uint8_t, 4>
 	{
+		/// Construct address using values \a v
 		template <typename... T>
 		explicit constexpr bytes_type (T... v)
 			: std::array<uint8_t, 4>{{static_cast<uint8_t>(v)...}}
