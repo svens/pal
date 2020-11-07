@@ -32,4 +32,5 @@ list(APPEND pal_unittests_sources
 	pal/not_null.test.cpp
 )
 
+include(pal/crypto/list.cmake)
 include(pal/net/list.cmake)
