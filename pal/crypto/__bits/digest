@@ -1,0 +1,210 @@
+#pragma once // -*- C++ -*-
+
+#include <pal/__bits/lib>
+
+#if __pal_os_linux
+	#include <openssl/hmac.h>
+	#include <openssl/md5.h>
+	#include <openssl/sha.h>
+	#include <memory>
+#elif __pal_os_macos
+	#include <CommonCrypto/CommonDigest.h>
+	#include <CommonCrypto/CommonHMAC.h>
+#elif __pal_os_windows
+	#include <windows.h>
+	#include <bcrypt.h>
+	#include <algorithm>
+	#pragma comment(lib, "bcrypt")
+#endif
+
+
+__pal_begin
+
+
+namespace crypto::__bits {
+
+
+#if __pal_os_linux //{{{1
+
+struct hmac_context_type
+{
+	static void release (HMAC_CTX *impl) noexcept;
+
+	std::unique_ptr<HMAC_CTX, void(*)(HMAC_CTX *)> impl{nullptr, release};
+
+	hmac_context_type (const EVP_MD *evp, const void *key, size_t size);
+	hmac_context_type (const hmac_context_type &that);
+
+	hmac_context_type (hmac_context_type &&that) noexcept
+	{
+		swap(*this, that);
+	}
+
+	hmac_context_type &operator= (hmac_context_type that) noexcept
+	{
+		swap(*this, that);
+		return *this;
+	}
+
+	friend void swap (hmac_context_type &a, hmac_context_type &b) noexcept
+	{
+		using std::swap;
+		swap(a.impl, b.impl);
+	}
+
+	void update (const void *data, size_t size);
+	void finish (void *digest);
+};
+
+struct md5
+{
+	using hash_context = MD5_CTX;
+	using hmac_context = hmac_context_type;
+};
+
+struct sha1
+{
+	using hash_context = SHA_CTX;
+	using hmac_context = hmac_context_type;
+};
+
+struct sha256
+{
+	using hash_context = SHA256_CTX;
+	using hmac_context = hmac_context_type;
+};
+
+struct sha384
+{
+	using hash_context = SHA512_CTX;
+	using hmac_context = hmac_context_type;
+};
+
+struct sha512
+{
+	using hash_context = SHA512_CTX;
+	using hmac_context = hmac_context_type;
+};
+
+#elif __pal_os_macos //{{{1
+
+struct md5
+{
+	using hash_context = CC_MD5_CTX;
+	using hmac_context = CCHmacContext[2];
+};
+
+struct sha1
+{
+	using hash_context = CC_SHA1_CTX;
+	using hmac_context = CCHmacContext[2];
+};
+
+struct sha256
+{
+	using hash_context = CC_SHA256_CTX;
+	using hmac_context = CCHmacContext[2];
+};
+
+struct sha384
+{
+	using hash_context = CC_SHA512_CTX;
+	using hmac_context = CCHmacContext[2];
+};
+
+struct sha512
+{
+	using hash_context = CC_SHA512_CTX;
+	using hmac_context = CCHmacContext[2];
+};
+
+#elif __pal_os_windows //{{{1
+
+struct context_type
+{
+	BCRYPT_HASH_HANDLE handle{};
+
+	context_type () noexcept = default;
+	~context_type () noexcept;
+
+	context_type (const context_type &that) noexcept;
+
+	context_type (context_type &&that) noexcept
+	{
+		swap(*this, that);
+	}
+
+	context_type (BCRYPT_HASH_HANDLE handle) noexcept
+		: handle(handle)
+	{}
+
+	context_type &operator= (context_type that) noexcept
+	{
+		swap(*this, that);
+		return *this;
+	}
+
+	friend void swap (context_type &a, context_type &b) noexcept
+	{
+		using std::swap;
+		swap(a.handle, b.handle);
+	}
+
+	void update (const void *data, size_t size);
+	void finish (void *digest, size_t size);
+
+	template <typename Algorithm, bool IsHMAC>
+	static BCRYPT_ALG_HANDLE impl ();
+
+	template <typename Algorithm, bool IsHMAC>
+	static BCRYPT_HASH_HANDLE make (
+		const void *secret = nullptr,
+		size_t secret_size = 0U
+	);
+};
+
+struct md5
+{
+	using hash_context = context_type;
+	using hmac_context = context_type;
+};
+
+struct sha1
+{
+	using hash_context = context_type;
+	using hmac_context = context_type;
+};
+
+struct sha256
+{
+	using hash_context = context_type;
+	using hmac_context = context_type;
+};
+
+struct sha384
+{
+	using hash_context = context_type;
+	using hmac_context = context_type;
+};
+
+struct sha512
+{
+	using hash_context = context_type;
+	using hmac_context = context_type;
+};
+
+#endif //}}}1
+
+
+template <typename Algorithm> constexpr size_t digest_size_v = 0U;
+template <> inline constexpr size_t digest_size_v<md5> = 16U;
+template <> inline constexpr size_t digest_size_v<sha1> = 20U;
+template <> inline constexpr size_t digest_size_v<sha256> = 32U;
+template <> inline constexpr size_t digest_size_v<sha384> = 48U;
+template <> inline constexpr size_t digest_size_v<sha512> = 64U;
+
+
+} // namespace crypto::__bits
+
+
+__pal_end

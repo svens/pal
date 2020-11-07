@@ -1,0 +1,171 @@
+#pragma once // -*- C++ -*-
+
+/**
+ * \file pal/crypto/hash
+ * Cryptographic hashing
+ */
+
+#include <pal/__bits/lib>
+#include <pal/crypto/__bits/digest>
+#include <pal/buffer>
+#include <pal/error>
+#include <array>
+
+
+__pal_begin
+
+
+namespace crypto {
+
+
+/// \{
+/// Cryptographic hash algorithms
+using __bits::md5;
+using __bits::sha1;
+using __bits::sha256;
+using __bits::sha384;
+using __bits::sha512;
+/// \}
+
+
+/**
+ * One-way cryptographic hashing using \a Algorithm.
+ *
+ * If all data is already fully present, use static one_shot() to calculate
+ * digest immediately.
+ *
+ * If data is not completely present, instantiate this class and add new data
+ * in one or more calls to update(). Once full data has been fed into hasher,
+ * call finish() to fetch calculated digest. Application can immediately reuse
+ * instance after call to finish(), it is re-initialized internally.
+ */
+template <typename Algorithm>
+class hash
+{
+public:
+
+	/// Number of bytes in hash digest result.
+	static constexpr size_t digest_size = __bits::digest_size_v<Algorithm>;
+
+
+	/**
+	 * Initialize hasher object.
+	 */
+	hash ();
+
+
+	/**
+	 * Feed \a input buffer(s) into hasher object.
+	 * \returns *this for call chaining
+	 */
+	template <typename ConstBufferSequence>
+	hash &update (const ConstBufferSequence &input) noexcept
+	{
+		const auto end = buffer_sequence_end(input);
+		for (auto it = buffer_sequence_begin(input);  it != end;  ++it)
+		{
+			update(it->data(), it->size());
+		}
+		return *this;
+	}
+
+
+	/**
+	 * Calculate hash of previously fed data and store into \a result.
+	 * On failure \a error is set and content of \a result is unchanged.
+	 */
+	void finish (const mutable_buffer &result, std::error_code &error)
+		noexcept
+	{
+		if (result.size() >= digest_size)
+		{
+			if (auto digest_ptr = result.data())
+			{
+				finish(digest_ptr, digest_size);
+				error.clear();
+			}
+			else
+			{
+				error = std::make_error_code(std::errc::bad_address);
+			}
+		}
+		else
+		{
+			error = std::make_error_code(std::errc::result_out_of_range);
+		}
+	}
+
+
+	/**
+	 * Calculate hash of previously fed data and store into \a result.
+	 * On failure throws std::system_error.
+	 */
+	void finish (const mutable_buffer &result)
+	{
+		finish(result, throw_on_error("hash::finish"));
+	}
+
+
+	/**
+	 * Calculate and return hash of previously fed data.
+	 */
+	std::array<uint8_t, digest_size> finish () noexcept
+	{
+		std::array<uint8_t, digest_size> result;
+		finish(result.data(), result.size());
+		return result;
+	}
+
+
+	/**
+	 * Calculate hash of \a input, storing result in \a result. On
+	 * failure, set \a error and \a result has undefined content.
+	 */
+	template <typename ConstBufferSequence>
+	static void one_shot (
+		const ConstBufferSequence &input,
+		const mutable_buffer &result,
+		std::error_code &error) noexcept
+	{
+		hash{}.update(input).finish(result, error);
+	}
+
+
+	/**
+	 * Calculate hash of \a input, storing result in \a result. On
+	 * failure, throw std::system_error.
+	 */
+	template <typename ConstBufferSequence>
+	static void one_shot (
+		const ConstBufferSequence &input,
+		const mutable_buffer &result)
+	{
+		one_shot(input, result, throw_on_error("hash::one_shot"));
+	}
+
+
+	/**
+	 * Calculate hash of \a input, returning result as std::array. On
+	 * failure \a error is set and undefined value is returned.
+	 */
+	template <typename ConstBufferSequence>
+	static std::array<uint8_t, digest_size> one_shot (
+		const ConstBufferSequence &input) noexcept
+	{
+		return hash{}.update(input).finish();
+	}
+
+
+private:
+
+	typename Algorithm::hash_context context_{};
+
+	void update (const void *input, size_t size) noexcept;
+	void finish (void *result, size_t size) noexcept;
+};
+
+
+} // namespace crypto
+
+
+__pal_end
