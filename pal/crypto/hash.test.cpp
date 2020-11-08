@@ -104,11 +104,11 @@ TEMPLATE_TEST_CASE("crypto/hash", "",
 	SECTION("copy ctor")
 	{
 		hash_t h1;
-		h1.update(pal::buffer(lazy_dog));
+		h1.update(std::span{lazy_dog});
 		auto h2 = h1;
 
-		auto r1 = to_hex(h1.update(pal::buffer(lazy_cog)).finish());
-		auto r2 = to_hex(h2.update(pal::buffer(lazy_cog)).finish());
+		auto r1 = to_hex(h1.update(std::span{lazy_cog}).finish());
+		auto r2 = to_hex(h2.update(std::span{lazy_cog}).finish());
 		CHECK(r1 == r2);
 		CHECK(r1 == TestType::hash[lazy_dog + lazy_cog]);
 	}
@@ -116,11 +116,11 @@ TEMPLATE_TEST_CASE("crypto/hash", "",
 	SECTION("copy assign")
 	{
 		hash_t h1, h2;
-		h1.update(pal::buffer(lazy_dog));
+		h1.update(std::span{lazy_dog});
 		h2 = h1;
 
-		auto r1 = to_hex(h1.update(pal::buffer(lazy_cog)).finish());
-		auto r2 = to_hex(h2.update(pal::buffer(lazy_cog)).finish());
+		auto r1 = to_hex(h1.update(std::span{lazy_cog}).finish());
+		auto r2 = to_hex(h2.update(std::span{lazy_cog}).finish());
 		CHECK(r1 == r2);
 		CHECK(r1 == TestType::hash[lazy_dog + lazy_cog]);
 	}
@@ -128,18 +128,18 @@ TEMPLATE_TEST_CASE("crypto/hash", "",
 	SECTION("move ctor")
 	{
 		hash_t h1;
-		h1.update(pal::buffer(lazy_dog));
+		h1.update(std::span{lazy_dog});
 		auto h2{std::move(h1)};
-		auto r = to_hex(h2.update(pal::buffer(lazy_cog)).finish());
+		auto r = to_hex(h2.update(std::span{lazy_cog}).finish());
 		CHECK(r == TestType::hash[lazy_dog + lazy_cog]);
 	}
 
 	SECTION("move assign")
 	{
 		hash_t h1, h2;
-		h1.update(pal::buffer(lazy_dog));
+		h1.update(std::span{lazy_dog});
 		h2 = std::move(h1);
-		auto r = to_hex(h2.update(pal::buffer(lazy_cog)).finish());
+		auto r = to_hex(h2.update(std::span{lazy_cog}).finish());
 		CHECK(r == TestType::hash[lazy_dog + lazy_cog]);
 	}
 
@@ -154,44 +154,16 @@ TEMPLATE_TEST_CASE("crypto/hash", "",
 	{
 		hash_t h;
 		uint8_t data[hash_t::digest_size];
-
-		std::error_code error;
-		h.finish(pal::buffer(data), error);
-		CHECK(!error);
+		*reinterpret_cast<typename hash_t::result_type *>(data) = h.finish();
 		CHECK(to_hex(data) == TestType::hash[empty]);
-
-		CHECK_NOTHROW(h.finish(pal::buffer(data)));
-		CHECK(to_hex(data) == TestType::hash[empty]);
-	}
-
-	SECTION("finish: result out of range")
-	{
-		hash_t h;
-		std::error_code error;
-		uint8_t r[hash_t::digest_size - 1];
-		h.finish(pal::buffer(r), error);
-		CHECK(error == std::errc::result_out_of_range);
-
-		CHECK_THROWS_AS(
-			h.finish(pal::buffer(r)),
-			std::system_error
-		);
-	}
-
-	SECTION("finish: bad address")
-	{
-		hash_t h;
-		std::error_code error;
-		h.finish(pal::mutable_buffer{nullptr, hash_t::digest_size}, error);
-		CHECK(error == std::errc::bad_address);
 	}
 
 	SECTION("reuse object")
 	{
 		hash_t h;
-		auto r = to_hex(h.update(pal::buffer(lazy_dog)).finish());
+		auto r = to_hex(h.update(std::span{lazy_dog}).finish());
 		CHECK(r == TestType::hash[lazy_dog]);
-		r = to_hex(h.update(pal::buffer(lazy_cog)).finish());
+		r = to_hex(h.update(std::span{lazy_cog}).finish());
 		CHECK(r == TestType::hash[lazy_cog]);
 	}
 
@@ -199,8 +171,8 @@ TEMPLATE_TEST_CASE("crypto/hash", "",
 	{
 		hash_t h;
 		auto r = to_hex(h
-			.update(pal::buffer(lazy_dog))
-			.update(pal::buffer(lazy_cog))
+			.update(std::span{lazy_dog})
+			.update(std::span{lazy_cog})
 			.finish()
 		);
 		CHECK(r == TestType::hash[lazy_dog + lazy_cog]);
@@ -209,10 +181,10 @@ TEMPLATE_TEST_CASE("crypto/hash", "",
 	SECTION("multiple buffers")
 	{
 		hash_t h;
-		pal::const_buffer buffers[] =
+		std::array buffers =
 		{
-			pal::buffer(lazy_dog),
-			pal::buffer(lazy_cog),
+			std::span{lazy_dog},
+			std::span{lazy_cog},
 		};
 		auto r = to_hex(h.update(buffers).finish());
 		CHECK(r == TestType::hash[lazy_dog + lazy_cog]);
@@ -220,74 +192,16 @@ TEMPLATE_TEST_CASE("crypto/hash", "",
 
 	SECTION("one_shot")
 	{
-		auto r = to_hex(hash_t::one_shot(pal::buffer(lazy_dog)));
+		auto r = to_hex(hash_t::one_shot(std::span{lazy_dog}));
 		CHECK(r == TestType::hash[lazy_dog]);
-	}
-
-	SECTION("one_shot: buffer")
-	{
-		std::error_code error;
-		uint8_t result[hash_t::digest_size];
-		hash_t::one_shot(
-			pal::buffer(lazy_dog),
-			pal::buffer(result),
-			error
-		);
-		REQUIRE(!error);
-		CHECK(to_hex(result) == TestType::hash[lazy_dog]);
-
-		CHECK_NOTHROW(
-			hash_t::one_shot(
-				pal::buffer(lazy_cog),
-				pal::buffer(result)
-			)
-		);
-		CHECK(to_hex(result) == TestType::hash[lazy_cog]);
-	}
-
-	SECTION("one_shot: result buffer too small")
-	{
-		std::error_code error;
-		uint8_t result[hash_t::digest_size - 1];
-		hash_t::one_shot(
-			pal::buffer(lazy_dog),
-			pal::buffer(result),
-			error
-		);
-		CHECK(error == std::errc::result_out_of_range);
-
-		CHECK_THROWS_AS(
-			hash_t::one_shot(
-				pal::buffer(lazy_dog),
-				pal::buffer(result)
-			),
-			std::system_error
-		);
-	}
-
-	SECTION("one_shot: result buffer nullptr")
-	{
-		std::error_code error;
-		pal::mutable_buffer result{nullptr, hash_t::digest_size};
-		hash_t::one_shot(
-			pal::buffer(lazy_dog),
-			result,
-			error
-		);
-		CHECK(error == std::errc::bad_address);
-
-		CHECK_THROWS_AS(
-			hash_t::one_shot(pal::buffer(lazy_dog), result),
-			std::system_error
-		);
 	}
 
 	SECTION("one_shot: multiple buffers")
 	{
-		pal::const_buffer buffers[] =
+		std::array buffers =
 		{
-			pal::buffer(lazy_dog),
-			pal::buffer(lazy_cog),
+			std::span{lazy_dog},
+			std::span{lazy_cog},
 		};
 		auto r = to_hex(hash_t::one_shot(buffers));
 		CHECK(r == TestType::hash[lazy_dog + lazy_cog]);

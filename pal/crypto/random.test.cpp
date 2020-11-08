@@ -1,5 +1,6 @@
 #include <pal/crypto/random>
 #include <pal/crypto/test>
+#include <array>
 
 
 namespace {
@@ -9,35 +10,35 @@ TEST_CASE("crypto/random")
 {
 	SECTION("nullptr")
 	{
-		pal::mutable_buffer buffer;
-		pal::crypto::random(buffer);
-		CHECK(buffer.size() == 0);
+		std::span<int> span;
+		pal::crypto::random(span);
+		CHECK(span.size() == 0);
 	}
 
 	SECTION("empty")
 	{
-		int data;
-		pal::mutable_buffer buffer{&data, 0};
-		pal::crypto::random(buffer);
-		CHECK(buffer.size() == 0);
+		int data[1];
+		std::span span{data, data};
+		pal::crypto::random(span);
+		CHECK(span.size() == 0);
 	}
 
 	SECTION("single")
 	{
 		std::string initial = "test", data = initial;
-		pal::crypto::random(pal::buffer(data));
+		pal::crypto::random(std::span{data});
 		CHECK(data != initial);
 	}
 
 	SECTION("multiple")
 	{
 		std::string one = "one", two = "two";
-		pal::mutable_buffer buffers[] =
+		std::array spans =
 		{
-			pal::buffer(one),
-			pal::buffer(two),
+			std::span{one},
+			std::span{two},
 		};
-		pal::crypto::random(buffers);
+		pal::crypto::random(spans);
 		CHECK(one != "one");
 		CHECK(two != "two");
 	}

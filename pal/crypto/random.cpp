@@ -20,20 +20,17 @@ namespace crypto::__bits {
 
 void random (void *data, size_t size) noexcept
 {
-	if (data && size)
-	{
-		#if __pal_os_linux
-			::RAND_bytes(static_cast<unsigned char *>(data), size);
-		#elif __pal_os_macos
-			::CCRandomGenerateBytes(data, size);
-		#elif __pal_os_windows
-			::BCryptGenRandom(nullptr,
-				static_cast<PUCHAR>(data),
-				static_cast<ULONG>(size),
-				BCRYPT_USE_SYSTEM_PREFERRED_RNG
-			);
-		#endif
-	}
+	#if __pal_os_linux
+		::RAND_bytes(static_cast<unsigned char *>(data), size);
+	#elif __pal_os_macos
+		::CCRandomGenerateBytes(data, size);
+	#elif __pal_os_windows
+		::BCryptGenRandom(nullptr,
+			static_cast<PUCHAR>(data),
+			static_cast<ULONG>(size),
+			BCRYPT_USE_SYSTEM_PREFERRED_RNG
+		);
+	#endif
 }
 
 

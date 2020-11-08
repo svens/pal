@@ -6,7 +6,7 @@
  */
 
 #include <pal/__bits/lib>
-#include <pal/buffer>
+#include <pal/span>
 
 
 __pal_begin
@@ -26,13 +26,18 @@ void random (void *data, size_t size) noexcept;
  * Fill \a buffers with cryptographically strong random bytes suitable for
  * cryptographic keys, nonces, etc.
  */
-template <typename MutableBufferSequence>
-inline void random (const MutableBufferSequence &buffers) noexcept
+template <typename SpanSequence>
+inline void random (const SpanSequence &spans) noexcept
 {
-	const auto end = buffer_sequence_end(buffers);
-	for (auto it = buffer_sequence_begin(buffers);  it != end;  ++it)
+	const auto end = span_sequence_end(spans);
+	for (auto it = span_sequence_begin(spans);  it != end;  ++it)
 	{
-		__bits::random(it->data(), it->size());
+		void *data = it->data();
+		size_t size = it->size_bytes();
+		if (data && size)
+		{
+			__bits::random(data, size);
+		}
 	}
 }
 

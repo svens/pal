@@ -7,8 +7,8 @@
 
 #include <pal/__bits/lib>
 #include <pal/crypto/__bits/digest>
-#include <pal/buffer>
 #include <pal/error>
+#include <pal/span>
 #include <array>
 
 
@@ -47,6 +47,9 @@ public:
 	/// Number of bytes in hash digest result.
 	static constexpr size_t digest_size = __bits::digest_size_v<Algorithm>;
 
+	/// Owning hashing result type.
+	using result_type = std::array<std::byte, digest_size>;
+
 
 	/**
 	 * Initialize hasher object.
@@ -55,92 +58,29 @@ public:
 
 
 	/**
-	 * Feed \a input buffer(s) into hasher object.
+	 * Feed \a input into hasher object.
 	 * \returns *this for call chaining
 	 */
-	template <typename ConstBufferSequence>
-	hash &update (const ConstBufferSequence &input) noexcept
+	template <typename SpanSequence>
+	hash &update (const SpanSequence &input) noexcept
 	{
-		const auto end = buffer_sequence_end(input);
-		for (auto it = buffer_sequence_begin(input);  it != end;  ++it)
+		const auto end = span_sequence_end(input);
+		for (auto it = span_sequence_begin(input);  it != end;  ++it)
 		{
-			update(it->data(), it->size());
+			update(it->data(), it->size_bytes());
 		}
 		return *this;
 	}
 
 
 	/**
-	 * Calculate hash of previously fed data and store into \a result.
-	 * On failure \a error is set and content of \a result is unchanged.
-	 */
-	void finish (const mutable_buffer &result, std::error_code &error)
-		noexcept
-	{
-		if (result.size() >= digest_size)
-		{
-			if (auto digest_ptr = result.data())
-			{
-				finish(digest_ptr, digest_size);
-				error.clear();
-			}
-			else
-			{
-				error = std::make_error_code(std::errc::bad_address);
-			}
-		}
-		else
-		{
-			error = std::make_error_code(std::errc::result_out_of_range);
-		}
-	}
-
-
-	/**
-	 * Calculate hash of previously fed data and store into \a result.
-	 * On failure throws std::system_error.
-	 */
-	void finish (const mutable_buffer &result)
-	{
-		finish(result, throw_on_error("hash::finish"));
-	}
-
-
-	/**
 	 * Calculate and return hash of previously fed data.
 	 */
-	std::array<uint8_t, digest_size> finish () noexcept
+	result_type finish () noexcept
 	{
-		std::array<uint8_t, digest_size> result;
+		result_type result;
 		finish(result.data(), result.size());
 		return result;
-	}
-
-
-	/**
-	 * Calculate hash of \a input, storing result in \a result. On
-	 * failure, set \a error and \a result has undefined content.
-	 */
-	template <typename ConstBufferSequence>
-	static void one_shot (
-		const ConstBufferSequence &input,
-		const mutable_buffer &result,
-		std::error_code &error) noexcept
-	{
-		hash{}.update(input).finish(result, error);
-	}
-
-
-	/**
-	 * Calculate hash of \a input, storing result in \a result. On
-	 * failure, throw std::system_error.
-	 */
-	template <typename ConstBufferSequence>
-	static void one_shot (
-		const ConstBufferSequence &input,
-		const mutable_buffer &result)
-	{
-		one_shot(input, result, throw_on_error("hash::one_shot"));
 	}
 
 
@@ -148,9 +88,8 @@ public:
 	 * Calculate hash of \a input, returning result as std::array. On
 	 * failure \a error is set and undefined value is returned.
 	 */
-	template <typename ConstBufferSequence>
-	static std::array<uint8_t, digest_size> one_shot (
-		const ConstBufferSequence &input) noexcept
+	template <typename SpanSequence>
+	static result_type one_shot (const SpanSequence &input) noexcept
 	{
 		return hash{}.update(input).finish();
 	}
