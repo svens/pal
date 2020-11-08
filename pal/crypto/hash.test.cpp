@@ -13,9 +13,8 @@ static const std::string
 	lazy_cog = "The quick brown fox jumps over the lazy cog";
 
 
-struct md5
+struct md5: pal::crypto::md5_hash
 {
-	using algorithm_type = pal::crypto::md5;
 	static inline std::unordered_map<std::string, std::string> hash =
 	{
 		{ empty, "d41d8cd98f00b204e9800998ecf8427e" },
@@ -26,9 +25,8 @@ struct md5
 };
 
 
-struct sha1
+struct sha1: pal::crypto::sha1_hash
 {
-	using algorithm_type = pal::crypto::sha1;
 	static inline std::unordered_map<std::string, std::string> hash =
 	{
 		{ empty, "da39a3ee5e6b4b0d3255bfef95601890afd80709" },
@@ -39,9 +37,8 @@ struct sha1
 };
 
 
-struct sha256
+struct sha256: pal::crypto::sha256_hash
 {
-	using algorithm_type = pal::crypto::sha256;
 	static inline std::unordered_map<std::string, std::string> hash =
 	{
 		{ empty, "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855" },
@@ -52,9 +49,8 @@ struct sha256
 };
 
 
-struct sha384
+struct sha384: pal::crypto::sha384_hash
 {
-	using algorithm_type = pal::crypto::sha384;
 	static inline std::unordered_map<std::string, std::string> hash =
 	{
 		{ empty, "38b060a751ac96384cd9327eb1b1e36a21fdb71114be07434c0cc7bf63f6e1da274edebfe76f65fbd51ad2f14898b95b" },
@@ -65,9 +61,8 @@ struct sha384
 };
 
 
-struct sha512
+struct sha512: pal::crypto::sha512_hash
 {
-	using algorithm_type = pal::crypto::sha512;
 	static inline std::unordered_map<std::string, std::string> hash =
 	{
 		{ empty, "cf83e1357eefb8bdf1542850d66d8007d620e4050b5715dc83f4a921d36ce9ce47d0d13c5d85f2b0ff8318d2877eec2f63b931bd47417a81a538327af927da3e" },
@@ -99,11 +94,9 @@ TEMPLATE_TEST_CASE("crypto/hash", "",
 	sha384,
 	sha512)
 {
-	using hash_t = pal::crypto::hash<typename TestType::algorithm_type>;
-
 	SECTION("copy ctor")
 	{
-		hash_t h1;
+		TestType h1;
 		h1.update(std::span{lazy_dog});
 		auto h2 = h1;
 
@@ -115,7 +108,7 @@ TEMPLATE_TEST_CASE("crypto/hash", "",
 
 	SECTION("copy assign")
 	{
-		hash_t h1, h2;
+		TestType h1, h2;
 		h1.update(std::span{lazy_dog});
 		h2 = h1;
 
@@ -127,7 +120,7 @@ TEMPLATE_TEST_CASE("crypto/hash", "",
 
 	SECTION("move ctor")
 	{
-		hash_t h1;
+		TestType h1;
 		h1.update(std::span{lazy_dog});
 		auto h2{std::move(h1)};
 		auto r = to_hex(h2.update(std::span{lazy_cog}).finish());
@@ -136,7 +129,7 @@ TEMPLATE_TEST_CASE("crypto/hash", "",
 
 	SECTION("move assign")
 	{
-		hash_t h1, h2;
+		TestType h1, h2;
 		h1.update(std::span{lazy_dog});
 		h2 = std::move(h1);
 		auto r = to_hex(h2.update(std::span{lazy_cog}).finish());
@@ -145,22 +138,22 @@ TEMPLATE_TEST_CASE("crypto/hash", "",
 
 	SECTION("no update")
 	{
-		hash_t h;
+		TestType h;
 		auto r = to_hex(h.finish());
 		CHECK(r == TestType::hash[empty]);
 	}
 
 	SECTION("finish")
 	{
-		hash_t h;
-		uint8_t data[hash_t::digest_size];
-		*reinterpret_cast<typename hash_t::result_type *>(data) = h.finish();
+		TestType h;
+		uint8_t data[TestType::digest_size];
+		*reinterpret_cast<typename TestType::result_type *>(data) = h.finish();
 		CHECK(to_hex(data) == TestType::hash[empty]);
 	}
 
 	SECTION("reuse object")
 	{
-		hash_t h;
+		TestType h;
 		auto r = to_hex(h.update(std::span{lazy_dog}).finish());
 		CHECK(r == TestType::hash[lazy_dog]);
 		r = to_hex(h.update(std::span{lazy_cog}).finish());
@@ -169,7 +162,7 @@ TEMPLATE_TEST_CASE("crypto/hash", "",
 
 	SECTION("multiple updates")
 	{
-		hash_t h;
+		TestType h;
 		auto r = to_hex(h
 			.update(std::span{lazy_dog})
 			.update(std::span{lazy_cog})
@@ -180,7 +173,7 @@ TEMPLATE_TEST_CASE("crypto/hash", "",
 
 	SECTION("multiple buffers")
 	{
-		hash_t h;
+		TestType h;
 		std::array buffers =
 		{
 			std::span{lazy_dog},
@@ -192,7 +185,7 @@ TEMPLATE_TEST_CASE("crypto/hash", "",
 
 	SECTION("one_shot")
 	{
-		auto r = to_hex(hash_t::one_shot(std::span{lazy_dog}));
+		auto r = to_hex(TestType::one_shot(std::span{lazy_dog}));
 		CHECK(r == TestType::hash[lazy_dog]);
 	}
 
@@ -203,7 +196,7 @@ TEMPLATE_TEST_CASE("crypto/hash", "",
 			std::span{lazy_dog},
 			std::span{lazy_cog},
 		};
-		auto r = to_hex(hash_t::one_shot(buffers));
+		auto r = to_hex(TestType::one_shot(buffers));
 		CHECK(r == TestType::hash[lazy_dog + lazy_cog]);
 	}
 }

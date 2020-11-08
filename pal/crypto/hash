@@ -18,16 +18,6 @@ __pal_begin
 namespace crypto {
 
 
-/// \{
-/// Cryptographic hash algorithms
-using __bits::md5;
-using __bits::sha1;
-using __bits::sha256;
-using __bits::sha384;
-using __bits::sha512;
-/// \}
-
-
 /**
  * One-way cryptographic hashing using \a Algorithm.
  *
@@ -40,7 +30,7 @@ using __bits::sha512;
  * instance after call to finish(), it is re-initialized internally.
  */
 template <typename Algorithm>
-class hash
+class basic_hash
 {
 public:
 
@@ -54,7 +44,7 @@ public:
 	/**
 	 * Initialize hasher object.
 	 */
-	hash ();
+	basic_hash ();
 
 
 	/**
@@ -62,7 +52,7 @@ public:
 	 * \returns *this for call chaining
 	 */
 	template <typename SpanSequence>
-	hash &update (const SpanSequence &input) noexcept
+	basic_hash &update (const SpanSequence &input) noexcept
 	{
 		const auto end = span_sequence_end(input);
 		for (auto it = span_sequence_begin(input);  it != end;  ++it)
@@ -91,17 +81,27 @@ public:
 	template <typename SpanSequence>
 	static result_type one_shot (const SpanSequence &input) noexcept
 	{
-		return hash{}.update(input).finish();
+		return basic_hash{}.update(input).finish();
 	}
 
 
 private:
 
-	typename Algorithm::hash_context context_{};
+	typename Algorithm::hash context_{};
 
 	void update (const void *input, size_t size) noexcept;
 	void finish (void *result, size_t size) noexcept;
 };
+
+
+/// \{
+/// Cryptographic hashes
+using md5_hash = basic_hash<__bits::md5_algorithm>;
+using sha1_hash = basic_hash<__bits::sha1_algorithm>;
+using sha256_hash = basic_hash<__bits::sha256_algorithm>;
+using sha384_hash = basic_hash<__bits::sha384_algorithm>;
+using sha512_hash = basic_hash<__bits::sha512_algorithm>;
+/// \}
 
 
 } // namespace crypto
