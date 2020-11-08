@@ -83,13 +83,25 @@ private:
 };
 
 
+/// \defgroup crypto_hash Cryptographic hash algorithms
 /// \{
-/// Cryptographic hashes
+
+/// MD5 hash
+/// \deprecated Provided only for backward compatibility
 using md5_hash = basic_hash<__bits::md5_algorithm>;
+
+/// SHA1 hash
 using sha1_hash = basic_hash<__bits::sha1_algorithm>;
+
+/// SHA256 hash
 using sha256_hash = basic_hash<__bits::sha256_algorithm>;
+
+/// SHA384 hash
 using sha384_hash = basic_hash<__bits::sha384_algorithm>;
+
+/// SHA512 hash
 using sha512_hash = basic_hash<__bits::sha512_algorithm>;
+
 /// \}
 
 

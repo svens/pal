@@ -110,13 +110,24 @@ private:
 };
 
 
+/// \defgroup crypto_hmac Cryptographic keyed hash algorithms
 /// \{
-/// Cryptographic keyed hashes
+
+/// MD5 HMAC
 using md5_hmac = basic_hmac<__bits::md5_algorithm>;
+
+/// SHA1 HMAC
 using sha1_hmac = basic_hmac<__bits::sha1_algorithm>;
+
+/// SHA256 HMAC
 using sha256_hmac = basic_hmac<__bits::sha256_algorithm>;
+
+/// SHA384 HMAC
 using sha384_hmac = basic_hmac<__bits::sha384_algorithm>;
+
+/// SHA512 HMAC
 using sha512_hmac = basic_hmac<__bits::sha512_algorithm>;
+
 /// \}
 
 
