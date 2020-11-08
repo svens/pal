@@ -17,10 +17,11 @@ jobs:
 
       - name: Configure
         run: |
-          sudo apt-get install --yes cmake
+          sudo apt-get install --yes g++-10 cmake
+          export CC=gcc-10 CXX=g++-10
           cmake . -DCMAKE_BUILD_TYPE=Coverage -Dpal_docs=yes -Dpal_unittests=no
 
-      - name: Generate documentation
+      - name: Generate
         uses: mattnotmitt/doxygen-action@v1.2.1
         with:
           doxyfile-path: ./Doxyfile
