@@ -37,14 +37,8 @@ public:
 	/// Number of bytes in hash digest result.
 	static constexpr size_t digest_size = __bits::digest_size_v<Algorithm>;
 
-	/// Owning hashing result type.
+	/// Hashing result type.
 	using result_type = std::array<std::byte, digest_size>;
-
-
-	/**
-	 * Initialize hasher object.
-	 */
-	basic_hash ();
 
 
 	/**
@@ -57,7 +51,7 @@ public:
 		const auto end = span_sequence_end(input);
 		for (auto it = span_sequence_begin(input);  it != end;  ++it)
 		{
-			update(it->data(), it->size_bytes());
+			impl_.update(it->data(), it->size_bytes());
 		}
 		return *this;
 	}
@@ -69,7 +63,7 @@ public:
 	result_type finish () noexcept
 	{
 		result_type result;
-		finish(result.data(), result.size());
+		impl_.finish(result.data(), result.size());
 		return result;
 	}
 
@@ -87,10 +81,7 @@ public:
 
 private:
 
-	typename Algorithm::hash context_{};
-
-	void update (const void *input, size_t size) noexcept;
-	void finish (void *result, size_t size) noexcept;
+	typename Algorithm::hash impl_{};
 };
 
 

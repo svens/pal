@@ -1,8 +1,7 @@
 list(APPEND pal_sources
 	pal/crypto/__bits/digest
+	pal/crypto/__bits/digest.cpp
 	pal/crypto/hash
-	pal/crypto/hash.cpp
-
 	pal/crypto/random
 	pal/crypto/random.cpp
 )
