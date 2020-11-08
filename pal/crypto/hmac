@@ -1,7 +1,7 @@
 #pragma once // -*- C++ -*-
 
 /**
- * \file pal/crypto/hash
+ * \file pal/crypto/hmac
  * Cryptographic hashing
  */
 
@@ -18,7 +18,7 @@ namespace crypto {
 
 
 /**
- * One-way cryptographic hashing using \a Algorithm.
+ * One-way cryptographic keyed hashing using \a Algorithm.
  *
  * If all data is already fully present, use static one_shot() to calculate
  * digest immediately.
@@ -29,7 +29,7 @@ namespace crypto {
  * instance after call to finish(), it is re-initialized internally.
  */
 template <typename Algorithm>
-class basic_hash
+class basic_hmac
 {
 public:
 
@@ -41,11 +41,26 @@ public:
 
 
 	/**
+	 * Construct new HMAC object with no key
+	 */
+	basic_hmac () = default;
+
+
+	/**
+	 * Construct new HMAC object with \a key.
+	 */
+	template <typename Key>
+	basic_hmac (const Key &key)
+		: impl_{key.data(), key.size_bytes()}
+	{ }
+
+
+	/**
 	 * Feed \a input into hasher object.
 	 * \returns *this for call chaining
 	 */
 	template <typename SpanSequence>
-	basic_hash &update (const SpanSequence &input) noexcept
+	basic_hmac &update (const SpanSequence &input) noexcept
 	{
 		const auto end = span_sequence_end(input);
 		for (auto it = span_sequence_begin(input);  it != end;  ++it)
@@ -70,26 +85,38 @@ public:
 	/**
 	 * Calculate hash of \a input, returning result as std::array.
 	 */
+	template <typename Key, typename SpanSequence>
+	static result_type one_shot (
+		const Key &key,
+		const SpanSequence &input) noexcept
+	{
+		return basic_hmac{key}.update(input).finish();
+	}
+
+
+	/**
+	 * Calculate hash of \a input, returning result as std::array.
+	 */
 	template <typename SpanSequence>
 	static result_type one_shot (const SpanSequence &input) noexcept
 	{
-		return basic_hash{}.update(input).finish();
+		return basic_hmac{}.update(input).finish();
 	}
 
 
 private:
 
-	typename Algorithm::hash impl_{};
+	typename Algorithm::hmac impl_{};
 };
 
 
 /// \{
-/// Cryptographic hashes
-using md5_hash = basic_hash<__bits::md5_algorithm>;
-using sha1_hash = basic_hash<__bits::sha1_algorithm>;
-using sha256_hash = basic_hash<__bits::sha256_algorithm>;
-using sha384_hash = basic_hash<__bits::sha384_algorithm>;
-using sha512_hash = basic_hash<__bits::sha512_algorithm>;
+/// Cryptographic keyed hashes
+using md5_hmac = basic_hmac<__bits::md5_algorithm>;
+using sha1_hmac = basic_hmac<__bits::sha1_algorithm>;
+using sha256_hmac = basic_hmac<__bits::sha256_algorithm>;
+using sha384_hmac = basic_hmac<__bits::sha384_algorithm>;
+using sha512_hmac = basic_hmac<__bits::sha512_algorithm>;
 /// \}
 
 

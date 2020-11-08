@@ -21,15 +21,13 @@ namespace crypto::__bits {
 	} \
 	\
 	template <> \
-	void hash_context<Ctx>::update ( \
-		const void *data, size_t size) noexcept \
+	void hash_context<Ctx>::update (const void *data, size_t size) noexcept \
 	{ \
 		::Fn ## _Update(this, data, size); \
 	} \
 	\
 	template <> \
-	void hash_context<Ctx>::finish ( \
-		void *digest, size_t) noexcept \
+	void hash_context<Ctx>::finish (void *digest, size_t) noexcept \
 	{ \
 		::Fn ## _Final(static_cast<uint8_t *>(digest), this); \
 		::Fn ## _Init(this); \
@@ -40,6 +38,78 @@ HASH_IMPL(::SHA_CTX, SHA1)
 HASH_IMPL(::SHA256_CTX, SHA256)
 HASH_IMPL(__SHA384_CTX, SHA384)
 HASH_IMPL(::SHA512_CTX, SHA512)
+
+#undef HASH_IMPL
+
+
+namespace {
+
+inline HMAC_CTX *alloc () noexcept
+{
+	#if OPENSSL_VERSION_NUMBER < 0x10100000
+		if (auto ctx = new HMAC_CTX)
+		{
+			::HMAC_CTX_init(ctx);
+			return ctx;
+		}
+		return nullptr;
+	#else
+		return ::HMAC_CTX_new();
+	#endif
+}
+
+} // namespace
+
+
+void hmac_context_base::release (HMAC_CTX *ctx) noexcept
+{
+	#if OPENSSL_VERSION_NUMBER < 0x10100000
+		::HMAC_CTX_cleanup(ctx);
+		delete ctx;
+	#else
+		::HMAC_CTX_free(ctx);
+	#endif
+}
+
+
+hmac_context_base::hmac_context_base (const EVP_MD *evp, const void *key, size_t size)
+	: ctx{alloc(), release}
+{
+	if (!ctx)
+	{
+		throw std::bad_alloc();
+	}
+	if (!key)
+	{
+		key = "";
+		size = 0U;
+	}
+	::HMAC_Init_ex(ctx.get(), key, size, evp, nullptr);
+}
+
+
+hmac_context_base::hmac_context_base (const hmac_context_base &that)
+	: ctx{nullptr, release}
+{
+	if (that.ctx)
+	{
+		ctx.reset(alloc());
+		::HMAC_CTX_copy(ctx.get(), that.ctx.get());
+	}
+}
+
+
+void hmac_context_base::update (const void *data, size_t size) noexcept
+{
+	::HMAC_Update(ctx.get(), static_cast<const uint8_t *>(data), size);
+}
+
+
+void hmac_context_base::finish (void *digest, size_t) noexcept
+{
+	::HMAC_Final(ctx.get(), static_cast<uint8_t *>(digest), nullptr);
+	::HMAC_Init_ex(ctx.get(), nullptr, 0U, nullptr, nullptr);
+}
 
 
 #elif __pal_os_macos //{{{1
@@ -53,15 +123,13 @@ HASH_IMPL(::SHA512_CTX, SHA512)
 	} \
 	\
 	template <> \
-	void hash_context<Ctx>::update ( \
-		const void *data, size_t size) noexcept \
+	void hash_context<Ctx>::update (const void *data, size_t size) noexcept \
 	{ \
 		::CC_ ## Fn ## _Update(this, data, size); \
 	} \
 	\
 	template <> \
-	void hash_context<Ctx>::finish ( \
-		void *digest, size_t) noexcept \
+	void hash_context<Ctx>::finish (void *digest, size_t) noexcept \
 	{ \
 		::CC_ ## Fn ## _Final(static_cast<uint8_t *>(digest), this); \
 		::CC_ ## Fn ## _Init(this); \
@@ -76,6 +144,40 @@ HASH_IMPL(::CC_SHA1_CTX, SHA1)
 HASH_IMPL(::CC_SHA256_CTX, SHA256)
 HASH_IMPL(__CC_SHA384_CTX, SHA384)
 HASH_IMPL(::CC_SHA512_CTX, SHA512)
+
+#undef HASH_IMPL
+
+
+#define HMAC_IMPL(Algorithm) \
+	template <> \
+	hmac_context<::kCCHmacAlg ## Algorithm>::hmac_context (const void *key, size_t size) noexcept \
+		: init_ctx{} \
+		, ctx{} \
+	{ \
+		::CCHmacInit(&init_ctx, ::kCCHmacAlg ## Algorithm, key, size); \
+		ctx = init_ctx; \
+	} \
+	\
+	template <> \
+	void hmac_context<::kCCHmacAlg ## Algorithm>::update (const void *data, size_t size) noexcept \
+	{ \
+		::CCHmacUpdate(&ctx, data, size); \
+	} \
+	\
+	template <> \
+	void hmac_context<::kCCHmacAlg ## Algorithm>::finish (void *digest, size_t) noexcept \
+	{ \
+		::CCHmacFinal(&ctx, digest); \
+		ctx = init_ctx; \
+	}
+
+HMAC_IMPL(MD5)
+HMAC_IMPL(SHA1)
+HMAC_IMPL(SHA256)
+HMAC_IMPL(SHA384)
+HMAC_IMPL(SHA512)
+
+#undef HMAC_IMPL
 
 
 #elif __pal_os_windows //{{{1
@@ -142,9 +244,7 @@ BCRYPT_ALG_HANDLE provider ()
 
 
 template <typename Algorithm, bool IsHMAC>
-BCRYPT_HASH_HANDLE make_context (
-	const void *secret = nullptr,
-	size_t secret_size = 0)
+BCRYPT_HASH_HANDLE make_context (const void *key, size_t size)
 {
 	BCRYPT_HASH_HANDLE handle;
 	::BCryptCreateHash(
@@ -152,8 +252,8 @@ BCRYPT_HASH_HANDLE make_context (
 		&handle,
 		nullptr,
 		0,
-		static_cast<PUCHAR>(const_cast<void *>(secret)),
-		static_cast<ULONG>(secret_size),
+		static_cast<PUCHAR>(const_cast<void *>(key)),
+		static_cast<ULONG>(size),
 		BCRYPT_HASH_REUSABLE_FLAG
 	);
 	return handle;
@@ -163,14 +263,14 @@ BCRYPT_HASH_HANDLE make_context (
 } // namespace
 
 
-template <typename Impl>
-context_type<Impl>::context_type ()
-	: handle{make_context<Impl, false>()}
+template <typename Algorithm, bool IsHMAC>
+context_type<Algorithm, IsHMAC>::context_type (const void *key, size_t size)
+	: handle{make_context<Algorithm, IsHMAC>(key, size)}
 { }
 
 
-template <typename Impl>
-context_type<Impl>::~context_type () noexcept
+template <typename Algorithm, bool IsHMAC>
+context_type<Algorithm, IsHMAC>::~context_type () noexcept
 {
 	if (handle)
 	{
@@ -179,8 +279,8 @@ context_type<Impl>::~context_type () noexcept
 }
 
 
-template <typename Impl>
-context_type<Impl>::context_type (const context_type &that) noexcept
+template <typename Algorithm, bool IsHMAC>
+context_type<Algorithm, IsHMAC>::context_type (const context_type &that) noexcept
 {
 	::BCryptDuplicateHash(
 		that.handle,
@@ -192,8 +292,8 @@ context_type<Impl>::context_type (const context_type &that) noexcept
 }
 
 
-template <typename Impl>
-void context_type<Impl>::update (const void *data, size_t size) noexcept
+template <typename Algorithm, bool IsHMAC>
+void context_type<Algorithm, IsHMAC>::update (const void *data, size_t size) noexcept
 {
 	::BCryptHashData(
 		handle,
@@ -204,8 +304,8 @@ void context_type<Impl>::update (const void *data, size_t size) noexcept
 }
 
 
-template <typename Impl>
-void context_type<Impl>::finish (void *digest, size_t size) noexcept
+template <typename Algorithm, bool IsHMAC>
+void context_type<Algorithm, IsHMAC>::finish (void *digest, size_t size) noexcept
 {
 	::BCryptFinishHash(
 		handle,
@@ -216,11 +316,19 @@ void context_type<Impl>::finish (void *digest, size_t size) noexcept
 }
 
 
-template struct context_type<md5_algorithm>;
-template struct context_type<sha1_algorithm>;
-template struct context_type<sha256_algorithm>;
-template struct context_type<sha384_algorithm>;
-template struct context_type<sha512_algorithm>;
+// hash
+template struct context_type<md5_algorithm, false>;
+template struct context_type<sha1_algorithm, false>;
+template struct context_type<sha256_algorithm, false>;
+template struct context_type<sha384_algorithm, false>;
+template struct context_type<sha512_algorithm, false>;
+
+// hmac
+template struct context_type<md5_algorithm, true>;
+template struct context_type<sha1_algorithm, true>;
+template struct context_type<sha256_algorithm, true>;
+template struct context_type<sha384_algorithm, true>;
+template struct context_type<sha512_algorithm, true>;
 
 
 #endif //}}}1

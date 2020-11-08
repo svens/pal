@@ -1,6 +1,5 @@
 #include <pal/crypto/hash>
 #include <pal/crypto/test>
-#include <string>
 #include <unordered_map>
 
 
@@ -73,20 +72,6 @@ struct sha512: pal::crypto::sha512_hash
 };
 
 
-template <typename Data>
-std::string to_hex (const Data &data)
-{
-	std::string result;
-	for (auto &b: data)
-	{
-		char buf[3];
-		snprintf(buf, sizeof(buf), "%02x", static_cast<uint32_t>(b));
-		result += buf;
-	}
-	return result;
-}
-
-
 TEMPLATE_TEST_CASE("crypto/hash", "",
 	md5,
 	sha1,
@@ -94,6 +79,8 @@ TEMPLATE_TEST_CASE("crypto/hash", "",
 	sha384,
 	sha512)
 {
+	using pal_test::to_hex;
+
 	SECTION("copy ctor")
 	{
 		TestType h1;

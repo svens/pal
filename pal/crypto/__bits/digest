@@ -34,19 +34,49 @@ struct hash_context: Impl
 	void finish (void *digest, size_t size) noexcept;
 };
 
+struct hmac_context_base
+{
+	static void release (HMAC_CTX *ctx) noexcept;
+	std::unique_ptr<HMAC_CTX, void(*)(HMAC_CTX *)> ctx{nullptr, release};
+
+	hmac_context_base (const EVP_MD *evp, const void *key, size_t size);
+
+	hmac_context_base (const hmac_context_base &that);
+
+	hmac_context_base &operator= (hmac_context_base that) noexcept
+	{
+		std::swap(ctx, that.ctx);
+		return *this;
+	}
+
+	void update (const void *data, size_t size) noexcept;
+	void finish (void *digest, size_t size) noexcept;
+};
+
+template <const ::EVP_MD *(*evp_fn)()>
+struct hmac_context: hmac_context_base
+{
+	hmac_context (const void *key = nullptr, size_t size = 0U)
+		: hmac_context_base((*evp_fn)(), key, size)
+	{ }
+};
+
 struct md5_algorithm
 {
 	using hash = hash_context<::MD5_CTX>;
+	using hmac = hmac_context<&::EVP_md5>;
 };
 
 struct sha1_algorithm
 {
 	using hash = hash_context<::SHA_CTX>;
+	using hmac = hmac_context<&EVP_sha1>;
 };
 
 struct sha256_algorithm
 {
 	using hash = hash_context<::SHA256_CTX>;
+	using hmac = hmac_context<&EVP_sha256>;
 };
 
 struct __SHA384_CTX: ::SHA512_CTX {};
@@ -54,11 +84,13 @@ struct __SHA384_CTX: ::SHA512_CTX {};
 struct sha384_algorithm
 {
 	using hash = hash_context<__SHA384_CTX>;
+	using hmac = hmac_context<&EVP_sha384>;
 };
 
 struct sha512_algorithm
 {
 	using hash = hash_context<::SHA512_CTX>;
+	using hmac = hmac_context<&EVP_sha512>;
 };
 
 #elif __pal_os_macos //{{{1
@@ -71,19 +103,32 @@ struct hash_context: Impl
 	void finish (void *digest, size_t size) noexcept;
 };
 
+template <CCHmacAlgorithm Algorithm>
+struct hmac_context
+{
+	CCHmacContext init_ctx, ctx;
+
+	hmac_context (const void *key = nullptr, size_t size = 0U) noexcept;
+	void update (const void *data, size_t size) noexcept;
+	void finish (void *digest, size_t size) noexcept;
+};
+
 struct md5_algorithm
 {
 	using hash = hash_context<::CC_MD5_CTX>;
+	using hmac = hmac_context<::kCCHmacAlgMD5>;
 };
 
 struct sha1_algorithm
 {
 	using hash = hash_context<::CC_SHA1_CTX>;
+	using hmac = hmac_context<::kCCHmacAlgSHA1>;
 };
 
 struct sha256_algorithm
 {
 	using hash = hash_context<::CC_SHA256_CTX>;
+	using hmac = hmac_context<::kCCHmacAlgSHA256>;
 };
 
 struct __CC_SHA384_CTX: CC_SHA512_CTX {};
@@ -91,21 +136,23 @@ struct __CC_SHA384_CTX: CC_SHA512_CTX {};
 struct sha384_algorithm
 {
 	using hash = hash_context<__CC_SHA384_CTX>;
+	using hmac = hmac_context<::kCCHmacAlgSHA384>;
 };
 
 struct sha512_algorithm
 {
 	using hash = hash_context<::CC_SHA512_CTX>;
+	using hmac = hmac_context<::kCCHmacAlgSHA512>;
 };
 
 #elif __pal_os_windows //{{{1
 
-template <typename Impl>
+template <typename Algorithm, bool IsHMAC>
 struct context_type
 {
 	BCRYPT_HASH_HANDLE handle{};
 
-	context_type ();
+	context_type (const void *key = nullptr, size_t size = 0U);
 	~context_type () noexcept;
 	context_type (const context_type &that) noexcept;
 
@@ -126,31 +173,36 @@ struct context_type
 struct md5_algorithm
 {
 	static constexpr LPCWSTR id = BCRYPT_MD5_ALGORITHM;
-	using hash = context_type<md5_algorithm>;
+	using hash = context_type<md5_algorithm, false>;
+	using hmac = context_type<md5_algorithm, true>;
 };
 
 struct sha1_algorithm
 {
 	static constexpr LPCWSTR id = BCRYPT_SHA1_ALGORITHM;
-	using hash = context_type<sha1_algorithm>;
+	using hash = context_type<sha1_algorithm, false>;
+	using hmac = context_type<sha1_algorithm, true>;
 };
 
 struct sha256_algorithm
 {
 	static constexpr LPCWSTR id = BCRYPT_SHA256_ALGORITHM;
-	using hash = context_type<sha256_algorithm>;
+	using hash = context_type<sha256_algorithm, false>;
+	using hmac = context_type<sha256_algorithm, true>;
 };
 
 struct sha384_algorithm
 {
 	static constexpr LPCWSTR id = BCRYPT_SHA384_ALGORITHM;
-	using hash = context_type<sha384_algorithm>;
+	using hash = context_type<sha384_algorithm, false>;
+	using hmac = context_type<sha384_algorithm, true>;
 };
 
 struct sha512_algorithm
 {
 	static constexpr LPCWSTR id = BCRYPT_SHA512_ALGORITHM;
-	using hash = context_type<sha512_algorithm>;
+	using hash = context_type<sha512_algorithm, false>;
+	using hmac = context_type<sha512_algorithm, true>;
 };
 
 #endif //}}}1
