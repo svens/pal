@@ -1,0 +1,22 @@
+#pragma once // -*- C++ -*-
+
+#include <pal/test>
+#include <string>
+
+
+namespace pal_test {
+
+template <typename Data>
+std::string to_hex (const Data &data)
+{
+	std::string result;
+	for (auto &b: data)
+	{
+		char buf[3];
+		snprintf(buf, sizeof(buf), "%02x", static_cast<uint32_t>(b));
+		result += buf;
+	}
+	return result;
+}
+
+} // namespace pal_test

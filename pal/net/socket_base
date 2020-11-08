@@ -122,6 +122,9 @@ struct socket_option_value
 
 protected:
 
+	/**
+	 * Socket option value storage
+	 */
 	T value_{};
 };
 

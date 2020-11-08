@@ -451,10 +451,12 @@ protected:
 	 */
 	protocol_type protocol_{endpoint_type{}.protocol()};
 
+#if !defined(__DOXYGEN__)
 	basic_socket () noexcept = default;
 	basic_socket (basic_socket &&) noexcept = default;
 	basic_socket &operator= (basic_socket &&) noexcept = default;
 	~basic_socket () = default;
+#endif
 
 
 	/**

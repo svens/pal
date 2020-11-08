@@ -1,0 +1,137 @@
+#pragma once // -*- C++ -*-
+
+/**
+ * \file pal/crypto/hmac
+ * Cryptographic hashing
+ */
+
+#include <pal/__bits/lib>
+#include <pal/crypto/__bits/digest>
+#include <pal/span>
+#include <array>
+
+
+__pal_begin
+
+
+namespace crypto {
+
+
+/**
+ * One-way cryptographic keyed hashing using \a Algorithm.
+ *
+ * If all data is already fully present, use static one_shot() to calculate
+ * digest immediately.
+ *
+ * If data is not completely present, instantiate this class and add new data
+ * in one or more calls to update(). Once full data has been fed into hasher,
+ * call finish() to fetch calculated digest. Application can immediately reuse
+ * instance after call to finish(), it is re-initialized internally.
+ */
+template <typename Algorithm>
+class basic_hmac
+{
+public:
+
+	/// Number of bytes in hash digest result.
+	static constexpr size_t digest_size = __bits::digest_size_v<Algorithm>;
+
+	/// Hashing result type.
+	using result_type = std::array<std::byte, digest_size>;
+
+
+	/**
+	 * Construct new HMAC object with no key
+	 */
+	basic_hmac () = default;
+
+
+	/**
+	 * Construct new HMAC object with \a key.
+	 */
+	template <typename Key>
+	basic_hmac (const Key &key)
+		: impl_{key.data(), key.size_bytes()}
+	{ }
+
+
+	/**
+	 * Feed \a input into hasher object.
+	 * \returns *this for call chaining
+	 */
+	template <typename SpanSequence>
+	basic_hmac &update (const SpanSequence &input) noexcept
+	{
+		const auto end = span_sequence_end(input);
+		for (auto it = span_sequence_begin(input);  it != end;  ++it)
+		{
+			impl_.update(it->data(), it->size_bytes());
+		}
+		return *this;
+	}
+
+
+	/**
+	 * Calculate and return hash of previously fed data.
+	 */
+	result_type finish () noexcept
+	{
+		result_type result;
+		impl_.finish(result.data(), result.size());
+		return result;
+	}
+
+
+	/**
+	 * Calculate hash of \a input, returning result as std::array.
+	 */
+	template <typename Key, typename SpanSequence>
+	static result_type one_shot (
+		const Key &key,
+		const SpanSequence &input) noexcept
+	{
+		return basic_hmac{key}.update(input).finish();
+	}
+
+
+	/**
+	 * Calculate hash of \a input, returning result as std::array.
+	 */
+	template <typename SpanSequence>
+	static result_type one_shot (const SpanSequence &input) noexcept
+	{
+		return basic_hmac{}.update(input).finish();
+	}
+
+
+private:
+
+	typename Algorithm::hmac impl_{};
+};
+
+
+/// \defgroup crypto_hmac Cryptographic keyed hash algorithms
+/// \{
+
+/// MD5 HMAC
+using md5_hmac = basic_hmac<__bits::md5_algorithm>;
+
+/// SHA1 HMAC
+using sha1_hmac = basic_hmac<__bits::sha1_algorithm>;
+
+/// SHA256 HMAC
+using sha256_hmac = basic_hmac<__bits::sha256_algorithm>;
+
+/// SHA384 HMAC
+using sha384_hmac = basic_hmac<__bits::sha384_algorithm>;
+
+/// SHA512 HMAC
+using sha512_hmac = basic_hmac<__bits::sha512_algorithm>;
+
+/// \}
+
+
+} // namespace crypto
+
+
+__pal_end

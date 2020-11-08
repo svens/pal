@@ -1,0 +1,114 @@
+#pragma once // -*- C++ -*-
+
+/**
+ * \file pal/not_null
+ * Convenience helpers for std::span
+ */
+
+#include <pal/__bits/lib>
+#include <iterator>
+#include <span>
+#include <type_traits>
+
+
+__pal_begin
+
+
+/// Return address of \a span
+template <typename T, size_t Extent>
+inline const std::span<T, Extent> *span_sequence_begin (
+	const std::span<T, Extent> &span) noexcept
+{
+	return std::addressof(span);
+}
+
+
+/// Return address of \a span
+template <typename T, size_t Extent>
+inline const std::span<T, Extent> *span_sequence_end (
+	const std::span<T, Extent> &span) noexcept
+{
+	return std::addressof(span) + 1;
+}
+
+
+/// Return address past of \a span
+template <typename T, size_t Extent>
+inline const std::span<const T, Extent> *span_sequence_begin (
+	const std::span<const T, Extent> &span) noexcept
+{
+	return std::addressof(span);
+}
+
+
+/// Return address past of \a span
+template <typename T, size_t Extent>
+inline const std::span<const T, Extent> *span_sequence_end (
+	const std::span<const T, Extent> &span) noexcept
+{
+	return std::addressof(span) + 1;
+}
+
+
+namespace __bits {
+
+template <typename T>
+constexpr bool is_span_v = false;
+
+template <typename T, size_t Extent>
+constexpr bool is_span_v<std::span<T, Extent>> = true;
+
+} // namespace __bits
+
+
+/// Return address of first span in \a c
+template <typename C>
+inline auto span_sequence_begin (C &c) noexcept
+	-> std::enable_if_t<!__bits::is_span_v<C>, decltype(std::begin(c))>
+{
+	return std::begin(c);
+}
+
+
+/// Return address of first span in \a c
+template <typename C>
+inline auto span_sequence_end (C &c) noexcept
+	-> std::enable_if_t<!__bits::is_span_v<C>, decltype(std::end(c))>
+{
+	return std::end(c);
+}
+
+
+/// Return address past of last span in \a c
+template <typename C>
+inline auto span_sequence_begin (const C &c) noexcept
+	-> std::enable_if_t<!__bits::is_span_v<C>, decltype(std::begin(c))>
+{
+	return std::begin(c);
+}
+
+
+/// Return address past of last span in \a c
+template <typename C>
+inline auto span_sequence_end (const C &c) noexcept
+	-> std::enable_if_t<!__bits::is_span_v<C>, decltype(std::end(c))>
+{
+	return std::end(c);
+}
+
+
+/// Return total size of all \a spans (in bytes).
+template <typename SpanSequence>
+size_t span_size_bytes (const SpanSequence &spans) noexcept
+{
+	size_t size_bytes = 0;
+	const auto end = span_sequence_end(spans);
+	for (auto it = span_sequence_begin(spans);  it != end;  ++it)
+	{
+		size_bytes += it->size_bytes();
+	}
+	return size_bytes;
+}
+
+
+__pal_end
