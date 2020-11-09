@@ -352,6 +352,32 @@ TEMPLATE_TEST_CASE("crypto/hmac", "",
 		auto r = to_hex(TestType::one_shot(std::span{key}, spans));
 		CHECK(r == TestType::hmac_with_key[lazy_dog + lazy_cog]);
 	}
+
+	if constexpr (pal_test::has_crypto_alloc_hook)
+	{
+		SECTION("context alloc failure")
+		{
+			auto f = []()
+			{
+				pal_test::bad_alloc_once x;
+				TestType h{};
+				pal_test::unused(h);
+			};
+			CHECK_THROWS_AS(f(), std::bad_alloc);
+		}
+
+		SECTION("context copy failure")
+		{
+			auto f = []()
+			{
+				TestType h1;
+				pal_test::bad_alloc_once x;
+				TestType h2{h1};
+				pal_test::unused(h2);
+			};
+			CHECK_THROWS_AS(f(), std::bad_alloc);
+		}
+	}
 }
 
 
