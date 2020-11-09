@@ -44,8 +44,8 @@ public:
 	 * Feed \a input into hasher object.
 	 * \returns *this for call chaining
 	 */
-	template <typename SpanSequence>
-	basic_hash &update (const SpanSequence &input) noexcept
+	template <typename ConstSpanSequence>
+	basic_hash &update (const ConstSpanSequence &input) noexcept
 	{
 		const auto end = span_sequence_end(input);
 		for (auto it = span_sequence_begin(input);  it != end;  ++it)
@@ -70,8 +70,8 @@ public:
 	/**
 	 * Calculate hash of \a input, returning result as std::array.
 	 */
-	template <typename SpanSequence>
-	static result_type one_shot (const SpanSequence &input) noexcept
+	template <typename ConstSpanSequence>
+	static result_type one_shot (const ConstSpanSequence &input) noexcept
 	{
 		return basic_hash{}.update(input).finish();
 	}

@@ -59,8 +59,8 @@ public:
 	 * Feed \a input into hasher object.
 	 * \returns *this for call chaining
 	 */
-	template <typename SpanSequence>
-	basic_hmac &update (const SpanSequence &input) noexcept
+	template <typename ConstSpanSequence>
+	basic_hmac &update (const ConstSpanSequence &input) noexcept
 	{
 		const auto end = span_sequence_end(input);
 		for (auto it = span_sequence_begin(input);  it != end;  ++it)
@@ -85,10 +85,10 @@ public:
 	/**
 	 * Calculate hash of \a input, returning result as std::array.
 	 */
-	template <typename Key, typename SpanSequence>
+	template <typename Key, typename ConstSpanSequence>
 	static result_type one_shot (
 		const Key &key,
-		const SpanSequence &input) noexcept
+		const ConstSpanSequence &input) noexcept
 	{
 		return basic_hmac{key}.update(input).finish();
 	}
@@ -97,8 +97,8 @@ public:
 	/**
 	 * Calculate hash of \a input, returning result as std::array.
 	 */
-	template <typename SpanSequence>
-	static result_type one_shot (const SpanSequence &input) noexcept
+	template <typename ConstSpanSequence>
+	static result_type one_shot (const ConstSpanSequence &input) noexcept
 	{
 		return basic_hmac{}.update(input).finish();
 	}

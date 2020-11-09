@@ -26,8 +26,8 @@ void random (void *data, size_t size) noexcept;
  * Fill \a buffers with cryptographically strong random bytes suitable for
  * cryptographic keys, nonces, etc.
  */
-template <typename SpanSequence>
-inline void random (const SpanSequence &spans) noexcept
+template <typename MutableSpanSequence>
+inline void random (const MutableSpanSequence &spans) noexcept
 {
 	const auto end = span_sequence_end(spans);
 	for (auto it = span_sequence_begin(spans);  it != end;  ++it)

@@ -6,7 +6,6 @@
  */
 
 #include <pal/__bits/lib>
-#include <pal/buffer>
 #include <system_error>
 
 
