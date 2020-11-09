@@ -13,7 +13,7 @@ jobs:
 
       - name: Generate
         run: |
-          sudo apt-get install --yes g++-10 cmake doxygen
+          sudo apt-get install --yes g++-10 cmake doxygen graphviz
           CC=gcc-10 CXX=g++-10 cmake . -Dpal_docs=yes -Dpal_unittests=no
           cmake --build . --target pal-doc
 
@@ -24,3 +24,4 @@ jobs:
           publish_dir: ./docs
           force_orphan: true
           publish_branch: gh-pages
+          cname: pal.alt.ee
