@@ -290,27 +290,27 @@ TEMPLATE_TEST_CASE("crypto/hmac", "",
 		CHECK(r == TestType::hmac_with_key[lazy_dog + lazy_cog]);
 	}
 
-	SECTION("multiple buffers")
+	SECTION("multiple spans")
 	{
 		TestType h;
-		std::array buffers =
+		std::array spans =
 		{
 			std::span{lazy_dog},
 			std::span{lazy_cog},
 		};
-		auto r = to_hex(h.update(buffers).finish());
+		auto r = to_hex(h.update(spans).finish());
 		CHECK(r == TestType::hmac[lazy_dog + lazy_cog]);
 	}
 
-	SECTION("multiple buffers with key")
+	SECTION("multiple spans with key")
 	{
 		TestType h{std::span{key}};
-		std::array buffers =
+		std::array spans =
 		{
 			std::span{lazy_dog},
 			std::span{lazy_cog},
 		};
-		auto r = to_hex(h.update(buffers).finish());
+		auto r = to_hex(h.update(spans).finish());
 		CHECK(r == TestType::hmac_with_key[lazy_dog + lazy_cog]);
 	}
 
@@ -331,26 +331,52 @@ TEMPLATE_TEST_CASE("crypto/hmac", "",
 		CHECK(r == TestType::hmac_with_key[lazy_dog]);
 	}
 
-	SECTION("one_shot: multiple buffers")
+	SECTION("one_shot: multiple spans")
 	{
-		std::array buffers =
+		std::array spans =
 		{
 			std::span{lazy_dog},
 			std::span{lazy_cog},
 		};
-		auto r = to_hex(TestType::one_shot(buffers));
+		auto r = to_hex(TestType::one_shot(spans));
 		CHECK(r == TestType::hmac[lazy_dog + lazy_cog]);
 	}
 
-	SECTION("one_shot: multiple buffers with key")
+	SECTION("one_shot: multiple spans with key")
 	{
-		std::array buffers =
+		std::array spans =
 		{
 			std::span{lazy_dog},
 			std::span{lazy_cog},
 		};
-		auto r = to_hex(TestType::one_shot(std::span{key}, buffers));
+		auto r = to_hex(TestType::one_shot(std::span{key}, spans));
 		CHECK(r == TestType::hmac_with_key[lazy_dog + lazy_cog]);
+	}
+
+	if constexpr (pal_test::has_crypto_alloc_hook)
+	{
+		SECTION("context alloc failure")
+		{
+			auto f = []()
+			{
+				pal_test::bad_alloc_once x;
+				TestType h{};
+				pal_test::unused(h);
+			};
+			CHECK_THROWS_AS(f(), std::bad_alloc);
+		}
+
+		SECTION("context copy failure")
+		{
+			auto f = []()
+			{
+				TestType h1;
+				pal_test::bad_alloc_once x;
+				TestType h2{h1};
+				pal_test::unused(h2);
+			};
+			CHECK_THROWS_AS(f(), std::bad_alloc);
+		}
 	}
 }
 

@@ -89,13 +89,13 @@ hmac_context_base::hmac_context_base (const EVP_MD *evp, const void *key, size_t
 
 
 hmac_context_base::hmac_context_base (const hmac_context_base &that)
-	: ctx{nullptr, release}
+	: ctx{alloc(), release}
 {
-	if (that.ctx)
+	if (!ctx)
 	{
-		ctx.reset(alloc());
-		::HMAC_CTX_copy(ctx.get(), that.ctx.get());
+		throw std::bad_alloc();
 	}
+	::HMAC_CTX_copy(ctx.get(), that.ctx.get());
 }
 
 

@@ -1,7 +1,7 @@
 #pragma once // -*- C++ -*-
 
 #include <pal/__bits/lib>
-#include <pal/buffer>
+#include <pal/span>
 #include <array>
 #include <system_error>
 #include <utility>
@@ -52,16 +52,18 @@ struct message: ::msghdr
 	std::array<iovec, iov_max_length> iov{};
 	size_t msg_size{};
 
-	template <typename BufferSequence>
-	message (const BufferSequence &buffers) noexcept
+	template <typename SpanSequence>
+	message (const SpanSequence &spans) noexcept
 		: msghdr()
 	{
 		msg_iov = iov.data();
-		auto it = buffer_sequence_begin(buffers);
-		const auto end = buffer_sequence_end(buffers);
+		auto it = span_sequence_begin(spans);
+		const auto end = span_sequence_end(spans);
 		while (it != end && static_cast<size_t>(msg_iovlen) != iov.size())
 		{
-			iov[msg_iovlen].iov_base = const_cast<void *>(it->data());
+			iov[msg_iovlen].iov_base = const_cast<void *>(
+				static_cast<const void *>(it->data())
+			);
 			iov[msg_iovlen].iov_len = it->size();
 			msg_size += it->size();
 			++msg_iovlen;
@@ -69,17 +71,17 @@ struct message: ::msghdr
 		}
 	}
 
-	template <typename BufferSequence>
-	message (const BufferSequence &buffers, void *name, size_t namelen) noexcept
-		: message(buffers)
+	template <typename SpanSequence>
+	message (const SpanSequence &spans, void *name, size_t namelen) noexcept
+		: message(spans)
 	{
 		msg_name = name;
 		msg_namelen = namelen;
 	}
 
-	template <typename BufferSequence>
-	message (const BufferSequence &buffers, const void *name, size_t namelen) noexcept
-		: message(buffers, const_cast<void *>(name), namelen)
+	template <typename SpanSequence>
+	message (const SpanSequence &spans, const void *name, size_t namelen) noexcept
+		: message(spans, const_cast<void *>(name), namelen)
 	{ }
 };
 
@@ -108,15 +110,15 @@ struct message
 	sockaddr *msg_name{};
 	INT msg_namelen{};
 
-	template <typename BufferSequence>
-	message (const BufferSequence &buffers) noexcept
+	template <typename SpanSequence>
+	message (const SpanSequence &spans) noexcept
 	{
 		iov_len = 0;
-		auto it = buffer_sequence_begin(buffers);
-		const auto end = buffer_sequence_end(buffers);
+		auto it = span_sequence_begin(spans);
+		const auto end = span_sequence_end(spans);
 		while (it != end && iov_len != iov.size())
 		{
-			iov[iov_len].buf = static_cast<char *>(const_cast<void *>(it->data()));
+			iov[iov_len].buf = const_cast<CHAR *>(it->data());
 			iov[iov_len].len = static_cast<ULONG>(it->size());
 			msg_size += it->size();
 			++iov_len;
@@ -124,17 +126,17 @@ struct message
 		}
 	}
 
-	template <typename BufferSequence>
-	message (const BufferSequence &buffers, void *name, size_t namelen) noexcept
-		: message(buffers)
+	template <typename SpanSequence>
+	message (const SpanSequence &spans, void *name, size_t namelen) noexcept
+		: message(spans)
 	{
 		msg_name = static_cast<sockaddr *>(name);
 		msg_namelen = static_cast<INT>(namelen);
 	}
 
-	template <typename BufferSequence>
-	message (const BufferSequence &buffers, const void *name, size_t namelen) noexcept
-		: message(buffers, const_cast<void *>(name), namelen)
+	template <typename SpanSequence>
+	message (const SpanSequence &spans, const void *name, size_t namelen) noexcept
+		: message(spans, const_cast<void *>(name), namelen)
 	{ }
 };
 

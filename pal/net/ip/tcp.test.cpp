@@ -53,7 +53,7 @@ TEMPLATE_TEST_CASE("net/ip/tcp", "", tcp_v4, tcp_v6)
 	SECTION("not connected")
 	{
 		socket_t<TestType> socket(protocol);
-		socket.send(pal::buffer("test"), error);
+		socket.send(std::span{"test"}, error);
 		CHECK((error == std::errc::not_connected || error == std::errc::broken_pipe));
 	}
 
@@ -62,11 +62,11 @@ TEMPLATE_TEST_CASE("net/ip/tcp", "", tcp_v4, tcp_v6)
 		const std::string_view send_buf[] = { "hello", ", ", "world" };
 		std::array send_msg =
 		{
-			pal::buffer(send_buf[0]),
-			pal::buffer(send_buf[1]),
-			pal::buffer(send_buf[2]),
+			std::span{send_buf[0]},
+			std::span{send_buf[1]},
+			std::span{send_buf[2]},
 		};
-		const auto send_msg_size = pal::buffer_size(send_msg);
+		const auto send_msg_size = pal::span_size_bytes(send_msg);
 
 		std::string message;
 		for (const auto &it: send_buf)
@@ -76,7 +76,7 @@ TEMPLATE_TEST_CASE("net/ip/tcp", "", tcp_v4, tcp_v6)
 
 		size_t size;
 		char recv_buf[1024];
-		auto recv_msg = pal::buffer(recv_buf);
+		auto recv_msg = std::span{recv_buf};
 
 		pal::net::socket_base::message_flags recv_flags{}, send_flags{};
 
@@ -168,7 +168,7 @@ TEMPLATE_TEST_CASE("net/ip/tcp", "", tcp_v4, tcp_v6)
 
 		SECTION("empty")
 		{
-			pal::mutable_buffer buf;
+			std::span<char, 0> buf;
 			CHECK(a.send(buf, error) == 0);
 			CHECK(!error);
 

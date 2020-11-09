@@ -39,8 +39,9 @@ struct hmac_context_base
 	static void release (HMAC_CTX *ctx) noexcept;
 	std::unique_ptr<HMAC_CTX, void(*)(HMAC_CTX *)> ctx{nullptr, release};
 
-	hmac_context_base (const EVP_MD *evp, const void *key, size_t size);
+	hmac_context_base () = delete;
 
+	hmac_context_base (const EVP_MD *evp, const void *key, size_t size);
 	hmac_context_base (const hmac_context_base &that);
 
 	hmac_context_base &operator= (hmac_context_base that) noexcept

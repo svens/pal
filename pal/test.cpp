@@ -6,6 +6,7 @@
 #include <cstdlib>
 
 
+
 #if __pal_os_windows && !NDEBUG
 
 int report_hook (int report_type, char *message, int *return_value)
@@ -29,9 +30,39 @@ void set_report_hook ()
 #endif
 
 
+#if OPENSSL_VERSION_NUMBER >= 0x10100000
+
+void *test_malloc (size_t size, const char *, int)
+{
+	if (pal_test::bad_alloc_once::fail)
+	{
+		pal_test::bad_alloc_once::fail = false;
+		return nullptr;
+	}
+	return std::malloc(size);
+}
+
+void set_openssl_alloc_hook ()
+{
+	::CRYPTO_set_mem_functions(
+		test_malloc,
+		nullptr,
+		nullptr
+	);
+}
+
+#else
+
+void set_openssl_alloc_hook ()
+{ }
+
+#endif
+
+
 int main (int argc, char *argv[])
 {
 	set_report_hook();
+	set_openssl_alloc_hook();
 	return Catch::Session().run(argc, argv);
 }
 

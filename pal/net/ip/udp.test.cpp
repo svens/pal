@@ -24,11 +24,11 @@ TEMPLATE_TEST_CASE("net/ip/udp", "", udp_v4, udp_v6)
 	const std::string_view send_buf[] = { "hello", ", ", "world" };
 	std::array send_msg =
 	{
-		pal::buffer(send_buf[0]),
-		pal::buffer(send_buf[1]),
-		pal::buffer(send_buf[2]),
+		std::span{send_buf[0]},
+		std::span{send_buf[1]},
+		std::span{send_buf[2]},
 	};
-	const auto send_msg_size = pal::buffer_size(send_msg);
+	const auto send_msg_size = pal::span_size_bytes(send_msg);
 
 	std::string message;
 	for (const auto &it: send_buf)
@@ -38,7 +38,7 @@ TEMPLATE_TEST_CASE("net/ip/udp", "", udp_v4, udp_v6)
 
 	size_t size;
 	char recv_buf[1024];
-	auto recv_msg = pal::buffer(recv_buf);
+	auto recv_msg = std::span{recv_buf};
 
 	pal::net::socket_base::message_flags recv_flags{}, send_flags{};
 
