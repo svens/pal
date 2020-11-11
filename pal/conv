@@ -17,8 +17,8 @@ __pal_begin
  */
 struct conv_size_result
 {
-	/// Estimated maximum size for conversion output.
-	size_t estimated_max_size;
+	/// Maximum size for conversion output.
+	size_t max_size;
 
 	/// Error during size estimation or empty value if no error.
 	std::errc ec;
