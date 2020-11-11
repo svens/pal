@@ -177,9 +177,9 @@ TEMPLATE_TEST_CASE("conv", "",
 
 		SECTION("to_size")
 		{
-			auto [estimated_max_size, ec] = TestType::to_size(decoded);
+			auto [max_size, ec] = TestType::to_size(decoded);
 			CHECK(ec == std::errc{});
-			CHECK(estimated_max_size >= encoded.size());
+			CHECK(max_size >= encoded.size());
 		}
 
 		SECTION("from")
@@ -192,9 +192,9 @@ TEMPLATE_TEST_CASE("conv", "",
 
 		SECTION("from_size")
 		{
-			auto [estimated_max_size, ec] = TestType::from_size(encoded);
+			auto [max_size, ec] = TestType::from_size(encoded);
 			CHECK(ec == std::errc{});
-			CHECK(estimated_max_size >= decoded.size());
+			CHECK(max_size >= decoded.size());
 		}
 	}
 
@@ -205,7 +205,7 @@ TEMPLATE_TEST_CASE("conv", "",
 			auto &[encoded] = GENERATE(values(TestType::size_failure));
 			CAPTURE(encoded);
 
-			auto [estimated_max_size, ec] = TestType::from_size(encoded);
+			auto [max_size, ec] = TestType::from_size(encoded);
 			CHECK(ec == std::errc::invalid_argument);
 		}
 
