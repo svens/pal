@@ -3,7 +3,15 @@
 [![Build](https://github.com/svens/pal/workflows/Build/badge.svg)](https://github.com/svens/pal/actions?query=workflow:Build)
 [![Coverage](https://coveralls.io/repos/github/svens/pal/badge.svg)](https://coveralls.io/github/svens/pal)
 
-TODO
+PAL is portable library providing asynchronous syscall wrappers for Linux, MacOS and Windows. Intention is to cover networking, cryptography, logging, etc.
+
+Library tooling:
+* Linux/MacOS/Windows builds using g++, clang++ and MSVC
+* CI: [GitHub Actions](https://github.com/features/actions)
+* Unittesting: [Catch2](https://github.com/catchorg/Catch2)
+* Code coverage: [gcov](https://gcc.gnu.org/onlinedocs/gcc/Gcov.html)/[lcov](https://github.com/linux-test-project/lcov), [coveralls](https://docs.coveralls.io)
+* Documentation: [Doxygen](http://www.doxygen.nl)
+* Benchmarking: [Google benchmark](https://github.com/google/benchmark)
 
 
 ## Compiling and installing
