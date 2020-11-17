@@ -1,6 +1,9 @@
 list(APPEND pal_sources
 	pal/crypto/__bits/digest
 	pal/crypto/__bits/digest.cpp
+	pal/crypto/__bits/x509
+	pal/crypto/certificate
+	pal/crypto/certificate.cpp
 	pal/crypto/hash
 	pal/crypto/hmac
 	pal/crypto/oid
@@ -10,6 +13,7 @@ list(APPEND pal_sources
 
 list(APPEND pal_unittests_sources
 	pal/crypto/test
+	pal/crypto/certificate.test.cpp
 	pal/crypto/hash.test.cpp
 	pal/crypto/hmac.test.cpp
 	pal/crypto/oid.test.cpp

@@ -1,0 +1,101 @@
+#pragma once // -*- C++ -*-
+
+/**
+ * \file pal/crypto/certificate
+ * Public key certificate in X509 format.
+ *
+ * \see https://en.wikipedia.org/wiki/Public_key_certificate
+ */
+
+#include <pal/__bits/lib>
+#include <pal/crypto/__bits/x509>
+#include <utility>
+
+
+__pal_begin
+
+
+namespace crypto {
+
+
+/**
+ * Wrapper for platform's native public key certificate.
+ *
+ * Platforms use following native implementations:
+ * - MacOS: Security framework with SecCertificateRef
+ * - Linux: OpenSSL with X509
+ * - Windows: WinCrypt with PCCERT_CONTEXT
+ */
+class certificate
+{
+public:
+
+	/**
+	 * Construct new empty certificate reference.
+	 */
+	certificate () noexcept = default;
+
+
+	/**
+	 * Copy certificate reference (increases reference count).
+	 */
+	certificate (const certificate &) noexcept = default;
+
+
+	/**
+	 * Construct new certificate reference from other, resetting other
+	 * instance.
+	 */
+	certificate (certificate &&) noexcept = default;
+
+
+	/**
+	 * Assign \a this from other, increasing native handle reference count.
+	 */
+	certificate &operator= (const certificate &) = default;
+
+
+	/**
+	 * Assign \a this from other, resetting other instance.
+	 */
+	certificate &operator= (certificate &&) = default;
+
+
+	/**
+	 * Swap \a this certificate handle with \a that.
+	 */
+	void swap (certificate &that) noexcept
+	{
+		impl_.swap(that.impl_);
+	}
+
+
+	/**
+	 * Return true if \a this represents same certificate as \a that.
+	 */
+	bool operator== (const certificate &that) const noexcept;
+
+
+	/**
+	 * Return true if \a this represents different certificate as \a that.
+	 */
+	bool operator!= (const certificate &that) const noexcept
+	{
+		return !operator==(that);
+	}
+
+
+private:
+
+	__bits::x509 impl_{};
+
+	certificate (__bits::x509 &&that) noexcept
+		: impl_{std::forward<__bits::x509>(that)}
+	{ }
+};
+
+
+} // namespace crypto
+
+
+__pal_end
