@@ -120,6 +120,28 @@ public:
 
 
 	/**
+	 * Return true if \a this is not expired at \a time.
+	 */
+	bool not_expired_at (const time_type &time) const noexcept
+	{
+		return not_before() <= time && time <= not_after();
+	}
+
+
+	/**
+	 * Return true if \a this does not expire at least for \a period at
+	 * \a time (defaults to now).
+	 */
+	template <typename Rep, typename Period>
+	bool not_expired_for (
+		const std::chrono::duration<Rep, Period> &period,
+		const time_type &time = clock_type::now()) const noexcept
+	{
+		return not_before() <= time && time + period <= not_after();
+	}
+
+
+	/**
 	 * Return true if \a this represents same certificate as \a that.
 	 */
 	bool operator== (const certificate &that) const noexcept;

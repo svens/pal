@@ -265,6 +265,47 @@ TEST_CASE("crypto/certificate")
 		CHECK(null.not_before() == certificate::time_type{});
 		CHECK(null.not_after() == certificate::time_type{});
 	}
+
+	SECTION("not_expired_at")
+	{
+		auto cert = certificate::from_pem(GENERATE(
+			test_cert::ca_pem,
+			test_cert::intermediate_pem,
+			test_cert::server_pem,
+			test_cert::client_pem
+		));
+		CHECK(cert.not_expired_at(now()));
+		CHECK_FALSE(cert.not_expired_at(far_past()));
+		CHECK_FALSE(cert.not_expired_at(far_future()));
+	}
+
+	SECTION("not_expired_at: null")
+	{
+		CHECK_FALSE(null.not_expired_at(now()));
+		CHECK_FALSE(null.not_expired_at(far_past()));
+		CHECK_FALSE(null.not_expired_at(far_future()));
+	}
+
+	SECTION("not_expired_for")
+	{
+		auto cert = certificate::from_pem(GENERATE(
+			test_cert::ca_pem,
+			test_cert::intermediate_pem,
+			test_cert::server_pem,
+			test_cert::client_pem
+		));
+		CHECK(cert.not_expired_for(24h, now()));
+		CHECK_FALSE(cert.not_expired_for(24h * 365 * 100, now()));
+		CHECK_FALSE(cert.not_expired_for(24h, far_past()));
+		CHECK_FALSE(cert.not_expired_for(24h, far_future()));
+	}
+
+	SECTION("not_expired_for: null")
+	{
+		CHECK_FALSE(null.not_expired_for(24h, now()));
+		CHECK_FALSE(null.not_expired_for(24h, far_past()));
+		CHECK_FALSE(null.not_expired_for(24h, far_future()));
+	}
 }
 
 
