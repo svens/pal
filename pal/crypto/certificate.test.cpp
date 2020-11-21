@@ -306,6 +306,66 @@ TEST_CASE("crypto/certificate")
 		CHECK_FALSE(null.not_expired_for(24h, far_past()));
 		CHECK_FALSE(null.not_expired_for(24h, far_future()));
 	}
+
+	SECTION("digest: sha1")
+	{
+		auto [pem, expected_digest] = GENERATE(table<std::string_view, std::string_view>({
+			{
+				test_cert::ca_pem,
+				"27566d2bae77ab393faaf1080c528c9973a6ffb4"
+			},
+			{
+				test_cert::intermediate_pem,
+				"fafd5f4eee2e99c7f1591425dfaf2abee2b01527"
+			},
+			{
+				test_cert::server_pem,
+				"776f3c5bb3b39da38ab80e5f7f909fbcff36d42a"
+			},
+			{
+				test_cert::client_pem,
+				"c9483ca1d965e9a769f0e7d705f3d6bb3ce248ee"
+			},
+		}));
+		auto cert = certificate::from_pem(pem);
+		REQUIRE(cert);
+
+		auto digest = pal_test::to_hex(cert.digest<pal::crypto::sha1>());
+		CHECK(digest == expected_digest);
+	}
+
+	SECTION("digest: sha512")
+	{
+		auto [pem, expected_digest] = GENERATE(table<std::string_view, std::string_view>({
+			{
+				test_cert::ca_pem,
+				"360599d2e088e6ee9d8e7398f903f03d145194c6b4e5766de1afc8280c1424f382f49d9c14017e36c60045c9605dead8342ae7281a8b6f70484e7783bc4bad93"
+			},
+			{
+				test_cert::intermediate_pem,
+				"f8902a809c310db4a324442ae9045d688af6a8ee7ce7a0625bcb38072668715c7d86f887b1299fe5e53946eb320e46786f4bdcf9f892fa49e0396a86babc45d1"
+			},
+			{
+				test_cert::server_pem,
+				"581f0348a6ceb99932de61a6f757ed096df8fc4d5de3525a59ae5a77cfc0cb3a27f7072f798ed769320b60901c2da0178670802799df7c6aa7753b21e134e10f"
+			},
+			{
+				test_cert::client_pem,
+				"4612c792a0ec069ad1f21f8ec1f6af827b473451535b9220655a59cc6402641ab2fed5eae77b9b406a7544f693a13afb4cbd3d43638c42434ae0a6678ec6528d"
+			},
+		}));
+		auto cert = certificate::from_pem(pem);
+		REQUIRE(cert);
+
+		auto digest = pal_test::to_hex(cert.digest<pal::crypto::sha512>());
+		CHECK(digest == expected_digest);
+	}
+
+	SECTION("digest: null")
+	{
+		auto digest = pal_test::to_hex(null.digest<pal::crypto::sha1>());
+		CHECK(digest == "0000000000000000000000000000000000000000");
+	}
 }
 
 

@@ -1,4 +1,5 @@
 #include <pal/crypto/certificate>
+#include <pal/scoped_alloc>
 #include <cctype>
 #include <memory>
 
@@ -109,33 +110,21 @@ certificate certificate::from_pem (
 	const std::string_view &pem,
 	std::error_code &error) noexcept
 {
-	std::byte stack[8 * 1024], *der = &stack[0];
-	std::unique_ptr<std::byte> guard;
-
-	size_t estimated_der_size = pem.size() / 4 * 3;
-	if (estimated_der_size > sizeof(stack))
+	if (auto der = scoped_alloc<std::byte, 8192>(std::nothrow, pem.size() / 4 * 3))
 	{
-		der = new(std::nothrow) std::byte[estimated_der_size];
-		if (der)
+		if (auto der_size = pem_to_der(pem, der.get()))
 		{
-			guard.reset(der);
+			if (auto cert = load_der({der.get(), der_size}))
+			{
+				return cert;
+			}
 		}
-		else
-		{
-			error = std::make_error_code(std::errc::not_enough_memory);
-			return {};
-		}
+		error = std::make_error_code(std::errc::invalid_argument);
 	}
-
-	if (auto der_size = pem_to_der(pem, der))
+	else
 	{
-		if (auto cert = load_der({der, der_size}))
-		{
-			return cert;
-		}
+		error = std::make_error_code(std::errc::not_enough_memory);
 	}
-
-	error = std::make_error_code(std::errc::invalid_argument);
 	return {};
 }
 
@@ -242,6 +231,18 @@ certificate::time_type certificate::not_after () const noexcept
 }
 
 
+void certificate::digest (std::byte *result, hash_fn h) const noexcept
+{
+	size_t size = i2d_X509(impl_.ref, nullptr);
+	if (auto der = scoped_alloc<std::byte, 8192>(std::nothrow, size))
+	{
+		auto ptr = reinterpret_cast<uint8_t *>(der.get());
+		i2d_X509(impl_.ref, &ptr);
+		h(result, {der.get(), size});
+	}
+}
+
+
 #elif __pal_os_macos //{{{1
 
 
@@ -256,6 +257,16 @@ inline unique_ref<::CFDataRef> to_data_ref (const std::span<const std::byte> &sp
 		span.size(),
 		kCFAllocatorNull
 	);
+}
+
+
+inline std::span<const std::byte> as_bytes (::CFDataRef data) noexcept
+{
+	return std::span<const std::byte>
+	{
+		reinterpret_cast<const std::byte *>(::CFDataGetBytePtr(data)),
+		static_cast<size_t>(::CFDataGetLength(data))
+	};
 }
 
 
@@ -381,6 +392,13 @@ certificate::time_type certificate::not_after () const noexcept
 }
 
 
+void certificate::digest (std::byte *result, hash_fn h) const noexcept
+{
+	unique_ref<::CFDataRef> der = ::SecCertificateCopyData(impl_.ref);
+	h(result, as_bytes(der.ref));
+}
+
+
 #elif __pal_os_windows //{{{1
 
 
@@ -451,6 +469,13 @@ certificate::time_type certificate::not_after () const noexcept
 		to_time(impl_.ref->pCertInfo->NotAfter) :
 		certificate::time_type{}
 	;
+}
+
+
+void certificate::digest (std::byte *result, hash_fn h) const noexcept
+{
+	std::span der{impl_.ref->pbCertEncoded, impl_.ref->cbCertEncoded};
+	h(result, std::as_bytes(der));
 }
 
 

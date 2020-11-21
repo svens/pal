@@ -9,6 +9,7 @@
 
 #include <pal/__bits/lib>
 #include <pal/crypto/__bits/x509>
+#include <pal/crypto/hash>
 #include <pal/error>
 #include <chrono>
 #include <span>
@@ -142,6 +143,28 @@ public:
 
 
 	/**
+	 * Calculate and return hash of DER representation of \a this
+	 * certificate. Returned value is valid only if is_null() returns
+	 * false.
+	 */
+	template <typename Algorithm>
+	typename basic_hash<Algorithm>::result_type digest () const noexcept
+	{
+		using hash_type = basic_hash<Algorithm>;
+		using result_type = typename hash_type::result_type;
+		result_type result{};
+		if (impl_)
+		{
+			digest(result.data(), [](auto *result, const auto &der) noexcept
+			{
+				*reinterpret_cast<result_type *>(result) = hash_type::one_shot(der);
+			});
+		}
+		return result;
+	}
+
+
+	/**
 	 * Return true if \a this represents same certificate as \a that.
 	 */
 	bool operator== (const certificate &that) const noexcept;
@@ -219,6 +242,9 @@ private:
 	static __bits::x509 load_der (
 		const std::span<const std::byte> &der
 	) noexcept;
+
+	using hash_fn = void(*)(std::byte *, const std::span<const std::byte> &) noexcept;
+	void digest (std::byte *result, hash_fn h) const noexcept;
 };
 
 
