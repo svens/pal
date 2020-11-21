@@ -10,6 +10,7 @@
 #include <pal/__bits/lib>
 #include <pal/crypto/__bits/x509>
 #include <pal/error>
+#include <chrono>
 #include <span>
 #include <string_view>
 #include <utility>
@@ -32,6 +33,13 @@ namespace crypto {
 class certificate
 {
 public:
+
+	/// Clock type for certificate time functions
+	using clock_type = std::chrono::system_clock;
+
+	/// Timestamp type for certificate time functions
+	using time_type = clock_type::time_point;
+
 
 	/**
 	 * Construct new empty certificate reference.
@@ -97,6 +105,18 @@ public:
 	 * is_null() is true.
 	 */
 	int version () const noexcept;
+
+
+	/**
+	 * Returns absolute time since when \a this certificate is valid.
+	 */
+	time_type not_before () const noexcept;
+
+
+	/**
+	 * Returns absolute time until \a this certificate is valid.
+	 */
+	time_type not_after () const noexcept;
 
 
 	/**

@@ -7,6 +7,25 @@ namespace {
 
 using pal::crypto::certificate;
 namespace test_cert = pal_test::cert;
+using namespace std::chrono_literals;
+
+
+inline certificate::time_type now () noexcept
+{
+	return certificate::clock_type::now();
+}
+
+
+inline certificate::time_type far_past () noexcept
+{
+	return (certificate::time_type::min)() + 24h;
+}
+
+
+inline certificate::time_type far_future () noexcept
+{
+	return (certificate::time_type::max)() - 24h;
+}
 
 
 TEST_CASE("crypto/certificate")
@@ -221,6 +240,30 @@ TEST_CASE("crypto/certificate")
 	SECTION("version: null")
 	{
 		CHECK(null.version() == 0);
+	}
+
+	SECTION("not_before / not_after")
+	{
+		auto cert = certificate::from_pem(GENERATE(
+			test_cert::ca_pem,
+			test_cert::intermediate_pem,
+			test_cert::server_pem,
+			test_cert::client_pem
+		));
+
+		CHECK(cert.not_before() != certificate::time_type{});
+		CHECK(cert.not_before() > far_past());
+		CHECK(cert.not_before() < now());
+
+		CHECK(cert.not_after() != certificate::time_type{});
+		CHECK(cert.not_after() > now());
+		CHECK(cert.not_after() < far_future());
+	}
+
+	SECTION("not_before / not_after: null")
+	{
+		CHECK(null.not_before() == certificate::time_type{});
+		CHECK(null.not_after() == certificate::time_type{});
 	}
 }
 

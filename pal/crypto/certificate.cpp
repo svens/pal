@@ -166,6 +166,82 @@ int certificate::version () const noexcept
 }
 
 
+namespace {
+
+
+certificate::time_type to_time (const ::ASN1_TIME *time) noexcept
+{
+	if (::ASN1_TIME_check(const_cast<::ASN1_TIME *>(time)) == 0)
+	{
+		return {};
+	}
+
+	std::tm tm{};
+	auto in = static_cast<const unsigned char *>(time->data);
+
+	if (time->type == V_ASN1_UTCTIME)
+	{
+		// two-digit year
+		tm.tm_year = (in[0] - '0') * 10 + (in[1] - '0');
+		in += 2;
+
+		if (tm.tm_year < 70)
+		{
+			tm.tm_year += 100;
+		}
+	}
+	else if (time->type == V_ASN1_GENERALIZEDTIME)
+	{
+		// four-digit year
+		tm.tm_year =
+			(in[0] - '0') * 1000 +
+			(in[1] - '0') * 100 +
+			(in[2] - '0') * 10 +
+			(in[3] - '0');
+		in += 4;
+
+		tm.tm_year -= 1900;
+	}
+
+	tm.tm_mon = (in[0] - '0') * 10 + (in[1] - '0') - 1;
+	in += 2;
+
+	tm.tm_mday = (in[0] - '0') * 10 + (in[1] - '0');
+	in += 2;
+
+	tm.tm_hour = (in[0] - '0') * 10 + (in[1] - '0');
+	in += 2;
+
+	tm.tm_min = (in[0] - '0') * 10 + (in[1] - '0');
+	in += 2;
+
+	tm.tm_sec = (in[0] - '0') * 10 + (in[1] - '0');
+
+	return certificate::clock_type::from_time_t(mktime(&tm));
+}
+
+
+} // namespace
+
+
+certificate::time_type certificate::not_before () const noexcept
+{
+	return impl_ ?
+		to_time(X509_get_notBefore(impl_.ref)) :
+		certificate::time_type{}
+	;
+}
+
+
+certificate::time_type certificate::not_after () const noexcept
+{
+	return impl_ ?
+		to_time(X509_get_notAfter(impl_.ref)) :
+		certificate::time_type{}
+	;
+}
+
+
 #elif __pal_os_macos //{{{1
 
 
@@ -270,6 +346,41 @@ int certificate::version () const noexcept
 }
 
 
+namespace {
+
+certificate::time_type to_time (::SecCertificateRef cert, ::CFTypeRef oid) noexcept
+{
+	std::error_code ignore_error;
+	if (auto value = copy_values(cert, oid, ignore_error))
+	{
+		::CFAbsoluteTime time;
+		::CFNumberGetValue(
+			(::CFNumberRef)value.ref,
+			::kCFNumberDoubleType,
+			&time
+		);
+		return certificate::clock_type::from_time_t(
+			time + ::kCFAbsoluteTimeIntervalSince1970
+		);
+	}
+	return {};
+}
+
+} // namespace
+
+
+certificate::time_type certificate::not_before () const noexcept
+{
+	return to_time(impl_.ref, kSecOIDX509V1ValidityNotBefore);
+}
+
+
+certificate::time_type certificate::not_after () const noexcept
+{
+	return to_time(impl_.ref, kSecOIDX509V1ValidityNotAfter);
+}
+
+
 #elif __pal_os_windows //{{{1
 
 
@@ -300,6 +411,46 @@ bool certificate::operator== (const certificate &that) const noexcept
 int certificate::version () const noexcept
 {
 	return impl_.ref ? impl_.ref->pCertInfo->dwVersion + 1 : 0;
+}
+
+
+namespace {
+
+certificate::time_type to_time (const FILETIME &time) noexcept
+{
+	SYSTEMTIME sys_time;
+	if (::FileTimeToSystemTime(&time, &sys_time))
+	{
+		std::tm tm{};
+		tm.tm_sec = sys_time.wSecond;
+		tm.tm_min = sys_time.wMinute;
+		tm.tm_hour = sys_time.wHour;
+		tm.tm_mday = sys_time.wDay;
+		tm.tm_mon = sys_time.wMonth - 1;
+		tm.tm_year = sys_time.wYear - 1900;
+		return certificate::clock_type::from_time_t(mktime(&tm));
+	}
+	return {};
+}
+
+} // namespace
+
+
+certificate::time_type certificate::not_before () const noexcept
+{
+	return impl_ ?
+		to_time(impl_.ref->pCertInfo->NotBefore) :
+		certificate::time_type{}
+	;
+}
+
+
+certificate::time_type certificate::not_after () const noexcept
+{
+	return impl_ ?
+		to_time(impl_.ref->pCertInfo->NotAfter) :
+		certificate::time_type{}
+	;
 }
 
 
