@@ -110,7 +110,29 @@ private:
 };
 
 
-/// \defgroup crypto_hmac Cryptographic keyed hash algorithms
+/// \defgroup crypto_hash_algorithm Cryptographic hash algorithms
+/// \{
+
+/// MD5 algorithm
+/// \deprecated Provided only for backward compatibility
+using md5 = __bits::md5_algorithm;
+
+/// SHA1 algorithm
+using sha1 = __bits::sha1_algorithm;
+
+/// SHA256 algorithm
+using sha256 = __bits::sha256_algorithm;
+
+/// SHA384 algorithm
+using sha384 = __bits::sha384_algorithm;
+
+/// SHA512 algorithm
+using sha512 = __bits::sha512_algorithm;
+
+/// \}
+
+
+/// \defgroup crypto_hmac Cryptographic keyed hashers
 /// \{
 
 /// MD5 HMAC

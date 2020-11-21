@@ -83,24 +83,46 @@ private:
 };
 
 
-/// \defgroup crypto_hash Cryptographic hash algorithms
+/// \defgroup crypto_hash_algorithm Cryptographic hash algorithms
 /// \{
 
-/// MD5 hash
+/// MD5 algorithm
 /// \deprecated Provided only for backward compatibility
-using md5_hash = basic_hash<__bits::md5_algorithm>;
+using md5 = __bits::md5_algorithm;
 
-/// SHA1 hash
-using sha1_hash = basic_hash<__bits::sha1_algorithm>;
+/// SHA1 algorithm
+using sha1 = __bits::sha1_algorithm;
 
-/// SHA256 hash
-using sha256_hash = basic_hash<__bits::sha256_algorithm>;
+/// SHA256 algorithm
+using sha256 = __bits::sha256_algorithm;
 
-/// SHA384 hash
-using sha384_hash = basic_hash<__bits::sha384_algorithm>;
+/// SHA384 algorithm
+using sha384 = __bits::sha384_algorithm;
 
-/// SHA512 hash
-using sha512_hash = basic_hash<__bits::sha512_algorithm>;
+/// SHA512 algorithm
+using sha512 = __bits::sha512_algorithm;
+
+/// \}
+
+
+/// \defgroup crypto_hash Cryptographic hashers
+/// \{
+
+/// MD5 hasher
+/// \deprecated Provided only for backward compatibility
+using md5_hash = basic_hash<md5>;
+
+/// SHA1 hasher
+using sha1_hash = basic_hash<sha1>;
+
+/// SHA256 hasher
+using sha256_hash = basic_hash<sha256>;
+
+/// SHA384 hasher
+using sha384_hash = basic_hash<sha384>;
+
+/// SHA512 hasher
+using sha512_hash = basic_hash<sha512>;
 
 /// \}
 
