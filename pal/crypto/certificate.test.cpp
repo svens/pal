@@ -25,7 +25,7 @@ TEST_CASE("crypto/certificate")
 	{
 		std::string pem{test_cert::client_pem};
 		pem += test_cert::server_pem;
-		auto client = certificate::from_pem(span{pem});
+		auto client = certificate::from_pem(pem);
 		CHECK(client != null);
 	}
 
