@@ -74,6 +74,25 @@ public:
 
 
 	/**
+	 * Returns true if \a this certificate represents unspecified
+	 * certificate.
+	 */
+	bool is_null () const noexcept
+	{
+		return impl_.is_null();
+	}
+
+
+	/**
+	 * Returns true if \a this is valid certificate.
+	 */
+	explicit operator bool () const noexcept
+	{
+		return !is_null();
+	}
+
+
+	/**
 	 * Return true if \a this represents same certificate as \a that.
 	 */
 	bool operator== (const certificate &that) const noexcept;

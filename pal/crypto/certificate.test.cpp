@@ -18,7 +18,7 @@ TEST_CASE("crypto/certificate")
 	{
 		auto client = certificate::from_pem(test_cert::client_pem, error);
 		REQUIRE(!error);
-		CHECK(client != null);
+		CHECK(client);
 	}
 
 	SECTION("from_pem: first from multiple")
@@ -26,7 +26,7 @@ TEST_CASE("crypto/certificate")
 		std::string pem{test_cert::client_pem};
 		pem += test_cert::server_pem;
 		auto client = certificate::from_pem(pem);
-		CHECK(client != null);
+		CHECK(client);
 	}
 
 	SECTION("from_pem: oversized")
@@ -35,7 +35,7 @@ TEST_CASE("crypto/certificate")
 		pem.insert(pem.size() / 2, (16 * 1024) / 3 * 4, '\n');
 		auto client = certificate::from_pem(pem, error);
 		REQUIRE(!error);
-		CHECK(client != null);
+		CHECK(client);
 	}
 
 	SECTION("from_pem: alloc error")
@@ -104,7 +104,7 @@ TEST_CASE("crypto/certificate")
 		auto der = pal_test::to_der(test_cert::client_pem);
 		auto client = certificate::from_der(std::span{der}, error);
 		REQUIRE(!error);
-		CHECK(client != null);
+		CHECK(client);
 
 		CHECK_NOTHROW(certificate::from_der(std::span{der}));
 	}
@@ -145,7 +145,7 @@ TEST_CASE("crypto/certificate")
 		auto c1 = certificate::from_pem(test_cert::client_pem);
 		auto c2{c1};
 		CHECK(c2 == c1);
-		CHECK(c2 != null);
+		CHECK(c2);
 	}
 
 	SECTION("copy assign")
@@ -154,43 +154,53 @@ TEST_CASE("crypto/certificate")
 		certificate c2;
 		c2 = c1;
 		CHECK(c2 == c1);
-		CHECK(c2 != null);
+		CHECK(c2);
 	}
 
 	SECTION("move constructor")
 	{
 		auto c1 = certificate::from_pem(test_cert::client_pem);
-		CHECK(c1 != null);
+		CHECK(c1);
 
 		auto c2{std::move(c1)};
-		CHECK(c2 != c1);
-		CHECK(c2 != null);
-		CHECK(c1 == null);
+		CHECK(c2);
+		CHECK(c2);
+		CHECK(c1.is_null());
 	}
 
 	SECTION("move assign")
 	{
 		auto c1 = certificate::from_pem(test_cert::client_pem);
-		CHECK(c1 != null);
+		CHECK(c1);
 
 		certificate c2;
 		c2 = std::move(c1);
 		CHECK(c2 != c1);
-		CHECK(c2 != null);
-		CHECK(c1 == null);
+		CHECK(c2);
+		CHECK(c1.is_null());
 	}
 
 	SECTION("swap")
 	{
 		auto c1 = certificate::from_pem(test_cert::client_pem);
-		CHECK(c1 != null);
+		CHECK(c1);
 
 		certificate c2;
-		CHECK(c2 == null);
+		CHECK(c2.is_null());
 
 		c1.swap(c2);
-		CHECK(c1 == null);
-		CHECK(c2 != null);
+		CHECK(c1.is_null());
+		CHECK(c2);
+	}
+
+	SECTION("is_null")
+	{
+		CHECK(null.is_null());
+		CHECK_FALSE(null);
+
+		auto client = certificate::from_pem(test_cert::client_pem);
+		CHECK_FALSE(client.is_null());
+		CHECK(client);
 	}
 }
 
