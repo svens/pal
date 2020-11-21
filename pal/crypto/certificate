@@ -93,6 +93,13 @@ public:
 
 
 	/**
+	 * Returns X509 structure version (1 for v1, 3 for v3) or 0 if
+	 * is_null() is true.
+	 */
+	int version () const noexcept;
+
+
+	/**
 	 * Return true if \a this represents same certificate as \a that.
 	 */
 	bool operator== (const certificate &that) const noexcept;

@@ -5,7 +5,7 @@
 #if __pal_os_linux //{{{1
 
 #elif __pal_os_macos //{{{1
-
+	#include <Security/SecCertificateOIDs.h>
 #elif __pal_os_windows //{{{1
 
 #endif //}}}1
@@ -160,10 +160,17 @@ bool certificate::operator== (const certificate &that) const noexcept
 }
 
 
+int certificate::version () const noexcept
+{
+	return impl_.ref ? X509_get_version(impl_.ref) + 1 : 0;
+}
+
+
 #elif __pal_os_macos //{{{1
 
 
 namespace {
+
 
 inline unique_ref<::CFDataRef> to_data_ref (const std::span<const std::byte> &span) noexcept
 {
@@ -174,6 +181,63 @@ inline unique_ref<::CFDataRef> to_data_ref (const std::span<const std::byte> &sp
 		kCFAllocatorNull
 	);
 }
+
+
+template <size_t N>
+inline const char *c_str (::CFTypeRef s, char (&buf)[N]) noexcept
+{
+	constexpr auto encoding = ::kCFStringEncodingUTF8;
+
+	auto cfstr = static_cast<::CFStringRef>(s);
+	if (auto p = ::CFStringGetCStringPtr(cfstr, encoding))
+	{
+		return p;
+	}
+
+	::CFStringGetCString(cfstr, buf, N, encoding);
+	return static_cast<const char *>(&buf[0]);
+}
+
+
+unique_ref<::CFArrayRef> copy_values (
+	::SecCertificateRef cert,
+	::CFTypeRef oid,
+	std::error_code &error) noexcept
+{
+	if (cert)
+	{
+		unique_ref<::CFArrayRef> keys = ::CFArrayCreate(
+			nullptr,
+			&oid, 1,
+			&kCFTypeArrayCallBacks
+		);
+		unique_ref<::CFDictionaryRef> dir = ::SecCertificateCopyValues(
+			cert,
+			keys.ref,
+			nullptr
+		);
+
+		::CFTypeRef values;
+		if (::CFDictionaryGetValueIfPresent(dir.ref, oid, &values))
+		{
+			if (::CFDictionaryGetValueIfPresent(
+					static_cast<::CFDictionaryRef>(values),
+					::kSecPropertyKeyValue,
+					&values))
+			{
+				return static_cast<::CFArrayRef>(::CFRetain(values));
+			}
+		}
+
+		error.clear();
+	}
+	else
+	{
+		error = std::make_error_code(std::errc::bad_address);
+	}
+	return {};
+}
+
 
 } // namespace
 
@@ -191,6 +255,18 @@ bool certificate::operator== (const certificate &that) const noexcept
 		return ::CFEqual(impl_.ref, that.impl_.ref);
 	}
 	return !impl_.ref && !that.impl_.ref;
+}
+
+
+int certificate::version () const noexcept
+{
+	std::error_code ignore_error;
+	if (auto value = copy_values(impl_.ref, ::kSecOIDX509V1Version, ignore_error))
+	{
+		char buf[16];
+		return std::atoi(c_str(value.ref, buf));
+	}
+	return 0;
 }
 
 
@@ -218,6 +294,12 @@ bool certificate::operator== (const certificate &that) const noexcept
 		) != 0;
 	}
 	return !impl_.ref && !that.impl_.ref;
+}
+
+
+int certificate::version () const noexcept
+{
+	return impl_.ref ? impl_.ref->pCertInfo->dwVersion + 1 : 0;
 }
 
 

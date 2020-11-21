@@ -202,6 +202,26 @@ TEST_CASE("crypto/certificate")
 		CHECK_FALSE(client.is_null());
 		CHECK(client);
 	}
+
+	SECTION("version")
+	{
+		auto [pem, expected_version] = GENERATE(
+			table<std::string_view, int>(
+			{
+				{ test_cert::ca_pem, 3 },
+				{ test_cert::intermediate_pem, 3 },
+				{ test_cert::server_pem, 3 },
+				{ test_cert::client_pem, 3 },
+			})
+		);
+		auto cert = certificate::from_pem(pem);
+		CHECK(cert.version() == expected_version);
+	}
+
+	SECTION("version: null")
+	{
+		CHECK(null.version() == 0);
+	}
 }
 
 
