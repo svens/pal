@@ -167,7 +167,7 @@ echo '*** Server certificate request ***' #{{{1
 rm -f server.csr.pem
 openssl req -new -sha256 -batch -config $OPENSSL_CONF \
   -out server.csr.pem \
-  -subj '/C=EE/ST=Estonia/O=PAL/OU=PAL Test/CN=test.pal.ee' \
+  -subj '/C=EE/ST=Estonia/O=PAL/OU=PAL Test/CN=pal.alt.ee' \
   -passin pass:ServerPassword \
   -key server.key.pem
 
@@ -197,7 +197,7 @@ echo '*** Client certificate request ***' #{{{1
 rm -f client.csr.pem
 openssl req -new -sha256 -batch -config $OPENSSL_CONF \
   -out client.csr.pem \
-  -subj '/C=EE/ST=Estonia/O=PAL/OU=PAL Test/CN=test.pal.ee/emailAddress=test@pal.ee' \
+  -subj '/C=EE/ST=Estonia/O=PAL/OU=PAL Test/CN=pal.alt.ee/emailAddress=pal+tes@alt.ee' \
   -passin pass:ClientPassword \
   -key client.key.pem
 

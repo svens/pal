@@ -9,6 +9,9 @@
 
 #include <pal/__bits/lib>
 #include <pal/crypto/__bits/x509>
+#include <pal/error>
+#include <span>
+#include <string_view>
 #include <utility>
 
 
@@ -85,6 +88,58 @@ public:
 	}
 
 
+	/**
+	 * Load and construct new certificate from DER encoded \a span. On
+	 * failure return empty certificate and set \a error.
+	 */
+	template <typename T, size_t Extent>
+	static certificate from_der (
+		const std::span<T, Extent> &span,
+		std::error_code &error) noexcept
+	{
+		if (auto cert = load_der(std::as_bytes(span)))
+		{
+			error.clear();
+			return {std::move(cert)};
+		}
+		error = std::make_error_code(std::errc::invalid_argument);
+		return {};
+	}
+
+
+	/**
+	 * Load and construct new certificate from DER encoded \a span. On
+	 * failure throw std::system_error.
+	 */
+	template <typename T, size_t Extent>
+	static certificate from_der (const std::span<T, Extent> &span)
+	{
+		return from_der(span, throw_on_error("certificate::from_der"));
+	}
+
+
+	/**
+	 * Load and construct new certificate from \a pem (if there are
+	 * multiple, only first is extracted). On failure return empty
+	 * certificate and set \a error.
+	 */
+	static certificate from_pem (
+		const std::string_view &pem,
+		std::error_code &error
+	) noexcept;
+
+
+	/**
+	 * Load and construct new certificate from \a pem (if there are
+	 * multiple, only first is extracted). On failure throw
+	 * std::system_error.
+	 */
+	static certificate from_pem (const std::string_view &pem)
+	{
+		return from_pem(pem, throw_on_error("certificate::from_pem"));
+	}
+
+
 private:
 
 	__bits::x509 impl_{};
@@ -92,6 +147,10 @@ private:
 	certificate (__bits::x509 &&that) noexcept
 		: impl_{std::forward<__bits::x509>(that)}
 	{ }
+
+	static __bits::x509 load_der (
+		const std::span<const std::byte> &der
+	) noexcept;
 };
 
 
