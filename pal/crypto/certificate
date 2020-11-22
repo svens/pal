@@ -239,6 +239,41 @@ public:
 
 
 	/**
+	 * Store subject key identifier of \a this certificate into \a dest.
+	 *
+	 * - If \a this certificate does not have SKI set, returns dest with
+	 *   size() == 0
+	 * - If \a dest is big enough, returns actually stored data range
+	 * - If \a dest is too small returns span with data() == nullptr and
+	 *   size_bytes() == required size.
+	 * - If \a this.is_null() or memory allocation fails
+	 *   default-constructed span is returned
+	 */
+	std::span<uint8_t> subject_key_identifier (std::span<uint8_t> dest) const noexcept
+	{
+		return impl_ ?
+			subject_key_identifier(impl_, dest) :
+			std::span<uint8_t>{}
+		;
+	}
+
+
+	/**
+	 * Return subject key identifier of \a this certificate.
+	 */
+	template <typename Alloc = std::allocator<uint8_t>,
+		std::enable_if_t<std::is_pointer_v<decltype(Alloc().allocate(0))>, int> = 0
+	>
+	std::vector<uint8_t, Alloc> subject_key_identifier (const Alloc &alloc = Alloc()) const
+	{
+		auto span = subject_key_identifier(std::span<uint8_t>{});
+		std::vector<uint8_t, Alloc> result(span.size_bytes(), alloc);
+		subject_key_identifier(std::span{result});
+		return result;
+	}
+
+
+	/**
 	 * Return true if \a this represents same certificate as \a that.
 	 */
 	bool operator== (const certificate &that) const noexcept;
@@ -327,6 +362,11 @@ private:
 	) noexcept;
 
 	static std::span<uint8_t> authority_key_identifier (
+		const __bits::x509 &x509,
+		std::span<uint8_t> dest
+	) noexcept;
+
+	static std::span<uint8_t> subject_key_identifier (
 		const __bits::x509 &x509,
 		std::span<uint8_t> dest
 	) noexcept;

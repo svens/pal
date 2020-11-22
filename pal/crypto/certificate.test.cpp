@@ -429,20 +429,20 @@ TEST_CASE("crypto/certificate")
 		auto cert = pem.size() ? certificate::from_pem(pem) : null;
 
 		uint8_t buf[64];
-		auto aik = pal_test::to_hex(cert.authority_key_identifier(buf));
-		CHECK(aik == expected);
+		auto aki = pal_test::to_hex(cert.authority_key_identifier(buf));
+		CHECK(aki == expected);
 
-		aik = pal_test::to_hex(cert.authority_key_identifier());
-		CHECK(aik == expected);
+		aki = pal_test::to_hex(cert.authority_key_identifier());
+		CHECK(aki == expected);
 	}
 
 	SECTION("authority_key_identifier: no extension")
 	{
 		auto cert = certificate::from_pem(test_cert::self_signed_pem);
 		uint8_t buf[64];
-		auto aik = pal_test::to_hex(cert.authority_key_identifier(buf));
-		CHECK(aik.data() != nullptr);
-		CHECK(aik.empty());
+		auto aki = pal_test::to_hex(cert.authority_key_identifier(buf));
+		CHECK(aki.data() != nullptr);
+		CHECK(aki.empty());
 	}
 
 	SECTION("authority_key_identifier: buffer too small")
@@ -462,9 +462,9 @@ TEST_CASE("crypto/certificate")
 		{
 			// alloc failure hits querying X509v3 extension
 			pal_test::bad_alloc_once x;
-			auto aik = cert.authority_key_identifier();
-			CHECK(aik.data() == nullptr);
-			CHECK(aik.size() == 0);
+			auto aki = cert.authority_key_identifier();
+			CHECK(aki.data() == nullptr);
+			CHECK(aki.size() == 0);
 		}
 		else
 		{
@@ -473,6 +473,67 @@ TEST_CASE("crypto/certificate")
 			{
 				pal_test::bad_alloc_once x;
 				(void)cert.authority_key_identifier();
+			};
+			CHECK_THROWS_AS(f(), std::bad_alloc);
+		}
+	}
+
+	SECTION("subject_key_identifier")
+	{
+		auto [pem, expected] = GENERATE(table<std::string_view, std::string_view>({
+			{ test_cert::ca_pem, "8ff911972ac64007a28ec7d461a66680ab106649" },
+			{ test_cert::intermediate_pem, "423097971d0f67f28993bf9e4173bba30932d0e1" },
+			{ test_cert::server_pem, "e2b561551c2ee1b03d4bc7a07379cfeb1f7965cb" },
+			{ test_cert::client_pem, "29ff9042da950000be2507267dc3d591c7a97b88" },
+			{ "", "" },
+		}));
+		auto cert = pem.size() ? certificate::from_pem(pem) : null;
+
+		uint8_t buf[64];
+		auto ski = pal_test::to_hex(cert.subject_key_identifier(buf));
+		CHECK(ski == expected);
+
+		ski = pal_test::to_hex(cert.subject_key_identifier());
+		CHECK(ski == expected);
+	}
+
+	SECTION("subject_key_identifier: no extension")
+	{
+		auto cert = certificate::from_pem(test_cert::self_signed_pem);
+		uint8_t buf[64];
+		auto ski = pal_test::to_hex(cert.subject_key_identifier(buf));
+		CHECK(ski.data() != nullptr);
+		CHECK(ski.empty());
+	}
+
+	SECTION("subject_key_identifier: buffer too small")
+	{
+		auto cert = certificate::from_pem(test_cert::ca_pem);
+		uint8_t buf[1];
+		auto span = cert.subject_key_identifier(buf);
+		CHECK(span.data() == nullptr);
+		CHECK(span.size_bytes() == 20);
+	}
+
+	SECTION("subject_key_identifier: alloc failure")
+	{
+		auto cert = certificate::from_pem(test_cert::ca_pem);
+
+		if constexpr (pal::is_linux_build)
+		{
+			// alloc failure hits querying X509v3 extension
+			pal_test::bad_alloc_once x;
+			auto ski = cert.subject_key_identifier();
+			CHECK(ski.data() == nullptr);
+			CHECK(ski.size() == 0);
+		}
+		else
+		{
+			// alloc failure hits vector
+			auto f = [&]()
+			{
+				pal_test::bad_alloc_once x;
+				(void)cert.subject_key_identifier();
 			};
 			CHECK_THROWS_AS(f(), std::bad_alloc);
 		}
