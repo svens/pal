@@ -4,7 +4,7 @@
 #include <memory>
 
 #if __pal_os_linux //{{{1
-
+	#include <openssl/asn1.h>
 #elif __pal_os_macos //{{{1
 	#include <Security/SecCertificateOIDs.h>
 #elif __pal_os_windows //{{{1
@@ -135,7 +135,7 @@ certificate certificate::from_pem (
 __bits::x509 certificate::load_der (const std::span<const std::byte> &der) noexcept
 {
 	auto der_ptr = reinterpret_cast<const uint8_t *>(der.data());
-	return d2i_X509(nullptr, &der_ptr, der.size());
+	return ::d2i_X509(nullptr, &der_ptr, der.size());
 }
 
 
@@ -151,7 +151,7 @@ bool certificate::operator== (const certificate &that) const noexcept
 
 int certificate::version () const noexcept
 {
-	return impl_.ref ? X509_get_version(impl_.ref) + 1 : 0;
+	return impl_.ref ? ::X509_get_version(impl_.ref) + 1 : 0;
 }
 
 
@@ -217,7 +217,7 @@ certificate::time_type to_time (const ::ASN1_TIME *time) noexcept
 certificate::time_type certificate::not_before () const noexcept
 {
 	return impl_ ?
-		to_time(X509_get_notBefore(impl_.ref)) :
+		to_time(::X509_get_notBefore(impl_.ref)) :
 		certificate::time_type{}
 	;
 }
@@ -226,7 +226,7 @@ certificate::time_type certificate::not_before () const noexcept
 certificate::time_type certificate::not_after () const noexcept
 {
 	return impl_ ?
-		to_time(X509_get_notAfter(impl_.ref)) :
+		to_time(::X509_get_notAfter(impl_.ref)) :
 		certificate::time_type{}
 	;
 }
@@ -234,13 +234,43 @@ certificate::time_type certificate::not_after () const noexcept
 
 void certificate::digest (std::byte *result, hash_fn h) const noexcept
 {
-	size_t size = i2d_X509(impl_.ref, nullptr);
+	size_t size = ::i2d_X509(impl_.ref, nullptr);
 	if (auto der = scoped_alloc<std::byte, 8192>(std::nothrow, size))
 	{
 		auto ptr = reinterpret_cast<uint8_t *>(der.get());
-		i2d_X509(impl_.ref, &ptr);
+		::i2d_X509(impl_.ref, &ptr);
 		h(result, {der.get(), size});
 	}
+}
+
+
+std::span<uint8_t> certificate::serial_number (std::span<uint8_t> dest) const noexcept
+{
+	if (!impl_)
+	{
+		return {};
+	}
+
+	auto sn = ::X509_get_serialNumber(impl_.ref);
+	size_t required_size = sn->length;
+	if (required_size > dest.size())
+	{
+		return {static_cast<uint8_t *>(0), required_size};
+	}
+
+	std::unique_ptr<::BIGNUM, void(*)(::BIGNUM *)> bn
+	{
+		::ASN1_INTEGER_to_BN(sn, nullptr),
+		&::BN_free
+	};
+	if (bn)
+	{
+		dest = dest.first(BN_num_bytes(bn.get()));
+		::BN_bn2bin(bn.get(), dest.data());
+		return dest;
+	}
+
+	return {static_cast<uint8_t *>(0), required_size};
 }
 
 
@@ -400,6 +430,40 @@ void certificate::digest (std::byte *result, hash_fn h) const noexcept
 }
 
 
+std::span<uint8_t> certificate::serial_number (std::span<uint8_t> dest) const noexcept
+{
+	if (!impl_)
+	{
+		return {};
+	}
+
+	unique_ref<::CFDataRef> value = ::SecCertificateCopySerialNumberData(
+		impl_.ref,
+		nullptr
+	);
+
+	auto first = ::CFDataGetBytePtr(value.ref);
+	auto last = first + ::CFDataGetLength(value.ref);
+	while (first != last && !*first)
+	{
+		++first;
+	}
+
+	size_t required_size = last - first;
+	if (required_size > dest.size())
+	{
+		return {static_cast<uint8_t *>(0), required_size};
+	}
+
+	dest = dest.first(required_size);
+	for (auto &b: dest)
+	{
+		b = *first++;
+	}
+	return dest;
+}
+
+
 #elif __pal_os_windows //{{{1
 
 
@@ -477,6 +541,36 @@ void certificate::digest (std::byte *result, hash_fn h) const noexcept
 {
 	std::span der{impl_.ref->pbCertEncoded, impl_.ref->cbCertEncoded};
 	h(result, std::as_bytes(der));
+}
+
+
+std::span<uint8_t> certificate::serial_number (std::span<uint8_t> dest) const noexcept
+{
+	if (!impl_)
+	{
+		return {};
+	}
+
+	auto first = impl_.ref->pCertInfo->SerialNumber.pbData;
+	auto last = first + impl_.ref->pCertInfo->SerialNumber.cbData;
+
+	while (last != first && !last[-1])
+	{
+		--last;
+	}
+
+	size_t required_size = last - first;
+	if (required_size > dest.size())
+	{
+		return {static_cast<uint8_t *>(0), required_size};
+	}
+
+	dest = dest.first(required_size);
+	for (auto &b: dest)
+	{
+		b = *--last;
+	}
+	return dest;
 }
 
 

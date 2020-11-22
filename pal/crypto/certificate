@@ -15,6 +15,7 @@
 #include <span>
 #include <string_view>
 #include <utility>
+#include <vector>
 
 
 __pal_begin
@@ -160,6 +161,32 @@ public:
 				*reinterpret_cast<result_type *>(result) = hash_type::one_shot(der);
 			});
 		}
+		return result;
+	}
+
+
+	/**
+	 * Store serial number of \a this certificate into \a dest.
+	 *
+	 * - If \a dest is big enough, returns actually stored data range
+	 * - If \a dest is too small or on memory allocation failure returns
+	 *   span with data() == nullptr and size_bytes() == required size.
+	 * - If \a this.is_null() default-constructed span is returned
+	 */
+	std::span<uint8_t> serial_number (std::span<uint8_t> dest) const noexcept;
+
+
+	/**
+	 * Return serial number of \a this certificate.
+	 */
+	template <typename Alloc = std::allocator<uint8_t>,
+		std::enable_if_t<std::is_pointer_v<decltype(Alloc().allocate(0))>, int> = 0
+	>
+	std::vector<uint8_t, Alloc> serial_number (const Alloc &alloc = Alloc()) const
+	{
+		auto span = serial_number(std::span<uint8_t>{});
+		std::vector<uint8_t, Alloc> result(span.size_bytes(), alloc);
+		serial_number(std::span{result});
 		return result;
 	}
 

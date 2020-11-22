@@ -40,6 +40,12 @@ TEST_CASE("crypto/certificate")
 		CHECK(client);
 	}
 
+	SECTION("from_pem: empty")
+	{
+		auto client = certificate::from_pem("", error);
+		CHECK(error == std::errc::invalid_argument);
+	}
+
 	SECTION("from_pem: first from multiple")
 	{
 		std::string pem{test_cert::client_pem};
@@ -231,15 +237,11 @@ TEST_CASE("crypto/certificate")
 				{ test_cert::intermediate_pem, 3 },
 				{ test_cert::server_pem, 3 },
 				{ test_cert::client_pem, 3 },
+				{ "", 0 },
 			})
 		);
-		auto cert = certificate::from_pem(pem);
+		auto cert = pem.size() ? certificate::from_pem(pem) : null;
 		CHECK(cert.version() == expected_version);
-	}
-
-	SECTION("version: null")
-	{
-		CHECK(null.version() == 0);
 	}
 
 	SECTION("not_before / not_after")
@@ -309,7 +311,7 @@ TEST_CASE("crypto/certificate")
 
 	SECTION("digest: sha1")
 	{
-		auto [pem, expected_digest] = GENERATE(table<std::string_view, std::string_view>({
+		auto [pem, expected] = GENERATE(table<std::string_view, std::string_view>({
 			{
 				test_cert::ca_pem,
 				"27566d2bae77ab393faaf1080c528c9973a6ffb4"
@@ -326,17 +328,19 @@ TEST_CASE("crypto/certificate")
 				test_cert::client_pem,
 				"c9483ca1d965e9a769f0e7d705f3d6bb3ce248ee"
 			},
+			{
+				"",
+				"0000000000000000000000000000000000000000"
+			},
 		}));
-		auto cert = certificate::from_pem(pem);
-		REQUIRE(cert);
-
+		auto cert = pem.size() ? certificate::from_pem(pem) : null;
 		auto digest = pal_test::to_hex(cert.digest<pal::crypto::sha1>());
-		CHECK(digest == expected_digest);
+		CHECK(digest == expected);
 	}
 
 	SECTION("digest: sha512")
 	{
-		auto [pem, expected_digest] = GENERATE(table<std::string_view, std::string_view>({
+		auto [pem, expected] = GENERATE(table<std::string_view, std::string_view>({
 			{
 				test_cert::ca_pem,
 				"360599d2e088e6ee9d8e7398f903f03d145194c6b4e5766de1afc8280c1424f382f49d9c14017e36c60045c9605dead8342ae7281a8b6f70484e7783bc4bad93"
@@ -353,18 +357,63 @@ TEST_CASE("crypto/certificate")
 				test_cert::client_pem,
 				"4612c792a0ec069ad1f21f8ec1f6af827b473451535b9220655a59cc6402641ab2fed5eae77b9b406a7544f693a13afb4cbd3d43638c42434ae0a6678ec6528d"
 			},
+			{
+				"",
+				"00000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000"
+			},
 		}));
-		auto cert = certificate::from_pem(pem);
-		REQUIRE(cert);
-
+		auto cert = pem.size() ? certificate::from_pem(pem) : null;
 		auto digest = pal_test::to_hex(cert.digest<pal::crypto::sha512>());
-		CHECK(digest == expected_digest);
+		CHECK(digest == expected);
 	}
 
-	SECTION("digest: null")
+	SECTION("serial_number")
 	{
-		auto digest = pal_test::to_hex(null.digest<pal::crypto::sha1>());
-		CHECK(digest == "0000000000000000000000000000000000000000");
+		auto [pem, expected] = GENERATE(table<std::string_view, std::string_view>({
+			{ test_cert::ca_pem, "852749945d39e1c9" },
+			{ test_cert::intermediate_pem, "1000" },
+			{ test_cert::server_pem, "1001" },
+			{ test_cert::client_pem, "1002" },
+			{ "", "" },
+		}));
+		auto cert = pem.size() ? certificate::from_pem(pem) : null;
+
+		uint8_t buf[64];
+		auto serial_number = pal_test::to_hex(cert.serial_number(buf));
+		CHECK(serial_number == expected);
+
+		serial_number = pal_test::to_hex(cert.serial_number());
+		CHECK(serial_number == expected);
+	}
+
+	SECTION("serial_number: buffer too small")
+	{
+		auto cert = certificate::from_pem(test_cert::ca_pem);
+		uint8_t buf[1];
+		auto span = cert.serial_number(buf);
+		CHECK(span.data() == nullptr);
+		CHECK(span.size_bytes() == 8);
+	}
+
+	SECTION("serial_number: alloc failure")
+	{
+		auto cert = certificate::from_pem(test_cert::ca_pem);
+
+		if constexpr (pal::is_linux_build)
+		{
+			uint8_t buf[64];
+			pal_test::bad_alloc_once x;
+			auto span = cert.serial_number(buf);
+			CHECK(span.data() == nullptr);
+			CHECK(span.size_bytes() == 8);
+		}
+
+		auto f = [&]()
+		{
+			pal_test::bad_alloc_once x;
+			(void)cert.serial_number();
+		};
+		CHECK_THROWS_AS(f(), std::bad_alloc);
 	}
 }
 
