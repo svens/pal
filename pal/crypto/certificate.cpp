@@ -160,51 +160,52 @@ namespace {
 
 certificate::time_type to_time (const ::ASN1_TIME *time) noexcept
 {
-	if (::ASN1_TIME_check(const_cast<::ASN1_TIME *>(time)) == 0)
-	{
-		return {};
-	}
-
 	std::tm tm{};
-	auto in = static_cast<const unsigned char *>(time->data);
 
-	if (time->type == V_ASN1_UTCTIME)
-	{
-		// two-digit year
-		tm.tm_year = (in[0] - '0') * 10 + (in[1] - '0');
-		in += 2;
-
-		if (tm.tm_year < 70)
+	#if OPENSSL_VERSION_NUMBER >= 0x10101000
+		::ASN1_TIME_to_tm(time, &tm);
+	#else
+		if (::ASN1_TIME_check(time))
 		{
-			tm.tm_year += 100;
+			auto in = time->data;
+
+			if (time->type == V_ASN1_GENERALIZEDTIME)
+			{
+				tm.tm_year =
+					(in[0] - '0') * 1000 +
+					(in[1] - '0') * 100 +
+					(in[2] - '0') * 10 +
+					(in[3] - '0');
+				in += 4;
+
+				tm.tm_year -= 1900;
+			}
+			else if (time->type == V_ASN1_UTCTIME)
+			{
+				tm.tm_year = (in[0] - '0') * 10 + (in[1] - '0');
+				in += 2;
+
+				if (tm.tm_year < 70)
+				{
+					tm.tm_year += 100;
+				}
+			}
+
+			tm.tm_mon = (in[0] - '0') * 10 + (in[1] - '0') - 1;
+			in += 2;
+
+			tm.tm_mday = (in[0] - '0') * 10 + (in[1] - '0');
+			in += 2;
+
+			tm.tm_hour = (in[0] - '0') * 10 + (in[1] - '0');
+			in += 2;
+
+			tm.tm_min = (in[0] - '0') * 10 + (in[1] - '0');
+			in += 2;
+
+			tm.tm_sec = (in[0] - '0') * 10 + (in[1] - '0');
 		}
-	}
-	else if (time->type == V_ASN1_GENERALIZEDTIME)
-	{
-		// four-digit year
-		tm.tm_year =
-			(in[0] - '0') * 1000 +
-			(in[1] - '0') * 100 +
-			(in[2] - '0') * 10 +
-			(in[3] - '0');
-		in += 4;
-
-		tm.tm_year -= 1900;
-	}
-
-	tm.tm_mon = (in[0] - '0') * 10 + (in[1] - '0') - 1;
-	in += 2;
-
-	tm.tm_mday = (in[0] - '0') * 10 + (in[1] - '0');
-	in += 2;
-
-	tm.tm_hour = (in[0] - '0') * 10 + (in[1] - '0');
-	in += 2;
-
-	tm.tm_min = (in[0] - '0') * 10 + (in[1] - '0');
-	in += 2;
-
-	tm.tm_sec = (in[0] - '0') * 10 + (in[1] - '0');
+	#endif
 
 	return certificate::clock_type::from_time_t(mktime(&tm));
 }
