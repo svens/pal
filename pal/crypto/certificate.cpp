@@ -149,9 +149,9 @@ bool certificate::operator== (const certificate &that) const noexcept
 }
 
 
-int certificate::version () const noexcept
+int certificate::version (const __bits::x509 &x509) noexcept
 {
-	return impl_.ref ? ::X509_get_version(impl_.ref) + 1 : 0;
+	return ::X509_get_version(x509.ref) + 1;
 }
 
 
@@ -214,21 +214,15 @@ certificate::time_type to_time (const ::ASN1_TIME *time) noexcept
 } // namespace
 
 
-certificate::time_type certificate::not_before () const noexcept
+certificate::time_type certificate::not_before (const __bits::x509 &x509) noexcept
 {
-	return impl_ ?
-		to_time(::X509_get_notBefore(impl_.ref)) :
-		certificate::time_type{}
-	;
+	return to_time(::X509_get_notBefore(x509.ref));
 }
 
 
-certificate::time_type certificate::not_after () const noexcept
+certificate::time_type certificate::not_after (const __bits::x509 &x509) noexcept
 {
-	return impl_ ?
-		to_time(::X509_get_notAfter(impl_.ref)) :
-		certificate::time_type{}
-	;
+	return to_time(::X509_get_notAfter(x509.ref));
 }
 
 
@@ -244,14 +238,11 @@ void certificate::digest (std::byte *result, hash_fn h) const noexcept
 }
 
 
-std::span<uint8_t> certificate::serial_number (std::span<uint8_t> dest) const noexcept
+std::span<uint8_t> certificate::serial_number (
+	const __bits::x509 &x509,
+	std::span<uint8_t> dest) noexcept
 {
-	if (!impl_)
-	{
-		return {};
-	}
-
-	auto sn = ::X509_get_serialNumber(impl_.ref);
+	auto sn = ::X509_get_serialNumber(x509.ref);
 	size_t required_size = sn->length;
 	if (required_size > dest.size())
 	{
@@ -317,41 +308,21 @@ inline const char *c_str (::CFTypeRef s, char (&buf)[N]) noexcept
 }
 
 
-unique_ref<::CFArrayRef> copy_values (
-	::SecCertificateRef cert,
-	::CFTypeRef oid,
-	std::error_code &error) noexcept
+unique_ref<::CFArrayRef> copy_values (::SecCertificateRef cert, ::CFTypeRef oid) noexcept
 {
-	if (cert)
-	{
-		unique_ref<::CFArrayRef> keys = ::CFArrayCreate(
-			nullptr,
-			&oid, 1,
-			&kCFTypeArrayCallBacks
-		);
-		unique_ref<::CFDictionaryRef> dir = ::SecCertificateCopyValues(
-			cert,
-			keys.ref,
-			nullptr
-		);
+	unique_ref<::CFArrayRef> keys = ::CFArrayCreate(nullptr, &oid, 1, &kCFTypeArrayCallBacks);
+	unique_ref<::CFDictionaryRef> dir = ::SecCertificateCopyValues(cert, keys.ref, nullptr);
 
-		::CFTypeRef values;
-		if (::CFDictionaryGetValueIfPresent(dir.ref, oid, &values))
+	::CFTypeRef values;
+	if (::CFDictionaryGetValueIfPresent(dir.ref, oid, &values))
+	{
+		if (::CFDictionaryGetValueIfPresent(
+				static_cast<::CFDictionaryRef>(values),
+				::kSecPropertyKeyValue,
+				&values))
 		{
-			if (::CFDictionaryGetValueIfPresent(
-					static_cast<::CFDictionaryRef>(values),
-					::kSecPropertyKeyValue,
-					&values))
-			{
-				return static_cast<::CFArrayRef>(::CFRetain(values));
-			}
+			return static_cast<::CFArrayRef>(::CFRetain(values));
 		}
-
-		error.clear();
-	}
-	else
-	{
-		error = std::make_error_code(std::errc::bad_address);
 	}
 	return {};
 }
@@ -376,10 +347,9 @@ bool certificate::operator== (const certificate &that) const noexcept
 }
 
 
-int certificate::version () const noexcept
+int certificate::version (const __bits::x509 &x509) noexcept
 {
-	std::error_code ignore_error;
-	if (auto value = copy_values(impl_.ref, ::kSecOIDX509V1Version, ignore_error))
+	if (auto value = copy_values(x509.ref, ::kSecOIDX509V1Version))
 	{
 		char buf[16];
 		return std::atoi(c_str(value.ref, buf));
@@ -392,8 +362,7 @@ namespace {
 
 certificate::time_type to_time (::SecCertificateRef cert, ::CFTypeRef oid) noexcept
 {
-	std::error_code ignore_error;
-	if (auto value = copy_values(cert, oid, ignore_error))
+	if (auto value = copy_values(cert, oid))
 	{
 		::CFAbsoluteTime time;
 		::CFNumberGetValue(
@@ -411,15 +380,15 @@ certificate::time_type to_time (::SecCertificateRef cert, ::CFTypeRef oid) noexc
 } // namespace
 
 
-certificate::time_type certificate::not_before () const noexcept
+certificate::time_type certificate::not_before (const __bits::x509 &x509) noexcept
 {
-	return to_time(impl_.ref, kSecOIDX509V1ValidityNotBefore);
+	return to_time(x509.ref, kSecOIDX509V1ValidityNotBefore);
 }
 
 
-certificate::time_type certificate::not_after () const noexcept
+certificate::time_type certificate::not_after (const __bits::x509 &x509) noexcept
 {
-	return to_time(impl_.ref, kSecOIDX509V1ValidityNotAfter);
+	return to_time(x509.ref, kSecOIDX509V1ValidityNotAfter);
 }
 
 
@@ -430,17 +399,11 @@ void certificate::digest (std::byte *result, hash_fn h) const noexcept
 }
 
 
-std::span<uint8_t> certificate::serial_number (std::span<uint8_t> dest) const noexcept
+std::span<uint8_t> certificate::serial_number (
+	const __bits::x509 &x509,
+	std::span<uint8_t> dest) noexcept
 {
-	if (!impl_)
-	{
-		return {};
-	}
-
-	unique_ref<::CFDataRef> value = ::SecCertificateCopySerialNumberData(
-		impl_.ref,
-		nullptr
-	);
+	unique_ref<::CFDataRef> value = ::SecCertificateCopySerialNumberData(x509.ref, nullptr);
 
 	auto first = ::CFDataGetBytePtr(value.ref);
 	auto last = first + ::CFDataGetLength(value.ref);
@@ -491,9 +454,9 @@ bool certificate::operator== (const certificate &that) const noexcept
 }
 
 
-int certificate::version () const noexcept
+int certificate::version (const __bits::x509 &x509) noexcept
 {
-	return impl_.ref ? impl_.ref->pCertInfo->dwVersion + 1 : 0;
+	return x509.ref->pCertInfo->dwVersion + 1;
 }
 
 
@@ -519,21 +482,15 @@ certificate::time_type to_time (const FILETIME &time) noexcept
 } // namespace
 
 
-certificate::time_type certificate::not_before () const noexcept
+certificate::time_type certificate::not_before (const __bits::x509 &x509) noexcept
 {
-	return impl_ ?
-		to_time(impl_.ref->pCertInfo->NotBefore) :
-		certificate::time_type{}
-	;
+	return to_time(x509.ref->pCertInfo->NotBefore);
 }
 
 
-certificate::time_type certificate::not_after () const noexcept
+certificate::time_type certificate::not_after (const __bits::x509 &x509) noexcept
 {
-	return impl_ ?
-		to_time(impl_.ref->pCertInfo->NotAfter) :
-		certificate::time_type{}
-	;
+	return to_time(x509.ref->pCertInfo->NotAfter);
 }
 
 
@@ -544,15 +501,12 @@ void certificate::digest (std::byte *result, hash_fn h) const noexcept
 }
 
 
-std::span<uint8_t> certificate::serial_number (std::span<uint8_t> dest) const noexcept
+std::span<uint8_t> certificate::serial_number (
+	const __bits::x509 &x509,
+	std::span<uint8_t> dest) noexcept
 {
-	if (!impl_)
-	{
-		return {};
-	}
-
-	auto first = impl_.ref->pCertInfo->SerialNumber.pbData;
-	auto last = first + impl_.ref->pCertInfo->SerialNumber.cbData;
+	auto first = x509.ref->pCertInfo->SerialNumber.pbData;
+	auto last = first + x509.ref->pCertInfo->SerialNumber.cbData;
 
 	while (last != first && !last[-1])
 	{

@@ -106,19 +106,28 @@ public:
 	 * Returns X509 structure version (1 for v1, 3 for v3) or 0 if
 	 * is_null() is true.
 	 */
-	int version () const noexcept;
+	int version () const noexcept
+	{
+		return impl_ ? version(impl_) : 0;
+	}
 
 
 	/**
 	 * Returns absolute time since when \a this certificate is valid.
 	 */
-	time_type not_before () const noexcept;
+	time_type not_before () const noexcept
+	{
+		return impl_ ? not_before(impl_) : time_type{};
+	}
 
 
 	/**
 	 * Returns absolute time until \a this certificate is valid.
 	 */
-	time_type not_after () const noexcept;
+	time_type not_after () const noexcept
+	{
+		return impl_ ? not_after(impl_) : time_type{};
+	}
 
 
 	/**
@@ -173,7 +182,10 @@ public:
 	 *   span with data() == nullptr and size_bytes() == required size.
 	 * - If \a this.is_null() default-constructed span is returned
 	 */
-	std::span<uint8_t> serial_number (std::span<uint8_t> dest) const noexcept;
+	std::span<uint8_t> serial_number (std::span<uint8_t> dest) const noexcept
+	{
+		return impl_ ? serial_number(impl_, dest) : std::span<uint8_t>{};
+	}
 
 
 	/**
@@ -269,6 +281,11 @@ private:
 	static __bits::x509 load_der (
 		const std::span<const std::byte> &der
 	) noexcept;
+
+	static int version (const __bits::x509 &x509) noexcept;
+	static time_type not_before (const __bits::x509 &x509) noexcept;
+	static time_type not_after (const __bits::x509 &x509) noexcept;
+	static std::span<uint8_t> serial_number (const __bits::x509 &x509, std::span<uint8_t> dest) noexcept;
 
 	using hash_fn = void(*)(std::byte *, const std::span<const std::byte> &) noexcept;
 	void digest (std::byte *result, hash_fn h) const noexcept;
