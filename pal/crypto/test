@@ -196,6 +196,33 @@ constexpr std::string_view client_pem = //{{{1
 	"-----END CERTIFICATE-----\n";
 
 
+constexpr std::string_view self_signed_pem = //{{{1
+/* Certificate to test special cases:
+   - no authority/subject key identifier v3 extensions
+   - date with 4 digits in year
+
+New-SelfSignedCertificate -Subject 'CN=Test' -SuppressOid '2.5.29.14' -NotAfter (Get-Date).AddYears(100)
+*/
+	"-----BEGIN CERTIFICATE-----\n"
+	"MIIC2zCCAcOgAwIBAgIQX+69dIHmAplGz8Bc0LbGRTANBgkqhkiG9w0BAQsFADAP\n"
+	"MQ0wCwYDVQQDDARUZXN0MCAXDTE5MDIyODEwNDkxNVoYDzIxMTkwMjI4MTA1OTE1\n"
+	"WjAPMQ0wCwYDVQQDDARUZXN0MIIBIjANBgkqhkiG9w0BAQEFAAOCAQ8AMIIBCgKC\n"
+	"AQEAm9aGu6TTrXfsx8jBEYCTJ9+I3McWWa1snkKKKXHKMiCo/BYkAIpQBj4/c/vJ\n"
+	"QP89cbujojLxpQqjUC7z6PjZqbULO2JTzWdgc6nwjGOW0GSp2+ZDFSi15JnevHy+\n"
+	"eAlN++L3d3F6VEYf9Cb6M0LoA9bRC2DBKIl3WvKIMLHo3/+BhYtgLLCbguEzVgBB\n"
+	"btihm3jqzX4b7yNOkVDASzOTMd8n7S+DalO6UWJwGUeiEovrYYmujlQ87XWTBDWY\n"
+	"S4Cns6/zhdu/aHHvYQBcoYasroXRewBzH7GWxCkCrny9sDo2oFZMnM2BflaDrNAG\n"
+	"h4ovhL3bqYJYwg42rbuCN0JovQIDAQABozEwLzAOBgNVHQ8BAf8EBAMCBaAwHQYD\n"
+	"VR0lBBYwFAYIKwYBBQUHAwIGCCsGAQUFBwMBMA0GCSqGSIb3DQEBCwUAA4IBAQAX\n"
+	"9x0Cermd6lEkGPgUQlA6oIQ6FGAIPZwkLQr/sEC4EV4XJY7EQq4D/I/SIdbC8zz8\n"
+	"DMQOWTBP5/cFGbIe6SvQWf/Z6ld40uGnVL0G/sYFpsnVRYEJGwXpPZOjJOOG3Qy6\n"
+	"TVYy0h+Tt4JIKYQBe3oNZ351eHU3YMBvOvUnKyl0JqTui0wa6Qe/J7NZ5uRgiXzv\n"
+	"LPBNbT7fgDDltSdcFDT0VCPQtO8oUKUh/8Eql0O/KugZcu2MLxEpJZg/uZlf7YnB\n"
+	"TrAnm+CEeWakddDTgexT82zUXx4J2yrI3QTSX/Zp+yQJk66/Qo0hL6NN9/JbC0JN\n"
+	"imY5E1DpVFaB+++/6i1c\n"
+	"-----END CERTIFICATE-----\n";
+
+
 constexpr std::string_view pkcs12 = //{{{1
 /* Note the order of PEMs, tests expect importing to re-order.
 cat server.key.pem client.pem intermediate.pem ca.pem server.pem \

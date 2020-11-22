@@ -250,7 +250,8 @@ TEST_CASE("crypto/certificate")
 			test_cert::ca_pem,
 			test_cert::intermediate_pem,
 			test_cert::server_pem,
-			test_cert::client_pem
+			test_cert::client_pem,
+			test_cert::self_signed_pem
 		));
 
 		CHECK(cert.not_before() != certificate::time_type{});
@@ -414,6 +415,67 @@ TEST_CASE("crypto/certificate")
 			(void)cert.serial_number();
 		};
 		CHECK_THROWS_AS(f(), std::bad_alloc);
+	}
+
+	SECTION("authority_key_identifier")
+	{
+		auto [pem, expected] = GENERATE(table<std::string_view, std::string_view>({
+			{ test_cert::ca_pem, "8ff911972ac64007a28ec7d461a66680ab106649" },
+			{ test_cert::intermediate_pem, "8ff911972ac64007a28ec7d461a66680ab106649" },
+			{ test_cert::server_pem, "423097971d0f67f28993bf9e4173bba30932d0e1" },
+			{ test_cert::client_pem, "423097971d0f67f28993bf9e4173bba30932d0e1" },
+			{ "", "" },
+		}));
+		auto cert = pem.size() ? certificate::from_pem(pem) : null;
+
+		uint8_t buf[64];
+		auto aik = pal_test::to_hex(cert.authority_key_identifier(buf));
+		CHECK(aik == expected);
+
+		aik = pal_test::to_hex(cert.authority_key_identifier());
+		CHECK(aik == expected);
+	}
+
+	SECTION("authority_key_identifier: no extension")
+	{
+		auto cert = certificate::from_pem(test_cert::self_signed_pem);
+		uint8_t buf[64];
+		auto aik = pal_test::to_hex(cert.authority_key_identifier(buf));
+		CHECK(aik.data() != nullptr);
+		CHECK(aik.empty());
+	}
+
+	SECTION("authority_key_identifier: buffer too small")
+	{
+		auto cert = certificate::from_pem(test_cert::ca_pem);
+		uint8_t buf[1];
+		auto span = cert.authority_key_identifier(buf);
+		CHECK(span.data() == nullptr);
+		CHECK(span.size_bytes() == 20);
+	}
+
+	SECTION("authority_key_identifier: alloc failure")
+	{
+		auto cert = certificate::from_pem(test_cert::ca_pem);
+
+		if constexpr (pal::is_linux_build)
+		{
+			// alloc failure hits querying X509v3 extension
+			pal_test::bad_alloc_once x;
+			auto aik = cert.authority_key_identifier();
+			CHECK(aik.data() == nullptr);
+			CHECK(aik.size() == 0);
+		}
+		else
+		{
+			// alloc failure hits vector
+			auto f = [&]()
+			{
+				pal_test::bad_alloc_once x;
+				(void)cert.authority_key_identifier();
+			};
+			CHECK_THROWS_AS(f(), std::bad_alloc);
+		}
 	}
 }
 

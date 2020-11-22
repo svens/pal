@@ -204,6 +204,41 @@ public:
 
 
 	/**
+	 * Store authority key identifier of \a this certificate into \a dest.
+	 *
+	 * - If \a this certificate does not have AKI set, returns dest with
+	 *   size() == 0
+	 * - If \a dest is big enough, returns actually stored data range
+	 * - If \a dest is too small returns span with data() == nullptr and
+	 *   size_bytes() == required size.
+	 * - If \a this.is_null() or memory allocation fails
+	 *   default-constructed span is returned
+	 */
+	std::span<uint8_t> authority_key_identifier (std::span<uint8_t> dest) const noexcept
+	{
+		return impl_ ?
+			authority_key_identifier(impl_, dest) :
+			std::span<uint8_t>{}
+		;
+	}
+
+
+	/**
+	 * Return authority key identifier of \a this certificate.
+	 */
+	template <typename Alloc = std::allocator<uint8_t>,
+		std::enable_if_t<std::is_pointer_v<decltype(Alloc().allocate(0))>, int> = 0
+	>
+	std::vector<uint8_t, Alloc> authority_key_identifier (const Alloc &alloc = Alloc()) const
+	{
+		auto span = authority_key_identifier(std::span<uint8_t>{});
+		std::vector<uint8_t, Alloc> result(span.size_bytes(), alloc);
+		authority_key_identifier(std::span{result});
+		return result;
+	}
+
+
+	/**
 	 * Return true if \a this represents same certificate as \a that.
 	 */
 	bool operator== (const certificate &that) const noexcept;
@@ -285,7 +320,16 @@ private:
 	static int version (const __bits::x509 &x509) noexcept;
 	static time_type not_before (const __bits::x509 &x509) noexcept;
 	static time_type not_after (const __bits::x509 &x509) noexcept;
-	static std::span<uint8_t> serial_number (const __bits::x509 &x509, std::span<uint8_t> dest) noexcept;
+
+	static std::span<uint8_t> serial_number (
+		const __bits::x509 &x509,
+		std::span<uint8_t> dest
+	) noexcept;
+
+	static std::span<uint8_t> authority_key_identifier (
+		const __bits::x509 &x509,
+		std::span<uint8_t> dest
+	) noexcept;
 
 	using hash_fn = void(*)(std::byte *, const std::span<const std::byte> &) noexcept;
 	void digest (std::byte *result, hash_fn h) const noexcept;

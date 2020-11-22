@@ -5,6 +5,7 @@
 
 #if __pal_os_linux //{{{1
 	#include <openssl/asn1.h>
+	#include <openssl/x509v3.h>
 #elif __pal_os_macos //{{{1
 	#include <Security/SecCertificateOIDs.h>
 #elif __pal_os_windows //{{{1
@@ -265,6 +266,45 @@ std::span<uint8_t> certificate::serial_number (
 }
 
 
+std::span<uint8_t> certificate::authority_key_identifier (
+	const __bits::x509 &x509,
+	std::span<uint8_t> dest) noexcept
+{
+	auto index = ::X509_get_ext_by_NID(x509.ref, NID_authority_key_identifier, -1);
+	if (index < 0)
+	{
+		return dest.first(0);
+	}
+
+	std::unique_ptr<AUTHORITY_KEYID, void(*)(AUTHORITY_KEYID *)> decoded
+	{
+		static_cast<AUTHORITY_KEYID *>(
+			::X509V3_EXT_d2i(::X509_get_ext(x509.ref, index))
+		),
+		&::AUTHORITY_KEYID_free
+	};
+
+	if (!decoded)
+	{
+		return std::span<uint8_t>{};
+	}
+
+	size_t required_size = decoded->keyid->length;
+	if (required_size > dest.size())
+	{
+		return {static_cast<uint8_t *>(0), required_size};
+	}
+
+	dest = dest.first(required_size);
+	auto key_id = decoded->keyid->data;
+	for (auto &b: dest)
+	{
+		b = *key_id++;
+	}
+	return dest;
+}
+
+
 #elif __pal_os_macos //{{{1
 
 
@@ -427,6 +467,51 @@ std::span<uint8_t> certificate::serial_number (
 }
 
 
+namespace {
+
+
+std::span<uint8_t> key_id (
+	::SecCertificateRef cert,
+	::CFTypeRef oid,
+	std::span<uint8_t> dest) noexcept
+{
+	if (auto values = copy_values(cert, oid))
+	{
+		auto value = (::CFDataRef)::CFDictionaryGetValue(
+			(::CFDictionaryRef)::CFArrayGetValueAtIndex(values.ref, 1),
+			::kSecPropertyKeyValue
+		);
+
+		auto first = ::CFDataGetBytePtr(value);
+		auto last = first + ::CFDataGetLength(value);
+		size_t required_size = last - first;
+		if (required_size > dest.size())
+		{
+			return {static_cast<uint8_t *>(0), required_size};
+		}
+
+		dest = dest.first(required_size);
+		for (auto &b: dest)
+		{
+			b = *first++;
+		}
+		return dest;
+	}
+	return dest.first(0);
+}
+
+
+} // namespace
+
+
+std::span<uint8_t> certificate::authority_key_identifier (
+	const __bits::x509 &x509,
+	std::span<uint8_t> dest) noexcept
+{
+	return key_id(x509.ref, kSecOIDAuthorityKeyIdentifier, dest);
+}
+
+
 #elif __pal_os_windows //{{{1
 
 
@@ -523,6 +608,56 @@ std::span<uint8_t> certificate::serial_number (
 	for (auto &b: dest)
 	{
 		b = *--last;
+	}
+	return dest;
+}
+
+
+std::span<uint8_t> certificate::authority_key_identifier (
+	const __bits::x509 &x509,
+	std::span<uint8_t> dest) noexcept
+{
+	auto ext = ::CertFindExtension(szOID_AUTHORITY_KEY_IDENTIFIER2,
+		x509.ref->pCertInfo->cExtension,
+		x509.ref->pCertInfo->rgExtension
+	);
+	if (!ext)
+	{
+		return dest.first(0);
+	}
+
+	CERT_AUTHORITY_KEY_ID2_INFO *decoded;
+	DWORD length = 0;
+	::CryptDecodeObjectEx(X509_ASN_ENCODING,
+		X509_AUTHORITY_KEY_ID2,
+		ext->Value.pbData,
+		ext->Value.cbData,
+		CRYPT_DECODE_ALLOC_FLAG,
+		0,
+		&decoded,
+		&length
+	);
+	if (!decoded)
+	{
+		return std::span<uint8_t>{};
+	}
+	std::unique_ptr<void, void(*)(void *)> guard
+	{
+		decoded,
+		[](void *blob) { ::LocalFree(blob); }
+	};
+
+	size_t required_size = decoded->KeyId.cbData;
+	if (required_size > dest.size())
+	{
+		return {static_cast<uint8_t *>(0), required_size};
+	}
+
+	dest = dest.first(required_size);
+	auto key_id = decoded->KeyId.pbData;
+	for (auto &b: dest)
+	{
+		b = *key_id++;
 	}
 	return dest;
 }
