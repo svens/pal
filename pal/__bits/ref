@@ -55,8 +55,8 @@ inline void dec_ref (native_ref<T>) noexcept
 
 
 template <typename T,
-	native_ref<T>(*IncRef)(native_ref<T>)noexcept = inc_ref<T>,
-	void(*DecRef)(native_ref<T>)noexcept  = dec_ref<T>
+	native_ref<T>(*IncRef)(native_ref<T>) = inc_ref<T>,
+	void(*DecRef)(native_ref<T>) = dec_ref<T>
 >
 struct shared_ref
 {
@@ -134,7 +134,7 @@ struct shared_ref
 
 
 template <typename T,
-	void(*DecRef)(native_ref<T>)noexcept  = dec_ref<T>
+	void(*DecRef)(native_ref<T>) = dec_ref<T>
 >
 struct unique_ref
 {
