@@ -538,6 +538,49 @@ TEST_CASE("crypto/certificate")
 			CHECK_THROWS_AS(f(), std::bad_alloc);
 		}
 	}
+
+	SECTION("issued_by / is_self_signed")
+	{
+		auto ca = certificate::from_pem(test_cert::ca_pem);
+		auto intermediate = certificate::from_pem(test_cert::intermediate_pem);
+		auto server = certificate::from_pem(test_cert::server_pem);
+		auto client = certificate::from_pem(test_cert::client_pem);
+
+		CHECK_FALSE(null.is_self_signed());
+		CHECK_FALSE(null.issued_by(null));
+		CHECK_FALSE(null.issued_by(ca));
+		CHECK_FALSE(null.issued_by(intermediate));
+		CHECK_FALSE(null.issued_by(server));
+		CHECK_FALSE(null.issued_by(client));
+
+		CHECK(ca.is_self_signed());
+		CHECK_FALSE(ca.issued_by(null));
+		CHECK(ca.issued_by(ca));
+		CHECK_FALSE(ca.issued_by(intermediate));
+		CHECK_FALSE(ca.issued_by(server));
+		CHECK_FALSE(ca.issued_by(client));
+
+		CHECK_FALSE(intermediate.is_self_signed());
+		CHECK_FALSE(intermediate.issued_by(null));
+		CHECK(intermediate.issued_by(ca));
+		CHECK_FALSE(intermediate.issued_by(intermediate));
+		CHECK_FALSE(intermediate.issued_by(server));
+		CHECK_FALSE(intermediate.issued_by(client));
+
+		CHECK_FALSE(server.is_self_signed());
+		CHECK_FALSE(server.issued_by(null));
+		CHECK_FALSE(server.issued_by(ca));
+		CHECK(server.issued_by(intermediate));
+		CHECK_FALSE(server.issued_by(server));
+		CHECK_FALSE(server.issued_by(client));
+
+		CHECK_FALSE(client.is_self_signed());
+		CHECK_FALSE(client.issued_by(null));
+		CHECK_FALSE(client.issued_by(ca));
+		CHECK(client.issued_by(intermediate));
+		CHECK_FALSE(client.issued_by(server));
+		CHECK_FALSE(client.issued_by(client));
+	}
 }
 
 

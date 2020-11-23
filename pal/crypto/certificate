@@ -274,6 +274,28 @@ public:
 
 
 	/**
+	 * Returns true if \a this certificate is issued by \a that
+	 * certificate.
+	 */
+	bool issued_by (const certificate &that) const noexcept
+	{
+		return impl_ && that.impl_ ?
+			issued_by(impl_, that.impl_) :
+			false
+		;
+	}
+
+
+	/**
+	 * Returns true if \a this certificate is self-signed.
+	 */
+	bool is_self_signed () const noexcept
+	{
+		return issued_by(*this);
+	}
+
+
+	/**
 	 * Return true if \a this represents same certificate as \a that.
 	 */
 	bool operator== (const certificate &that) const noexcept;
@@ -370,6 +392,13 @@ private:
 		const __bits::x509 &x509,
 		std::span<uint8_t> dest
 	) noexcept;
+
+	static bool issued_by (
+		const __bits::x509 &a,
+		const __bits::x509 &b
+	) noexcept;
+
+	static bool is_self_signed (const __bits::x509 &x509) noexcept;
 
 	using hash_fn = void(*)(std::byte *, const std::span<const std::byte> &) noexcept;
 	void digest (std::byte *result, hash_fn h) const noexcept;

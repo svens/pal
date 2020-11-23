@@ -342,6 +342,12 @@ std::span<uint8_t> certificate::subject_key_identifier (
 }
 
 
+bool certificate::issued_by (const __bits::x509 &a, const __bits::x509 &b) noexcept
+{
+	return ::X509_check_issued(b.ref, a.ref) == X509_V_OK;
+}
+
+
 #elif __pal_os_macos //{{{1
 
 
@@ -557,6 +563,25 @@ std::span<uint8_t> certificate::subject_key_identifier (
 }
 
 
+bool certificate::issued_by (const __bits::x509 &a, const __bits::x509 &b) noexcept
+{
+	unique_ref<::CFDataRef>
+		a_issuer = ::SecCertificateCopyNormalizedIssuerSequence(a.ref),
+		b_subject = ::SecCertificateCopyNormalizedSubjectSequence(b.ref);
+
+	auto size_1 = ::CFDataGetLength(b_subject.ref);
+	auto size_2 = ::CFDataGetLength(a_issuer.ref);
+	if (size_1 != size_2)
+	{
+		return false;
+	}
+
+	auto data_1 = ::CFDataGetBytePtr(b_subject.ref);
+	auto data_2 = ::CFDataGetBytePtr(a_issuer.ref);
+	return std::equal(data_1, data_1 + size_1, data_2);
+}
+
+
 #elif __pal_os_windows //{{{1
 
 
@@ -745,6 +770,16 @@ std::span<uint8_t> certificate::subject_key_identifier (
 		b = *key_id++;
 	}
 	return dest;
+}
+
+
+bool certificate::issued_by (const __bits::x509 &a, const __bits::x509 &b) noexcept
+{
+	return ::CertCompareCertificateName(
+		X509_ASN_ENCODING | PKCS_7_ASN_ENCODING,
+		&b.ref->pCertInfo->Subject,
+		&a.ref->pCertInfo->Issuer
+	);
 }
 
 
