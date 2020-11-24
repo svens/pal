@@ -1,4 +1,5 @@
 #include <pal/crypto/certificate>
+#include <pal/crypto/oid>
 #include <pal/crypto/test>
 
 
@@ -6,6 +7,7 @@ namespace {
 
 
 using pal::crypto::certificate;
+namespace oid = pal::crypto::oid;
 namespace test_cert = pal_test::cert;
 using namespace std::chrono_literals;
 
@@ -580,6 +582,147 @@ TEST_CASE("crypto/certificate")
 		CHECK(client.issued_by(intermediate));
 		CHECK_FALSE(client.issued_by(server));
 		CHECK_FALSE(client.issued_by(client));
+	}
+
+	SECTION("issuer")
+	{
+		auto [pem, expected] = GENERATE(table<std::string_view, certificate::name_type>({
+			{
+				test_cert::ca_pem,
+				{
+					{ "2.5.4.6", "EE" },
+					{ "2.5.4.8", "Estonia" },
+					{ "2.5.4.10", "PAL" },
+					{ "2.5.4.11", "PAL CA" },
+					{ "2.5.4.3", "PAL Root CA" },
+				}
+			},
+			{
+				test_cert::intermediate_pem,
+				{
+					{ "2.5.4.6", "EE" },
+					{ "2.5.4.8", "Estonia" },
+					{ "2.5.4.10", "PAL" },
+					{ "2.5.4.11", "PAL CA" },
+					{ "2.5.4.3", "PAL Root CA" },
+				}
+			},
+			{
+				test_cert::server_pem,
+				{
+					{ "2.5.4.6", "EE" },
+					{ "2.5.4.8", "Estonia" },
+					{ "2.5.4.10", "PAL" },
+					{ "2.5.4.11", "PAL CA" },
+					{ "2.5.4.3", "PAL Intermediate CA" },
+				}
+			},
+			{
+				test_cert::client_pem,
+				{
+					{ "2.5.4.6", "EE" },
+					{ "2.5.4.8", "Estonia" },
+					{ "2.5.4.10", "PAL" },
+					{ "2.5.4.11", "PAL CA" },
+					{ "2.5.4.3", "PAL Intermediate CA" },
+				}
+			},
+			{
+				"", {}
+			},
+		}));
+		auto cert = !pem.empty() ? certificate::from_pem(pem) : null;
+		CHECK(cert.issuer() == expected);
+
+		CHECK(cert.issuer("invalid_oid").empty());
+
+		if (cert != null)
+		{
+			CHECK(cert.issuer(oid::country_name)[0] == expected[0]);
+			CHECK(cert.issuer(oid::state_or_province_name)[0] == expected[1]);
+			CHECK(cert.issuer(oid::organization_name)[0] == expected[2]);
+			CHECK(cert.issuer(oid::organizational_unit_name)[0] == expected[3]);
+			CHECK(cert.issuer(oid::common_name)[0] == expected[4]);
+		}
+		else
+		{
+			CHECK(cert.issuer(oid::country_name).empty());
+			CHECK(cert.issuer(oid::state_or_province_name).empty());
+			CHECK(cert.issuer(oid::organization_name).empty());
+			CHECK(cert.issuer(oid::organizational_unit_name).empty());
+			CHECK(cert.issuer(oid::common_name).empty());
+		}
+	}
+
+	SECTION("subject")
+	{
+		auto [pem, expected] = GENERATE(table<std::string_view, certificate::name_type>({
+			{
+				test_cert::ca_pem,
+				{
+					{ "2.5.4.6", "EE" },
+					{ "2.5.4.8", "Estonia" },
+					{ "2.5.4.10", "PAL" },
+					{ "2.5.4.11", "PAL CA" },
+					{ "2.5.4.3", "PAL Root CA" },
+				}
+			},
+			{
+				test_cert::intermediate_pem,
+				{
+					{ "2.5.4.6", "EE" },
+					{ "2.5.4.8", "Estonia" },
+					{ "2.5.4.10", "PAL" },
+					{ "2.5.4.11", "PAL CA" },
+					{ "2.5.4.3", "PAL Intermediate CA" },
+				}
+			},
+			{
+				test_cert::server_pem,
+				{
+					{ "2.5.4.6", "EE" },
+					{ "2.5.4.8", "Estonia" },
+					{ "2.5.4.10", "PAL" },
+					{ "2.5.4.11", "PAL Test" },
+					{ "2.5.4.3", "pal.alt.ee" },
+				}
+			},
+			{
+				test_cert::client_pem,
+				{
+					{ "2.5.4.6", "EE" },
+					{ "2.5.4.8", "Estonia" },
+					{ "2.5.4.10", "PAL" },
+					{ "2.5.4.11", "PAL Test" },
+					{ "2.5.4.3", "pal.alt.ee" },
+					{ "1.2.840.113549.1.9.1", "pal+tes@alt.ee" },
+				}
+			},
+			{
+				"", {}
+			},
+		}));
+		auto cert = !pem.empty() ? certificate::from_pem(pem) : null;
+		CHECK(cert.subject() == expected);
+
+		CHECK(cert.subject("invalid_oid").empty());
+
+		if (cert != null)
+		{
+			CHECK(cert.subject(oid::country_name)[0] == expected[0]);
+			CHECK(cert.subject(oid::state_or_province_name)[0] == expected[1]);
+			CHECK(cert.subject(oid::organization_name)[0] == expected[2]);
+			CHECK(cert.subject(oid::organizational_unit_name)[0] == expected[3]);
+			CHECK(cert.subject(oid::common_name)[0] == expected[4]);
+		}
+		else
+		{
+			CHECK(cert.subject(oid::country_name).empty());
+			CHECK(cert.subject(oid::state_or_province_name).empty());
+			CHECK(cert.subject(oid::organization_name).empty());
+			CHECK(cert.subject(oid::organizational_unit_name).empty());
+			CHECK(cert.subject(oid::common_name).empty());
+		}
 	}
 }
 

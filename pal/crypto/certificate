@@ -12,7 +12,9 @@
 #include <pal/crypto/hash>
 #include <pal/error>
 #include <chrono>
+#include <deque>
 #include <span>
+#include <string>
 #include <string_view>
 #include <utility>
 #include <vector>
@@ -22,6 +24,12 @@ __pal_begin
 
 
 namespace crypto {
+
+
+/**
+ * OID and corresponding value pair.
+ */
+using oid_value_pair = std::tuple<std::string, std::string>;
 
 
 /**
@@ -41,6 +49,9 @@ public:
 
 	/// Timestamp type for certificate time functions
 	using time_type = clock_type::time_point;
+
+	/// Distinguished name.
+	using name_type = std::deque<oid_value_pair>;
 
 
 	/**
@@ -296,6 +307,46 @@ public:
 
 
 	/**
+	 * Returns complete issuer distinguished name. On null certificate
+	 * returns default-constructed value.
+	 */
+	name_type issuer () const
+	{
+		return impl_ ? issuer(impl_) : name_type{};
+	}
+
+
+	/**
+	 * Returns issuer distinguished name for \a oid. On null certificate
+	 * or if there is no such \a oid returns default-constructed value.
+	 */
+	name_type issuer (const std::string_view &oid) const
+	{
+		return impl_ ? issuer(impl_, oid) : name_type{};
+	}
+
+
+	/**
+	 * Returns complete certificate distinguished name. On null
+	 * certificate returns default-constructed value.
+	 */
+	name_type subject () const
+	{
+		return impl_ ? subject(impl_) : name_type{};
+	}
+
+
+	/**
+	 * Returns certificate distinguished name for \a oid. On null certificate
+	 * or if there is no such \a oid returns default-constructed value.
+	 */
+	name_type subject (const std::string_view &oid) const
+	{
+		return impl_ ? subject(impl_, oid) : name_type{};
+	}
+
+
+	/**
 	 * Return true if \a this represents same certificate as \a that.
 	 */
 	bool operator== (const certificate &that) const noexcept;
@@ -398,7 +449,10 @@ private:
 		const __bits::x509 &b
 	) noexcept;
 
-	static bool is_self_signed (const __bits::x509 &x509) noexcept;
+	static name_type issuer (const __bits::x509 &x509);
+	static name_type issuer (const __bits::x509 &x509, const std::string_view &oid);
+	static name_type subject (const __bits::x509 &x509);
+	static name_type subject (const __bits::x509 &x509, const std::string_view &oid);
 
 	using hash_fn = void(*)(std::byte *, const std::span<const std::byte> &) noexcept;
 	void digest (std::byte *result, hash_fn h) const noexcept;

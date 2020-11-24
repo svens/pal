@@ -348,6 +348,85 @@ bool certificate::issued_by (const __bits::x509 &a, const __bits::x509 &b) noexc
 }
 
 
+namespace {
+
+
+inline const char *c_str (const ::ASN1_STRING *s) noexcept
+{
+	return reinterpret_cast<const char *>(
+		#if OPENSSL_VERSION_NUMBER < 0x10100000
+			::ASN1_STRING_data(const_cast<::ASN1_STRING *>(s))
+		#else
+			::ASN1_STRING_get0_data(s)
+		#endif
+	);
+}
+
+
+certificate::name_type make_name (X509_NAME *name)
+{
+	char buf[1024];
+	certificate::name_type result;
+	for (auto i = 0;  i != ::X509_NAME_entry_count(name);  ++i)
+	{
+		auto entry = ::X509_NAME_get_entry(name, i);
+		::OBJ_obj2txt(buf, sizeof(buf), ::X509_NAME_ENTRY_get_object(entry), 1);
+		result.emplace_back(buf, c_str(::X509_NAME_ENTRY_get_data(entry)));
+	}
+	return result;
+}
+
+
+certificate::name_type make_name (X509_NAME *name, const std::string_view &oid)
+{
+	certificate::name_type result;
+
+	std::string oid_str{oid};
+	const auto filter = ::OBJ_txt2nid(oid_str.c_str());
+	if (filter == NID_undef)
+	{
+		return result;
+	}
+
+	for (auto i = 0;  i != ::X509_NAME_entry_count(name);  ++i)
+	{
+		auto entry = ::X509_NAME_get_entry(name, i);
+		if (::OBJ_obj2nid(X509_NAME_ENTRY_get_object(entry)) == filter)
+		{
+			result.emplace_back(oid_str, c_str(::X509_NAME_ENTRY_get_data(entry)));
+		}
+	}
+	return result;
+}
+
+
+} // namespace
+
+
+certificate::name_type certificate::issuer (const __bits::x509 &x509)
+{
+	return make_name(X509_get_issuer_name(x509.ref));
+}
+
+
+certificate::name_type certificate::issuer (const __bits::x509 &x509, const std::string_view &oid)
+{
+	return make_name(X509_get_issuer_name(x509.ref), oid);
+}
+
+
+certificate::name_type certificate::subject (const __bits::x509 &x509)
+{
+	return make_name(X509_get_subject_name(x509.ref));
+}
+
+
+certificate::name_type certificate::subject (const __bits::x509 &x509, const std::string_view &oid)
+{
+	return make_name(X509_get_subject_name(x509.ref), oid);
+}
+
+
 #elif __pal_os_macos //{{{1
 
 
@@ -582,6 +661,86 @@ bool certificate::issued_by (const __bits::x509 &a, const __bits::x509 &b) noexc
 }
 
 
+namespace {
+
+
+certificate::name_type make_name (::SecCertificateRef cert, ::CFTypeRef id)
+{
+	certificate::name_type result;
+	if (auto values = copy_values(cert, id))
+	{
+		char key_buf[1024], value_buf[1024];
+		for (auto i = 0;  i != ::CFArrayGetCount(values.ref);  ++i)
+		{
+			auto key = (CFDictionaryRef)::CFArrayGetValueAtIndex(values.ref, i);
+			result.emplace_back(
+				c_str(::CFDictionaryGetValue(key, kSecPropertyKeyLabel), key_buf),
+				c_str(::CFDictionaryGetValue(key, kSecPropertyKeyValue), value_buf)
+			);
+		}
+	}
+	return result;
+}
+
+
+certificate::name_type make_name (::SecCertificateRef cert, ::CFTypeRef id, const std::string_view &oid)
+{
+	certificate::name_type result;
+	if (auto values = copy_values(cert, id))
+	{
+		unique_ref<::CFStringRef> filter = ::CFStringCreateWithBytesNoCopy(
+			nullptr,
+			reinterpret_cast<const uint8_t *>(oid.data()),
+			oid.size(),
+			kCFStringEncodingUTF8,
+			false,
+			kCFAllocatorNull
+		);
+
+		char buf[1024];
+		for (auto i = 0;  i != ::CFArrayGetCount(values.ref);  ++i)
+		{
+			auto key = (CFDictionaryRef)::CFArrayGetValueAtIndex(values.ref, i);
+			if (::CFEqual(::CFDictionaryGetValue(key, kSecPropertyKeyLabel), filter.ref))
+			{
+				result.emplace_back(
+					oid,
+					c_str(::CFDictionaryGetValue(key, kSecPropertyKeyValue), buf)
+				);
+			}
+		}
+	}
+	return result;
+}
+
+
+} // namespace
+
+
+certificate::name_type certificate::issuer (const __bits::x509 &x509)
+{
+	return make_name(x509.ref, ::kSecOIDX509V1IssuerName);
+}
+
+
+certificate::name_type certificate::issuer (const __bits::x509 &x509, const std::string_view &oid)
+{
+	return make_name(x509.ref, ::kSecOIDX509V1IssuerName, oid);
+}
+
+
+certificate::name_type certificate::subject (const __bits::x509 &x509)
+{
+	return make_name(x509.ref, ::kSecOIDX509V1SubjectName);
+}
+
+
+certificate::name_type certificate::subject (const __bits::x509 &x509, const std::string_view &oid)
+{
+	return make_name(x509.ref, ::kSecOIDX509V1SubjectName, oid);
+}
+
+
 #elif __pal_os_windows //{{{1
 
 
@@ -780,6 +939,96 @@ bool certificate::issued_by (const __bits::x509 &a, const __bits::x509 &b) noexc
 		&b.ref->pCertInfo->Subject,
 		&a.ref->pCertInfo->Issuer
 	);
+}
+
+
+namespace {
+
+
+using cert_name_info = unique_ref<
+	CERT_NAME_INFO *,
+	[](CERT_NAME_INFO *p)
+	{
+		::LocalFree(p);
+	}
+>;
+
+
+inline cert_name_info decode_name (const CERT_NAME_BLOB &name)
+{
+	constexpr auto decode_flags =
+		CRYPT_DECODE_ALLOC_FLAG |
+		CRYPT_DECODE_NOCOPY_FLAG |
+		CRYPT_DECODE_SHARE_OID_STRING_FLAG;
+
+	cert_name_info rdn;
+	DWORD size{};
+	::CryptDecodeObjectEx(
+		X509_ASN_ENCODING,
+		X509_NAME,
+		name.pbData,
+		name.cbData,
+		decode_flags,
+		nullptr,
+		&rdn.ref,
+		&size
+	);
+	return rdn;
+}
+
+
+certificate::name_type make_name (const CERT_NAME_BLOB &blob, const std::string_view &oid)
+{
+	certificate::name_type result;
+	if (auto rdn = decode_name(blob))
+	{
+		for (size_t i = 0;  i != rdn.ref->cRDN;  ++i)
+		{
+			for (size_t j = 0;  j != rdn.ref->rgRDN[i].cRDNAttr;  ++j)
+			{
+				auto &attr = rdn.ref->rgRDN[i].rgRDNAttr[j];
+				if (oid.empty() || oid == attr.pszObjId)
+				{
+					char buf[1024];
+					::CertRDNValueToStr(
+						attr.dwValueType,
+						&attr.Value,
+						buf,
+						sizeof(buf)
+					);
+					result.emplace_back(attr.pszObjId, buf);
+				}
+			}
+		}
+	}
+	return result;
+}
+
+
+} // namespace
+
+
+certificate::name_type certificate::issuer (const __bits::x509 &x509)
+{
+	return make_name(x509.ref->pCertInfo->Issuer, {});
+}
+
+
+certificate::name_type certificate::issuer (const __bits::x509 &x509, const std::string_view &oid)
+{
+	return make_name(x509.ref->pCertInfo->Issuer, oid);
+}
+
+
+certificate::name_type certificate::subject (const __bits::x509 &x509)
+{
+	return make_name(x509.ref->pCertInfo->Subject, {});
+}
+
+
+certificate::name_type certificate::subject (const __bits::x509 &x509, const std::string_view &oid)
+{
+	return make_name(x509.ref->pCertInfo->Subject, oid);
 }
 
 
