@@ -7,6 +7,7 @@ namespace {
 
 
 using pal::crypto::certificate;
+using pal::crypto::alt_name;
 namespace oid = pal::crypto::oid;
 namespace test_cert = pal_test::cert;
 using namespace std::chrono_literals;
@@ -699,7 +700,7 @@ TEST_CASE("crypto/certificate")
 				}
 			},
 			{
-				"", {}
+				"", { }
 			},
 		}));
 		auto cert = !pem.empty() ? certificate::from_pem(pem) : null;
@@ -723,6 +724,67 @@ TEST_CASE("crypto/certificate")
 			CHECK(cert.subject(oid::organizational_unit_name).empty());
 			CHECK(cert.subject(oid::common_name).empty());
 		}
+	}
+
+	SECTION("issuer_alt_name")
+	{
+		auto [pem, expected] = GENERATE(table<std::string_view, certificate::alt_name_type>({
+			{
+				test_cert::ca_pem, { }
+			},
+			{
+				test_cert::intermediate_pem, { }
+			},
+			{
+				test_cert::server_pem,
+				{
+					{ alt_name::dns, "ca.pal.alt.ee" },
+					{ alt_name::uri, "https://ca.pal.alt.ee/path" },
+				}
+			},
+			{
+				test_cert::client_pem, { }
+			},
+			{
+				"", { }
+			},
+		}));
+		auto cert = !pem.empty() ? certificate::from_pem(pem) : null;
+		CHECK(cert.issuer_alt_name() == expected);
+	}
+
+	SECTION("subject_alt_name")
+	{
+		auto [pem, expected] = GENERATE(table<std::string_view, certificate::alt_name_type>({
+			{
+				test_cert::ca_pem, { }
+			},
+			{
+				test_cert::intermediate_pem, { }
+			},
+			{
+				test_cert::server_pem,
+				{
+					{ alt_name::ip, "1.2.3.4" },
+					{ alt_name::ip, "2001:db8:85a3::8a2e:370:7334" },
+					{ alt_name::dns, "*.pal.alt.ee" },
+					{ alt_name::dns, "pal.alt.ee" },
+					{ alt_name::email, "pal@alt.ee" },
+					{ alt_name::uri, "https://pal.alt.ee/path" },
+				}
+			},
+			{
+				test_cert::client_pem,
+				{
+					{ alt_name::email, "pal@alt.ee" },
+				}
+			},
+			{
+				"", { }
+			},
+		}));
+		auto cert = !pem.empty() ? certificate::from_pem(pem) : null;
+		CHECK(cert.subject_alt_name() == expected);
 	}
 }
 

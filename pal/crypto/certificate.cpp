@@ -1,4 +1,5 @@
 #include <pal/crypto/certificate>
+#include <pal/net/ip/__bits/inet>
 #include <pal/scoped_alloc>
 #include <cctype>
 #include <memory>
@@ -8,8 +9,6 @@
 	#include <openssl/x509v3.h>
 #elif __pal_os_macos //{{{1
 	#include <Security/SecCertificateOIDs.h>
-#elif __pal_os_windows //{{{1
-
 #endif //}}}1
 
 
@@ -101,6 +100,25 @@ size_t pem_to_der (std::string_view pem, std::byte *der) noexcept
 	}
 
 	return base64_decode(pem, der);
+}
+
+
+template <size_t Size>
+std::string_view normalized_ip_string (
+	const uint8_t *ip,
+	size_t ip_size,
+	char (&buf)[Size]) noexcept
+{
+	buf[0] = '\0';
+	if (ip_size == 4)
+	{
+		net::ip::__bits::to_text(AF_INET, ip, buf, buf + Size);
+	}
+	else if (ip_size == 16)
+	{
+		net::ip::__bits::to_text(AF_INET6, ip, buf, buf + Size);
+	}
+	return buf;
 }
 
 
@@ -427,6 +445,83 @@ certificate::name_type certificate::subject (const __bits::x509 &x509, const std
 }
 
 
+namespace {
+
+
+void emplace_back (certificate::alt_name_type &result, const GENERAL_NAME *name)
+{
+	switch (name->type)
+	{
+		case GEN_EMAIL:
+		{
+			auto s = name->d.rfc822Name;
+			result.emplace_back(alt_name::email, std::string{s->data, s->data + s->length});
+			break;
+		}
+
+		case GEN_DNS:
+		{
+			auto s = name->d.dNSName;
+			result.emplace_back(alt_name::dns, std::string{s->data, s->data + s->length});
+			break;
+		}
+
+		case GEN_URI:
+		{
+			auto s = name->d.uniformResourceIdentifier;
+			result.emplace_back(alt_name::uri, std::string{s->data, s->data + s->length});
+			break;
+		}
+
+		case GEN_IPADD:
+		{
+			auto s = name->d.iPAddress;
+			char buf[INET6_ADDRSTRLEN];
+			result.emplace_back(alt_name::ip, normalized_ip_string(s->data, s->length, buf));
+			break;
+		}
+	}
+}
+
+
+certificate::alt_name_type make_alt_name (X509 *cert, int nid)
+{
+	certificate::alt_name_type result{};
+	if (auto ext = ::X509_get_ext_d2i(cert, nid, nullptr, nullptr))
+	{
+		using name_list = STACK_OF(GENERAL_NAME);
+		std::unique_ptr<name_list, void(*)(name_list *)> names
+		{
+			static_cast<name_list *>(ext),
+			[](name_list *p)
+			{
+				::sk_GENERAL_NAME_pop_free(p, ::GENERAL_NAME_free);
+			}
+		};
+		for (auto i = 0;  i != ::sk_GENERAL_NAME_num(names.get());  ++i)
+		{
+			emplace_back(result, ::sk_GENERAL_NAME_value(names.get(), i));
+		}
+	}
+	return result;
+}
+
+
+} // namespace
+
+
+certificate::alt_name_type certificate::issuer_alt_name (const __bits::x509 &x509)
+{
+	return make_alt_name(x509.ref, NID_issuer_alt_name);
+}
+
+
+certificate::alt_name_type certificate::subject_alt_name (const __bits::x509 &x509)
+{
+	return make_alt_name(x509.ref, NID_subject_alt_name);
+}
+
+
 #elif __pal_os_macos //{{{1
 
 
@@ -741,6 +836,81 @@ certificate::name_type certificate::subject (const __bits::x509 &x509, const std
 }
 
 
+namespace {
+
+
+template <size_t Size>
+std::string_view normalized_ip_string (::CFTypeRef data, char (&buf)[Size]) noexcept
+{
+	auto s = static_cast<::CFStringRef>(data);
+	auto p = c_str(s, buf);
+	if (::CFStringGetLength(s) == 39)
+	{
+		// convert to RFC5952 format (recommended IPv6 textual representation)
+		uint8_t ip[sizeof(::in6_addr)];
+		net::ip::__bits::from_text(AF_INET6, p, ip);
+		return normalized_ip_string(ip, sizeof(ip), buf);
+	}
+	return p;
+}
+
+
+certificate::alt_name_type make_alt_name (::SecCertificateRef cert, ::CFTypeRef id)
+{
+	static const auto
+		dns = CFSTR("DNS Name"),
+		ip = CFSTR("IP Address"),
+		email = CFSTR("Email Address"),
+		uri = CFSTR("URI");
+
+	certificate::alt_name_type result;
+	if (auto values = copy_values(cert, id))
+	{
+		char buf[1024];
+		for (auto i = 0U;  i != ::CFArrayGetCount(values.ref);  ++i)
+		{
+			auto entry = (::CFDictionaryRef)::CFArrayGetValueAtIndex(values.ref, i);
+			auto label = ::CFDictionaryGetValue(entry, ::kSecPropertyKeyLabel);
+			auto value = ::CFDictionaryGetValue(entry, ::kSecPropertyKeyValue);
+
+			if (::CFEqual(label, dns))
+			{
+				result.emplace_back(alt_name::dns, c_str(value, buf));
+			}
+			else if (::CFEqual(label, ip))
+			{
+				result.emplace_back(alt_name::ip, normalized_ip_string(value, buf));
+			}
+			else if (::CFEqual(label, uri))
+			{
+				result.emplace_back(alt_name::uri, c_str(::CFURLGetString((::CFURLRef)value), buf));
+			}
+			else if (::CFEqual(label, email))
+			{
+				result.emplace_back(alt_name::email, c_str(value, buf));
+			}
+		}
+	}
+	return result;
+
+}
+
+
+} // namespace
+
+
+certificate::alt_name_type certificate::issuer_alt_name (const __bits::x509 &x509)
+{
+	return make_alt_name(x509.ref, ::kSecOIDIssuerAltName);
+}
+
+
+certificate::alt_name_type certificate::subject_alt_name (const __bits::x509 &x509)
+{
+	return make_alt_name(x509.ref, ::kSecOIDSubjectAltName);
+}
+
+
 #elif __pal_os_windows //{{{1
 
 
@@ -961,7 +1131,7 @@ inline cert_name_info decode_name (const CERT_NAME_BLOB &name)
 		CRYPT_DECODE_NOCOPY_FLAG |
 		CRYPT_DECODE_SHARE_OID_STRING_FLAG;
 
-	cert_name_info rdn;
+	cert_name_info info;
 	DWORD size{};
 	::CryptDecodeObjectEx(
 		X509_ASN_ENCODING,
@@ -970,23 +1140,23 @@ inline cert_name_info decode_name (const CERT_NAME_BLOB &name)
 		name.cbData,
 		decode_flags,
 		nullptr,
-		&rdn.ref,
+		&info.ref,
 		&size
 	);
-	return rdn;
+	return info;
 }
 
 
 certificate::name_type make_name (const CERT_NAME_BLOB &blob, const std::string_view &oid)
 {
 	certificate::name_type result;
-	if (auto rdn = decode_name(blob))
+	if (auto info = decode_name(blob))
 	{
-		for (size_t i = 0;  i != rdn.ref->cRDN;  ++i)
+		for (size_t i = 0;  i != info.ref->cRDN;  ++i)
 		{
-			for (size_t j = 0;  j != rdn.ref->rgRDN[i].cRDNAttr;  ++j)
+			for (size_t j = 0;  j != info.ref->rgRDN[i].cRDNAttr;  ++j)
 			{
-				auto &attr = rdn.ref->rgRDN[i].rgRDNAttr[j];
+				auto &attr = info.ref->rgRDN[i].rgRDNAttr[j];
 				if (oid.empty() || oid == attr.pszObjId)
 				{
 					char buf[1024];
@@ -1029,6 +1199,135 @@ certificate::name_type certificate::subject (const __bits::x509 &x509)
 certificate::name_type certificate::subject (const __bits::x509 &x509, const std::string_view &oid)
 {
 	return make_name(x509.ref->pCertInfo->Subject, oid);
+}
+
+
+namespace {
+
+
+inline std::string to_string (LPWSTR in)
+{
+	char out[1024];
+	auto size = ::WideCharToMultiByte(
+		CP_ACP,
+		0,
+		in, -1,
+		out, sizeof(out),
+		nullptr,
+		nullptr
+	);
+	return std::string(out, out + size - 1);
+}
+
+
+using cert_alt_name_info = unique_ref<
+	CERT_ALT_NAME_INFO *,
+	[](CERT_ALT_NAME_INFO *p)
+	{
+		::LocalFree(p);
+	}
+>;
+
+
+inline cert_alt_name_info decode_alt_name (const CRYPT_OBJID_BLOB &blob) noexcept
+{
+	constexpr auto decode_flags =
+		CRYPT_DECODE_ALLOC_FLAG |
+		CRYPT_DECODE_NOCOPY_FLAG |
+		CRYPT_DECODE_SHARE_OID_STRING_FLAG;
+
+	cert_alt_name_info info;
+	DWORD size{};
+	::CryptDecodeObjectEx(
+		X509_ASN_ENCODING,
+		X509_ALTERNATE_NAME,
+		blob.pbData,
+		blob.cbData,
+		decode_flags,
+		nullptr,
+		&info.ref,
+		&size
+	);
+	return info;
+}
+
+
+void emplace_back (certificate::alt_name_type &result, const CERT_ALT_NAME_ENTRY &entry)
+{
+	switch (entry.dwAltNameChoice)
+	{
+		case CERT_ALT_NAME_RFC822_NAME:
+		{
+			result.emplace_back(alt_name::email, to_string(entry.pwszRfc822Name));
+			break;
+		}
+
+		case CERT_ALT_NAME_DNS_NAME:
+		{
+			result.emplace_back(alt_name::dns, to_string(entry.pwszDNSName));
+			break;
+		}
+
+		case CERT_ALT_NAME_URL:
+		{
+			result.emplace_back(alt_name::uri, to_string(entry.pwszURL));
+			break;
+		}
+
+		case CERT_ALT_NAME_IP_ADDRESS:
+		{
+			char buf[1024];
+			result.emplace_back(
+				alt_name::ip,
+				normalized_ip_string(
+					entry.IPAddress.pbData,
+					entry.IPAddress.cbData,
+					buf
+				)
+			);
+			break;
+		}
+	}
+}
+
+
+certificate::alt_name_type make_alt_name (PCCERT_CONTEXT cert, LPCSTR oid)
+{
+	certificate::alt_name_type result{};
+
+	auto ext = ::CertFindExtension(oid,
+		cert->pCertInfo->cExtension,
+		cert->pCertInfo->rgExtension
+	);
+	if (!ext)
+	{
+		return result;
+	}
+
+	if (auto info = decode_alt_name(ext->Value))
+	{
+		for (auto i = 0U;  i != info.ref->cAltEntry;  ++i)
+		{
+			emplace_back(result, info.ref->rgAltEntry[i]);
+		}
+	}
+
+	return result;
+}
+
+
+} // namespace
+
+
+certificate::alt_name_type certificate::issuer_alt_name (const __bits::x509 &x509)
+{
+	return make_alt_name(x509.ref, szOID_ISSUER_ALT_NAME2);
+}
+
+
+certificate::alt_name_type certificate::subject_alt_name (const __bits::x509 &x509)
+{
+	return make_alt_name(x509.ref, szOID_SUBJECT_ALT_NAME2);
 }
 
 

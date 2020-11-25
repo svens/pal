@@ -33,6 +33,24 @@ using oid_value_pair = std::tuple<std::string, std::string>;
 
 
 /**
+ * Alternative name type
+ */
+enum class alt_name
+{
+	dns,    ///< DNS name
+	ip,     ///< IP address
+	uri,    ///< URI
+	email,  ///< Email address
+};
+
+
+/**
+ * Alternative name type and corresponding value pair.
+ */
+using alt_name_value_pair = std::tuple<alt_name, std::string>;
+
+
+/**
  * Wrapper for platform's native public key certificate.
  *
  * Platforms use following native implementations:
@@ -52,6 +70,9 @@ public:
 
 	/// Distinguished name.
 	using name_type = std::deque<oid_value_pair>;
+
+	/// Alternative name.
+	using alt_name_type = std::deque<alt_name_value_pair>;
 
 
 	/**
@@ -347,6 +368,28 @@ public:
 
 
 	/**
+	 * Return issuer alternative name as list of pairs of name type and
+	 * corresponding textual values. On null certificate or on error
+	 * returns default-constructed value.
+	 */
+	alt_name_type issuer_alt_name () const
+	{
+		return impl_ ? issuer_alt_name(impl_) : alt_name_type{};
+	}
+
+
+	/**
+	 * Return subject alternative name as list of pairs of name type and
+	 * corresponding textual values. On null certificate or on error
+	 * returns default-constructed value.
+	 */
+	alt_name_type subject_alt_name () const
+	{
+		return impl_ ? subject_alt_name(impl_) : alt_name_type{};
+	}
+
+
+	/**
 	 * Return true if \a this represents same certificate as \a that.
 	 */
 	bool operator== (const certificate &that) const noexcept;
@@ -453,6 +496,9 @@ private:
 	static name_type issuer (const __bits::x509 &x509, const std::string_view &oid);
 	static name_type subject (const __bits::x509 &x509);
 	static name_type subject (const __bits::x509 &x509, const std::string_view &oid);
+
+	static alt_name_type issuer_alt_name (const __bits::x509 &x509);
+	static alt_name_type subject_alt_name (const __bits::x509 &x509);
 
 	using hash_fn = void(*)(std::byte *, const std::span<const std::byte> &) noexcept;
 	void digest (std::byte *result, hash_fn h) const noexcept;
