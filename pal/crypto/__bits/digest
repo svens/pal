@@ -11,7 +11,7 @@
 	#include <CommonCrypto/CommonDigest.h>
 	#include <CommonCrypto/CommonHMAC.h>
 #elif __pal_os_windows
-	#include <windows.h>
+	#include <pal/__bits/platform_sdk>
 	#include <bcrypt.h>
 	#include <algorithm>
 	#pragma comment(lib, "bcrypt")

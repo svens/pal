@@ -11,7 +11,7 @@
 	#include <Security/SecCertificate.h>
 	#include <Security/SecKey.h>
 #elif __pal_os_windows
-	#include <windows.h>
+	#include <pal/__bits/platform_sdk>
 	#include <wincrypt.h>
 	#pragma comment(lib, "crypt32")
 	#pragma comment(lib, "ncrypt")
