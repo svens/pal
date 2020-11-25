@@ -1011,6 +1011,10 @@ std::span<uint8_t> certificate::serial_number (
 	return dest;
 }
 
+constexpr auto crypt_decode_flags =
+	CRYPT_DECODE_NOCOPY_FLAG |
+	CRYPT_DECODE_SHARE_OID_STRING_FLAG;
+
 
 std::span<uint8_t> certificate::authority_key_identifier (
 	const __bits::x509 &x509,
@@ -1025,30 +1029,44 @@ std::span<uint8_t> certificate::authority_key_identifier (
 		return dest.first(0);
 	}
 
-	unique_ref<CERT_AUTHORITY_KEY_ID2_INFO *, [](CERT_AUTHORITY_KEY_ID2_INFO *p){ ::LocalFree(p); }> decoded;
-	DWORD length = 0;
-	::CryptDecodeObjectEx(X509_ASN_ENCODING,
+	DWORD size{};
+	::CryptDecodeObjectEx(
+		X509_ASN_ENCODING,
 		X509_AUTHORITY_KEY_ID2,
 		ext->Value.pbData,
 		ext->Value.cbData,
-		CRYPT_DECODE_ALLOC_FLAG,
-		0,
-		&decoded.ref,
-		&length
+		crypt_decode_flags,
+		nullptr,
+		nullptr,
+		&size
 	);
+
+	scoped_alloc<CERT_AUTHORITY_KEY_ID2_INFO, 2048> decoded(std::nothrow, size);
 	if (!decoded)
 	{
 		return std::span<uint8_t>{};
 	}
 
-	size_t required_size = decoded.ref->KeyId.cbData;
+	::CryptDecodeObjectEx(
+		X509_ASN_ENCODING,
+		X509_AUTHORITY_KEY_ID2,
+		ext->Value.pbData,
+		ext->Value.cbData,
+		crypt_decode_flags,
+		nullptr,
+		decoded.get(),
+		&size
+	);
+	const auto &info = *decoded.get();
+
+	size_t required_size = info.KeyId.cbData;
 	if (required_size > dest.size())
 	{
 		return {static_cast<uint8_t *>(0), required_size};
 	}
 
 	dest = dest.first(required_size);
-	auto key_id = decoded.ref->KeyId.pbData;
+	auto key_id = info.KeyId.pbData;
 	for (auto &b: dest)
 	{
 		b = *key_id++;
@@ -1070,30 +1088,44 @@ std::span<uint8_t> certificate::subject_key_identifier (
 		return dest.first(0);
 	}
 
-	unique_ref<CRYPT_DATA_BLOB *, [](CRYPT_DATA_BLOB *p){ ::LocalFree(p); }> decoded;
-	DWORD length = 0;
-	::CryptDecodeObjectEx(X509_ASN_ENCODING,
+	DWORD size{};
+	::CryptDecodeObjectEx(
+		X509_ASN_ENCODING,
 		szOID_SUBJECT_KEY_IDENTIFIER,
 		ext->Value.pbData,
 		ext->Value.cbData,
-		CRYPT_DECODE_ALLOC_FLAG,
-		0,
-		&decoded.ref,
-		&length
+		crypt_decode_flags,
+		nullptr,
+		nullptr,
+		&size
 	);
+
+	scoped_alloc<CRYPT_DATA_BLOB, 2048> decoded(std::nothrow, size);
 	if (!decoded)
 	{
 		return std::span<uint8_t>{};
 	}
 
-	size_t required_size = decoded.ref->cbData;
+	::CryptDecodeObjectEx(
+		X509_ASN_ENCODING,
+		szOID_SUBJECT_KEY_IDENTIFIER,
+		ext->Value.pbData,
+		ext->Value.cbData,
+		crypt_decode_flags,
+		nullptr,
+		decoded.get(),
+		&size
+	);
+	const auto &blob = *decoded.get();
+
+	size_t required_size = blob.cbData;
 	if (required_size > dest.size())
 	{
 		return {static_cast<uint8_t *>(0), required_size};
 	}
 
 	dest = dest.first(required_size);
-	auto key_id = decoded.ref->pbData;
+	auto key_id = blob.pbData;
 	for (auto &b: dest)
 	{
 		b = *key_id++;
@@ -1115,59 +1147,49 @@ bool certificate::issued_by (const __bits::x509 &a, const __bits::x509 &b) noexc
 namespace {
 
 
-using cert_name_info = unique_ref<
-	CERT_NAME_INFO *,
-	[](CERT_NAME_INFO *p)
-	{
-		::LocalFree(p);
-	}
->;
-
-
-inline cert_name_info decode_name (const CERT_NAME_BLOB &name)
+certificate::name_type make_name (const CERT_NAME_BLOB &blob, const std::string_view &oid)
 {
-	constexpr auto decode_flags =
-		CRYPT_DECODE_ALLOC_FLAG |
-		CRYPT_DECODE_NOCOPY_FLAG |
-		CRYPT_DECODE_SHARE_OID_STRING_FLAG;
-
-	cert_name_info info;
 	DWORD size{};
 	::CryptDecodeObjectEx(
 		X509_ASN_ENCODING,
 		X509_NAME,
-		name.pbData,
-		name.cbData,
-		decode_flags,
+		blob.pbData,
+		blob.cbData,
+		crypt_decode_flags,
 		nullptr,
-		&info.ref,
+		nullptr,
 		&size
 	);
-	return info;
-}
 
+	scoped_alloc<CERT_NAME_INFO, 2048> info{size};
+	::CryptDecodeObjectEx(
+		X509_ASN_ENCODING,
+		X509_NAME,
+		blob.pbData,
+		blob.cbData,
+		crypt_decode_flags,
+		nullptr,
+		info.get(),
+		&size
+	);
+	const auto &name = *info.get();
 
-certificate::name_type make_name (const CERT_NAME_BLOB &blob, const std::string_view &oid)
-{
 	certificate::name_type result;
-	if (auto info = decode_name(blob))
+	for (size_t i = 0;  i != name.cRDN;  ++i)
 	{
-		for (size_t i = 0;  i != info.ref->cRDN;  ++i)
+		for (size_t j = 0;  j != name.rgRDN[i].cRDNAttr;  ++j)
 		{
-			for (size_t j = 0;  j != info.ref->rgRDN[i].cRDNAttr;  ++j)
+			auto &attr = name.rgRDN[i].rgRDNAttr[j];
+			if (oid.empty() || oid == attr.pszObjId)
 			{
-				auto &attr = info.ref->rgRDN[i].rgRDNAttr[j];
-				if (oid.empty() || oid == attr.pszObjId)
-				{
-					char buf[1024];
-					::CertRDNValueToStr(
-						attr.dwValueType,
-						&attr.Value,
-						buf,
-						sizeof(buf)
-					);
-					result.emplace_back(attr.pszObjId, buf);
-				}
+				char buf[1024];
+				::CertRDNValueToStr(
+					attr.dwValueType,
+					&attr.Value,
+					buf,
+					sizeof(buf)
+				);
+				result.emplace_back(attr.pszObjId, buf);
 			}
 		}
 	}
@@ -1220,38 +1242,6 @@ inline std::string to_string (LPWSTR in)
 }
 
 
-using cert_alt_name_info = unique_ref<
-	CERT_ALT_NAME_INFO *,
-	[](CERT_ALT_NAME_INFO *p)
-	{
-		::LocalFree(p);
-	}
->;
-
-
-inline cert_alt_name_info decode_alt_name (const CRYPT_OBJID_BLOB &blob) noexcept
-{
-	constexpr auto decode_flags =
-		CRYPT_DECODE_ALLOC_FLAG |
-		CRYPT_DECODE_NOCOPY_FLAG |
-		CRYPT_DECODE_SHARE_OID_STRING_FLAG;
-
-	cert_alt_name_info info;
-	DWORD size{};
-	::CryptDecodeObjectEx(
-		X509_ASN_ENCODING,
-		X509_ALTERNATE_NAME,
-		blob.pbData,
-		blob.cbData,
-		decode_flags,
-		nullptr,
-		&info.ref,
-		&size
-	);
-	return info;
-}
-
-
 void emplace_back (certificate::alt_name_type &result, const CERT_ALT_NAME_ENTRY &entry)
 {
 	switch (entry.dwAltNameChoice)
@@ -1293,25 +1283,45 @@ void emplace_back (certificate::alt_name_type &result, const CERT_ALT_NAME_ENTRY
 
 certificate::alt_name_type make_alt_name (PCCERT_CONTEXT cert, LPCSTR oid)
 {
-	certificate::alt_name_type result{};
-
 	auto ext = ::CertFindExtension(oid,
 		cert->pCertInfo->cExtension,
 		cert->pCertInfo->rgExtension
 	);
 	if (!ext)
 	{
-		return result;
+		return {};
 	}
 
-	if (auto info = decode_alt_name(ext->Value))
+	DWORD size{};
+	::CryptDecodeObjectEx(
+		X509_ASN_ENCODING,
+		X509_ALTERNATE_NAME,
+		ext->Value.pbData,
+		ext->Value.cbData,
+		crypt_decode_flags,
+		nullptr,
+		nullptr,
+		&size
+	);
+
+	scoped_alloc<CERT_ALT_NAME_INFO, 2048> info{size};
+	::CryptDecodeObjectEx(
+		X509_ASN_ENCODING,
+		X509_ALTERNATE_NAME,
+		ext->Value.pbData,
+		ext->Value.cbData,
+		crypt_decode_flags,
+		nullptr,
+		info.get(),
+		&size
+	);
+	const auto &name = *info.get();
+
+	certificate::alt_name_type result{};
+	for (auto i = 0U;  i != name.cAltEntry;  ++i)
 	{
-		for (auto i = 0U;  i != info.ref->cAltEntry;  ++i)
-		{
-			emplace_back(result, info.ref->rgAltEntry[i]);
-		}
+		emplace_back(result, name.rgAltEntry[i]);
 	}
-
 	return result;
 }
 
