@@ -439,50 +439,28 @@ public:
 
 protected:
 
-	/**
-	 * Low-level OS socket
-	 * \internal
-	 */
 	__bits::socket socket_{};
-
-	/**
-	 * This socket protocol type.
-	 * \internal
-	 */
 	protocol_type protocol_{endpoint_type{}.protocol()};
 
-#if !defined(__DOXYGEN__)
+
 	basic_socket () noexcept = default;
 	basic_socket (basic_socket &&) noexcept = default;
 	basic_socket &operator= (basic_socket &&) noexcept = default;
 	~basic_socket () = default;
-#endif
 
 
-	/**
-	 * Construct new socket, acquiring \a handle. On failure, throw
-	 * std::system_error.
-	 */
 	basic_socket (const protocol_type &protocol, native_handle_type handle)
 	{
 		assign(protocol, handle);
 	}
 
 
-	/**
-	 * Construct and open new socket using \a protocol. On failure, throw
-	 * std::system_error.
-	 */
 	basic_socket (const protocol_type &protocol)
 	{
 		open(protocol);
 	}
 
 
-	/**
-	 * Construct and open new socket. After construction bind to \a
-	 * endpoint. On failure, throw std::system_error.
-	 */
 	basic_socket (const endpoint_type &endpoint)
 		: basic_socket(endpoint.protocol())
 	{

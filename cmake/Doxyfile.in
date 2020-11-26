@@ -31,6 +31,7 @@ MACRO_EXPANSION = YES
 EXPAND_ONLY_PREDEF = YES
 PREDEFINED = \
 	__DOXYGEN__ \
+	protected=private \
 	__@CMAKE_PROJECT_NAME@_begin="namespace @CMAKE_PROJECT_NAME@ {" \
 	__@CMAKE_PROJECT_NAME@_end="}"
 
