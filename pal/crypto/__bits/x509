@@ -1,0 +1,92 @@
+#pragma once // -*- C++ -*-
+
+#include <pal/__bits/lib>
+#include <pal/__bits/ref>
+
+#if __pal_os_linux
+	#include <openssl/evp.h>
+	#include <openssl/opensslv.h>
+	#include <openssl/x509.h>
+#elif __pal_os_macos
+	#include <Security/SecCertificate.h>
+	#include <Security/SecKey.h>
+#elif __pal_os_windows
+	#include <pal/__bits/platform_sdk>
+	#include <wincrypt.h>
+	#pragma comment(lib, "crypt32")
+	#pragma comment(lib, "ncrypt")
+#endif
+
+
+__pal_begin
+
+
+namespace crypto::__bits {
+
+
+#if __pal_os_linux //{{{1
+
+inline ::X509 *inc_ref (::X509 *ref) noexcept
+{
+	#if OPENSSL_VERSION_NUMBER < 0x10100000
+		::CRYPTO_add(&ref->references, 1, CRYPTO_LOCK_X509);
+	#else
+		::X509_up_ref(ref);
+	#endif
+	return ref;
+}
+
+inline void dec_ref (::X509 *ref) noexcept
+{
+	::X509_free(ref);
+}
+
+inline void dec_ref (::EVP_PKEY *ref) noexcept
+{
+	::EVP_PKEY_free(ref);
+}
+
+using x509 = shared_ref<::X509 *, inc_ref, dec_ref>;
+using public_key = unique_ref<::EVP_PKEY *, dec_ref>;
+using private_key = unique_ref<::EVP_PKEY *, dec_ref>;
+
+#elif __pal_os_macos //{{{1
+
+using x509 = shared_ref<::SecCertificateRef>;
+using public_key = unique_ref<::SecKeyRef>;
+using private_key = unique_ref<::SecKeyRef>;
+
+#elif __pal_os_windows //{{{1
+
+inline PCCERT_CONTEXT inc_ref (::PCCERT_CONTEXT ref) noexcept
+{
+	return ::CertDuplicateCertificateContext(ref);
+}
+
+inline void dec_ref (::PCCERT_CONTEXT ref) noexcept
+{
+	(void)::CertFreeCertificateContext(ref);
+}
+
+inline void dec_ref (::BCRYPT_KEY_HANDLE ref) noexcept
+{
+	(void)::BCryptDestroyKey(ref);
+}
+
+inline void dec_ref (::NCRYPT_KEY_HANDLE ref) noexcept
+{
+	(void)::NCryptFreeObject(ref);
+}
+
+using x509 = shared_ref<::PCCERT_CONTEXT, inc_ref, dec_ref>;
+using public_key = unique_ref<::BCRYPT_KEY_HANDLE, dec_ref>;
+using private_key = unique_ref<::NCRYPT_KEY_HANDLE, dec_ref>;
+
+
+#endif //}}}1
+
+
+} // namespace crypto::__bits
+
+
+__pal_end

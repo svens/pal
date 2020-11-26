@@ -1,0 +1,511 @@
+#pragma once // -*- C++ -*-
+
+/**
+ * \file pal/crypto/certificate
+ * Public key certificate in X509 format.
+ *
+ * \see https://en.wikipedia.org/wiki/Public_key_certificate
+ */
+
+#include <pal/__bits/lib>
+#include <pal/crypto/__bits/x509>
+#include <pal/crypto/hash>
+#include <pal/error>
+#include <chrono>
+#include <deque>
+#include <span>
+#include <string>
+#include <string_view>
+#include <utility>
+#include <vector>
+
+
+__pal_begin
+
+
+namespace crypto {
+
+
+/**
+ * OID and corresponding value pair.
+ */
+using oid_value_pair = std::tuple<std::string, std::string>;
+
+
+/**
+ * Alternative name type
+ */
+enum class alt_name
+{
+	dns,    ///< DNS name
+	ip,     ///< IP address
+	uri,    ///< URI
+	email,  ///< Email address
+};
+
+
+/**
+ * Alternative name type and corresponding value pair.
+ */
+using alt_name_value_pair = std::tuple<alt_name, std::string>;
+
+
+/**
+ * Wrapper for platform's native public key certificate.
+ *
+ * Platforms use following native implementations:
+ * - MacOS: Security framework with SecCertificateRef
+ * - Linux: OpenSSL with X509
+ * - Windows: WinCrypt with PCCERT_CONTEXT
+ */
+class certificate
+{
+public:
+
+	/// Clock type for certificate time functions
+	using clock_type = std::chrono::system_clock;
+
+	/// Timestamp type for certificate time functions
+	using time_type = clock_type::time_point;
+
+	/// Distinguished name.
+	using name_type = std::deque<oid_value_pair>;
+
+	/// Alternative name.
+	using alt_name_type = std::deque<alt_name_value_pair>;
+
+
+	/**
+	 * Construct new empty certificate reference.
+	 */
+	certificate () noexcept = default;
+
+
+	/**
+	 * Copy certificate reference (increases reference count).
+	 */
+	certificate (const certificate &) noexcept = default;
+
+
+	/**
+	 * Construct new certificate reference from other, resetting other
+	 * instance.
+	 */
+	certificate (certificate &&) noexcept = default;
+
+
+	/**
+	 * Assign \a this from other, increasing native handle reference count.
+	 */
+	certificate &operator= (const certificate &) = default;
+
+
+	/**
+	 * Assign \a this from other, resetting other instance.
+	 */
+	certificate &operator= (certificate &&) = default;
+
+
+	/**
+	 * Swap \a this certificate handle with \a that.
+	 */
+	void swap (certificate &that) noexcept
+	{
+		impl_.swap(that.impl_);
+	}
+
+
+	/**
+	 * Returns true if \a this certificate represents unspecified
+	 * certificate.
+	 */
+	bool is_null () const noexcept
+	{
+		return impl_.is_null();
+	}
+
+
+	/**
+	 * Returns true if \a this is valid certificate.
+	 */
+	explicit operator bool () const noexcept
+	{
+		return !is_null();
+	}
+
+
+	/**
+	 * Returns X509 structure version (1 for v1, 3 for v3) or 0 if
+	 * is_null() is true.
+	 */
+	int version () const noexcept
+	{
+		return impl_ ? version(impl_) : 0;
+	}
+
+
+	/**
+	 * Returns absolute time since when \a this certificate is valid.
+	 */
+	time_type not_before () const noexcept
+	{
+		return impl_ ? not_before(impl_) : time_type{};
+	}
+
+
+	/**
+	 * Returns absolute time until \a this certificate is valid.
+	 */
+	time_type not_after () const noexcept
+	{
+		return impl_ ? not_after(impl_) : time_type{};
+	}
+
+
+	/**
+	 * Return true if \a this is not expired at \a time.
+	 */
+	bool not_expired_at (const time_type &time) const noexcept
+	{
+		return not_before() <= time && time <= not_after();
+	}
+
+
+	/**
+	 * Return true if \a this does not expire at least for \a period at
+	 * \a time (defaults to now).
+	 */
+	template <typename Rep, typename Period>
+	bool not_expired_for (
+		const std::chrono::duration<Rep, Period> &period,
+		const time_type &time = clock_type::now()) const noexcept
+	{
+		return not_before() <= time && time + period <= not_after();
+	}
+
+
+	/**
+	 * Calculate and return hash of DER representation of \a this
+	 * certificate. Returned value is valid only if is_null() returns
+	 * false.
+	 */
+	template <typename Algorithm>
+	typename basic_hash<Algorithm>::result_type digest () const noexcept
+	{
+		using hash_type = basic_hash<Algorithm>;
+		using result_type = typename hash_type::result_type;
+		result_type result{};
+		if (impl_)
+		{
+			digest(result.data(), [](auto *result, const auto &der) noexcept
+			{
+				*reinterpret_cast<result_type *>(result) = hash_type::one_shot(der);
+			});
+		}
+		return result;
+	}
+
+
+	/**
+	 * Store serial number of \a this certificate into \a dest.
+	 *
+	 * - If \a dest is big enough, returns actually stored data range
+	 * - If \a dest is too small or on memory allocation failure returns
+	 *   span with data() == nullptr and size_bytes() == required size.
+	 * - If \a this.is_null() default-constructed span is returned
+	 */
+	std::span<uint8_t> serial_number (std::span<uint8_t> dest) const noexcept
+	{
+		return impl_ ? serial_number(impl_, dest) : std::span<uint8_t>{};
+	}
+
+
+	/**
+	 * Return serial number of \a this certificate.
+	 */
+	template <typename Alloc = std::allocator<uint8_t>,
+		std::enable_if_t<std::is_pointer_v<decltype(Alloc().allocate(0))>, int> = 0
+	>
+	std::vector<uint8_t, Alloc> serial_number (const Alloc &alloc = Alloc()) const
+	{
+		auto span = serial_number(std::span<uint8_t>{});
+		std::vector<uint8_t, Alloc> result(span.size_bytes(), alloc);
+		serial_number(std::span{result});
+		return result;
+	}
+
+
+	/**
+	 * Store authority key identifier of \a this certificate into \a dest.
+	 *
+	 * - If \a this certificate does not have AKI set, returns dest with
+	 *   size() == 0
+	 * - If \a dest is big enough, returns actually stored data range
+	 * - If \a dest is too small returns span with data() == nullptr and
+	 *   size_bytes() == required size.
+	 * - If \a this.is_null() or memory allocation fails
+	 *   default-constructed span is returned
+	 */
+	std::span<uint8_t> authority_key_identifier (std::span<uint8_t> dest) const noexcept
+	{
+		return impl_ ?
+			authority_key_identifier(impl_, dest) :
+			std::span<uint8_t>{}
+		;
+	}
+
+
+	/**
+	 * Return authority key identifier of \a this certificate.
+	 */
+	template <typename Alloc = std::allocator<uint8_t>,
+		std::enable_if_t<std::is_pointer_v<decltype(Alloc().allocate(0))>, int> = 0
+	>
+	std::vector<uint8_t, Alloc> authority_key_identifier (const Alloc &alloc = Alloc()) const
+	{
+		auto span = authority_key_identifier(std::span<uint8_t>{});
+		std::vector<uint8_t, Alloc> result(span.size_bytes(), alloc);
+		authority_key_identifier(std::span{result});
+		return result;
+	}
+
+
+	/**
+	 * Store subject key identifier of \a this certificate into \a dest.
+	 *
+	 * - If \a this certificate does not have SKI set, returns dest with
+	 *   size() == 0
+	 * - If \a dest is big enough, returns actually stored data range
+	 * - If \a dest is too small returns span with data() == nullptr and
+	 *   size_bytes() == required size.
+	 * - If \a this.is_null() or memory allocation fails
+	 *   default-constructed span is returned
+	 */
+	std::span<uint8_t> subject_key_identifier (std::span<uint8_t> dest) const noexcept
+	{
+		return impl_ ?
+			subject_key_identifier(impl_, dest) :
+			std::span<uint8_t>{}
+		;
+	}
+
+
+	/**
+	 * Return subject key identifier of \a this certificate.
+	 */
+	template <typename Alloc = std::allocator<uint8_t>,
+		std::enable_if_t<std::is_pointer_v<decltype(Alloc().allocate(0))>, int> = 0
+	>
+	std::vector<uint8_t, Alloc> subject_key_identifier (const Alloc &alloc = Alloc()) const
+	{
+		auto span = subject_key_identifier(std::span<uint8_t>{});
+		std::vector<uint8_t, Alloc> result(span.size_bytes(), alloc);
+		subject_key_identifier(std::span{result});
+		return result;
+	}
+
+
+	/**
+	 * Returns true if \a this certificate is issued by \a that
+	 * certificate.
+	 */
+	bool issued_by (const certificate &that) const noexcept
+	{
+		return impl_ && that.impl_ ?
+			issued_by(impl_, that.impl_) :
+			false
+		;
+	}
+
+
+	/**
+	 * Returns true if \a this certificate is self-signed.
+	 */
+	bool is_self_signed () const noexcept
+	{
+		return issued_by(*this);
+	}
+
+
+	/**
+	 * Returns complete issuer distinguished name. On null certificate
+	 * returns default-constructed value.
+	 */
+	name_type issuer () const
+	{
+		return impl_ ? issuer(impl_) : name_type{};
+	}
+
+
+	/**
+	 * Returns issuer distinguished name for \a oid. On null certificate
+	 * or if there is no such \a oid returns default-constructed value.
+	 */
+	name_type issuer (const std::string_view &oid) const
+	{
+		return impl_ ? issuer(impl_, oid) : name_type{};
+	}
+
+
+	/**
+	 * Returns complete certificate distinguished name. On null
+	 * certificate returns default-constructed value.
+	 */
+	name_type subject () const
+	{
+		return impl_ ? subject(impl_) : name_type{};
+	}
+
+
+	/**
+	 * Returns certificate distinguished name for \a oid. On null certificate
+	 * or if there is no such \a oid returns default-constructed value.
+	 */
+	name_type subject (const std::string_view &oid) const
+	{
+		return impl_ ? subject(impl_, oid) : name_type{};
+	}
+
+
+	/**
+	 * Return issuer alternative name as list of pairs of name type and
+	 * corresponding textual values. On null certificate or on error
+	 * returns default-constructed value.
+	 */
+	alt_name_type issuer_alt_name () const
+	{
+		return impl_ ? issuer_alt_name(impl_) : alt_name_type{};
+	}
+
+
+	/**
+	 * Return subject alternative name as list of pairs of name type and
+	 * corresponding textual values. On null certificate or on error
+	 * returns default-constructed value.
+	 */
+	alt_name_type subject_alt_name () const
+	{
+		return impl_ ? subject_alt_name(impl_) : alt_name_type{};
+	}
+
+
+	/**
+	 * Return true if \a this represents same certificate as \a that.
+	 */
+	bool operator== (const certificate &that) const noexcept;
+
+
+	/**
+	 * Return true if \a this represents different certificate as \a that.
+	 */
+	bool operator!= (const certificate &that) const noexcept
+	{
+		return !operator==(that);
+	}
+
+
+	/**
+	 * Load and construct new certificate from DER encoded \a span. On
+	 * failure return empty certificate and set \a error.
+	 */
+	template <typename T, size_t Extent>
+	static certificate from_der (
+		const std::span<T, Extent> &span,
+		std::error_code &error) noexcept
+	{
+		if (auto cert = load_der(std::as_bytes(span)))
+		{
+			error.clear();
+			return {std::move(cert)};
+		}
+		error = std::make_error_code(std::errc::invalid_argument);
+		return {};
+	}
+
+
+	/**
+	 * Load and construct new certificate from DER encoded \a span. On
+	 * failure throw std::system_error.
+	 */
+	template <typename T, size_t Extent>
+	static certificate from_der (const std::span<T, Extent> &span)
+	{
+		return from_der(span, throw_on_error("certificate::from_der"));
+	}
+
+
+	/**
+	 * Load and construct new certificate from \a pem (if there are
+	 * multiple, only first is extracted). On failure return empty
+	 * certificate and set \a error.
+	 */
+	static certificate from_pem (
+		const std::string_view &pem,
+		std::error_code &error
+	) noexcept;
+
+
+	/**
+	 * Load and construct new certificate from \a pem (if there are
+	 * multiple, only first is extracted). On failure throw
+	 * std::system_error.
+	 */
+	static certificate from_pem (const std::string_view &pem)
+	{
+		return from_pem(pem, throw_on_error("certificate::from_pem"));
+	}
+
+
+private:
+
+	__bits::x509 impl_{};
+
+	certificate (__bits::x509 &&that) noexcept
+		: impl_{std::forward<__bits::x509>(that)}
+	{ }
+
+	static __bits::x509 load_der (
+		const std::span<const std::byte> &der
+	) noexcept;
+
+	static int version (const __bits::x509 &x509) noexcept;
+	static time_type not_before (const __bits::x509 &x509) noexcept;
+	static time_type not_after (const __bits::x509 &x509) noexcept;
+
+	static std::span<uint8_t> serial_number (
+		const __bits::x509 &x509,
+		std::span<uint8_t> dest
+	) noexcept;
+
+	static std::span<uint8_t> authority_key_identifier (
+		const __bits::x509 &x509,
+		std::span<uint8_t> dest
+	) noexcept;
+
+	static std::span<uint8_t> subject_key_identifier (
+		const __bits::x509 &x509,
+		std::span<uint8_t> dest
+	) noexcept;
+
+	static bool issued_by (
+		const __bits::x509 &a,
+		const __bits::x509 &b
+	) noexcept;
+
+	static name_type issuer (const __bits::x509 &x509);
+	static name_type issuer (const __bits::x509 &x509, const std::string_view &oid);
+	static name_type subject (const __bits::x509 &x509);
+	static name_type subject (const __bits::x509 &x509, const std::string_view &oid);
+
+	static alt_name_type issuer_alt_name (const __bits::x509 &x509);
+	static alt_name_type subject_alt_name (const __bits::x509 &x509);
+
+	using hash_fn = void(*)(std::byte *, const std::span<const std::byte> &) noexcept;
+	void digest (std::byte *result, hash_fn h) const noexcept;
+};
+
+
+} // namespace crypto
+
+
+__pal_end

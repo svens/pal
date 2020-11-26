@@ -1,0 +1,131 @@
+#pragma once // -*- C++ -*-
+
+/**
+ * \file pal/scoped_alloc
+ * Convenience class providing alloca(3) like functionality.
+ */
+
+#include <pal/__bits/lib>
+#include <new>
+#include <type_traits>
+
+
+__pal_begin
+
+
+/**
+ * Scoped allocation: up to \a StackSize elements of \a T are allocated from
+ * stack. If actually requested size is bigger (specified during
+ * construction), memory is allocated from heap instead.
+ *
+ * If memory is taken from heap, it is automatically freed during destruction.
+ */
+template <typename T, size_t StackSize>
+class scoped_alloc
+{
+public:
+
+	static_assert(StackSize > 0);
+
+	scoped_alloc () = delete;
+	scoped_alloc (const scoped_alloc &) = delete;
+	scoped_alloc &operator= (const scoped_alloc &) = delete;
+	scoped_alloc (scoped_alloc &&) = delete;
+	scoped_alloc &operator= (scoped_alloc &&) = delete;
+
+
+	/**
+	 * Ensure memory is allocated for \a size elements of \a T.
+	 * On allocation failure, get() will return nullptr.
+	 */
+	scoped_alloc (std::nothrow_t, size_t size) noexcept(std::is_nothrow_default_constructible_v<T>)
+	{
+		if (size > StackSize)
+		{
+			ptr_ = new(std::nothrow) T[size];
+		}
+	}
+
+
+	/**
+	 * Ensure memory is allocated for \a size elements of \a T.
+	 * On allocation failure, throws std::bad_alloc.
+	 */
+	scoped_alloc (size_t size)
+	{
+		if (size > StackSize)
+		{
+			ptr_ = new T[size];
+		}
+	}
+
+
+	/**
+	 * Deallocate memory if it was allocated from heap during
+	 * construction. Otherwise do nothing.
+	 */
+	~scoped_alloc () noexcept(std::is_nothrow_destructible_v<T>)
+	{
+		if (ptr_ != &stack_[0])
+		{
+			delete ptr_;
+		}
+	}
+
+
+	/**
+	 * Returns pointer to allocate memory (either from stack or heap).
+	 * If construction did not succeed, returns nullptr.
+	 */
+	T *get () noexcept
+	{
+		return ptr_;
+	}
+
+
+	/**
+	 * Returns const pointer to allocate memory (either from stack or
+	 * heap). If construction did not succeed, returns nullptr.
+	 */
+	const T *get () const noexcept
+	{
+		return ptr_;
+	}
+
+
+	/**
+	 * Returns true if allocation has succeeded.
+	 */
+	explicit operator bool () const noexcept
+	{
+		return ptr_ != nullptr;
+	}
+
+
+	/**
+	 * Returns pointer to stack regardless whether allocation is stack- or
+	 * heap-based.
+	 */
+	T *stack () noexcept
+	{
+		return &stack_[0];
+	}
+
+
+	/**
+	 * Returns const pointer to stack regardless whether allocation is
+	 * stack- or heap-based.
+	 */
+	const T *stack () const noexcept
+	{
+		return &stack_[0];
+	}
+
+
+private:
+
+	T stack_[StackSize], *ptr_ = &stack_[0];
+};
+
+
+__pal_end
