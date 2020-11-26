@@ -1,0 +1,137 @@
+#pragma once // -*- C++ -*-
+
+/**
+ * \file pal/crypto/key
+ * Asymmetrical cryptography public and private keys.
+ *
+ * \see https://en.wikipedia.org/wiki/Public-key_cryptography
+ */
+
+#include <pal/__bits/lib>
+#include <pal/crypto/__bits/x509>
+#include <utility>
+
+
+__pal_begin
+
+
+namespace crypto {
+
+
+/// Key algorithms
+enum class key_algorithm
+{
+	opaque, ///< Unspecified algorithm type
+	rsa,    ///< RSA algorithm
+};
+
+
+/**
+ * Common base class for public and private keys.
+ */
+template <typename Key>
+class basic_key
+{
+public:
+
+	basic_key () = default;
+
+	basic_key (const basic_key &) = delete;
+	basic_key &operator= (const basic_key &) = delete;
+
+	/**
+	 * Construct new key from \a that, zeroing it after acquiring internal
+	 * handle.
+	 */
+	basic_key (basic_key &&that) noexcept = default;
+
+	/**
+	 * Acquire key from \a that.
+	 */
+	basic_key &operator= (basic_key &&that) noexcept = default;
+
+
+	/**
+	 * Swap \a this with \a that.
+	 */
+	void swap (basic_key &that) noexcept
+	{
+		std::swap(key_, that.key_);
+		std::swap(algorithm_, that.algorithm_);
+		std::swap(size_bits_, that.size_bits_);
+	}
+
+
+	/**
+	 * Return true if \a this is not valid key.
+	 */
+	bool is_null () const noexcept
+	{
+		return key_.is_null();
+	}
+
+
+	/**
+	 * Return true if \a this is valid key.
+	 */
+	explicit operator bool () const noexcept
+	{
+		return !is_null();
+	}
+
+
+	/**
+	 * Return key algorithm. Result is undefined if key is not set.
+	 */
+	key_algorithm algorithm () const noexcept
+	{
+		return algorithm_;
+	}
+
+
+	/**
+	 * Return block length associated with key. Result is undefined if key
+	 * is not set.
+	 */
+	size_t size_bits () const noexcept
+	{
+		return size_bits_;
+	}
+
+
+protected:
+
+	Key key_{};
+	key_algorithm algorithm_ = key_algorithm::opaque;
+	size_t size_bits_ = 0;
+
+	basic_key (Key &&key) noexcept
+		: key_{std::forward<Key>(key)}
+	{ }
+};
+
+
+/**
+ * Public key portion of asymmetrical key pair.
+ */
+class public_key: public basic_key<__bits::public_key>
+{
+public:
+
+	/**
+	 * Construct null key.
+	 */
+	public_key () = default;
+
+
+private:
+
+	public_key (__bits::public_key &&key) noexcept;
+	friend class certificate;
+};
+
+
+} // namespace crypto
+
+
+__pal_end

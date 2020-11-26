@@ -522,6 +522,12 @@ certificate::alt_name_type certificate::subject_alt_name (const __bits::x509 &x5
 }
 
 
+__bits::public_key certificate::public_key (const __bits::x509 &x509) noexcept
+{
+	return ::X509_get_pubkey(x509.ref);
+}
+
+
 #elif __pal_os_macos //{{{1
 
 
@@ -908,6 +914,12 @@ certificate::alt_name_type certificate::issuer_alt_name (const __bits::x509 &x50
 certificate::alt_name_type certificate::subject_alt_name (const __bits::x509 &x509)
 {
 	return make_alt_name(x509.ref, ::kSecOIDSubjectAltName);
+}
+
+
+__bits::public_key certificate::public_key (const __bits::x509 &x509) noexcept
+{
+	return ::SecCertificateCopyKey(x509.ref);
 }
 
 
@@ -1335,6 +1347,20 @@ certificate::alt_name_type certificate::issuer_alt_name (const __bits::x509 &x50
 certificate::alt_name_type certificate::subject_alt_name (const __bits::x509 &x509)
 {
 	return make_alt_name(x509.ref, szOID_SUBJECT_ALT_NAME2);
+}
+
+
+__bits::public_key certificate::public_key (const __bits::x509 &x509) noexcept
+{
+	__bits::public_key key;
+	::CryptImportPublicKeyInfoEx2(
+		X509_ASN_ENCODING,
+		&x509.ref->pCertInfo->SubjectPublicKeyInfo,
+		0,
+		nullptr,
+		&key.ref
+	);
+	return key;
 }
 
 

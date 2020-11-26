@@ -6,6 +6,8 @@ list(APPEND pal_sources
 	pal/crypto/certificate.cpp
 	pal/crypto/hash
 	pal/crypto/hmac
+	pal/crypto/key
+	pal/crypto/key.cpp
 	pal/crypto/oid
 	pal/crypto/random
 	pal/crypto/random.cpp
@@ -16,6 +18,7 @@ list(APPEND pal_unittests_sources
 	pal/crypto/certificate.test.cpp
 	pal/crypto/hash.test.cpp
 	pal/crypto/hmac.test.cpp
+	pal/crypto/key.test.cpp
 	pal/crypto/oid.test.cpp
 	pal/crypto/random.test.cpp
 )

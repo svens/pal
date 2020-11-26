@@ -10,6 +10,7 @@
 #include <pal/__bits/lib>
 #include <pal/crypto/__bits/x509>
 #include <pal/crypto/hash>
+#include <pal/crypto/key>
 #include <pal/error>
 #include <chrono>
 #include <deque>
@@ -405,6 +406,18 @@ public:
 
 
 	/**
+	 * Return certificate's public key.
+	 */
+	crypto::public_key public_key () const noexcept
+	{
+		return impl_ ?
+			crypto::public_key{public_key(impl_)} :
+			crypto::public_key{}
+		;
+	}
+
+
+	/**
 	 * Load and construct new certificate from DER encoded \a span. On
 	 * failure return empty certificate and set \a error.
 	 */
@@ -499,6 +512,8 @@ private:
 
 	static alt_name_type issuer_alt_name (const __bits::x509 &x509);
 	static alt_name_type subject_alt_name (const __bits::x509 &x509);
+
+	static __bits::public_key public_key (const __bits::x509 &x509) noexcept;
 
 	using hash_fn = void(*)(std::byte *, const std::span<const std::byte> &) noexcept;
 	void digest (std::byte *result, hash_fn h) const noexcept;
