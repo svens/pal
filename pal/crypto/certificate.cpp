@@ -6,9 +6,12 @@
 
 #if __pal_os_linux //{{{1
 	#include <openssl/asn1.h>
+	#include <openssl/pkcs12.h>
 	#include <openssl/x509v3.h>
 #elif __pal_os_macos //{{{1
 	#include <Security/SecCertificateOIDs.h>
+	#include <Security/SecIdentity.h>
+	#include <Security/SecImportExport.h>
 #endif //}}}1
 
 
@@ -522,6 +525,60 @@ certificate::alt_name_type certificate::subject_alt_name (const __bits::x509 &x5
 }
 
 
+__bits::public_key certificate::public_key (const __bits::x509 &x509) noexcept
+{
+	return ::X509_get_pubkey(x509.ref);
+}
+
+
+namespace {
+
+
+auto decode_pkcs12 (const std::span<const std::byte> &blob) noexcept
+{
+	auto data = reinterpret_cast<const uint8_t *>(blob.data());
+	return unique_ref<::PKCS12 *, ::PKCS12_free>
+	{
+		::d2i_PKCS12(nullptr, &data, blob.size_bytes())
+	};
+}
+
+
+} // namespace
+
+
+std::deque<certificate> certificate::load_pkcs12 (
+	const std::span<const std::byte> &blob,
+	const std::string_view &passphrase,
+	private_key *key)
+{
+	std::deque<certificate> result;
+	if (auto p12 = decode_pkcs12(blob))
+	{
+		scoped_alloc<char, 1024> pwd{passphrase.size() + 1};
+		passphrase.copy(pwd.get(), passphrase.size());
+		pwd.get()[passphrase.size()] = '\0';
+
+		__bits::private_key pkey;
+		STACK_OF(X509) *chain = nullptr;
+		if (::PKCS12_parse(p12.ref, pwd.get(), &pkey.ref, nullptr, &chain))
+		{
+			while (auto x509 = ::sk_X509_pop(chain))
+			{
+				result.push_back(__bits::x509{x509});
+			}
+			sk_X509_free(chain);
+		}
+
+		if (key)
+		{
+			*key = std::move(pkey);
+		}
+	}
+	return result;
+}
+
+
 #elif __pal_os_macos //{{{1
 
 
@@ -908,6 +965,97 @@ certificate::alt_name_type certificate::issuer_alt_name (const __bits::x509 &x50
 certificate::alt_name_type certificate::subject_alt_name (const __bits::x509 &x509)
 {
 	return make_alt_name(x509.ref, ::kSecOIDSubjectAltName);
+}
+
+
+__bits::public_key certificate::public_key (const __bits::x509 &x509) noexcept
+{
+	return ::SecCertificateCopyKey(x509.ref);
+}
+
+
+namespace {
+
+
+unique_ref<::CFDictionaryRef> load_pkcs12_options (const std::string_view &passphrase) noexcept
+{
+	// kSecImportExportPassphrase
+	auto import_passphrase = ::CFStringCreateWithBytesNoCopy(
+		nullptr,
+		reinterpret_cast<const UInt8 *>(passphrase.data()),
+		passphrase.size(),
+		kCFStringEncodingUTF8,
+		false,
+		kCFAllocatorNull
+	);
+
+	// kSecImportExportAccess
+	SecAccessRef access{};
+	::SecAccessCreate(CFSTR("Imported by SAL"), nullptr, &access);
+
+	const void
+		*keys[] =
+		{
+			kSecImportExportPassphrase,
+			kSecImportExportAccess,
+		},
+		*values[] =
+		{
+			import_passphrase,
+			access,
+		};
+
+	return ::CFDictionaryCreate(nullptr, keys, values, 2, nullptr, nullptr);
+}
+
+
+} // namespace
+
+
+std::deque<certificate> certificate::load_pkcs12 (
+	const std::span<const std::byte> &blob,
+	const std::string_view &passphrase,
+	private_key *key)
+{
+	auto options = load_pkcs12_options(passphrase);
+	auto pkcs12 = to_data_ref(blob);
+
+	unique_ref<::CFArrayRef> items = ::CFArrayCreate(nullptr, 0, 0, nullptr);
+	auto status = ::SecPKCS12Import(pkcs12.ref, options.ref, &items.ref);
+
+	std::deque<certificate> result;
+	if (status == ::errSecSuccess && ::CFArrayGetCount(items.ref) > 0)
+	{
+		auto data = (::CFDictionaryRef)::CFArrayGetValueAtIndex(items.ref, 0);
+		auto chain = (::CFArrayRef)::CFDictionaryGetValue(data, kSecImportItemCertChain);
+
+		auto chain_length = ::CFArrayGetCount(chain);
+		for (auto i = 0U;  i != chain_length;  ++i)
+		{
+			result.push_back(
+				__bits::x509
+				{
+					(::SecCertificateRef)::CFRetain(
+						::CFArrayGetValueAtIndex(chain, i)
+					)
+				}
+			);
+		}
+
+		if (key)
+		{
+			__bits::private_key pkey;
+			::SecIdentityCopyPrivateKey(
+				(::SecIdentityRef)::CFDictionaryGetValue(
+					data,
+					::kSecImportItemIdentity
+				),
+				&pkey.ref
+			);
+			*key = std::move(pkey);
+		}
+	}
+	return result;
 }
 
 
@@ -1335,6 +1483,111 @@ certificate::alt_name_type certificate::issuer_alt_name (const __bits::x509 &x50
 certificate::alt_name_type certificate::subject_alt_name (const __bits::x509 &x509)
 {
 	return make_alt_name(x509.ref, szOID_SUBJECT_ALT_NAME2);
+}
+
+
+__bits::public_key certificate::public_key (const __bits::x509 &x509) noexcept
+{
+	__bits::public_key key;
+	::CryptImportPublicKeyInfoEx2(
+		X509_ASN_ENCODING,
+		&x509.ref->pCertInfo->SubjectPublicKeyInfo,
+		0,
+		nullptr,
+		&key.ref
+	);
+	return key;
+}
+
+
+/*
+__bits::private_key certificate::private_key (const __bits::x509 &x509) noexcept
+{
+}
+*/
+
+
+namespace {
+
+
+auto open_store (
+	const std::span<const std::byte> &blob,
+	const std::string_view &passphrase) noexcept
+{
+	using store_ref = unique_ref<
+		HCERTSTORE,
+		[](HCERTSTORE s)
+		{
+			::CertCloseStore(s, 0);
+		}
+	>;
+
+	CRYPT_DATA_BLOB pfx;
+	pfx.pbData = reinterpret_cast<uint8_t *>(const_cast<std::byte *>(blob.data()));
+	pfx.cbData = static_cast<DWORD>(blob.size_bytes());
+
+	auto pwd_length = ::MultiByteToWideChar(
+		CP_UTF8,
+		0,
+		passphrase.data(),
+		static_cast<int>(passphrase.size()),
+		nullptr,
+		0
+	);
+
+	scoped_alloc<wchar_t, 1024> pwd_buf(pwd_length);
+	::MultiByteToWideChar(
+		CP_UTF8,
+		0,
+		passphrase.data(),
+		static_cast<int>(passphrase.size()),
+		pwd_buf.get(),
+		pwd_length
+	);
+	pwd_buf.get()[pwd_length] = L'\0';
+
+	store_ref result = ::PFXImportCertStore(&pfx, pwd_buf.get(), 0);
+	::SecureZeroMemory(pwd_buf.get(), pwd_length);
+
+	return result;
+}
+
+
+} // namespace
+
+
+std::deque<certificate> certificate::load_pkcs12 (
+	const std::span<const std::byte> &blob,
+	const std::string_view &passphrase,
+	private_key *key)
+{
+	std::deque<certificate> result;
+	if (auto store = open_store(blob, passphrase))
+	{
+		PCCERT_CONTEXT it = nullptr;
+		while ((it = ::CertEnumCertificatesInStore(store.ref, it)) != nullptr)
+		{
+			result.push_back(
+				__bits::x509{::CertDuplicateCertificateContext(it)}
+			);
+		}
+		std::reverse(result.begin(), result.end());
+
+		if (key && !result.empty())
+		{
+			__bits::private_key pkey;
+			::CryptAcquireCertificatePrivateKey(
+				result.front().impl_.ref,
+				CRYPT_ACQUIRE_ONLY_NCRYPT_KEY_FLAG,
+				nullptr,
+				&pkey.ref,
+				nullptr,
+				nullptr
+			);
+			*key = std::move(pkey);
+		}
+	}
+	return result;
 }
 
 

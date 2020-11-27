@@ -27,18 +27,27 @@ inline std::string to_der (std::string_view pem)
 	static constexpr std::string_view
 		prefix = "-----BEGIN CERTIFICATE-----\n",
 		suffix = "\n-----END CERTIFICATE-----\n";
-	pem.remove_prefix(prefix.size());
-	pem.remove_suffix(suffix.size());
+
+	if (pem.starts_with(prefix))
+	{
+		pem.remove_prefix(prefix.size());
+	}
+
+	if (pem.ends_with(suffix))
+	{
+		pem.remove_suffix(suffix.size());
+	}
 
 	std::string base64(pem);
-	auto last = std::remove_if(base64.begin(), base64.end(),
+	auto it = std::remove_if(base64.begin(), base64.end(),
 		[](auto ch)
 		{
 			return std::isspace(ch);
 		}
 	);
+	auto last = base64.data() + static_cast<size_t>(it - base64.begin());
 
-	auto [max_size, ec] = pal::from_base64_size(base64.data(), &*last);
+	auto [max_size, ec] = pal::from_base64_size(base64.data(), last);
 	REQUIRE(ec == std::errc{});
 
 	std::string result(max_size, '\0');

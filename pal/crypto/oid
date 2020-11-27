@@ -1,7 +1,7 @@
 #pragma once // -*- C++ -*-
 
 /**
- * \file pal/crypto/oid.hpp
+ * \file pal/crypto/oid
  * Object identifiers for X509 certificates
  */
 
