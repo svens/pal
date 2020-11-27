@@ -826,13 +826,29 @@ TEST_CASE("crypto/certificate")
 		CHECK(key.algorithm() == pal::crypto::key_algorithm::rsa);
 	}
 
+	SECTION("import_pkcs12: empty password")
+	{
+		auto pkcs12 = pal_test::to_der(test_cert::pkcs12);
+		auto chain = certificate::import_pkcs12(std::span{pkcs12}, "");
+		CHECK(chain.empty());
+	}
+
+	SECTION("import_pkcs12: no password")
+	{
+		if constexpr (!pal::is_macos_build)
+		{
+			auto pkcs12 = pal_test::to_der(test_cert::pkcs12_no_passphrase);
+			auto chain = certificate::import_pkcs12(std::span{pkcs12}, "");
+			CHECK(chain.size() == 4);
+		}
+		// else MacOS refuses to load password-less PKCS12
+	}
+
 	SECTION("import_pkcs12: invalid password")
 	{
-		pal::crypto::private_key key;
 		auto pkcs12 = pal_test::to_der(test_cert::pkcs12);
 		auto chain = certificate::import_pkcs12(std::span{pkcs12}, "XXX");
 		CHECK(chain.empty());
-		CHECK(key.is_null());
 	}
 
 	SECTION("import_pkcs12: invalid PKCS12")
