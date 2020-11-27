@@ -469,6 +469,29 @@ public:
 	}
 
 
+	/**
+	 * Import and return all certificates from PKCS12 formatted \a blob.
+	 * Private key corresponding to leaf certificate is extracted using \a
+	 * passphrase and assigned to \a key if not nullptr.
+	 *
+	 * Returned certificates collection is ordered by issuer i.e. start with
+	 * leaf and end with root (self signed issuer). If there are unrelated
+	 * certificates imported, their order is not defined.
+	 *
+	 * On failure empty collection is returned.
+	 *
+	 * \note Upon returning, clear \a passphrase from memory.
+	 */
+	template <typename T, size_t Extent>
+	static std::deque<certificate> import_pkcs12 (
+		const std::span<T, Extent> &blob,
+		const std::string_view &passphrase,
+		private_key *key = nullptr)
+	{
+		return load_pkcs12(std::as_bytes(blob), passphrase, key);
+	}
+
+
 private:
 
 	__bits::x509 impl_{};
@@ -480,6 +503,12 @@ private:
 	static __bits::x509 load_der (
 		const std::span<const std::byte> &der
 	) noexcept;
+
+	static std::deque<certificate> load_pkcs12 (
+		const std::span<const std::byte> &blob,
+		const std::string_view &passphrase,
+		private_key *key
+	);
 
 	static int version (const __bits::x509 &x509) noexcept;
 	static time_type not_before (const __bits::x509 &x509) noexcept;

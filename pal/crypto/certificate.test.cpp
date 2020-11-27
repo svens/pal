@@ -786,6 +786,61 @@ TEST_CASE("crypto/certificate")
 		auto cert = !pem.empty() ? certificate::from_pem(pem) : null;
 		CHECK(cert.subject_alt_name() == expected);
 	}
+
+	SECTION("import_pkcs12")
+	{
+		auto pkcs12 = pal_test::to_der(test_cert::pkcs12);
+		auto chain = certificate::import_pkcs12(std::span{pkcs12}, "TestPassword");
+		REQUIRE(chain.size() == 4);
+
+		// server
+		CHECK(chain[0].issued_by(chain[2]));
+		auto [oid, value] = chain[0].subject(oid::common_name)[0];
+		CHECK(value == "pal.alt.ee");
+
+		// client
+		CHECK(chain[1].issued_by(chain[2]));
+		std::tie(oid, value) = chain[1].subject(oid::common_name)[0];
+		CHECK(value == "pal.alt.ee");
+
+		// intermediate
+		CHECK(chain[2].issued_by(chain[3]));
+		std::tie(oid, value) = chain[2].subject(oid::common_name)[0];
+		CHECK(value == "PAL Intermediate CA");
+
+		// root
+		CHECK(chain[3].is_self_signed());
+		std::tie(oid, value) = chain[3].subject(oid::common_name)[0];
+		CHECK(value == "PAL Root CA");
+	}
+
+	SECTION("import_pkcs12: private_key")
+	{
+		pal::crypto::private_key key;
+		CHECK(key.is_null());
+
+		auto pkcs12 = pal_test::to_der(test_cert::pkcs12);
+		certificate::import_pkcs12(std::span{pkcs12}, "TestPassword", &key);
+		REQUIRE_FALSE(key.is_null());
+		CHECK(key.size_bits() == 2048);
+		CHECK(key.algorithm() == pal::crypto::key_algorithm::rsa);
+	}
+
+	SECTION("import_pkcs12: invalid password")
+	{
+		pal::crypto::private_key key;
+		auto pkcs12 = pal_test::to_der(test_cert::pkcs12);
+		auto chain = certificate::import_pkcs12(std::span{pkcs12}, "XXX");
+		CHECK(chain.empty());
+		CHECK(key.is_null());
+	}
+
+	SECTION("import_pkcs12: invalid PKCS12")
+	{
+		char buf[] = "XXX";
+		auto chain = certificate::import_pkcs12(std::span{buf}, "XXX");
+		CHECK(chain.empty());
+	}
 }
 
 

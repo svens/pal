@@ -34,23 +34,6 @@ class basic_key
 {
 public:
 
-	basic_key () = default;
-
-	basic_key (const basic_key &) = delete;
-	basic_key &operator= (const basic_key &) = delete;
-
-	/**
-	 * Construct new key from \a that, zeroing it after acquiring internal
-	 * handle.
-	 */
-	basic_key (basic_key &&that) noexcept = default;
-
-	/**
-	 * Acquire key from \a that.
-	 */
-	basic_key &operator= (basic_key &&that) noexcept = default;
-
-
 	/**
 	 * Swap \a this with \a that.
 	 */
@@ -108,6 +91,14 @@ protected:
 	basic_key (Key &&key) noexcept
 		: key_{std::forward<Key>(key)}
 	{ }
+
+	basic_key () = default;
+
+	basic_key (basic_key &&that) noexcept = default;
+	basic_key &operator= (basic_key &&that) noexcept = default;
+
+	basic_key (const basic_key &) = delete;
+	basic_key &operator= (const basic_key &) = delete;
 };
 
 
@@ -127,6 +118,26 @@ public:
 private:
 
 	public_key (__bits::public_key &&key) noexcept;
+	friend class certificate;
+};
+
+
+/**
+ * Private key portion of asymmetrical key pair.
+ */
+class private_key: public basic_key<__bits::private_key>
+{
+public:
+
+	/**
+	 * Construct null key.
+	 */
+	private_key () = default;
+
+
+private:
+
+	private_key (__bits::private_key &&key) noexcept;
 	friend class certificate;
 };
 

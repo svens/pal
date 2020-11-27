@@ -62,6 +62,33 @@ TEST_CASE("crypto/key")
 			CHECK(key.size_bits() == size_bits);
 		}
 	}
+
+	SECTION("private_key")
+	{
+		// null
+		private_key null;
+		CHECK(null.is_null());
+		CHECK(!null);
+		CHECK(null.size_bits() == 0);
+		CHECK(null.algorithm() == key_algorithm::opaque);
+
+		// properties
+		private_key key;
+		auto pkcs12 = pal_test::to_der(test_cert::pkcs12);
+		certificate::import_pkcs12(std::span{pkcs12}, "TestPassword", &key);
+		REQUIRE_FALSE(key.is_null());
+		CHECK(key.algorithm() == key_algorithm::rsa);
+		CHECK(key.size_bits() == 2048);
+
+		// swap
+		key.swap(null);
+		CHECK_FALSE(null.is_null());
+		CHECK(null.size_bits() == 2048);
+		CHECK(null.algorithm() == key_algorithm::rsa);
+		CHECK(key.is_null());
+		CHECK(key.size_bits() == 0);
+		CHECK(key.algorithm() == key_algorithm::opaque);
+	}
 }
 
 

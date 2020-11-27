@@ -119,6 +119,46 @@ void query_properties (const __bits::public_key &key,
 }
 
 
+void query_properties (const __bits::private_key &key,
+	key_algorithm &algorithm,
+	size_t &size_bits) noexcept
+{
+	// size_bits
+	{
+		DWORD buf = 0;
+		ULONG buf_size;
+		::NCryptGetProperty(
+			key.ref,
+			NCRYPT_BLOCK_LENGTH_PROPERTY,
+			reinterpret_cast<PUCHAR>(&buf),
+			sizeof(buf),
+			&buf_size,
+			0
+		);
+		size_bits = 8 * buf;
+	}
+
+	// algorithm
+	{
+		wchar_t buf[256];
+		ULONG buf_size;
+		::NCryptGetProperty(
+			key.ref,
+			NCRYPT_ALGORITHM_GROUP_PROPERTY,
+			reinterpret_cast<PUCHAR>(buf),
+			sizeof(buf),
+			&buf_size,
+			0
+		);
+		reinterpret_cast<char *>(buf)[buf_size] = '\0';
+		if (wcscmp(buf, NCRYPT_RSA_ALGORITHM_GROUP) == 0)
+		{
+			algorithm = key_algorithm::rsa;
+		}
+	}
+}
+
+
 } // namespace
 
 
@@ -128,7 +168,20 @@ void query_properties (const __bits::public_key &key,
 public_key::public_key (__bits::public_key &&key) noexcept
 	: basic_key(std::forward<__bits::public_key>(key))
 {
-	query_properties(key_, algorithm_, size_bits_);
+	if (key_)
+	{
+		query_properties(key_, algorithm_, size_bits_);
+	}
+}
+
+
+private_key::private_key (__bits::private_key &&key) noexcept
+	: basic_key(std::forward<__bits::private_key>(key))
+{
+	if (key_)
+	{
+		query_properties(key_, algorithm_, size_bits_);
+	}
 }
 
 
