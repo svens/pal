@@ -6,11 +6,35 @@
 namespace {
 
 
+using namespace pal::crypto;
+namespace test_cert = pal_test::cert;
+
+
+std::pair<public_key, private_key> import_keys ()
+{
+	private_key priv;
+	auto pkcs12 = pal_test::to_der(test_cert::pkcs12);
+	auto chain = certificate::import_pkcs12(
+		std::span{pkcs12},
+		"TestPassword",
+		&priv
+	);
+	REQUIRE(!chain.empty());
+	REQUIRE(chain.front().public_key());
+	REQUIRE(priv);
+	return std::make_pair(chain.front().public_key(), std::move(priv));
+}
+
+
+auto &keys ()
+{
+	static auto keys_ = import_keys();
+	return keys_;
+}
+
+
 TEST_CASE("crypto/key")
 {
-	using namespace pal::crypto;
-	namespace test_cert = pal_test::cert;
-
 	SECTION("public_key")
 	{
 		SECTION("default ctor")
@@ -73,9 +97,7 @@ TEST_CASE("crypto/key")
 		CHECK(null.algorithm() == key_algorithm::opaque);
 
 		// properties
-		private_key key;
-		auto pkcs12 = pal_test::to_der(test_cert::pkcs12);
-		certificate::import_pkcs12(std::span{pkcs12}, "TestPassword", &key);
+		auto [_, key] = import_keys();
 		REQUIRE_FALSE(key.is_null());
 		CHECK(key.algorithm() == key_algorithm::rsa);
 		CHECK(key.size_bits() == 2048);
@@ -88,6 +110,81 @@ TEST_CASE("crypto/key")
 		CHECK(key.is_null());
 		CHECK(key.size_bits() == 0);
 		CHECK(key.algorithm() == key_algorithm::opaque);
+	}
+
+	SECTION("private_key.sign: invalid digest algorithm")
+	{
+		auto &[_, priv] = keys();
+		char sig_buf[1024];
+		auto sig = priv.sign<md5>(pal_test::case_name(), sig_buf);
+		CHECK(sig.data() == nullptr);
+		CHECK(sig.size() == 0);
+	}
+
+	SECTION("public_key.verify_signature: invalid digest algorithm")
+	{
+		auto &[pub, priv] = keys();
+		char sig_buf[1024];
+		auto sig = priv.sign<sha1>(pal_test::case_name(), sig_buf);
+		CHECK_FALSE(pub.verify_signature<md5>(pal_test::case_name(), sig));
+	}
+}
+
+
+TEMPLATE_TEST_CASE("crypto/key", "", sha1, sha256, sha384, sha512)
+{
+	auto &[pub, priv] = keys();
+	char sig_buf[1024];
+
+	SECTION("sign / verify_signature")
+	{
+		auto sig = priv.sign<TestType>(pal_test::case_name(), sig_buf);
+		CHECK(sig.data() != nullptr);
+		CHECK(sig.size() == 256);
+		CHECK(pub.verify_signature<TestType>(pal_test::case_name(), sig));
+	}
+
+	SECTION("sign: null private key")
+	{
+		private_key null;
+		auto sig = null.sign<TestType>(pal_test::case_name(), sig_buf);
+		CHECK(sig.data() == nullptr);
+		CHECK(sig.size() == 0);
+	}
+
+	SECTION("sign: too small signature buffer")
+	{
+		char buf[1];
+		auto sig = priv.sign<TestType>(pal_test::case_name(), buf);
+		CHECK(sig.data() == nullptr);
+		CHECK(sig.size() == 256);
+	}
+
+	SECTION("verify_signature: null public key")
+	{
+		auto sig = priv.sign<TestType>(pal_test::case_name(), sig_buf);
+		public_key null;
+		CHECK_FALSE(null.verify_signature<TestType>(pal_test::case_name(), sig));
+	}
+
+	SECTION("verify_signature: invalid size signature")
+	{
+		auto sig = priv.sign<TestType>(pal_test::case_name(), sig_buf);
+		sig = sig.first(sig.size() / 2);
+		CHECK_FALSE(pub.verify_signature<TestType>(pal_test::case_name(), sig));
+	}
+
+	SECTION("verify_signature: invalid signature")
+	{
+		auto sig = priv.sign<TestType>(pal_test::case_name(), sig_buf);
+		sig_buf[sig.size() / 2] = 'X';
+		CHECK_FALSE(pub.verify_signature<TestType>(pal_test::case_name(), sig));
+	}
+
+	SECTION("verify_signature: different message")
+	{
+		auto sig = priv.sign<TestType>("hello", sig_buf);
+		CHECK_FALSE(pub.verify_signature<TestType>("goodbye", sig));
 	}
 }
 

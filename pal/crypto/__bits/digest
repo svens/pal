@@ -217,6 +217,14 @@ template <> inline constexpr size_t digest_size_v<sha384_algorithm> = 48U;
 template <> inline constexpr size_t digest_size_v<sha512_algorithm> = 64U;
 
 
+template <typename Context> constexpr size_t digest_algorithm_v = 0U;
+template <> inline constexpr size_t digest_algorithm_v<md5_algorithm> = 1U;
+template <> inline constexpr size_t digest_algorithm_v<sha1_algorithm> = 2U;
+template <> inline constexpr size_t digest_algorithm_v<sha256_algorithm> = 3U;
+template <> inline constexpr size_t digest_algorithm_v<sha384_algorithm> = 4U;
+template <> inline constexpr size_t digest_algorithm_v<sha512_algorithm> = 5U;
+
+
 } // namespace crypto::__bits
 
 
