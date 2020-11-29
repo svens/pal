@@ -859,4 +859,146 @@ TEST_CASE("crypto/certificate")
 }
 
 
+TEST_CASE("crypto/certificate/store", "[.][!mayfail]")
+{
+	SECTION("load_one(with_common_name)")
+	{
+		auto cert = certificate::load_one(with_common_name("pal.alt.ee"));
+		REQUIRE(cert);
+
+		auto [_, value] = cert.subject(oid::common_name)[0];
+		CHECK(value == "pal.alt.ee");
+	}
+
+	SECTION("load_one(with_common_name) not found")
+	{
+		auto cert = certificate::load_one(with_common_name(pal_test::case_name()));
+		CHECK(!cert);
+	}
+
+	SECTION("load_all(with_common_name)")
+	{
+		auto certs = certificate::load_all(with_common_name("pal.alt.ee"));
+		REQUIRE(certs.size() == 2);
+
+		for (auto &cert: certs)
+		{
+			auto [_, value] = cert.subject(oid::common_name)[0];
+			CHECK(value == "pal.alt.ee");
+		}
+	}
+
+	SECTION("load_all(with_common_name) not found")
+	{
+		auto certs = certificate::load_all(with_common_name(pal_test::case_name()));
+		CHECK(certs.empty());
+	}
+
+	SECTION("load_all(with_fqdn)")
+	{
+		auto certs = certificate::load_all(with_fqdn("client.pal.alt.ee"));
+		REQUIRE(certs.size() == 2);
+
+		bool tested_client_cert = false, tested_server_cert = false;
+		for (auto &cert: certs)
+		{
+			if (pal_test::to_hex(cert.serial_number()) == "1001")
+			{
+				// server with wildcard match
+				tested_server_cert = true;
+				auto names = cert.subject_alt_name();
+				REQUIRE(names.size() == 6);
+				auto [type, value] = names[3];
+				CHECK(type == alt_name::dns);
+				CHECK(value == "server.pal.alt.ee");
+			}
+			else if (pal_test::to_hex(cert.serial_number()) == "1002")
+			{
+				// client with exact match
+				tested_client_cert = true;
+				auto names = cert.subject_alt_name();
+				REQUIRE(names.size() == 2);
+				auto [type, value] = names[1];
+				CHECK(type == alt_name::dns);
+				CHECK(value == "client.pal.alt.ee");
+			}
+		}
+		CHECK(tested_client_cert);
+		CHECK(tested_server_cert);
+	}
+
+	SECTION("load_all(with_fqdn) exact not found")
+	{
+		auto certs = certificate::load_all(with_fqdn(pal_test::case_name()));
+		CHECK(certs.empty());
+	}
+
+	SECTION("load_all(with_fqdn) wildcard")
+	{
+		auto certs = certificate::load_all(with_fqdn("ok.pal.alt.ee"));
+		REQUIRE(certs.size() == 1);
+
+		auto names = certs[0].subject_alt_name();
+		REQUIRE(names.size() == 6);
+		auto &[type, value] = names[3];
+		CHECK(type == alt_name::dns);
+		CHECK(value == "server.pal.alt.ee");
+	}
+
+	SECTION("load_all(with_fqdn) wildcard not found")
+	{
+		auto certs = certificate::load_all(with_fqdn("fail-pal.alt.ee"));
+		CHECK(certs.empty());
+	}
+
+	SECTION("load_all(with_thumbprint<sha1>)")
+	{
+		std::array<uint8_t, 20> thumbprint =
+		{
+			0xa1, 0xe4, 0x2e, 0x5a, 0x8a, 0x5a, 0xf0, 0x9f, 0xa7, 0x0c,
+			0xf5, 0x75, 0x24, 0xf8, 0x21, 0x4f, 0x7b, 0x02, 0x73, 0x52,
+		};
+		const auto &thumbprint_bytes = reinterpret_cast<typename basic_hash<sha1>::result_type &>(thumbprint);
+
+		auto certs = certificate::load_all(with_thumbprint<sha1>(thumbprint_bytes));
+		REQUIRE(certs.size() == 1);
+
+		auto [_, value] = certs[0].subject("1.2.840.113549.1.9.1")[0];
+		CHECK(value == "pal@alt.ee");
+	}
+
+	SECTION("load_all(with_thumbprint<sha1>) not found")
+	{
+		std::array<std::byte, 20> thumbprint = { };
+		auto certs = certificate::load_all(with_thumbprint<sha1>(thumbprint));
+		REQUIRE(certs.size() == 0);
+	}
+
+	SECTION("load_all(with_thumbprint<sha256>)")
+	{
+		std::array<uint8_t, 32> thumbprint =
+		{
+			0x25, 0x8c, 0xbd, 0x3a, 0x9e, 0x09, 0xf2, 0x96,
+			0x77, 0x06, 0xd0, 0x70, 0x15, 0x3b, 0x5e, 0x8e,
+			0xf1, 0x13, 0xaf, 0xa6, 0x05, 0x01, 0xc2, 0x24,
+			0x77, 0x8e, 0xec, 0xe6, 0x51, 0x31, 0xac, 0x44,
+		};
+		const auto &thumbprint_bytes = reinterpret_cast<typename basic_hash<sha256>::result_type &>(thumbprint);
+
+		auto certs = certificate::load_all(with_thumbprint<sha256>(thumbprint_bytes));
+		REQUIRE(certs.size() == 1);
+
+		auto [_, value] = certs[0].subject("1.2.840.113549.1.9.1")[0];
+		CHECK(value == "pal@alt.ee");
+	}
+
+	SECTION("load_all(with_thumbprint<sha256>) not found")
+	{
+		std::array<std::byte, 32> thumbprint = { };
+		auto certs = certificate::load_all(with_thumbprint<sha256>(thumbprint));
+		REQUIRE(certs.size() == 0);
+	}
+}
+
+
 } // namespace

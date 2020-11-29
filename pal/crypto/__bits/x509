@@ -46,15 +46,40 @@ inline void dec_ref (::EVP_PKEY *ref) noexcept
 	::EVP_PKEY_free(ref);
 }
 
+inline void dec_ref (STACK_OF(X509_INFO) *s) noexcept
+{
+	sk_X509_INFO_pop_free(s, &::X509_INFO_free);
+}
+
 using x509 = shared_ref<::X509 *, inc_ref, dec_ref>;
+using x509_store = unique_ref<STACK_OF(X509_INFO) *, dec_ref>;
 using public_key = unique_ref<::EVP_PKEY *, dec_ref>;
 using private_key = unique_ref<::EVP_PKEY *, dec_ref>;
+
+struct x509_store_loop
+{
+	x509_store store;
+	const int count;
+	int index = -1;
+
+	x509_store_loop () noexcept;
+	x509 next() noexcept;
+};
 
 #elif __pal_os_macos //{{{1
 
 using x509 = shared_ref<::SecCertificateRef>;
 using public_key = unique_ref<::SecKeyRef>;
 using private_key = unique_ref<::SecKeyRef>;
+
+struct x509_store_loop
+{
+	int index = -1, count = 0;
+	unique_ref<::CFArrayRef> store{};
+
+	x509_store_loop () noexcept;
+	x509 next() noexcept;
+};
 
 #elif __pal_os_windows //{{{1
 
@@ -82,6 +107,31 @@ using x509 = shared_ref<::PCCERT_CONTEXT, inc_ref, dec_ref>;
 using public_key = unique_ref<::BCRYPT_KEY_HANDLE, dec_ref>;
 using private_key = unique_ref<::NCRYPT_KEY_HANDLE, dec_ref>;
 
+struct x509_store_loop
+{
+	static constexpr const char *sys_store[] =
+	{
+		"MY",
+		"Root",
+		"Trust",
+		"CA",
+	};
+	static constexpr int sys_store_count = sizeof(sys_store)/sizeof(sys_store[0]);
+	int sys_store_index = 0;
+
+	using x509_store = unique_ref<
+		HCERTSTORE,
+		[](HCERTSTORE ref)
+		{
+			(void)::CertCloseStore(ref, 0);
+		}
+	>;
+	x509_store store{};
+	PCCERT_CONTEXT cert{};
+
+	x509_store_loop () noexcept = default;
+	x509 next() noexcept;
+};
 
 #endif //}}}1
 

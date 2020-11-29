@@ -11,13 +11,14 @@
 #include <pal/crypto/__bits/x509>
 #include <pal/crypto/hash>
 #include <pal/crypto/key>
+#include <pal/crypto/oid>
 #include <pal/error>
 #include <chrono>
 #include <deque>
 #include <span>
 #include <string>
 #include <string_view>
-#include <utility>
+#include <tuple>
 #include <vector>
 
 
@@ -492,6 +493,60 @@ public:
 	}
 
 
+	/**
+	 * Load and return all certificates from system store that satisfy
+	 * \a predicate.
+	 *
+	 * Order of iterating over certificates depends on platform:
+	 *   - Linux: uses OpenSSL system-wide CA bundle. Location of it depends on
+	 *     distro (see https://www.happyassassin.net/2015/01/12/a-note-about-ssltls-trusted-certificate-stores-and-platforms/).
+	 *     This function tries multiple files until first succeeds, which is
+	 *     then iterated:
+	 *     1. CA bundle file pointed by environment variable name as defined by
+	 *        X509_get_default_cert_file_env()
+	 *     2. OpenSSL default file as defined by X509_get_default_cert_file()
+	 *     3. /etc/pki/tls/certs/ca-bundle.crt
+	 *     4. /etc/ssl/certs/ca-certificates.crt
+	 *   - MacOS: trusted certificates in Login and System keychains.
+	 *   - Windows: system's certificate stores MY, Root, Trust and CA
+	 */
+	template <typename Predicate>
+	static std::deque<certificate> load_all (Predicate predicate)
+	{
+		std::deque<certificate> result;
+		__bits::x509_store_loop sys_cert_store;
+		while (auto c = certificate{sys_cert_store.next()})
+		{
+			if (predicate(c))
+			{
+				result.emplace_back(std::move(c));
+			}
+		}
+		return result;
+	}
+
+
+	/**
+	 * Load first certificate from system store that satisfies \a
+	 * predicate.
+	 *
+	 * \copydetails load_all()
+	 */
+	template <typename Predicate>
+	static certificate load_one (Predicate predicate) noexcept
+	{
+		__bits::x509_store_loop sys_cert_store;
+		while (auto c = certificate{sys_cert_store.next()})
+		{
+			if (predicate(c))
+			{
+				return c;
+			}
+		}
+		return {};
+	}
+
+
 private:
 
 	__bits::x509 impl_{};
@@ -547,6 +602,75 @@ private:
 	using hash_fn = void(*)(std::byte *, const std::span<const std::byte> &) noexcept;
 	void digest (std::byte *result, hash_fn h) const noexcept;
 };
+
+
+/**
+ * Return predicate for certificate loading functions. It checks whether
+ * specified certificate has \a expected common name.
+ */
+inline auto with_common_name (std::string expected)
+{
+	return [=](const certificate &cert) -> bool
+	{
+		auto subject = cert.subject(oid::common_name);
+		if (!subject.empty())
+		{
+			auto &[oid, value] = subject[0];
+			return value == expected;
+		}
+		return false;
+	};
+}
+
+
+/**
+ * \copybrief with_common_name()
+ *
+ * It checks whether specified certificate has DNS subject alternate name with
+ * exact or wildcard match for \a expected.
+ */
+inline auto with_fqdn (std::string expected)
+{
+	return [=](const certificate &cert) -> bool
+	{
+		for (auto &[type, value]: cert.subject_alt_name())
+		{
+			if (type == alt_name::dns)
+			{
+				if (value.starts_with("*."))
+				{
+					auto suffix = value.substr(1);
+					auto pos = expected.find(suffix);
+					if (expected.size() - suffix.size() == pos)
+					{
+						return true;
+					}
+				}
+				else if (value == expected)
+				{
+					return true;
+				}
+			}
+		}
+		return false;
+	};
+}
+
+
+/**
+ * \copybrief with_common_name()
+ *
+ * It checks whether specified certificate has \a expected digest calculated
+ * by \a Algorithm.
+ */
+template <typename Algorithm>
+inline auto with_thumbprint (typename basic_hash<Algorithm>::result_type expected)
+{
+	return [=](const certificate &cert) -> bool
+	{
+		return cert.digest<Algorithm>() == expected;
+	};
+}
 
 
 } // namespace crypto
