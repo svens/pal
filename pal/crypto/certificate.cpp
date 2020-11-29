@@ -1500,13 +1500,6 @@ __bits::public_key certificate::public_key (const __bits::x509 &x509) noexcept
 }
 
 
-/*
-__bits::private_key certificate::private_key (const __bits::x509 &x509) noexcept
-{
-}
-*/
-
-
 namespace {
 
 

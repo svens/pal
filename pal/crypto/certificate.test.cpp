@@ -6,9 +6,7 @@
 namespace {
 
 
-using pal::crypto::certificate;
-using pal::crypto::alt_name;
-namespace oid = pal::crypto::oid;
+using namespace pal::crypto;
 namespace test_cert = pal_test::cert;
 using namespace std::chrono_literals;
 
@@ -318,19 +316,19 @@ TEST_CASE("crypto/certificate")
 		auto [pem, expected] = GENERATE(table<std::string_view, std::string_view>({
 			{
 				test_cert::ca_pem,
-				"27566d2bae77ab393faaf1080c528c9973a6ffb4"
+				"f89bd9fc4050afa352104e7ec4e06c7f5237f88c"
 			},
 			{
 				test_cert::intermediate_pem,
-				"fafd5f4eee2e99c7f1591425dfaf2abee2b01527"
+				"919bbbf95b543f58498c5300e65b857aa7ff83b8"
 			},
 			{
 				test_cert::server_pem,
-				"776f3c5bb3b39da38ab80e5f7f909fbcff36d42a"
+				"3bd31e7b696c888cd9b54aab6e31ce5b2636d271"
 			},
 			{
 				test_cert::client_pem,
-				"c9483ca1d965e9a769f0e7d705f3d6bb3ce248ee"
+				"a1e42e5a8a5af09fa70cf57524f8214f7b027352"
 			},
 			{
 				"",
@@ -347,19 +345,19 @@ TEST_CASE("crypto/certificate")
 		auto [pem, expected] = GENERATE(table<std::string_view, std::string_view>({
 			{
 				test_cert::ca_pem,
-				"360599d2e088e6ee9d8e7398f903f03d145194c6b4e5766de1afc8280c1424f382f49d9c14017e36c60045c9605dead8342ae7281a8b6f70484e7783bc4bad93"
+				"394fde2014b1e620c5218a01b0d2eae6d99b2e9aec52090e1536821d2d7ca2930b849cf75cd019e1ffa3d24f7c0dd0517321a100b37b59eb1a21cc79e0dac4de"
 			},
 			{
 				test_cert::intermediate_pem,
-				"f8902a809c310db4a324442ae9045d688af6a8ee7ce7a0625bcb38072668715c7d86f887b1299fe5e53946eb320e46786f4bdcf9f892fa49e0396a86babc45d1"
+				"4c2c8840edb8d8244ff7de4cd5daa9dcf35222788d08274485bbb7650d5c808cfdc9f5df70fda6e5b668575bd6b99543a219c8e19b31368155c7cf08d3f65b4d"
 			},
 			{
 				test_cert::server_pem,
-				"581f0348a6ceb99932de61a6f757ed096df8fc4d5de3525a59ae5a77cfc0cb3a27f7072f798ed769320b60901c2da0178670802799df7c6aa7753b21e134e10f"
+				"90606545603819c4c5f8d9bd69ad700f3dfcedf7b12702d96331aa84b3d58dee606ad8155324376d614131a8a82fedb041c66c658fb696bcd08395ed47ae357b"
 			},
 			{
 				test_cert::client_pem,
-				"4612c792a0ec069ad1f21f8ec1f6af827b473451535b9220655a59cc6402641ab2fed5eae77b9b406a7544f693a13afb4cbd3d43638c42434ae0a6678ec6528d"
+				"9e3bfe8d98a99299f4a604e97ad5df2ccbbc04b1e600a1899f2dd1e96840edc346f958b95c532f45b244ecce5a346304438e7f34e20a0419743a0e91accac252"
 			},
 			{
 				"",
@@ -374,7 +372,7 @@ TEST_CASE("crypto/certificate")
 	SECTION("serial_number")
 	{
 		auto [pem, expected] = GENERATE(table<std::string_view, std::string_view>({
-			{ test_cert::ca_pem, "852749945d39e1c9" },
+			{ test_cert::ca_pem, "ffc401131091ec63" },
 			{ test_cert::intermediate_pem, "1000" },
 			{ test_cert::server_pem, "1001" },
 			{ test_cert::client_pem, "1002" },
@@ -423,10 +421,10 @@ TEST_CASE("crypto/certificate")
 	SECTION("authority_key_identifier")
 	{
 		auto [pem, expected] = GENERATE(table<std::string_view, std::string_view>({
-			{ test_cert::ca_pem, "8ff911972ac64007a28ec7d461a66680ab106649" },
-			{ test_cert::intermediate_pem, "8ff911972ac64007a28ec7d461a66680ab106649" },
-			{ test_cert::server_pem, "423097971d0f67f28993bf9e4173bba30932d0e1" },
-			{ test_cert::client_pem, "423097971d0f67f28993bf9e4173bba30932d0e1" },
+			{ test_cert::ca_pem, "8103f8b5aea1e5228d16d63073ebb52f65d9b87f" },
+			{ test_cert::intermediate_pem, "8103f8b5aea1e5228d16d63073ebb52f65d9b87f" },
+			{ test_cert::server_pem, "12a96089b19bcb9b97fa2d173532158664930668" },
+			{ test_cert::client_pem, "12a96089b19bcb9b97fa2d173532158664930668" },
 			{ "", "" },
 		}));
 		auto cert = pem.size() ? certificate::from_pem(pem) : null;
@@ -484,10 +482,10 @@ TEST_CASE("crypto/certificate")
 	SECTION("subject_key_identifier")
 	{
 		auto [pem, expected] = GENERATE(table<std::string_view, std::string_view>({
-			{ test_cert::ca_pem, "8ff911972ac64007a28ec7d461a66680ab106649" },
-			{ test_cert::intermediate_pem, "423097971d0f67f28993bf9e4173bba30932d0e1" },
-			{ test_cert::server_pem, "e2b561551c2ee1b03d4bc7a07379cfeb1f7965cb" },
-			{ test_cert::client_pem, "29ff9042da950000be2507267dc3d591c7a97b88" },
+			{ test_cert::ca_pem, "8103f8b5aea1e5228d16d63073ebb52f65d9b87f" },
+			{ test_cert::intermediate_pem, "12a96089b19bcb9b97fa2d173532158664930668" },
+			{ test_cert::server_pem, "1d559063dee9d2b3f8ba1f358d2d07176e91aabc" },
+			{ test_cert::client_pem, "214ee57389b3c2300ffffac93e64291c782f328b" },
 			{ "", "" },
 		}));
 		auto cert = pem.size() ? certificate::from_pem(pem) : null;
@@ -696,7 +694,7 @@ TEST_CASE("crypto/certificate")
 					{ "2.5.4.10", "PAL" },
 					{ "2.5.4.11", "PAL Test" },
 					{ "2.5.4.3", "pal.alt.ee" },
-					{ "1.2.840.113549.1.9.1", "pal+tes@alt.ee" },
+					{ "1.2.840.113549.1.9.1", "pal@alt.ee" },
 				}
 			},
 			{
@@ -768,7 +766,7 @@ TEST_CASE("crypto/certificate")
 					{ alt_name::ip, "1.2.3.4" },
 					{ alt_name::ip, "2001:db8:85a3::8a2e:370:7334" },
 					{ alt_name::dns, "*.pal.alt.ee" },
-					{ alt_name::dns, "pal.alt.ee" },
+					{ alt_name::dns, "server.pal.alt.ee" },
 					{ alt_name::email, "pal@alt.ee" },
 					{ alt_name::uri, "https://pal.alt.ee/path" },
 				}
@@ -777,6 +775,7 @@ TEST_CASE("crypto/certificate")
 				test_cert::client_pem,
 				{
 					{ alt_name::email, "pal@alt.ee" },
+					{ alt_name::dns, "client.pal.alt.ee" },
 				}
 			},
 			{
@@ -856,6 +855,148 @@ TEST_CASE("crypto/certificate")
 		char buf[] = "XXX";
 		auto chain = certificate::import_pkcs12(std::span{buf}, "XXX");
 		CHECK(chain.empty());
+	}
+}
+
+
+TEST_CASE("crypto/certificate/store", "[!mayfail]")
+{
+	SECTION("load_one(with_common_name)")
+	{
+		auto cert = certificate::load_one(with_common_name("pal.alt.ee"));
+		REQUIRE(cert);
+
+		auto [_, value] = cert.subject(oid::common_name)[0];
+		CHECK(value == "pal.alt.ee");
+	}
+
+	SECTION("load_one(with_common_name) not found")
+	{
+		auto cert = certificate::load_one(with_common_name(pal_test::case_name()));
+		CHECK(!cert);
+	}
+
+	SECTION("load_all(with_common_name)")
+	{
+		auto certs = certificate::load_all(with_common_name("pal.alt.ee"));
+		REQUIRE(certs.size() == 2);
+
+		for (auto &cert: certs)
+		{
+			auto [_, value] = cert.subject(oid::common_name)[0];
+			CHECK(value == "pal.alt.ee");
+		}
+	}
+
+	SECTION("load_all(with_common_name) not found")
+	{
+		auto certs = certificate::load_all(with_common_name(pal_test::case_name()));
+		CHECK(certs.empty());
+	}
+
+	SECTION("load_all(with_fqdn)")
+	{
+		auto certs = certificate::load_all(with_fqdn("client.pal.alt.ee"));
+		REQUIRE(certs.size() == 2);
+
+		bool tested_client_cert = false, tested_server_cert = false;
+		for (auto &cert: certs)
+		{
+			if (pal_test::to_hex(cert.serial_number()) == "1001")
+			{
+				// server with wildcard match
+				tested_server_cert = true;
+				auto names = cert.subject_alt_name();
+				REQUIRE(names.size() == 6);
+				auto [type, value] = names[3];
+				CHECK(type == alt_name::dns);
+				CHECK(value == "server.pal.alt.ee");
+			}
+			else if (pal_test::to_hex(cert.serial_number()) == "1002")
+			{
+				// client with exact match
+				tested_client_cert = true;
+				auto names = cert.subject_alt_name();
+				REQUIRE(names.size() == 2);
+				auto [type, value] = names[1];
+				CHECK(type == alt_name::dns);
+				CHECK(value == "client.pal.alt.ee");
+			}
+		}
+		CHECK(tested_client_cert);
+		CHECK(tested_server_cert);
+	}
+
+	SECTION("load_all(with_fqdn) exact not found")
+	{
+		auto certs = certificate::load_all(with_fqdn(pal_test::case_name()));
+		CHECK(certs.empty());
+	}
+
+	SECTION("load_all(with_fqdn) wildcard")
+	{
+		auto certs = certificate::load_all(with_fqdn("ok.pal.alt.ee"));
+		REQUIRE(certs.size() == 1);
+
+		auto names = certs[0].subject_alt_name();
+		REQUIRE(names.size() == 6);
+		auto &[type, value] = names[3];
+		CHECK(type == alt_name::dns);
+		CHECK(value == "server.pal.alt.ee");
+	}
+
+	SECTION("load_all(with_fqdn) wildcard not found")
+	{
+		auto certs = certificate::load_all(with_fqdn("fail-pal.alt.ee"));
+		CHECK(certs.empty());
+	}
+
+	SECTION("load_all(with_thumbprint<sha1>)")
+	{
+		std::array<uint8_t, 20> thumbprint =
+		{
+			0xa1, 0xe4, 0x2e, 0x5a, 0x8a, 0x5a, 0xf0, 0x9f, 0xa7, 0x0c,
+			0xf5, 0x75, 0x24, 0xf8, 0x21, 0x4f, 0x7b, 0x02, 0x73, 0x52,
+		};
+		const auto &thumbprint_bytes = reinterpret_cast<typename basic_hash<sha1>::result_type &>(thumbprint);
+
+		auto certs = certificate::load_all(with_thumbprint<sha1>(thumbprint_bytes));
+		REQUIRE(certs.size() == 1);
+
+		auto [_, value] = certs[0].subject("1.2.840.113549.1.9.1")[0];
+		CHECK(value == "pal@alt.ee");
+	}
+
+	SECTION("load_all(with_thumbprint<sha1>) not found")
+	{
+		std::array<std::byte, 20> thumbprint = { };
+		auto certs = certificate::load_all(with_thumbprint<sha1>(thumbprint));
+		REQUIRE(certs.size() == 0);
+	}
+
+	SECTION("load_all(with_thumbprint<sha256>)")
+	{
+		std::array<uint8_t, 32> thumbprint =
+		{
+			0x25, 0x8c, 0xbd, 0x3a, 0x9e, 0x09, 0xf2, 0x96,
+			0x77, 0x06, 0xd0, 0x70, 0x15, 0x3b, 0x5e, 0x8e,
+			0xf1, 0x13, 0xaf, 0xa6, 0x05, 0x01, 0xc2, 0x24,
+			0x77, 0x8e, 0xec, 0xe6, 0x51, 0x31, 0xac, 0x44,
+		};
+		const auto &thumbprint_bytes = reinterpret_cast<typename basic_hash<sha256>::result_type &>(thumbprint);
+
+		auto certs = certificate::load_all(with_thumbprint<sha256>(thumbprint_bytes));
+		REQUIRE(certs.size() == 1);
+
+		auto [_, value] = certs[0].subject("1.2.840.113549.1.9.1")[0];
+		CHECK(value == "pal@alt.ee");
+	}
+
+	SECTION("load_all(with_thumbprint<sha256>) not found")
+	{
+		std::array<std::byte, 32> thumbprint = { };
+		auto certs = certificate::load_all(with_thumbprint<sha256>(thumbprint));
+		REQUIRE(certs.size() == 0);
 	}
 }
 

@@ -88,7 +88,7 @@ extendedKeyUsage = serverAuth
 IP.1 = 1.2.3.4
 IP.2 = 2001:db8:85a3::8a2e:370:7334
 DNS.1 = *.pal.alt.ee
-DNS.2 = pal.alt.ee
+DNS.2 = server.pal.alt.ee
 email.1 = pal@alt.ee
 URI.1 = https://pal.alt.ee/path
 
@@ -103,6 +103,7 @@ extendedKeyUsage = clientAuth, emailProtection
 
 [ client_alt_names ]
 email.1 = pal@alt.ee
+DNS.1 = client.pal.alt.ee
 OPENSSL_CONF
 
 echo '*** Root key ***' #{{{1
@@ -197,7 +198,7 @@ echo '*** Client certificate request ***' #{{{1
 rm -f client.csr.pem
 openssl req -new -sha256 -batch -config $OPENSSL_CONF \
   -out client.csr.pem \
-  -subj '/C=EE/ST=Estonia/O=PAL/OU=PAL Test/CN=pal.alt.ee/emailAddress=pal+tes@alt.ee' \
+  -subj '/C=EE/ST=Estonia/O=PAL/OU=PAL Test/CN=pal.alt.ee/emailAddress=pal@alt.ee' \
   -passin pass:ClientPassword \
   -key client.key.pem
 

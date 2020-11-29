@@ -77,7 +77,7 @@ jobs:
           CC=gcc-10 CXX=g++-10 COV=gcov-10 cmake . -DCMAKE_BUILD_TYPE=Coverage
 
       - name: Generate test coverage
-        run: cmake --build . --target pal-cov
+        run: SSL_CERT_FILE=scripts/test-chain.pem cmake --build . --target pal-cov
 
       - uses: coverallsapp/github-action@master
         with:
