@@ -859,7 +859,7 @@ TEST_CASE("crypto/certificate")
 }
 
 
-TEST_CASE("crypto/certificate/store", "[.][!mayfail]")
+TEST_CASE("crypto/certificate/store", "[!mayfail]")
 {
 	SECTION("load_one(with_common_name)")
 	{
