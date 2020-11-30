@@ -177,7 +177,7 @@ TEMPLATE_TEST_CASE("crypto/key", "", sha1, sha256, sha384, sha512)
 	SECTION("verify_signature: invalid signature")
 	{
 		auto sig = priv.sign<TestType>(pal_test::case_name(), sig_buf);
-		sig_buf[sig.size() / 2] = 'X';
+		sig_buf[sig.size() / 2] ^= 1;
 		CHECK_FALSE(pub.verify_signature<TestType>(pal_test::case_name(), sig));
 	}
 
