@@ -33,7 +33,16 @@ auto &keys ()
 }
 
 
-TEST_CASE("crypto/key")
+constexpr const char *tags =
+#if __pal_os_macos
+	"[.]"
+#else
+	""
+#endif
+;
+
+
+TEST_CASE("crypto/key", tags)
 {
 	SECTION("public_key")
 	{
