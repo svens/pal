@@ -217,6 +217,43 @@ TEST_CASE("intrusive_queue")
 	}
 
 
+	SECTION("for_each empty")
+	{
+		bool invoked = false;
+		queue.for_each([&invoked](foo &)
+		{
+			invoked = true;
+		});
+		CHECK_FALSE(invoked);
+	}
+
+
+	SECTION("for_each")
+	{
+		foo f1, f2;
+		queue.push(&f1);
+		queue.push(&f2);
+
+		size_t count = 0;
+		queue.for_each([&](foo &node)
+		{
+			count++;
+			if (count == 1)
+			{
+				CHECK(&node == &f1);
+			}
+			else if (count == 2)
+			{
+				CHECK(&node == &f2);
+			}
+		});
+		CHECK(count == 2);
+
+		CHECK(queue.try_pop() == &f1);
+		CHECK(queue.try_pop() == &f2);
+	}
+
+
 	CHECK(queue.empty());
 	CHECK(queue.head() == nullptr);
 	CHECK(queue.try_pop() == nullptr);

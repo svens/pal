@@ -170,6 +170,20 @@ public:
 	}
 
 
+	/**
+	 * Execute UnaryFunction \a f for each element in queue.
+	 */
+	template <typename UnaryFunction>
+	constexpr UnaryFunction for_each (UnaryFunction f) const
+	{
+		for (auto node = head_->*Next;  node;  node = node->*Next)
+		{
+			f(*node);
+		}
+		return f;
+	}
+
+
 private:
 
 	char sentry_[sizeof(value_type)];
