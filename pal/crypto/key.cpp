@@ -1,12 +1,11 @@
 #include <pal/__bits/platform_sdk>
 #include <pal/crypto/key>
 
-#if __pal_os_linux //{{{1
-
-#elif __pal_os_macos //{{{1
+#if __pal_os_macos //{{{1
+	#include <algorithm>
 	#include <Security/SecItem.h>
 #elif __pal_os_windows //{{{1
-
+	#include <pal/crypto/hash>
 #endif //}}}1
 
 
@@ -37,7 +36,79 @@ void query_properties (const __bits::public_key &key,
 }
 
 
+inline const EVP_MD *to_algorithm (size_t digest_algorithm) noexcept
+{
+	switch (digest_algorithm)
+	{
+		case __bits::digest_algorithm_v<__bits::sha1_algorithm>:
+			return EVP_sha1();
+		case __bits::digest_algorithm_v<__bits::sha256_algorithm>:
+			return EVP_sha256();
+		case __bits::digest_algorithm_v<__bits::sha384_algorithm>:
+			return EVP_sha384();
+		case __bits::digest_algorithm_v<__bits::sha512_algorithm>:
+			return EVP_sha512();
+	}
+	return nullptr;
+}
+
+
 } // namespace
+
+
+std::span<std::byte> private_key::sign (
+	size_t digest_algorithm,
+	const std::span<const std::byte> &message,
+	std::span<std::byte> &&signature) noexcept
+{
+	auto algorithm = to_algorithm(digest_algorithm);
+	if (!algorithm)
+	{
+		return {};
+	}
+
+	size_t sig_size = 0;
+	unique_ref<::EVP_MD_CTX *, ::EVP_MD_CTX_free> ctx = EVP_MD_CTX_new();
+	::EVP_DigestSignInit(ctx.ref, nullptr, algorithm, nullptr, key_.ref);
+	::EVP_DigestSignUpdate(ctx.ref, message.data(), message.size());
+	::EVP_DigestSignFinal(ctx.ref, nullptr, &sig_size);
+
+	if (sig_size > signature.size())
+	{
+		return {static_cast<std::byte *>(0), sig_size};
+	}
+
+	::EVP_DigestSignFinal(
+		ctx.ref,
+		reinterpret_cast<uint8_t *>(signature.data()),
+		&sig_size
+	);
+
+	return signature.first(sig_size);
+}
+
+
+bool public_key::verify_signature (
+	size_t digest_algorithm,
+	const std::span<const std::byte> &message,
+	const std::span<const std::byte> &signature) noexcept
+{
+	auto algorithm = to_algorithm(digest_algorithm);
+	if (!algorithm)
+	{
+		return {};
+	}
+
+	unique_ref<::EVP_MD_CTX *, ::EVP_MD_CTX_free> ctx = EVP_MD_CTX_new();
+	::EVP_DigestVerifyInit(ctx.ref, nullptr, algorithm, nullptr, key_.ref);
+	::EVP_DigestVerifyUpdate(ctx.ref, message.data(), message.size());
+
+	return ::EVP_DigestVerifyFinal(
+		ctx.ref,
+		reinterpret_cast<const uint8_t *>(signature.data()),
+		signature.size()
+	);
+}
 
 
 #elif __pal_os_macos //{{{1
@@ -70,7 +141,103 @@ void query_properties (const __bits::public_key &key,
 }
 
 
+inline ::SecKeyAlgorithm to_algorithm (key_algorithm type, size_t digest_algorithm) noexcept
+{
+	if (type == key_algorithm::rsa)
+	{
+		switch (digest_algorithm)
+		{
+			case __bits::digest_algorithm_v<__bits::sha1_algorithm>:
+				return ::kSecKeyAlgorithmRSASignatureMessagePKCS1v15SHA1;
+			case __bits::digest_algorithm_v<__bits::sha256_algorithm>:
+				return ::kSecKeyAlgorithmRSASignatureMessagePKCS1v15SHA256;
+			case __bits::digest_algorithm_v<__bits::sha384_algorithm>:
+				return ::kSecKeyAlgorithmRSASignatureMessagePKCS1v15SHA384;
+			case __bits::digest_algorithm_v<__bits::sha512_algorithm>:
+				return ::kSecKeyAlgorithmRSASignatureMessagePKCS1v15SHA512;
+		}
+	}
+	return {};
+}
+
+
+inline unique_ref<::CFDataRef> make_data (
+	const std::span<const std::byte> &bytes) noexcept
+{
+	return ::CFDataCreateWithBytesNoCopy(
+		nullptr,
+		reinterpret_cast<const uint8_t *>(bytes.data()),
+		bytes.size(),
+		::kCFAllocatorNull
+	);
+}
+
+
 } // namespace
+
+
+std::span<std::byte> private_key::sign (
+	size_t digest_algorithm,
+	const std::span<const std::byte> &message,
+	std::span<std::byte> &&signature) noexcept
+{
+	auto algorithm = to_algorithm(algorithm_, digest_algorithm);
+	if (!algorithm)
+	{
+		return {};
+	}
+
+	unique_ref<::CFErrorRef> status;
+	unique_ref<::CFDataRef> sig = ::SecKeyCreateSignature(
+		key_.ref,
+		algorithm,
+		make_data(message).ref,
+		&status.ref
+	);
+
+	size_t sig_size = ::CFDataGetLength(sig.ref);
+	if (sig_size <= signature.size())
+	{
+		auto sig_ptr = ::CFDataGetBytePtr(sig.ref);
+		std::uninitialized_copy(
+			sig_ptr,
+			sig_ptr + sig_size,
+			reinterpret_cast<uint8_t *>(signature.data())
+		);
+		return signature.first(sig_size);
+	}
+
+	return {static_cast<std::byte *>(0), sig_size};
+}
+
+
+bool public_key::verify_signature (
+	size_t digest_algorithm,
+	const std::span<const std::byte> &message,
+	const std::span<const std::byte> &signature) noexcept
+{
+	auto algorithm = to_algorithm(algorithm_, digest_algorithm);
+	if (!algorithm)
+	{
+		return {};
+	}
+
+	unique_ref<CFErrorRef> status;
+	auto result = ::SecKeyVerifySignature(
+		key_.ref,
+		algorithm,
+		make_data(message).ref,
+		make_data(signature).ref,
+		&status.ref
+	);
+
+	if (status.ref == nullptr || ::CFErrorGetCode(status.ref) == ::errSecVerifyFailed)
+	{
+		return result;
+	}
+
+	return false;
+}
 
 
 #elif __pal_os_windows //{{{1
@@ -159,7 +326,124 @@ void query_properties (const __bits::private_key &key,
 }
 
 
+template <typename Hash>
+inline DWORD make_digest (
+	const std::span<const std::byte> &message,
+	uint8_t *digest) noexcept
+{
+	reinterpret_cast<typename Hash::result_type &>(*digest) = Hash::one_shot(message);
+	return Hash::digest_size;
+}
+
+
+const wchar_t *get_algorithm_and_digest (
+	size_t digest_algorithm,
+	const std::span<const std::byte> &message,
+	uint8_t *digest,
+	DWORD &digest_size) noexcept
+{
+	switch (digest_algorithm)
+	{
+		case __bits::digest_algorithm_v<__bits::sha1_algorithm>:
+			digest_size = make_digest<sha1_hash>(message, digest);
+			return NCRYPT_SHA1_ALGORITHM;
+
+		case __bits::digest_algorithm_v<__bits::sha256_algorithm>:
+			digest_size = make_digest<sha256_hash>(message, digest);
+			return NCRYPT_SHA256_ALGORITHM;
+
+		case __bits::digest_algorithm_v<__bits::sha384_algorithm>:
+			digest_size = make_digest<sha384_hash>(message, digest);
+			return NCRYPT_SHA384_ALGORITHM;
+
+		case __bits::digest_algorithm_v<__bits::sha512_algorithm>:
+			digest_size = make_digest<sha512_hash>(message, digest);
+			return NCRYPT_SHA512_ALGORITHM;
+	}
+	return {};
+}
+
+
 } // namespace
+
+
+std::span<std::byte> private_key::sign (
+	size_t digest_algorithm,
+	const std::span<const std::byte> &message,
+	std::span<std::byte> &&signature) noexcept
+{
+	uint8_t digest[1024];
+	DWORD digest_size;
+
+	BCRYPT_PKCS1_PADDING_INFO padding;
+	padding.pszAlgId = get_algorithm_and_digest(
+		digest_algorithm,
+		message,
+		digest,
+		digest_size
+	);
+	if (!padding.pszAlgId)
+	{
+		return {};
+	}
+
+	auto sig_size = static_cast<DWORD>(signature.size());
+	auto status = ::NCryptSignHash(
+		key_.ref,
+		&padding,
+		digest,
+		digest_size,
+		reinterpret_cast<PBYTE>(signature.data()),
+		sig_size,
+		&sig_size,
+		BCRYPT_PAD_PKCS1
+	);
+
+	if (status == ERROR_SUCCESS)
+	{
+		return signature.first(sig_size);
+	}
+	else if (status == NTE_BUFFER_TOO_SMALL)
+	{
+		return {static_cast<std::byte *>(0), sig_size};
+	}
+
+	return {};
+}
+
+
+bool public_key::verify_signature (
+	size_t digest_algorithm,
+	const std::span<const std::byte> &message,
+	const std::span<const std::byte> &signature) noexcept
+{
+	uint8_t digest[1024];
+	DWORD digest_size;
+
+	BCRYPT_PKCS1_PADDING_INFO padding;
+	padding.pszAlgId = get_algorithm_and_digest(
+		digest_algorithm,
+		message,
+		digest,
+		digest_size
+	);
+	if (!padding.pszAlgId)
+	{
+		return false;
+	}
+
+	auto status = ::BCryptVerifySignature(
+		key_.ref,
+		&padding,
+		digest,
+		digest_size,
+		reinterpret_cast<PUCHAR>(const_cast<std::byte *>(signature.data())),
+		static_cast<DWORD>(signature.size()),
+		BCRYPT_PAD_PKCS1
+	);
+
+	return status == STATUS_SUCCESS;
+}
 
 
 #endif //}}}1

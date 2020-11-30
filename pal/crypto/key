@@ -8,7 +8,9 @@
  */
 
 #include <pal/__bits/lib>
+#include <pal/crypto/__bits/digest>
 #include <pal/crypto/__bits/x509>
+#include <span>
 #include <utility>
 
 
@@ -115,10 +117,34 @@ public:
 	public_key () = default;
 
 
+	/**
+	 * Return true if \a signature of \a message is valid with \a Algorithm.
+	 */
+	template <typename Algorithm, typename Message, typename Signature>
+	bool verify_signature (const Message &message, const Signature &signature) noexcept
+	{
+		if (key_)
+		{
+			return verify_signature(
+				__bits::digest_algorithm_v<Algorithm>,
+				std::as_bytes(std::span{message}),
+				std::as_bytes(std::span{signature})
+			);
+		}
+		return false;
+	}
+
+
 private:
 
 	public_key (__bits::public_key &&key) noexcept;
 	friend class certificate;
+
+	bool verify_signature (
+		size_t digest_algorithm,
+		const std::span<const std::byte> &message,
+		const std::span<const std::byte> &signature
+	) noexcept;
 };
 
 
@@ -135,10 +161,41 @@ public:
 	private_key () = default;
 
 
+	/**
+	 * Sign \a message with \a Algorithm and store result into \a signature.
+	 *
+	 * \returns
+	 * - if signing succeeds and destination span for \a signature is big
+	 *   enough, returns span of actually stored bytes.
+	 * - if destination span for \a signature is not big enough, returns
+	 *   span with data() == nullptr and size_bytes() == required bytes.
+	 * - on any other failure returns default constructed span
+	 */
+	template <typename Algorithm, typename Message, typename Signature>
+	std::span<std::byte> sign (const Message &message, Signature &signature) noexcept
+	{
+		if (key_)
+		{
+			return sign(
+				__bits::digest_algorithm_v<Algorithm>,
+				std::as_bytes(std::span{message}),
+				std::as_writable_bytes(std::span{signature})
+			);
+		}
+		return {};
+	}
+
+
 private:
 
 	private_key (__bits::private_key &&key) noexcept;
 	friend class certificate;
+
+	std::span<std::byte> sign (
+		size_t digest_algorithm,
+		const std::span<const std::byte> &message,
+		std::span<std::byte> &&signature
+	) noexcept;
 };
 
 
