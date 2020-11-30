@@ -26,9 +26,9 @@ std::pair<public_key, private_key> import_keys ()
 }
 
 
-auto &keys ()
+auto keys ()
 {
-	static auto keys_ = import_keys();
+	auto keys_ = import_keys();
 	return keys_;
 }
 
@@ -123,7 +123,7 @@ TEST_CASE("crypto/key", tags)
 
 	SECTION("private_key.sign: invalid digest algorithm")
 	{
-		auto &[_, priv] = keys();
+		auto [_, priv] = keys();
 		char sig_buf[1024];
 		auto sig = priv.sign<md5>(pal_test::case_name(), sig_buf);
 		CHECK(sig.data() == nullptr);
@@ -132,7 +132,7 @@ TEST_CASE("crypto/key", tags)
 
 	SECTION("public_key.verify_signature: invalid digest algorithm")
 	{
-		auto &[pub, priv] = keys();
+		auto [pub, priv] = keys();
 		char sig_buf[1024];
 		auto sig = priv.sign<sha1>(pal_test::case_name(), sig_buf);
 		CHECK_FALSE(pub.verify_signature<md5>(pal_test::case_name(), sig));
@@ -142,7 +142,7 @@ TEST_CASE("crypto/key", tags)
 
 TEMPLATE_TEST_CASE("crypto/key", "", sha1, sha256, sha384, sha512)
 {
-	auto &[pub, priv] = keys();
+	auto [pub, priv] = keys();
 	char sig_buf[1024];
 
 	SECTION("sign / verify_signature")
