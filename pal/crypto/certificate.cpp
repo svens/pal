@@ -171,9 +171,9 @@ bool certificate::operator== (const certificate &that) const noexcept
 }
 
 
-int certificate::version (const __bits::x509 &x509) noexcept
+int certificate::version () const noexcept
 {
-	return ::X509_get_version(x509.ref) + 1;
+	return ::X509_get_version(impl_.ref) + 1;
 }
 
 
@@ -236,15 +236,15 @@ certificate::time_type to_time (const ::ASN1_TIME *time) noexcept
 } // namespace
 
 
-certificate::time_type certificate::not_before (const __bits::x509 &x509) noexcept
+certificate::time_type certificate::not_before () const noexcept
 {
-	return to_time(::X509_get_notBefore(x509.ref));
+	return to_time(::X509_get_notBefore(impl_.ref));
 }
 
 
-certificate::time_type certificate::not_after (const __bits::x509 &x509) noexcept
+certificate::time_type certificate::not_after () const noexcept
 {
-	return to_time(::X509_get_notAfter(x509.ref));
+	return to_time(::X509_get_notAfter(impl_.ref));
 }
 
 
@@ -260,11 +260,9 @@ void certificate::digest (std::byte *result, hash_fn h) const noexcept
 }
 
 
-std::span<uint8_t> certificate::serial_number (
-	const __bits::x509 &x509,
-	std::span<uint8_t> dest) noexcept
+std::span<uint8_t> certificate::serial_number (std::span<uint8_t> dest) const noexcept
 {
-	auto sn = ::X509_get_serialNumber(x509.ref);
+	auto sn = ::X509_get_serialNumber(impl_.ref);
 	size_t required_size = sn->length;
 	if (required_size > dest.size())
 	{
@@ -287,11 +285,9 @@ std::span<uint8_t> certificate::serial_number (
 }
 
 
-std::span<uint8_t> certificate::authority_key_identifier (
-	const __bits::x509 &x509,
-	std::span<uint8_t> dest) noexcept
+std::span<uint8_t> certificate::authority_key_identifier (std::span<uint8_t> dest) const noexcept
 {
-	auto index = ::X509_get_ext_by_NID(x509.ref, NID_authority_key_identifier, -1);
+	auto index = ::X509_get_ext_by_NID(impl_.ref, NID_authority_key_identifier, -1);
 	if (index < 0)
 	{
 		return dest.first(0);
@@ -300,7 +296,7 @@ std::span<uint8_t> certificate::authority_key_identifier (
 	unique_ref<AUTHORITY_KEYID *, &::AUTHORITY_KEYID_free> decoded
 	{
 		static_cast<AUTHORITY_KEYID *>(
-			::X509V3_EXT_d2i(::X509_get_ext(x509.ref, index))
+			::X509V3_EXT_d2i(::X509_get_ext(impl_.ref, index))
 		)
 	};
 
@@ -325,11 +321,9 @@ std::span<uint8_t> certificate::authority_key_identifier (
 }
 
 
-std::span<uint8_t> certificate::subject_key_identifier (
-	const __bits::x509 &x509,
-	std::span<uint8_t> dest) noexcept
+std::span<uint8_t> certificate::subject_key_identifier (std::span<uint8_t> dest) const noexcept
 {
-	auto index = ::X509_get_ext_by_NID(x509.ref, NID_subject_key_identifier, -1);
+	auto index = ::X509_get_ext_by_NID(impl_.ref, NID_subject_key_identifier, -1);
 	if (index < 0)
 	{
 		return dest.first(0);
@@ -338,7 +332,7 @@ std::span<uint8_t> certificate::subject_key_identifier (
 	unique_ref<ASN1_OCTET_STRING *, &::ASN1_OCTET_STRING_free> decoded
 	{
 		static_cast<ASN1_OCTET_STRING *>(
-			::X509V3_EXT_d2i(::X509_get_ext(x509.ref, index))
+			::X509V3_EXT_d2i(::X509_get_ext(impl_.ref, index))
 		)
 	};
 
@@ -363,9 +357,9 @@ std::span<uint8_t> certificate::subject_key_identifier (
 }
 
 
-bool certificate::issued_by (const __bits::x509 &a, const __bits::x509 &b) noexcept
+bool certificate::issued_by (const certificate &that) const noexcept
 {
-	return ::X509_check_issued(b.ref, a.ref) == X509_V_OK;
+	return ::X509_check_issued(that.impl_.ref, impl_.ref) == X509_V_OK;
 }
 
 
@@ -424,27 +418,27 @@ certificate::name_type make_name (X509_NAME *name, const std::string_view &oid)
 } // namespace
 
 
-certificate::name_type certificate::issuer (const __bits::x509 &x509)
+certificate::name_type certificate::issuer () const
 {
-	return make_name(X509_get_issuer_name(x509.ref));
+	return make_name(X509_get_issuer_name(impl_.ref));
 }
 
 
-certificate::name_type certificate::issuer (const __bits::x509 &x509, const std::string_view &oid)
+certificate::name_type certificate::issuer (const std::string_view &oid) const
 {
-	return make_name(X509_get_issuer_name(x509.ref), oid);
+	return make_name(X509_get_issuer_name(impl_.ref), oid);
 }
 
 
-certificate::name_type certificate::subject (const __bits::x509 &x509)
+certificate::name_type certificate::subject () const
 {
-	return make_name(X509_get_subject_name(x509.ref));
+	return make_name(X509_get_subject_name(impl_.ref));
 }
 
 
-certificate::name_type certificate::subject (const __bits::x509 &x509, const std::string_view &oid)
+certificate::name_type certificate::subject (const std::string_view &oid) const
 {
-	return make_name(X509_get_subject_name(x509.ref), oid);
+	return make_name(X509_get_subject_name(impl_.ref), oid);
 }
 
 
@@ -513,21 +507,21 @@ certificate::alt_name_type make_alt_name (X509 *cert, int nid)
 } // namespace
 
 
-certificate::alt_name_type certificate::issuer_alt_name (const __bits::x509 &x509)
+certificate::alt_name_type certificate::issuer_alt_name () const
 {
-	return make_alt_name(x509.ref, NID_issuer_alt_name);
+	return make_alt_name(impl_.ref, NID_issuer_alt_name);
 }
 
 
-certificate::alt_name_type certificate::subject_alt_name (const __bits::x509 &x509)
+certificate::alt_name_type certificate::subject_alt_name () const
 {
-	return make_alt_name(x509.ref, NID_subject_alt_name);
+	return make_alt_name(impl_.ref, NID_subject_alt_name);
 }
 
 
-__bits::public_key certificate::public_key (const __bits::x509 &x509) noexcept
+crypto::public_key certificate::public_key () const noexcept
 {
-	return ::X509_get_pubkey(x509.ref);
+	return __bits::public_key{::X509_get_pubkey(impl_.ref)};
 }
 
 
@@ -661,9 +655,9 @@ bool certificate::operator== (const certificate &that) const noexcept
 }
 
 
-int certificate::version (const __bits::x509 &x509) noexcept
+int certificate::version () const noexcept
 {
-	if (auto value = copy_values(x509.ref, ::kSecOIDX509V1Version))
+	if (auto value = copy_values(impl_.ref, ::kSecOIDX509V1Version))
 	{
 		char buf[16];
 		return std::atoi(c_str(value.ref, buf));
@@ -694,15 +688,15 @@ certificate::time_type to_time (::SecCertificateRef cert, ::CFTypeRef oid) noexc
 } // namespace
 
 
-certificate::time_type certificate::not_before (const __bits::x509 &x509) noexcept
+certificate::time_type certificate::not_before () const noexcept
 {
-	return to_time(x509.ref, kSecOIDX509V1ValidityNotBefore);
+	return to_time(impl_.ref, kSecOIDX509V1ValidityNotBefore);
 }
 
 
-certificate::time_type certificate::not_after (const __bits::x509 &x509) noexcept
+certificate::time_type certificate::not_after () const noexcept
 {
-	return to_time(x509.ref, kSecOIDX509V1ValidityNotAfter);
+	return to_time(impl_.ref, kSecOIDX509V1ValidityNotAfter);
 }
 
 
@@ -713,11 +707,9 @@ void certificate::digest (std::byte *result, hash_fn h) const noexcept
 }
 
 
-std::span<uint8_t> certificate::serial_number (
-	const __bits::x509 &x509,
-	std::span<uint8_t> dest) noexcept
+std::span<uint8_t> certificate::serial_number (std::span<uint8_t> dest) const noexcept
 {
-	unique_ref<::CFDataRef> value = ::SecCertificateCopySerialNumberData(x509.ref, nullptr);
+	unique_ref<::CFDataRef> value = ::SecCertificateCopySerialNumberData(impl_.ref, nullptr);
 
 	auto first = ::CFDataGetBytePtr(value.ref);
 	auto last = first + ::CFDataGetLength(value.ref);
@@ -778,38 +770,34 @@ std::span<uint8_t> key_id (
 } // namespace
 
 
-std::span<uint8_t> certificate::authority_key_identifier (
-	const __bits::x509 &x509,
-	std::span<uint8_t> dest) noexcept
+std::span<uint8_t> certificate::authority_key_identifier (std::span<uint8_t> dest) const noexcept
 {
-	return key_id(x509.ref, kSecOIDAuthorityKeyIdentifier, dest);
+	return key_id(impl_.ref, kSecOIDAuthorityKeyIdentifier, dest);
 }
 
 
-std::span<uint8_t> certificate::subject_key_identifier (
-	const __bits::x509 &x509,
-	std::span<uint8_t> dest) noexcept
+std::span<uint8_t> certificate::subject_key_identifier (std::span<uint8_t> dest) const noexcept
 {
-	return key_id(x509.ref, kSecOIDSubjectKeyIdentifier, dest);
+	return key_id(impl_.ref, kSecOIDSubjectKeyIdentifier, dest);
 }
 
 
-bool certificate::issued_by (const __bits::x509 &a, const __bits::x509 &b) noexcept
+bool certificate::issued_by (const certificate &that) const noexcept
 {
 	unique_ref<::CFDataRef>
-		a_issuer = ::SecCertificateCopyNormalizedIssuerSequence(a.ref),
-		b_subject = ::SecCertificateCopyNormalizedSubjectSequence(b.ref);
+		issuer = ::SecCertificateCopyNormalizedIssuerSequence(impl_.ref),
+		that_subject = ::SecCertificateCopyNormalizedSubjectSequence(that.impl_.ref);
 
-	auto size_1 = ::CFDataGetLength(b_subject.ref);
-	auto size_2 = ::CFDataGetLength(a_issuer.ref);
-	if (size_1 != size_2)
+	auto that_subject_size = ::CFDataGetLength(that_subject.ref);
+	auto issuer_size = ::CFDataGetLength(issuer.ref);
+	if (that_subject_size != issuer_size)
 	{
 		return false;
 	}
 
-	auto data_1 = ::CFDataGetBytePtr(b_subject.ref);
-	auto data_2 = ::CFDataGetBytePtr(a_issuer.ref);
-	return std::equal(data_1, data_1 + size_1, data_2);
+	auto data_1 = ::CFDataGetBytePtr(that_subject.ref);
+	auto data_2 = ::CFDataGetBytePtr(issuer.ref);
+	return std::equal(data_1, data_1 + that_subject_size, data_2);
 }
 
 
@@ -869,27 +857,27 @@ certificate::name_type make_name (::SecCertificateRef cert, ::CFTypeRef id, cons
 } // namespace
 
 
-certificate::name_type certificate::issuer (const __bits::x509 &x509)
+certificate::name_type certificate::issuer () const
 {
-	return make_name(x509.ref, ::kSecOIDX509V1IssuerName);
+	return make_name(impl_.ref, ::kSecOIDX509V1IssuerName);
 }
 
 
-certificate::name_type certificate::issuer (const __bits::x509 &x509, const std::string_view &oid)
+certificate::name_type certificate::issuer (const std::string_view &oid) const
 {
-	return make_name(x509.ref, ::kSecOIDX509V1IssuerName, oid);
+	return make_name(impl_.ref, ::kSecOIDX509V1IssuerName, oid);
 }
 
 
-certificate::name_type certificate::subject (const __bits::x509 &x509)
+certificate::name_type certificate::subject () const
 {
-	return make_name(x509.ref, ::kSecOIDX509V1SubjectName);
+	return make_name(impl_.ref, ::kSecOIDX509V1SubjectName);
 }
 
 
-certificate::name_type certificate::subject (const __bits::x509 &x509, const std::string_view &oid)
+certificate::name_type certificate::subject (const std::string_view &oid) const
 {
-	return make_name(x509.ref, ::kSecOIDX509V1SubjectName, oid);
+	return make_name(impl_.ref, ::kSecOIDX509V1SubjectName, oid);
 }
 
 
@@ -956,21 +944,21 @@ certificate::alt_name_type make_alt_name (::SecCertificateRef cert, ::CFTypeRef 
 } // namespace
 
 
-certificate::alt_name_type certificate::issuer_alt_name (const __bits::x509 &x509)
+certificate::alt_name_type certificate::issuer_alt_name () const
 {
-	return make_alt_name(x509.ref, ::kSecOIDIssuerAltName);
+	return make_alt_name(impl_.ref, ::kSecOIDIssuerAltName);
 }
 
 
-certificate::alt_name_type certificate::subject_alt_name (const __bits::x509 &x509)
+certificate::alt_name_type certificate::subject_alt_name () const
 {
-	return make_alt_name(x509.ref, ::kSecOIDSubjectAltName);
+	return make_alt_name(impl_.ref, ::kSecOIDSubjectAltName);
 }
 
 
-__bits::public_key certificate::public_key (const __bits::x509 &x509) noexcept
+crypto::public_key certificate::public_key () const noexcept
 {
-	return ::SecCertificateCopyKey(x509.ref);
+	return __bits::public_key{::SecCertificateCopyKey(impl_.ref)};
 }
 
 
@@ -1086,9 +1074,9 @@ bool certificate::operator== (const certificate &that) const noexcept
 }
 
 
-int certificate::version (const __bits::x509 &x509) noexcept
+int certificate::version () const noexcept
 {
-	return x509.ref->pCertInfo->dwVersion + 1;
+	return impl_.ref->pCertInfo->dwVersion + 1;
 }
 
 
@@ -1114,15 +1102,15 @@ certificate::time_type to_time (const FILETIME &time) noexcept
 } // namespace
 
 
-certificate::time_type certificate::not_before (const __bits::x509 &x509) noexcept
+certificate::time_type certificate::not_before () const noexcept
 {
-	return to_time(x509.ref->pCertInfo->NotBefore);
+	return to_time(impl_.ref->pCertInfo->NotBefore);
 }
 
 
-certificate::time_type certificate::not_after (const __bits::x509 &x509) noexcept
+certificate::time_type certificate::not_after () const noexcept
 {
-	return to_time(x509.ref->pCertInfo->NotAfter);
+	return to_time(impl_.ref->pCertInfo->NotAfter);
 }
 
 
@@ -1133,12 +1121,10 @@ void certificate::digest (std::byte *result, hash_fn h) const noexcept
 }
 
 
-std::span<uint8_t> certificate::serial_number (
-	const __bits::x509 &x509,
-	std::span<uint8_t> dest) noexcept
+std::span<uint8_t> certificate::serial_number (std::span<uint8_t> dest) const noexcept
 {
-	auto first = x509.ref->pCertInfo->SerialNumber.pbData;
-	auto last = first + x509.ref->pCertInfo->SerialNumber.cbData;
+	auto first = impl_.ref->pCertInfo->SerialNumber.pbData;
+	auto last = first + impl_.ref->pCertInfo->SerialNumber.cbData;
 
 	while (last != first && !last[-1])
 	{
@@ -1228,13 +1214,11 @@ private:
 };
 
 
-std::span<uint8_t> certificate::authority_key_identifier (
-	const __bits::x509 &x509,
-	std::span<uint8_t> dest) noexcept
+std::span<uint8_t> certificate::authority_key_identifier (std::span<uint8_t> dest) const noexcept
 {
 	auto ext = ::CertFindExtension(szOID_AUTHORITY_KEY_IDENTIFIER2,
-		x509.ref->pCertInfo->cExtension,
-		x509.ref->pCertInfo->rgExtension
+		impl_.ref->pCertInfo->cExtension,
+		impl_.ref->pCertInfo->rgExtension
 	);
 	if (!ext)
 	{
@@ -1269,13 +1253,11 @@ std::span<uint8_t> certificate::authority_key_identifier (
 }
 
 
-std::span<uint8_t> certificate::subject_key_identifier (
-	const __bits::x509 &x509,
-	std::span<uint8_t> dest) noexcept
+std::span<uint8_t> certificate::subject_key_identifier (std::span<uint8_t> dest) const noexcept
 {
 	auto ext = ::CertFindExtension(szOID_SUBJECT_KEY_IDENTIFIER,
-		x509.ref->pCertInfo->cExtension,
-		x509.ref->pCertInfo->rgExtension
+		impl_.ref->pCertInfo->cExtension,
+		impl_.ref->pCertInfo->rgExtension
 	);
 	if (!ext)
 	{
@@ -1310,12 +1292,12 @@ std::span<uint8_t> certificate::subject_key_identifier (
 }
 
 
-bool certificate::issued_by (const __bits::x509 &a, const __bits::x509 &b) noexcept
+bool certificate::issued_by (const certificate &that) const noexcept
 {
 	return ::CertCompareCertificateName(
 		X509_ASN_ENCODING | PKCS_7_ASN_ENCODING,
-		&b.ref->pCertInfo->Subject,
-		&a.ref->pCertInfo->Issuer
+		&that.impl_.ref->pCertInfo->Subject,
+		&impl_.ref->pCertInfo->Issuer
 	);
 }
 
@@ -1358,27 +1340,27 @@ certificate::name_type make_name (const CERT_NAME_BLOB &blob, const std::string_
 } // namespace
 
 
-certificate::name_type certificate::issuer (const __bits::x509 &x509)
+certificate::name_type certificate::issuer () const
 {
-	return make_name(x509.ref->pCertInfo->Issuer, {});
+	return make_name(impl_.ref->pCertInfo->Issuer, {});
 }
 
 
-certificate::name_type certificate::issuer (const __bits::x509 &x509, const std::string_view &oid)
+certificate::name_type certificate::issuer (const std::string_view &oid) const
 {
-	return make_name(x509.ref->pCertInfo->Issuer, oid);
+	return make_name(impl_.ref->pCertInfo->Issuer, oid);
 }
 
 
-certificate::name_type certificate::subject (const __bits::x509 &x509)
+certificate::name_type certificate::subject () const
 {
-	return make_name(x509.ref->pCertInfo->Subject, {});
+	return make_name(impl_.ref->pCertInfo->Subject, {});
 }
 
 
-certificate::name_type certificate::subject (const __bits::x509 &x509, const std::string_view &oid)
+certificate::name_type certificate::subject (const std::string_view &oid) const
 {
-	return make_name(x509.ref->pCertInfo->Subject, oid);
+	return make_name(impl_.ref->pCertInfo->Subject, oid);
 }
 
 
@@ -1474,24 +1456,24 @@ certificate::alt_name_type make_alt_name (PCCERT_CONTEXT cert, LPCSTR oid)
 } // namespace
 
 
-certificate::alt_name_type certificate::issuer_alt_name (const __bits::x509 &x509)
+certificate::alt_name_type certificate::issuer_alt_name () const
 {
-	return make_alt_name(x509.ref, szOID_ISSUER_ALT_NAME2);
+	return make_alt_name(impl_.ref, szOID_ISSUER_ALT_NAME2);
 }
 
 
-certificate::alt_name_type certificate::subject_alt_name (const __bits::x509 &x509)
+certificate::alt_name_type certificate::subject_alt_name () const
 {
-	return make_alt_name(x509.ref, szOID_SUBJECT_ALT_NAME2);
+	return make_alt_name(impl_.ref, szOID_SUBJECT_ALT_NAME2);
 }
 
 
-__bits::public_key certificate::public_key (const __bits::x509 &x509) noexcept
+crypto::public_key certificate::public_key () const noexcept
 {
 	__bits::public_key key;
 	::CryptImportPublicKeyInfoEx2(
 		X509_ASN_ENCODING,
-		&x509.ref->pCertInfo->SubjectPublicKeyInfo,
+		&impl_.ref->pCertInfo->SubjectPublicKeyInfo,
 		0,
 		nullptr,
 		&key.ref
