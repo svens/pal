@@ -136,7 +136,7 @@ std::optional<certificate> certificate::from_pem (const std::string_view &pem) n
 		{
 			if (auto x509 = load_der({der.get(), der_size}))
 			{
-				return certificate{std::move(x509)};
+				return std::make_optional(certificate{std::move(x509)});
 			}
 		}
 	}
@@ -278,12 +278,13 @@ std::span<uint8_t> certificate::serial_number (std::span<uint8_t> dest) const no
 }
 
 
-std::span<uint8_t> certificate::authority_key_identifier (std::span<uint8_t> dest) const noexcept
+std::optional<std::span<uint8_t>> certificate::authority_key_identifier (
+	std::span<uint8_t> dest) const noexcept
 {
 	auto index = ::X509_get_ext_by_NID(impl_.ref, NID_authority_key_identifier, -1);
 	if (index < 0)
 	{
-		return dest.first(0);
+		return std::nullopt;
 	}
 
 	unique_ref<AUTHORITY_KEYID *, &::AUTHORITY_KEYID_free> decoded
@@ -295,13 +296,13 @@ std::span<uint8_t> certificate::authority_key_identifier (std::span<uint8_t> des
 
 	if (!decoded)
 	{
-		return std::span<uint8_t>{};
+		return std::nullopt;
 	}
 
 	size_t required_size = decoded.ref->keyid->length;
 	if (required_size > dest.size())
 	{
-		return {static_cast<uint8_t *>(0), required_size};
+		return std::make_optional(std::span{static_cast<uint8_t *>(0), required_size});
 	}
 
 	dest = dest.first(required_size);
@@ -310,16 +311,17 @@ std::span<uint8_t> certificate::authority_key_identifier (std::span<uint8_t> des
 	{
 		b = *key_id++;
 	}
-	return dest;
+	return std::make_optional(dest);
 }
 
 
-std::span<uint8_t> certificate::subject_key_identifier (std::span<uint8_t> dest) const noexcept
+std::optional<std::span<uint8_t>> certificate::subject_key_identifier (
+	std::span<uint8_t> dest) const noexcept
 {
 	auto index = ::X509_get_ext_by_NID(impl_.ref, NID_subject_key_identifier, -1);
 	if (index < 0)
 	{
-		return dest.first(0);
+		return std::nullopt;
 	}
 
 	unique_ref<ASN1_OCTET_STRING *, &::ASN1_OCTET_STRING_free> decoded
@@ -331,13 +333,13 @@ std::span<uint8_t> certificate::subject_key_identifier (std::span<uint8_t> dest)
 
 	if (!decoded)
 	{
-		return std::span<uint8_t>{};
+		return std::nullopt;
 	}
 
 	size_t required_size = decoded.ref->length;
 	if (required_size > dest.size())
 	{
-		return {static_cast<uint8_t *>(0), required_size};
+		return std::make_optional(std::span{static_cast<uint8_t *>(0), required_size});
 	}
 
 	dest = dest.first(required_size);
@@ -346,7 +348,7 @@ std::span<uint8_t> certificate::subject_key_identifier (std::span<uint8_t> dest)
 	{
 		b = *key_id++;
 	}
-	return dest;
+	return std::make_optional(dest);
 }
 
 
@@ -729,7 +731,7 @@ std::span<uint8_t> certificate::serial_number (std::span<uint8_t> dest) const no
 namespace {
 
 
-std::span<uint8_t> key_id (
+std::optional<std::span<uint8_t>> key_id (
 	::SecCertificateRef cert,
 	::CFTypeRef oid,
 	std::span<uint8_t> dest) noexcept
@@ -746,7 +748,7 @@ std::span<uint8_t> key_id (
 		size_t required_size = last - first;
 		if (required_size > dest.size())
 		{
-			return {static_cast<uint8_t *>(0), required_size};
+			return std::make_optional(std::span{static_cast<uint8_t *>(0), required_size});
 		}
 
 		dest = dest.first(required_size);
@@ -754,22 +756,24 @@ std::span<uint8_t> key_id (
 		{
 			b = *first++;
 		}
-		return dest;
+		return std::make_optional(dest);
 	}
-	return dest.first(0);
+	return std::nullopt;
 }
 
 
 } // namespace
 
 
-std::span<uint8_t> certificate::authority_key_identifier (std::span<uint8_t> dest) const noexcept
+std::optional<std::span<uint8_t>> certificate::authority_key_identifier (
+	std::span<uint8_t> dest) const noexcept
 {
 	return key_id(impl_.ref, kSecOIDAuthorityKeyIdentifier, dest);
 }
 
 
-std::span<uint8_t> certificate::subject_key_identifier (std::span<uint8_t> dest) const noexcept
+std::optional<std::span<uint8_t>> certificate::subject_key_identifier (
+	std::span<uint8_t> dest) const noexcept
 {
 	return key_id(impl_.ref, kSecOIDSubjectKeyIdentifier, dest);
 }
@@ -1207,7 +1211,8 @@ private:
 };
 
 
-std::span<uint8_t> certificate::authority_key_identifier (std::span<uint8_t> dest) const noexcept
+std::optional<std::span<uint8_t>> certificate::authority_key_identifier (
+	std::span<uint8_t> dest) const noexcept
 {
 	auto ext = ::CertFindExtension(szOID_AUTHORITY_KEY_IDENTIFIER2,
 		impl_.ref->pCertInfo->cExtension,
@@ -1215,7 +1220,7 @@ std::span<uint8_t> certificate::authority_key_identifier (std::span<uint8_t> des
 	);
 	if (!ext)
 	{
-		return dest.first(0);
+		return std::nullopt;
 	}
 
 	asn_decoder<CERT_AUTHORITY_KEY_ID2_INFO, 2048> decoded
@@ -1226,14 +1231,14 @@ std::span<uint8_t> certificate::authority_key_identifier (std::span<uint8_t> des
 	};
 	if (!decoded.get())
 	{
-		return std::span<uint8_t>{};
+		return std::nullopt;
 	}
 	const auto &info = *decoded.get();
 
 	size_t required_size = info.KeyId.cbData;
 	if (required_size > dest.size())
 	{
-		return {static_cast<uint8_t *>(0), required_size};
+		return std::make_optional(std::span{static_cast<uint8_t *>(0), required_size});
 	}
 
 	dest = dest.first(required_size);
@@ -1242,11 +1247,12 @@ std::span<uint8_t> certificate::authority_key_identifier (std::span<uint8_t> des
 	{
 		b = *key_id++;
 	}
-	return dest;
+	return std::make_optional(dest);
 }
 
 
-std::span<uint8_t> certificate::subject_key_identifier (std::span<uint8_t> dest) const noexcept
+std::optional<std::span<uint8_t>> certificate::subject_key_identifier (
+	std::span<uint8_t> dest) const noexcept
 {
 	auto ext = ::CertFindExtension(szOID_SUBJECT_KEY_IDENTIFIER,
 		impl_.ref->pCertInfo->cExtension,
@@ -1254,7 +1260,7 @@ std::span<uint8_t> certificate::subject_key_identifier (std::span<uint8_t> dest)
 	);
 	if (!ext)
 	{
-		return dest.first(0);
+		return std::nullopt;
 	}
 
 	asn_decoder<CRYPT_DATA_BLOB, 2048> decoded
@@ -1265,14 +1271,14 @@ std::span<uint8_t> certificate::subject_key_identifier (std::span<uint8_t> dest)
 	};
 	if (!decoded.get())
 	{
-		return std::span<uint8_t>{};
+		return std::nullopt;
 	}
 	const auto &blob = *decoded.get();
 
 	size_t required_size = blob.cbData;
 	if (required_size > dest.size())
 	{
-		return {static_cast<uint8_t *>(0), required_size};
+		return std::make_optional(std::span{static_cast<uint8_t *>(0), required_size});
 	}
 
 	dest = dest.first(required_size);
@@ -1281,7 +1287,7 @@ std::span<uint8_t> certificate::subject_key_identifier (std::span<uint8_t> dest)
 	{
 		b = *key_id++;
 	}
-	return dest;
+	return std::make_optional(dest);
 }
 
 

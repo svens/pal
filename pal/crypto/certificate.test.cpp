@@ -352,7 +352,7 @@ TEST_CASE("crypto/certificate")
 		auto cert = *certificate::from_pem(pem);
 
 		uint8_t buf[64];
-		auto aki = pal_test::to_hex(cert.authority_key_identifier(buf));
+		auto aki = pal_test::to_hex(*cert.authority_key_identifier(buf));
 		CHECK(aki == expected);
 	}
 
@@ -360,9 +360,7 @@ TEST_CASE("crypto/certificate")
 	{
 		auto cert = *certificate::from_pem(test_cert::self_signed_pem);
 		uint8_t buf[64];
-		auto aki = pal_test::to_hex(cert.authority_key_identifier(buf));
-		CHECK(aki.data() != nullptr);
-		CHECK(aki.empty());
+		CHECK_FALSE(cert.authority_key_identifier(buf).has_value());
 	}
 
 	SECTION("authority_key_identifier: buffer too small")
@@ -370,8 +368,20 @@ TEST_CASE("crypto/certificate")
 		auto cert = *certificate::from_pem(test_cert::ca_pem);
 		uint8_t buf[1];
 		auto span = cert.authority_key_identifier(buf);
-		CHECK(span.data() == nullptr);
-		CHECK(span.size_bytes() == 20);
+		REQUIRE(span.has_value());
+		CHECK(span->data() == nullptr);
+		CHECK(span->size_bytes() == 20);
+	}
+
+	SECTION("authority_key_identifier: allocation error")
+	{
+		if constexpr (pal::is_linux_build)
+		{
+			auto cert = *certificate::from_pem(test_cert::ca_pem);
+			uint8_t buf[64];
+			pal_test::bad_alloc_once x;
+			CHECK_FALSE(cert.authority_key_identifier(buf).has_value());
+		}
 	}
 
 	SECTION("subject_key_identifier")
@@ -385,7 +395,7 @@ TEST_CASE("crypto/certificate")
 		auto cert = *certificate::from_pem(pem);
 
 		uint8_t buf[64];
-		auto ski = pal_test::to_hex(cert.subject_key_identifier(buf));
+		auto ski = pal_test::to_hex(*cert.subject_key_identifier(buf));
 		CHECK(ski == expected);
 	}
 
@@ -393,9 +403,7 @@ TEST_CASE("crypto/certificate")
 	{
 		auto cert = *certificate::from_pem(test_cert::self_signed_pem);
 		uint8_t buf[64];
-		auto ski = pal_test::to_hex(cert.subject_key_identifier(buf));
-		CHECK(ski.data() != nullptr);
-		CHECK(ski.empty());
+		CHECK_FALSE(cert.subject_key_identifier(buf).has_value());
 	}
 
 	SECTION("subject_key_identifier: buffer too small")
@@ -403,8 +411,20 @@ TEST_CASE("crypto/certificate")
 		auto cert = *certificate::from_pem(test_cert::ca_pem);
 		uint8_t buf[1];
 		auto span = cert.subject_key_identifier(buf);
-		CHECK(span.data() == nullptr);
-		CHECK(span.size_bytes() == 20);
+		REQUIRE(span.has_value());
+		CHECK(span->data() == nullptr);
+		CHECK(span->size_bytes() == 20);
+	}
+
+	SECTION("subject_key_identifier: allocation error")
+	{
+		if constexpr (pal::is_linux_build)
+		{
+			auto cert = *certificate::from_pem(test_cert::ca_pem);
+			uint8_t buf[64];
+			pal_test::bad_alloc_once x;
+			CHECK_FALSE(cert.subject_key_identifier(buf).has_value());
+		}
 	}
 
 	SECTION("issued_by / is_self_signed")

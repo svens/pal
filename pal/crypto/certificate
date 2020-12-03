@@ -212,27 +212,21 @@ public:
 	/**
 	 * Store authority key identifier of \a this certificate into \a dest.
 	 *
-	 * - If \a this certificate does not have AKI set, returns dest with
-	 *   size() == 0
 	 * - If \a dest is big enough, returns actually stored data range
 	 * - If \a dest is too small returns span with data() == nullptr and
 	 *   size_bytes() == required size.
-	 * - If memory allocation fails default-constructed span is returned
 	 */
-	std::span<uint8_t> authority_key_identifier (std::span<uint8_t> dest) const noexcept;
+	std::optional<std::span<uint8_t>> authority_key_identifier (std::span<uint8_t> dest) const noexcept;
 
 
 	/**
 	 * Store subject key identifier of \a this certificate into \a dest.
 	 *
-	 * - If \a this certificate does not have SKI set, returns dest with
-	 *   size() == 0
 	 * - If \a dest is big enough, returns actually stored data range
 	 * - If \a dest is too small returns span with data() == nullptr and
 	 *   size_bytes() == required size.
-	 * - If memory allocation fails default-constructed span is returned
 	 */
-	std::span<uint8_t> subject_key_identifier (std::span<uint8_t> dest) const noexcept;
+	std::optional<std::span<uint8_t>> subject_key_identifier (std::span<uint8_t> dest) const noexcept;
 
 
 	/**
@@ -319,7 +313,7 @@ public:
 	{
 		if (auto cert = load_der(std::as_bytes(std::span{data})))
 		{
-			return certificate{std::move(cert)};
+			return std::make_optional(certificate{std::move(cert)});
 		}
 		return std::nullopt;
 	}
