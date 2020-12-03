@@ -353,9 +353,6 @@ TEST_CASE("crypto/certificate")
 		uint8_t buf[64];
 		auto serial_number = pal_test::to_hex(cert.serial_number(buf));
 		CHECK(serial_number == expected);
-
-		serial_number = pal_test::to_hex(cert.serial_number());
-		CHECK(serial_number == expected);
 	}
 
 	SECTION("serial_number: buffer too small")
@@ -369,23 +366,15 @@ TEST_CASE("crypto/certificate")
 
 	SECTION("serial_number: alloc failure")
 	{
-		auto cert = certificate::from_pem(test_cert::ca_pem);
-
 		if constexpr (pal::is_linux_build)
 		{
+			auto cert = certificate::from_pem(test_cert::ca_pem);
 			uint8_t buf[64];
 			pal_test::bad_alloc_once x;
 			auto span = cert.serial_number(buf);
 			CHECK(span.data() == nullptr);
 			CHECK(span.size_bytes() == 8);
 		}
-
-		auto f = [&]()
-		{
-			pal_test::bad_alloc_once x;
-			(void)cert.serial_number();
-		};
-		CHECK_THROWS_AS(f(), std::bad_alloc);
 	}
 
 	SECTION("authority_key_identifier")
@@ -400,9 +389,6 @@ TEST_CASE("crypto/certificate")
 
 		uint8_t buf[64];
 		auto aki = pal_test::to_hex(cert.authority_key_identifier(buf));
-		CHECK(aki == expected);
-
-		aki = pal_test::to_hex(cert.authority_key_identifier());
 		CHECK(aki == expected);
 	}
 
@@ -424,30 +410,6 @@ TEST_CASE("crypto/certificate")
 		CHECK(span.size_bytes() == 20);
 	}
 
-	SECTION("authority_key_identifier: alloc failure")
-	{
-		auto cert = certificate::from_pem(test_cert::ca_pem);
-
-		if constexpr (pal::is_linux_build)
-		{
-			// alloc failure hits querying X509v3 extension
-			pal_test::bad_alloc_once x;
-			auto aki = cert.authority_key_identifier();
-			CHECK(aki.data() == nullptr);
-			CHECK(aki.size() == 0);
-		}
-		else
-		{
-			// alloc failure hits vector
-			auto f = [&]()
-			{
-				pal_test::bad_alloc_once x;
-				(void)cert.authority_key_identifier();
-			};
-			CHECK_THROWS_AS(f(), std::bad_alloc);
-		}
-	}
-
 	SECTION("subject_key_identifier")
 	{
 		auto [pem, expected] = GENERATE(table<std::string_view, std::string_view>({
@@ -460,9 +422,6 @@ TEST_CASE("crypto/certificate")
 
 		uint8_t buf[64];
 		auto ski = pal_test::to_hex(cert.subject_key_identifier(buf));
-		CHECK(ski == expected);
-
-		ski = pal_test::to_hex(cert.subject_key_identifier());
 		CHECK(ski == expected);
 	}
 
@@ -482,30 +441,6 @@ TEST_CASE("crypto/certificate")
 		auto span = cert.subject_key_identifier(buf);
 		CHECK(span.data() == nullptr);
 		CHECK(span.size_bytes() == 20);
-	}
-
-	SECTION("subject_key_identifier: alloc failure")
-	{
-		auto cert = certificate::from_pem(test_cert::ca_pem);
-
-		if constexpr (pal::is_linux_build)
-		{
-			// alloc failure hits querying X509v3 extension
-			pal_test::bad_alloc_once x;
-			auto ski = cert.subject_key_identifier();
-			CHECK(ski.data() == nullptr);
-			CHECK(ski.size() == 0);
-		}
-		else
-		{
-			// alloc failure hits vector
-			auto f = [&]()
-			{
-				pal_test::bad_alloc_once x;
-				(void)cert.subject_key_identifier();
-			};
-			CHECK_THROWS_AS(f(), std::bad_alloc);
-		}
 	}
 
 	SECTION("issued_by / is_self_signed")
@@ -825,7 +760,10 @@ TEST_CASE("crypto/certificate/store", "[!mayfail]")
 		bool tested_client_cert = false, tested_server_cert = false;
 		for (auto &cert: certs)
 		{
-			if (pal_test::to_hex(cert.serial_number()) == "1001")
+			uint8_t buf[16];
+			auto serial_number = pal_test::to_hex(cert.serial_number(buf));
+
+			if (serial_number == "1001")
 			{
 				// server with wildcard match
 				tested_server_cert = true;
@@ -835,7 +773,7 @@ TEST_CASE("crypto/certificate/store", "[!mayfail]")
 				CHECK(type == alt_name::dns);
 				CHECK(value == "server.pal.alt.ee");
 			}
-			else if (pal_test::to_hex(cert.serial_number()) == "1002")
+			else if (serial_number == "1002")
 			{
 				// client with exact match
 				tested_client_cert = true;

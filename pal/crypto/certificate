@@ -19,7 +19,6 @@
 #include <string>
 #include <string_view>
 #include <tuple>
-#include <vector>
 
 
 __pal_begin
@@ -181,8 +180,7 @@ public:
 
 	/**
 	 * Calculate and return hash of DER representation of \a this
-	 * certificate. Returned value is valid only if is_null() returns
-	 * false.
+	 * certificate.
 	 */
 	template <typename Algorithm>
 	typename basic_hash<Algorithm>::result_type digest () const noexcept
@@ -211,21 +209,6 @@ public:
 
 
 	/**
-	 * Return serial number of \a this certificate.
-	 */
-	template <typename Alloc = std::allocator<uint8_t>,
-		std::enable_if_t<std::is_pointer_v<decltype(Alloc().allocate(0))>, int> = 0
-	>
-	std::vector<uint8_t, Alloc> serial_number (const Alloc &alloc = Alloc()) const
-	{
-		auto span = serial_number(std::span<uint8_t>{});
-		std::vector<uint8_t, Alloc> result(span.size_bytes(), alloc);
-		serial_number(std::span{result});
-		return result;
-	}
-
-
-	/**
 	 * Store authority key identifier of \a this certificate into \a dest.
 	 *
 	 * - If \a this certificate does not have AKI set, returns dest with
@@ -239,21 +222,6 @@ public:
 
 
 	/**
-	 * Return authority key identifier of \a this certificate.
-	 */
-	template <typename Alloc = std::allocator<uint8_t>,
-		std::enable_if_t<std::is_pointer_v<decltype(Alloc().allocate(0))>, int> = 0
-	>
-	std::vector<uint8_t, Alloc> authority_key_identifier (const Alloc &alloc = Alloc()) const
-	{
-		auto span = authority_key_identifier(std::span<uint8_t>{});
-		std::vector<uint8_t, Alloc> result(span.size_bytes(), alloc);
-		authority_key_identifier(std::span{result});
-		return result;
-	}
-
-
-	/**
 	 * Store subject key identifier of \a this certificate into \a dest.
 	 *
 	 * - If \a this certificate does not have SKI set, returns dest with
@@ -264,21 +232,6 @@ public:
 	 * - If memory allocation fails default-constructed span is returned
 	 */
 	std::span<uint8_t> subject_key_identifier (std::span<uint8_t> dest) const noexcept;
-
-
-	/**
-	 * Return subject key identifier of \a this certificate.
-	 */
-	template <typename Alloc = std::allocator<uint8_t>,
-		std::enable_if_t<std::is_pointer_v<decltype(Alloc().allocate(0))>, int> = 0
-	>
-	std::vector<uint8_t, Alloc> subject_key_identifier (const Alloc &alloc = Alloc()) const
-	{
-		auto span = subject_key_identifier(std::span<uint8_t>{});
-		std::vector<uint8_t, Alloc> result(span.size_bytes(), alloc);
-		subject_key_identifier(std::span{result});
-		return result;
-	}
 
 
 	/**
@@ -311,31 +264,27 @@ public:
 
 
 	/**
-	 * Returns complete certificate distinguished name. On null
-	 * certificate returns default-constructed value.
+	 * Returns complete certificate distinguished name.
 	 */
 	name_type subject () const;
 
 
 	/**
-	 * Returns certificate distinguished name for \a oid. On null certificate
-	 * or if there is no such \a oid returns default-constructed value.
+	 * Returns certificate distinguished name for \a oid.
 	 */
 	name_type subject (const std::string_view &oid) const;
 
 
 	/**
 	 * Return issuer alternative name as list of pairs of name type and
-	 * corresponding textual values. On null certificate or on error
-	 * returns default-constructed value.
+	 * corresponding textual values.
 	 */
 	alt_name_type issuer_alt_name () const;
 
 
 	/**
 	 * Return subject alternative name as list of pairs of name type and
-	 * corresponding textual values. On null certificate or on error
-	 * returns default-constructed value.
+	 * corresponding textual values.
 	 */
 	alt_name_type subject_alt_name () const;
 
