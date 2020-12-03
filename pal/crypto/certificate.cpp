@@ -128,26 +128,19 @@ std::string_view normalized_ip_string (
 } // namespace
 
 
-certificate certificate::from_pem (
-	const std::string_view &pem,
-	std::error_code &error) noexcept
+std::optional<certificate> certificate::from_pem (const std::string_view &pem) noexcept
 {
 	if (auto der = scoped_alloc<std::byte, 8192>(std::nothrow, pem.size() / 4 * 3))
 	{
 		if (auto der_size = pem_to_der(pem, der.get()))
 		{
-			if (auto cert = load_der({der.get(), der_size}))
+			if (auto x509 = load_der({der.get(), der_size}))
 			{
-				return cert;
+				return certificate{std::move(x509)};
 			}
 		}
-		error = std::make_error_code(std::errc::invalid_argument);
 	}
-	else
-	{
-		error = std::make_error_code(std::errc::not_enough_memory);
-	}
-	return {};
+	return std::nullopt;
 }
 
 

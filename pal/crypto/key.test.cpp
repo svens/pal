@@ -62,7 +62,7 @@ TEST_CASE("crypto/key", tags)
 			CHECK(a.size_bits() == 0);
 			CHECK(a.algorithm() == key_algorithm::opaque);
 
-			public_key b = certificate::from_pem(test_cert::ca_pem).public_key();
+			public_key b = certificate::from_pem(test_cert::ca_pem)->public_key();
 			CHECK_FALSE(b.is_null());
 			CHECK(b.size_bits() == 4096);
 			CHECK(b.algorithm() == key_algorithm::rsa);
@@ -88,8 +88,7 @@ TEST_CASE("crypto/key", tags)
 					{ test_cert::client_pem, key_algorithm::rsa, 2048 },
 				})
 			);
-			auto cert = certificate::from_pem(pem);
-			auto key = cert.public_key();
+			auto key = certificate::from_pem(pem)->public_key();
 			REQUIRE(key);
 			CHECK(key.algorithm() == algorithm);
 			CHECK(key.size_bits() == size_bits);
