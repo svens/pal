@@ -548,9 +548,7 @@ inline auto with_fqdn (std::string expected)
 			{
 				if (value.starts_with("*."))
 				{
-					auto suffix = value.substr(1);
-					auto pos = expected.find(suffix);
-					if (expected.size() - suffix.size() == pos)
+					if (expected.ends_with(value.substr(1)))
 					{
 						return true;
 					}
