@@ -435,12 +435,7 @@ inline auto with_common_name (std::string expected)
 	return [=](const certificate &cert) -> bool
 	{
 		auto subject = cert.subject(oid::common_name);
-		if (!subject.empty())
-		{
-			auto &[oid, value] = subject[0];
-			return value == expected;
-		}
-		return false;
+		return !subject.empty() && std::get<1>(subject.front()) == expected;
 	};
 }
 
