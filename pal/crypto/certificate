@@ -351,7 +351,7 @@ public:
 
 	/**
 	 * Load and return all certificates from system store that satisfy
-	 * \a predicate.
+	 * \a predicate. If no such certificates, returns empty collection.
 	 *
 	 * Order of iterating over certificates depends on platform:
 	 *   - Linux: uses OpenSSL system-wide CA bundle. Location of it depends on
@@ -384,22 +384,22 @@ public:
 
 	/**
 	 * Load first certificate from system store that satisfies \a
-	 * predicate.
+	 * predicate. If no such certificate, returns std::nullopt.
 	 *
 	 * \copydetails load_all()
 	 */
 	template <typename Predicate>
-	static certificate load_one (Predicate predicate) noexcept
+	static std::optional<certificate> load_one (Predicate predicate) noexcept
 	{
 		__bits::x509_store_loop sys_cert_store;
 		while (auto c = certificate{sys_cert_store.next()})
 		{
 			if (predicate(c))
 			{
-				return c;
+				return std::make_optional(std::move(c));
 			}
 		}
-		return {};
+		return std::nullopt;
 	}
 
 

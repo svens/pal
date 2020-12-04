@@ -144,6 +144,12 @@ TEST_CASE("crypto/certificate")
 		CHECK(c2);
 	}
 
+	SECTION("copy constructor: null")
+	{
+		auto c = null;
+		CHECK(!c);
+	}
+
 	SECTION("copy assign")
 	{
 		auto c1 = *certificate::from_pem(test_cert::client_pem);
@@ -706,16 +712,16 @@ TEST_CASE("crypto/certificate/store", "[!mayfail]")
 	SECTION("load_one(with_common_name)")
 	{
 		auto cert = certificate::load_one(with_common_name("pal.alt.ee"));
-		REQUIRE(cert);
+		REQUIRE(cert.has_value());
 
-		auto [_, value] = cert.subject(oid::common_name)[0];
+		auto [_, value] = cert->subject(oid::common_name)[0];
 		CHECK(value == "pal.alt.ee");
 	}
 
 	SECTION("load_one(with_common_name) not found")
 	{
 		auto cert = certificate::load_one(with_common_name(pal_test::case_name()));
-		CHECK(!cert);
+		CHECK_FALSE(cert.has_value());
 	}
 
 	SECTION("load_all(with_common_name)")
