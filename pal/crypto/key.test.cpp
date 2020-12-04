@@ -125,16 +125,7 @@ TEST_CASE("crypto/key", tags)
 		auto &[_, priv] = keys();
 		char sig_buf[1024];
 		auto sig = priv.sign<md5>(pal_test::case_name(), sig_buf);
-		CHECK(sig.data() == nullptr);
-		CHECK(sig.size() == 0);
-	}
-
-	SECTION("public_key.verify_signature: invalid digest algorithm")
-	{
-		auto &[pub, priv] = keys();
-		char sig_buf[1024];
-		auto sig = priv.sign<sha1>(pal_test::case_name(), sig_buf);
-		CHECK_FALSE(pub.verify_signature<md5>(pal_test::case_name(), sig));
+		CHECK_FALSE(sig.has_value());
 	}
 }
 
@@ -146,52 +137,43 @@ TEMPLATE_TEST_CASE("crypto/key", tags, sha1, sha256, sha384, sha512)
 
 	SECTION("sign / verify_signature")
 	{
-		auto sig = priv.sign<TestType>(pal_test::case_name(), sig_buf);
+		auto sig = *priv.sign<TestType>(pal_test::case_name(), sig_buf);
 		CHECK(sig.data() != nullptr);
 		CHECK(sig.size() == 256);
 		CHECK(pub.verify_signature<TestType>(pal_test::case_name(), sig));
-	}
-
-	SECTION("sign: null private key")
-	{
-		private_key null;
-		auto sig = null.sign<TestType>(pal_test::case_name(), sig_buf);
-		CHECK(sig.data() == nullptr);
-		CHECK(sig.size() == 0);
 	}
 
 	SECTION("sign: too small signature buffer")
 	{
 		char buf[1];
 		auto sig = priv.sign<TestType>(pal_test::case_name(), buf);
-		CHECK(sig.data() == nullptr);
-		CHECK(sig.size() == 256);
+		CHECK(sig->data() == nullptr);
+		CHECK(sig->size() == 256);
 	}
 
-	SECTION("verify_signature: null public key")
+	SECTION("verify_signature: invalid digest algorithm")
 	{
-		auto sig = priv.sign<TestType>(pal_test::case_name(), sig_buf);
-		public_key null;
-		CHECK_FALSE(null.verify_signature<TestType>(pal_test::case_name(), sig));
+		auto sig = *priv.sign<TestType>(pal_test::case_name(), sig_buf);
+		CHECK_FALSE(pub.verify_signature<md5>(pal_test::case_name(), sig));
 	}
 
 	SECTION("verify_signature: invalid size signature")
 	{
-		auto sig = priv.sign<TestType>(pal_test::case_name(), sig_buf);
+		auto sig = *priv.sign<TestType>(pal_test::case_name(), sig_buf);
 		sig = sig.first(sig.size() / 2);
 		CHECK_FALSE(pub.verify_signature<TestType>(pal_test::case_name(), sig));
 	}
 
 	SECTION("verify_signature: invalid signature")
 	{
-		auto sig = priv.sign<TestType>(pal_test::case_name(), sig_buf);
+		auto sig = *priv.sign<TestType>(pal_test::case_name(), sig_buf);
 		sig_buf[sig.size() / 2] ^= 1;
 		CHECK_FALSE(pub.verify_signature<TestType>(pal_test::case_name(), sig));
 	}
 
 	SECTION("verify_signature: different message")
 	{
-		auto sig = priv.sign<TestType>("hello", sig_buf);
+		auto sig = *priv.sign<TestType>("hello", sig_buf);
 		CHECK_FALSE(pub.verify_signature<TestType>("goodbye", sig));
 	}
 }

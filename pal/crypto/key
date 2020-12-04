@@ -10,6 +10,7 @@
 #include <pal/__bits/lib>
 #include <pal/crypto/__bits/digest>
 #include <pal/crypto/__bits/x509>
+#include <optional>
 #include <span>
 #include <utility>
 
@@ -123,15 +124,11 @@ public:
 	template <typename Algorithm, typename Message, typename Signature>
 	bool verify_signature (const Message &message, const Signature &signature) noexcept
 	{
-		if (key_)
-		{
-			return verify_signature(
-				__bits::digest_algorithm_v<Algorithm>,
-				std::as_bytes(std::span{message}),
-				std::as_bytes(std::span{signature})
-			);
-		}
-		return false;
+		return verify_signature(
+			__bits::digest_algorithm_v<Algorithm>,
+			std::as_bytes(std::span{message}),
+			std::as_bytes(std::span{signature})
+		);
 	}
 
 
@@ -169,20 +166,17 @@ public:
 	 *   enough, returns span of actually stored bytes.
 	 * - if destination span for \a signature is not big enough, returns
 	 *   span with data() == nullptr and size_bytes() == required bytes.
-	 * - on any other failure returns default constructed span
 	 */
 	template <typename Algorithm, typename Message, typename Signature>
-	std::span<std::byte> sign (const Message &message, Signature &signature) noexcept
+	std::optional<std::span<std::byte>> sign (
+		const Message &message,
+		Signature &signature) noexcept
 	{
-		if (key_)
-		{
-			return sign(
-				__bits::digest_algorithm_v<Algorithm>,
-				std::as_bytes(std::span{message}),
-				std::as_writable_bytes(std::span{signature})
-			);
-		}
-		return {};
+		return sign(
+			__bits::digest_algorithm_v<Algorithm>,
+			std::as_bytes(std::span{message}),
+			std::as_writable_bytes(std::span{signature})
+		);
 	}
 
 
@@ -191,7 +185,7 @@ private:
 	private_key (__bits::private_key &&key) noexcept;
 	friend class certificate;
 
-	std::span<std::byte> sign (
+	std::optional<std::span<std::byte>> sign (
 		size_t digest_algorithm,
 		const std::span<const std::byte> &message,
 		std::span<std::byte> &&signature
