@@ -26,49 +26,36 @@ namespace {
 using bio_ptr = unique_ref<BIO *, &::BIO_free_all>;
 
 
-inline const char *default_ca_filename () noexcept
-{
-	if (auto path = std::getenv(::X509_get_default_cert_file_env()))
-	{
-		return path;
-	}
-	return ::X509_get_default_cert_file();
-}
-
-
 const char *ca_filename () noexcept
 {
 	// see https://www.happyassassin.net/2015/01/12/a-note-about-ssltls-trusted-certificate-stores-and-platforms/
 	static const char *files[] =
 	{
-		default_ca_filename(),
+		std::getenv(::X509_get_default_cert_file_env()),
+		::X509_get_default_cert_file(),
 		"/etc/pki/tls/certs/ca-bundle.crt",
 		"/etc/ssl/certs/ca-certificates.crt",
+		nullptr
 	};
-	for (auto &file: files)
+	auto file = files[0];
+	for (/**/;  file;  file++)
 	{
 		struct stat st;
 		if (stat(file, &st) == 0 && S_ISREG(st.st_mode))
 		{
-			return file;
+			break;
 		}
 	}
-	return nullptr;
+	return file;
 }
 
 
 bio_ptr ca_file ()
 {
 	static auto filename = ca_filename();
-	if (filename)
-	{
-		bio_ptr bio{::BIO_new(::BIO_s_file())};
-		if (BIO_read_filename(bio.ref, filename))
-		{
-			return bio;
-		}
-	}
-	return {};
+	bio_ptr bio{::BIO_new(::BIO_s_file())};
+	BIO_read_filename(bio.ref, filename);
+	return bio;
 }
 
 
