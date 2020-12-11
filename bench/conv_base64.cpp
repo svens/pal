@@ -21,7 +21,7 @@ void gen_to_base64_data (char *first, char *last) noexcept
 void conv_to_base64 (benchmark::State &state)
 {
 	char in[512];
-	char out[pal::to_base64_size(in, in + sizeof(in)).max_size];
+	char out[pal::to_base64_size(std::span{in})];
 
 	const auto size = state.range(0);
 	if (size > sizeof(in))
@@ -69,7 +69,7 @@ void gen_from_base64_data (char *first, char *last) noexcept
 void conv_from_base64 (benchmark::State &state)
 {
 	char in[512];
-	char out[pal::from_base64_size(in, in + sizeof(in)).max_size];
+	char out[pal::from_base64_size(std::span{in})];
 
 	const auto size = state.range(0);
 	if (size > sizeof(in))

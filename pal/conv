@@ -7,22 +7,10 @@
 
 #include <pal/__bits/lib>
 #include <system_error>
+#include <span>
 
 
 __pal_begin
-
-
-/**
- * Encoding/decoding conversion output size estimation result.
- */
-struct conv_size_result
-{
-	/// Maximum size for conversion output.
-	size_t max_size;
-
-	/// Error during size estimation or empty value if no error.
-	std::errc ec;
-};
 
 
 /**
@@ -42,37 +30,24 @@ struct conv_result
 
 
 /**
- * Return required output range size when doing base64 encoding of input range
- * [\a first, \a last).
- *
- * \note Returned \a ec has always default value.
+ * Return maximum output size when encoding \a input as Base64.
  */
-constexpr conv_size_result to_base64_size (const char *first, const char *last) noexcept
+template <typename T, size_t Extent>
+constexpr size_t to_base64_size (const std::span<T, Extent> &input) noexcept
 {
-	size_t input_size = last - first;
-	return
-	{
-		((input_size * 4 / 3) + 3) & ~3,
-		{}
-	};
+	return ((input.size_bytes() * 4 / 3) + 3) & ~3;
 }
 
 
 /**
- * Return required output range size when doing base64 decoding of input range
- * [\a first, \a last).
- *
- * If input range size is not valid for base64-encoded blob, ec is set to \a
- * std::errc::invalid_argument and \a estimated_max_size has undefined value.
+ * Return maximum output size when decoding Base64 \a input or 0 if \a input
+ * size is not valid encoded size.
  */
-constexpr conv_size_result from_base64_size (const char *first, const char *last) noexcept
+template <typename T, size_t Extent>
+constexpr size_t from_base64_size (const std::span<T, Extent> &input) noexcept
 {
-	size_t input_size = last - first;
-	return
-	{
-		input_size / 4 * 3,
-		input_size % 4 == 0 ? std::errc{} : std::errc::invalid_argument
-	};
+	auto input_size = input.size_bytes();
+	return input_size % 4 == 0 ? (input_size / 4 * 3) : 0;
 }
 
 
@@ -108,32 +83,24 @@ conv_result from_base64 (const char *first, const char *last, char *out) noexcep
 
 
 /**
- * Return required output range size when doing hex encoding of input range
- * [\a first, \a last).
- *
- * \note Returned \a ec has always default value.
+ * Return maximum output size when encoding \a input as hex-string.
  */
-constexpr conv_size_result to_hex_size (const char *first, const char *last) noexcept
+template <typename T, size_t Extent>
+constexpr size_t to_hex_size (const std::span<T, Extent> &input) noexcept
 {
-	return {static_cast<size_t>(last - first) * 2, {}};
+	return input.size_bytes() * 2;
 }
 
 
 /**
- * Return required output range size when doing hex decoding of input range
- * [\a first, \a last).
- *
- * If input range size is not valid for hex-encoded blob, ec is set to \a
- * std::errc::invalid_argument and \a estimated_max_size has undefined value.
+ * Return maximum output size when decoding hex-string \a input or 0 if \a
+ * input size is not valid encoded size.
  */
-constexpr conv_size_result from_hex_size (const char *first, const char *last) noexcept
+template <typename T, size_t Extent>
+constexpr size_t from_hex_size (const std::span<T, Extent> &input) noexcept
 {
-	size_t input_size = last - first;
-	return
-	{
-		input_size / 2,
-		input_size % 2 == 0 ? std::errc{} : std::errc::invalid_argument
-	};
+	auto input_size = input.size_bytes();
+	return input_size % 2 == 0 ? input_size / 2 : 0;
 }
 
 

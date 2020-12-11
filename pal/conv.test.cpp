@@ -88,9 +88,9 @@ struct base64
 		return pal::to_base64(in.data(), in.data() + in.size(), out);
 	}
 
-	static pal::conv_size_result to_size (const std::string_view &in) noexcept
+	static size_t to_size (const std::string_view &in) noexcept
 	{
-		return pal::to_base64_size(in.data(), in.data() + in.size());
+		return pal::to_base64_size(std::span{in});
 	}
 
 	static pal::conv_result from (const std::string_view &in, char *out) noexcept
@@ -98,9 +98,9 @@ struct base64
 		return pal::from_base64(in.data(), in.data() + in.size(), out);
 	}
 
-	static pal::conv_size_result from_size (const std::string_view &in) noexcept
+	static size_t from_size (const std::string_view &in) noexcept
 	{
-		return pal::from_base64_size(in.data(), in.data() + in.size());
+		return pal::from_base64_size(std::span{in});
 	}
 };
 
@@ -139,9 +139,9 @@ struct hex
 		return pal::to_hex(in.data(), in.data() + in.size(), out);
 	}
 
-	static pal::conv_size_result to_size (const std::string_view &in) noexcept
+	static size_t to_size (const std::string_view &in) noexcept
 	{
-		return pal::to_hex_size(in.data(), in.data() + in.size());
+		return pal::to_hex_size(std::span{in});
 	}
 
 	static pal::conv_result from (const std::string_view &in, char *out) noexcept
@@ -149,9 +149,9 @@ struct hex
 		return pal::from_hex(in.data(), in.data() + in.size(), out);
 	}
 
-	static pal::conv_size_result from_size (const std::string_view &in) noexcept
+	static size_t from_size (const std::string_view &in) noexcept
 	{
-		return pal::from_hex_size(in.data(), in.data() + in.size());
+		return pal::from_hex_size(std::span{in});
 	}
 };
 
@@ -189,9 +189,7 @@ TEMPLATE_TEST_CASE("conv", "",
 
 		SECTION("to_size")
 		{
-			auto [max_size, ec] = TestType::to_size(decoded);
-			CHECK(ec == std::errc{});
-			CHECK(max_size >= encoded.size());
+			CHECK(TestType::to_size(decoded) >= encoded.size());
 		}
 
 		SECTION("from")
@@ -204,9 +202,7 @@ TEMPLATE_TEST_CASE("conv", "",
 
 		SECTION("from_size")
 		{
-			auto [max_size, ec] = TestType::from_size(encoded);
-			CHECK(ec == std::errc{});
-			CHECK(max_size >= decoded.size());
+			CHECK(TestType::from_size(encoded) >= decoded.size());
 		}
 	}
 
@@ -216,9 +212,7 @@ TEMPLATE_TEST_CASE("conv", "",
 		{
 			auto &[encoded] = GENERATE(values(TestType::size_failure));
 			CAPTURE(encoded);
-
-			auto [max_size, ec] = TestType::from_size(encoded);
-			CHECK(ec == std::errc::invalid_argument);
+			CHECK(!TestType::from_size(encoded));
 		}
 
 		SECTION("from")

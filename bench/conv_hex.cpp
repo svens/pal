@@ -21,7 +21,7 @@ void gen_to_hex_data (char *first, char *last) noexcept
 void conv_to_hex (benchmark::State &state)
 {
 	char in[512];
-	char out[pal::to_hex_size(in, in + sizeof(in)).max_size];
+	char out[pal::to_hex_size(std::span{in})];
 
 	const auto size = state.range(0);
 	if (size > sizeof(in))
@@ -65,7 +65,7 @@ void gen_from_hex_data (char *first, char *last) noexcept
 void conv_from_hex (benchmark::State &state)
 {
 	char in[512];
-	char out[pal::from_hex_size(in, in + sizeof(in)).max_size];
+	char out[pal::from_hex_size(std::span{in})];
 
 	const auto size = state.range(0);
 	if (size > sizeof(in))
