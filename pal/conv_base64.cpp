@@ -15,29 +15,32 @@ conv_result to_base64 (const char *first, const char *last, char *out) noexcept
 
 	conv_result result{last, nullptr};
 
-	const auto mod = (last - first) % 3;
-	last -= mod;
+	auto p = reinterpret_cast<const uint8_t *>(first);
+	auto e = reinterpret_cast<const uint8_t *>(last);
 
-	for (/**/;  first != last;  first += 3)
+	const auto mod = (e - p) % 3;
+	e -= mod;
+
+	for (/**/;  p != e;  p += 3)
 	{
-		*out++ = map[first[0] >> 2];
-		*out++ = map[((first[0] << 4) | (first[1] >> 4)) & 0b00111111];
-		*out++ = map[((first[1] << 2) | (first[2] >> 6)) & 0b00111111];
-		*out++ = map[first[2] & 0b00111111];
+		*out++ = map[p[0] >> 2];
+		*out++ = map[((p[0] << 4) | (p[1] >> 4)) & 0b00111111];
+		*out++ = map[((p[1] << 2) | (p[2] >> 6)) & 0b00111111];
+		*out++ = map[p[2] & 0b00111111];
 	}
 
 	if (mod == 1)
 	{
-		*out++ = map[first[0] >> 2];
-		*out++ = map[((first[0] << 4)) & 0b00111111];
+		*out++ = map[p[0] >> 2];
+		*out++ = map[((p[0] << 4)) & 0b00111111];
 		*out++ = '=';
 		*out++ = '=';
 	}
 	else if (mod == 2)
 	{
-		*out++ = map[first[0] >> 2];
-		*out++ = map[((first[0] << 4) | (first[1] >> 4)) & 0b00111111];
-		*out++ = map[(first[1] << 2) & 0b00111111];
+		*out++ = map[p[0] >> 2];
+		*out++ = map[((p[0] << 4) | (p[1] >> 4)) & 0b00111111];
+		*out++ = map[(p[1] << 2) & 0b00111111];
 		*out++ = '=';
 	}
 

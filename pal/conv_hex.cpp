@@ -12,7 +12,7 @@ namespace {
 constexpr auto generate_to_hex_map () noexcept
 {
 	std::array<uint16_t, 256> result{};
-	for (auto v = 0ULL;  v < result.size();  ++v)
+	for (auto v = 0u;  v < result.size();  ++v)
 	{
 		constexpr char digits[] = "0123456789abcdef";
 		result[v] = hton(static_cast<uint16_t>((digits[v >> 4] << 8) | digits[v & 0x0f]));
@@ -24,7 +24,7 @@ constexpr auto generate_to_hex_map () noexcept
 constexpr auto generate_from_hex_map () noexcept
 {
 	std::array<uint8_t, 256> result{};
-	for (auto v = 0ULL;  v < result.size();  ++v)
+	for (auto v = 0u;  v < result.size();  ++v)
 	{
 		if ('0' <= v && v <= '9')
 		{
@@ -56,7 +56,7 @@ conv_result to_hex (const char *first, const char *last, char *out) noexcept
 	auto it = reinterpret_cast<uint16_t *>(out);
 	while (first != last)
 	{
-		*it++ = map[*first++];
+		*it++ = map[uint8_t(*first++)];
 	}
 	return {first, reinterpret_cast<char *>(it)};
 }

@@ -1,5 +1,6 @@
 #include <pal/conv>
 #include <pal/test>
+#include <array>
 
 
 namespace {
@@ -155,6 +156,17 @@ struct hex
 };
 
 
+constexpr auto generate_table () noexcept
+{
+	std::array<uint8_t, 256> table{};
+	for (uint16_t v = 0;  v < table.size();  ++v)
+	{
+		table[v] = static_cast<uint8_t>(v);
+	}
+	return table;
+}
+
+
 TEMPLATE_TEST_CASE("conv", "",
 	base64,
 	hex)
@@ -217,6 +229,20 @@ TEMPLATE_TEST_CASE("conv", "",
 			size_t failure_offset = last_in - encoded.data();
 			CHECK(failure_offset == expected_failure_offset);
 		}
+	}
+
+	SECTION("binary")
+	{
+		constexpr auto table = generate_table();
+
+		std::string_view in{reinterpret_cast<const char *>(table.data()), table.size()};
+		auto conv_result = TestType::to(in, buf);
+		std::string result{buf, conv_result.last_out};
+
+		conv_result = TestType::from(result, buf);
+		std::string_view out(buf, conv_result.last_out - buf);
+
+		CHECK(in == out);
 	}
 }
 
