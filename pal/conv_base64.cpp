@@ -5,7 +5,10 @@
 __pal_begin
 
 
-conv_result to_base64 (const char *first, const char *last, char *out) noexcept
+namespace __bits {
+
+
+char *to_base64 (const uint8_t *first, const uint8_t *last, char *out) noexcept
 {
 	static constexpr uint8_t map[] =
 		"ABCDEFGHIJKLMNOPQRSTUVWXYZ"
@@ -13,43 +16,37 @@ conv_result to_base64 (const char *first, const char *last, char *out) noexcept
 		"0123456789"
 		"+/";
 
-	conv_result result{last, nullptr};
+	const auto mod = (last - first) % 3;
+	last -= mod;
 
-	auto p = reinterpret_cast<const uint8_t *>(first);
-	auto e = reinterpret_cast<const uint8_t *>(last);
-
-	const auto mod = (e - p) % 3;
-	e -= mod;
-
-	for (/**/;  p != e;  p += 3)
+	for (/**/;  first != last;  first += 3)
 	{
-		*out++ = map[p[0] >> 2];
-		*out++ = map[((p[0] << 4) | (p[1] >> 4)) & 0b00111111];
-		*out++ = map[((p[1] << 2) | (p[2] >> 6)) & 0b00111111];
-		*out++ = map[p[2] & 0b00111111];
+		*out++ = map[first[0] >> 2];
+		*out++ = map[((first[0] << 4) | (first[1] >> 4)) & 0b00111111];
+		*out++ = map[((first[1] << 2) | (first[2] >> 6)) & 0b00111111];
+		*out++ = map[first[2] & 0b00111111];
 	}
 
 	if (mod == 1)
 	{
-		*out++ = map[p[0] >> 2];
-		*out++ = map[((p[0] << 4)) & 0b00111111];
+		*out++ = map[first[0] >> 2];
+		*out++ = map[((first[0] << 4)) & 0b00111111];
 		*out++ = '=';
 		*out++ = '=';
 	}
 	else if (mod == 2)
 	{
-		*out++ = map[p[0] >> 2];
-		*out++ = map[((p[0] << 4) | (p[1] >> 4)) & 0b00111111];
-		*out++ = map[(p[1] << 2) & 0b00111111];
+		*out++ = map[first[0] >> 2];
+		*out++ = map[((first[0] << 4) | (first[1] >> 4)) & 0b00111111];
+		*out++ = map[(first[1] << 2) & 0b00111111];
 		*out++ = '=';
 	}
 
-	result.last_out = out;
-	return result;
+	return out;
 }
 
 
-conv_result from_base64 (const char *first, const char *last, char *out) noexcept
+char *from_base64 (const uint8_t *first, const uint8_t *last, char *out) noexcept
 {
 	static constexpr std::array<uint8_t, 256> map =
 	{
@@ -71,12 +68,16 @@ conv_result from_base64 (const char *first, const char *last, char *out) noexcep
 		0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff,
 	};
 
-	int pad = last >= first + 2 ? (last[-1] == '=') + (last[-2] == '=') : 0;
+	const int pad = first + 2 > last ? 0 : ((last[-1] == '=') + (last[-2] == '='));
 	const auto end = first + ((last - first - pad) / 4) * 4;
+	uint8_t b0, b1, b2, b3;
 
 	while (first != end)
 	{
-		auto b0 = map[first[0]], b1 = map[first[1]], b2 = map[first[2]], b3 = map[first[3]];
+		b0 = map[first[0]];
+		b1 = map[first[1]];
+		b2 = map[first[2]];
+		b3 = map[first[3]];
 		if (b0 != 0xff && b1 != 0xff && b2 != 0xff && b3 != 0xff)
 		{
 			auto v = (b0 << 18) | (b1 << 12) | (b2 << 6) | b3;
@@ -87,33 +88,45 @@ conv_result from_base64 (const char *first, const char *last, char *out) noexcep
 		}
 		else
 		{
-			break;
-		}
-	}
-
-	for (auto it = first;  it != last;  ++it)
-	{
-		if (*it != '=' && map[*it] == 0xff)
-		{
-			return {it, out};
+			return nullptr;
 		}
 	}
 
 	if (pad == 1)
 	{
-		auto v = (map[first[0]] << 18) | (map[first[1]] << 12) | (map[first[2]] << 6);
-		*out++ = (v >> 16) & 0xff;
-		*out++ = (v >> 8) & 0xff;
-		first += 3;
+		b0 = map[first[0]];
+		b1 = map[first[1]];
+		b2 = map[first[2]];
+		if (b0 != 0xff && b1 != 0xff && b2 != 0xff)
+		{
+			auto v = (b0 << 18) | (b1 << 12) | (b2 << 6);
+			*out++ = (v >> 16) & 0xff;
+			*out++ = (v >> 8) & 0xff;
+		}
+		else
+		{
+			return nullptr;
+		}
 	}
 	else if (pad == 2)
 	{
-		*out++ = ((map[first[0]] << 18) | (map[first[1]] << 12)) >> 16;
-		first += 2;
+		b0 = map[first[0]];
+		b1 = map[first[1]];
+		if (b0 != 0xff && b1 != 0xff)
+		{
+			*out++ = ((b0 << 18) | (b1 << 12)) >> 16;
+		}
+		else
+		{
+			return nullptr;
+		}
 	}
 
-	return {first + pad, out};
+	return out;
 }
+
+
+} // namespace __bits
 
 
 __pal_end
