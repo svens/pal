@@ -68,7 +68,12 @@ char *from_base64 (const uint8_t *first, const uint8_t *last, char *out) noexcep
 		0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff,
 	};
 
-	const int pad = first + 2 > last ? 0 : ((last[-1] == '=') + (last[-2] == '='));
+	if ((last - first) % 4 != 0)
+	{
+		return nullptr;
+	}
+
+	const int pad = (last[-1] == '=') + (last[-2] == '=');
 	const auto end = first + ((last - first - pad) / 4) * 4;
 	uint8_t b0, b1, b2, b3;
 

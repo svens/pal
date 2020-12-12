@@ -51,6 +51,12 @@ struct base64
 
 	static inline const from_failure_type::list from_failure =
 	{
+		{ "Z" },
+		{ "Zg" },
+		{ "Zg=" },
+		{ "Zm9v=" },
+		{ "Zm9v==" },
+
 		// 'test' -> 'dGVzdA=='
 		{ ".GVzdA==" },
 		{ "d.VzdA==" },
@@ -123,6 +129,10 @@ struct hex
 
 	static inline const from_failure_type::list from_failure =
 	{
+		{ "7" },
+		{ "746" },
+		{ "74657" },
+		{ "7465737" },
 		{ ".4657374" },
 		{ "7.657374" },
 		{ "74.57374" },
@@ -209,7 +219,7 @@ TEMPLATE_TEST_CASE("conv", "",
 		{
 			auto &[encoded] = GENERATE(values(TestType::size_failure));
 			CAPTURE(encoded);
-			CHECK(!TestType::from_size(encoded));
+			CHECK(TestType::from_size(encoded) == 0);
 		}
 
 		SECTION("from")
