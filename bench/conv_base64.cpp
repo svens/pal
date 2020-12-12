@@ -6,11 +6,13 @@
 namespace {
 
 
-void gen_to_base64_data (char *first, char *last) noexcept
+void gen_to_base64_data (std::span<char> span) noexcept
 {
 	std::mt19937 rng;
 	rng.seed(std::random_device()());
 	std::uniform_int_distribution<std::mt19937::result_type> gen(0, 255);
+
+	auto first = span.data(), last = first + span.size_bytes();
 	while (first != last)
 	{
 		*first++ = gen(rng);
@@ -21,7 +23,7 @@ void gen_to_base64_data (char *first, char *last) noexcept
 void conv_to_base64 (benchmark::State &state)
 {
 	char in[512];
-	char out[pal::to_base64_size(in, in + sizeof(in)).max_size];
+	char out[pal::to_base64_size(in)];
 
 	const auto size = state.range(0);
 	if (size > sizeof(in))
@@ -29,12 +31,12 @@ void conv_to_base64 (benchmark::State &state)
 		state.SkipWithError("invalid size");
 	}
 
-	auto first = in, last = in + size;
-	gen_to_base64_data(first, last);
+	std::span input(in, size);
+	gen_to_base64_data(input);
 
 	for (auto _: state)
 	{
-		auto result = pal::to_base64(first, last, out);
+		auto result = pal::to_base64(input, out);
 		benchmark::DoNotOptimize(result);
 	}
 
@@ -46,7 +48,7 @@ BENCHMARK(conv_to_base64)
 ;
 
 
-void gen_from_base64_data (char *first, char *last) noexcept
+void gen_from_base64_data (std::span<char> span) noexcept
 {
 	const char alphabet[] =
 		"ABCDEFGHIJKLMNOPQRSTUVWXYZ"
@@ -59,6 +61,8 @@ void gen_from_base64_data (char *first, char *last) noexcept
 	std::uniform_int_distribution<std::mt19937::result_type> gen(
 		0, sizeof(alphabet) - 2
 	);
+
+	auto first = span.data(), last = first + span.size_bytes();
 	while (first != last)
 	{
 		*first++ = alphabet[gen(rng)];
@@ -69,7 +73,7 @@ void gen_from_base64_data (char *first, char *last) noexcept
 void conv_from_base64 (benchmark::State &state)
 {
 	char in[512];
-	char out[pal::from_base64_size(in, in + sizeof(in)).max_size];
+	char out[pal::from_base64_size(in)];
 
 	const auto size = state.range(0);
 	if (size > sizeof(in))
@@ -77,12 +81,12 @@ void conv_from_base64 (benchmark::State &state)
 		state.SkipWithError("invalid size");
 	}
 
-	auto first = in, last = in + size;
-	gen_from_base64_data(first, last);
+	std::span input(in, size);
+	gen_from_base64_data(input);
 
 	for (auto _: state)
 	{
-		auto result = pal::from_base64(first, last, out);
+		auto result = pal::from_base64(input, out);
 		benchmark::DoNotOptimize(result);
 	}
 

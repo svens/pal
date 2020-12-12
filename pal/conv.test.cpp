@@ -24,7 +24,6 @@ struct from_failure_type
 {
 	using list = std::initializer_list<from_failure_type>;
 	std::string_view encoded;
-	size_t expected_failure_offset;
 };
 
 
@@ -52,55 +51,61 @@ struct base64
 
 	static inline const from_failure_type::list from_failure =
 	{
+		{ "Z" },
+		{ "Zg" },
+		{ "Zg=" },
+		{ "Zm9v=" },
+		{ "Zm9v==" },
+
 		// 'test' -> 'dGVzdA=='
-		{ ".GVzdA==", 0 },
-		{ "d.VzdA==", 1 },
-		{ "dG.zdA==", 2 },
-		{ "dGV.dA==", 3 },
-		{ "dGVz.A==", 4 },
-		{ "dGVzd.==", 5 },
-		{ "dGVzdA.=", 6 },
-		{ "dGVzdA=.", 7 },
+		{ ".GVzdA==" },
+		{ "d.VzdA==" },
+		{ "dG.zdA==" },
+		{ "dGV.dA==" },
+		{ "dGVz.A==" },
+		{ "dGVzd.==" },
+		{ "dGVzdA.=" },
+		{ "dGVzdA=." },
 
 		// 'test1' -> 'dGVzdDE='
-		{ ".GVzdDE=", 0 },
-		{ "d.VzdDE=", 1 },
-		{ "dG.zdDE=", 2 },
-		{ "dGV.dDE=", 3 },
-		{ "dGVz.DE=", 4 },
-		{ "dGVzd.E=", 5 },
-		{ "dGVzdD.=", 6 },
-		{ "dGVzdDE.", 7 },
+		{ ".GVzdDE=" },
+		{ "d.VzdDE=" },
+		{ "dG.zdDE=" },
+		{ "dGV.dDE=" },
+		{ "dGVz.DE=" },
+		{ "dGVzd.E=" },
+		{ "dGVzdD.=" },
+		{ "dGVzdDE." },
 
 		// 'test12' -> 'dGVzdDEx'
-		{ ".GVzdDEx", 0 },
-		{ "d.VzdDEx", 1 },
-		{ "dG.zdDEx", 2 },
-		{ "dGV.dDEx", 3 },
-		{ "dGVz.DEx", 4 },
-		{ "dGVzd.Ex", 5 },
-		{ "dGVzdD.x", 6 },
-		{ "dGVzdDE.", 7 },
+		{ ".GVzdDEx" },
+		{ "d.VzdDEx" },
+		{ "dG.zdDEx" },
+		{ "dGV.dDEx" },
+		{ "dGVz.DEx" },
+		{ "dGVzd.Ex" },
+		{ "dGVzdD.x" },
+		{ "dGVzdDE." },
 	};
 
-	static pal::conv_result to (const std::string_view &in, char *out) noexcept
+	static char *to (const std::string_view &in, char *out) noexcept
 	{
-		return pal::to_base64(in.data(), in.data() + in.size(), out);
+		return pal::to_base64(in, out);
 	}
 
-	static pal::conv_size_result to_size (const std::string_view &in) noexcept
+	static size_t to_size (const std::string_view &in) noexcept
 	{
-		return pal::to_base64_size(in.data(), in.data() + in.size());
+		return pal::to_base64_size(in);
 	}
 
-	static pal::conv_result from (const std::string_view &in, char *out) noexcept
+	static char *from (const std::string_view &in, char *out) noexcept
 	{
-		return pal::from_base64(in.data(), in.data() + in.size(), out);
+		return pal::from_base64(in, out);
 	}
 
-	static pal::conv_size_result from_size (const std::string_view &in) noexcept
+	static size_t from_size (const std::string_view &in) noexcept
 	{
-		return pal::from_base64_size(in.data(), in.data() + in.size());
+		return pal::from_base64_size(in);
 	}
 };
 
@@ -124,34 +129,38 @@ struct hex
 
 	static inline const from_failure_type::list from_failure =
 	{
-		{ ".4657374", 0 },
-		{ "7.657374", 1 },
-		{ "74.57374", 2 },
-		{ "746.7374", 3 },
-		{ "7465.374", 4 },
-		{ "74657.74", 5 },
-		{ "746573.4", 6 },
-		{ "7465737.", 7 },
+		{ "7" },
+		{ "746" },
+		{ "74657" },
+		{ "7465737" },
+		{ ".4657374" },
+		{ "7.657374" },
+		{ "74.57374" },
+		{ "746.7374" },
+		{ "7465.374" },
+		{ "74657.74" },
+		{ "746573.4" },
+		{ "7465737." },
 	};
 
-	static pal::conv_result to (const std::string_view &in, char *out) noexcept
+	static char *to (const std::string_view &in, char *out) noexcept
 	{
-		return pal::to_hex(in.data(), in.data() + in.size(), out);
+		return pal::to_hex(in, out);
 	}
 
-	static pal::conv_size_result to_size (const std::string_view &in) noexcept
+	static size_t to_size (const std::string_view &in) noexcept
 	{
-		return pal::to_hex_size(in.data(), in.data() + in.size());
+		return pal::to_hex_size(in);
 	}
 
-	static pal::conv_result from (const std::string_view &in, char *out) noexcept
+	static char *from (const std::string_view &in, char *out) noexcept
 	{
-		return pal::from_hex(in.data(), in.data() + in.size(), out);
+		return pal::from_hex(in, out);
 	}
 
-	static pal::conv_size_result from_size (const std::string_view &in) noexcept
+	static size_t from_size (const std::string_view &in) noexcept
 	{
-		return pal::from_hex_size(in.data(), in.data() + in.size());
+		return pal::from_hex_size(in);
 	}
 };
 
@@ -181,32 +190,26 @@ TEMPLATE_TEST_CASE("conv", "",
 
 		SECTION("to")
 		{
-			auto [last_in, last_out] = TestType::to(decoded, buf);
+			auto last_out = TestType::to(decoded, buf);
 			std::string result{buf, last_out};
 			CHECK(result == encoded);
-			CHECK(last_in == decoded.data() + decoded.size());
 		}
 
 		SECTION("to_size")
 		{
-			auto [max_size, ec] = TestType::to_size(decoded);
-			CHECK(ec == std::errc{});
-			CHECK(max_size >= encoded.size());
+			CHECK(TestType::to_size(decoded) >= encoded.size());
 		}
 
 		SECTION("from")
 		{
-			auto [last_in, last_out] = TestType::from(encoded, buf);
-			std::string result(buf, last_out);
+			auto out = TestType::from(encoded, buf);
+			std::string result(buf, out);
 			CHECK(result == decoded);
-			CHECK(last_in == encoded.data() + encoded.size());
 		}
 
 		SECTION("from_size")
 		{
-			auto [max_size, ec] = TestType::from_size(encoded);
-			CHECK(ec == std::errc{});
-			CHECK(max_size >= decoded.size());
+			CHECK(TestType::from_size(encoded) >= decoded.size());
 		}
 	}
 
@@ -216,18 +219,14 @@ TEMPLATE_TEST_CASE("conv", "",
 		{
 			auto &[encoded] = GENERATE(values(TestType::size_failure));
 			CAPTURE(encoded);
-
-			auto [max_size, ec] = TestType::from_size(encoded);
-			CHECK(ec == std::errc::invalid_argument);
+			CHECK(TestType::from_size(encoded) == 0);
 		}
 
 		SECTION("from")
 		{
-			auto &[encoded, expected_failure_offset] = GENERATE(values(TestType::from_failure));
+			auto &[encoded] = GENERATE(values(TestType::from_failure));
 			CAPTURE(encoded);
-			auto [last_in, _] = TestType::from(encoded, buf);
-			size_t failure_offset = last_in - encoded.data();
-			CHECK(failure_offset == expected_failure_offset);
+			CHECK(TestType::from(encoded, buf) == nullptr);
 		}
 	}
 
@@ -236,11 +235,11 @@ TEMPLATE_TEST_CASE("conv", "",
 		constexpr auto table = generate_table();
 
 		std::string_view in{reinterpret_cast<const char *>(table.data()), table.size()};
-		auto conv_result = TestType::to(in, buf);
-		std::string result{buf, conv_result.last_out};
+		auto last_out = TestType::to(in, buf);
+		std::string result{buf, last_out};
 
-		conv_result = TestType::from(result, buf);
-		std::string_view out(buf, conv_result.last_out - buf);
+		last_out = TestType::from(result, buf);
+		std::string out{buf, last_out};
 
 		CHECK(in == out);
 	}

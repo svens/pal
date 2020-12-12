@@ -6,11 +6,13 @@
 namespace {
 
 
-void gen_to_hex_data (char *first, char *last) noexcept
+void gen_to_hex_data (std::span<char> span) noexcept
 {
 	std::mt19937 rng;
 	rng.seed(std::random_device()());
 	std::uniform_int_distribution<std::mt19937::result_type> gen(0, 255);
+
+	auto first = span.data(), last = first + span.size_bytes();
 	while (first != last)
 	{
 		*first++ = gen(rng);
@@ -21,7 +23,7 @@ void gen_to_hex_data (char *first, char *last) noexcept
 void conv_to_hex (benchmark::State &state)
 {
 	char in[512];
-	char out[pal::to_hex_size(in, in + sizeof(in)).max_size];
+	char out[pal::to_hex_size(in)];
 
 	const auto size = state.range(0);
 	if (size > sizeof(in))
@@ -29,12 +31,12 @@ void conv_to_hex (benchmark::State &state)
 		state.SkipWithError("invalid size");
 	}
 
-	auto first = in, last = in + size;
-	gen_to_hex_data(first, last);
+	std::span input(in, size);
+	gen_to_hex_data(input);
 
 	for (auto _: state)
 	{
-		auto result = pal::to_hex(first, last, out);
+		auto result = pal::to_hex(input, out);
 		benchmark::DoNotOptimize(result);
 	}
 
@@ -46,7 +48,7 @@ BENCHMARK(conv_to_hex)
 ;
 
 
-void gen_from_hex_data (char *first, char *last) noexcept
+void gen_from_hex_data (std::span<char> span) noexcept
 {
 	static constexpr char alphabet[] = "0123456789abcdefABCDEF";
 
@@ -55,6 +57,8 @@ void gen_from_hex_data (char *first, char *last) noexcept
 	std::uniform_int_distribution<std::mt19937::result_type> gen(
 		0, sizeof(alphabet) - 2
 	);
+
+	auto first = span.data(), last = first + span.size_bytes();
 	while (first != last)
 	{
 		*first++ = alphabet[gen(rng)];
@@ -65,7 +69,7 @@ void gen_from_hex_data (char *first, char *last) noexcept
 void conv_from_hex (benchmark::State &state)
 {
 	char in[512];
-	char out[pal::from_hex_size(in, in + sizeof(in)).max_size];
+	char out[pal::from_hex_size(in)];
 
 	const auto size = state.range(0);
 	if (size > sizeof(in))
@@ -73,12 +77,12 @@ void conv_from_hex (benchmark::State &state)
 		state.SkipWithError("invalid size");
 	}
 
-	auto first = in, last = in + size;
-	gen_from_hex_data(first, last);
+	std::span input(in, size);
+	gen_from_hex_data(input);
 
 	for (auto _: state)
 	{
-		auto result = pal::from_hex(first, last, out);
+		auto result = pal::from_hex(input, out);
 		benchmark::DoNotOptimize(result);
 	}
 

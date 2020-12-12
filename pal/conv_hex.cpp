@@ -6,6 +6,9 @@
 __pal_begin
 
 
+namespace __bits {
+
+
 namespace {
 
 
@@ -50,39 +53,48 @@ constexpr auto generate_from_hex_map () noexcept
 } // namespace
 
 
-conv_result to_hex (const char *first, const char *last, char *out) noexcept
+char *to_hex (const uint8_t *first, const uint8_t *last, char *out) noexcept
 {
 	static constexpr auto map = generate_to_hex_map();
 	auto it = reinterpret_cast<uint16_t *>(out);
 	while (first != last)
 	{
-		*it++ = map[uint8_t(*first++)];
+		*it++ = map[*first++];
 	}
-	return {first, reinterpret_cast<char *>(it)};
+	return reinterpret_cast<char *>(it);
 }
 
 
-conv_result from_hex (const char *first, const char *last, char *out) noexcept
+char *from_hex (const uint8_t *first, const uint8_t *last, char *out) noexcept
 {
 	static constexpr auto map = generate_from_hex_map();
-	for (/**/;  first + 1 < last;  first += 2)
+
+	if ((last - first) % 2 != 0)
 	{
-		auto hi = map[first[0]], lo = map[first[1]];
+		return nullptr;
+	}
+
+	uint8_t hi, lo;
+	while (first != last)
+	{
+		hi = map[first[0]];
+		lo = map[first[1]];
 		if (hi != 0xff && lo != 0xff)
 		{
 			*out++ = (hi << 4) | lo;
+			first += 2;
 		}
 		else
 		{
-			if (hi != 0xff)
-			{
-				first++;
-			}
-			break;
+			return nullptr;
 		}
 	}
-	return {first, out};
+
+	return out;
 }
+
+
+} // namespace __bits
 
 
 __pal_end
