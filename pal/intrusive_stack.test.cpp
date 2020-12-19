@@ -83,7 +83,7 @@ TEST_CASE("intrusive_stack")
 	}
 
 
-	if constexpr (!pal::expect_noexcept)
+	if constexpr (!pal::assert_noexcept)
 	{
 		SECTION("push null")
 		{

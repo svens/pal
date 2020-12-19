@@ -6,7 +6,7 @@
  */
 
 #include <pal/__bits/lib>
-#include <pal/expect>
+#include <pal/assert>
 #include <type_traits>
 
 
@@ -182,7 +182,7 @@ private:
 
 	constexpr void check_invariant () const
 	{
-		pal_expect(ptr_ != nullptr);
+		pal_assert(ptr_ != nullptr);
 	}
 };
 
