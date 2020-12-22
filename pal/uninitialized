@@ -93,8 +93,25 @@ struct uninitialized: public uninitialized_storage<T>
 	using uninitialized_storage<T>::operator->;
 
 
-	/// Constructs variable \a T in internal \a storage.
-	template <typename... Args>
+	/// Constructs variable \a T in internal \a storage as default value.
+	constexpr void construct ()
+	{
+		::new (operator->()) T;
+	}
+
+
+	/// Constructs variable \a T in internal \a storage as copy of \a arg
+	constexpr void construct (const T &arg)
+	{
+		::new (operator->()) T(arg);
+	}
+
+
+	/// Constructs variable \a T in internal \a storage with \a args
+	template <
+		typename... Args,
+		typename = std::enable_if_t<std::is_constructible_v<T, Args...>>
+	>
 	constexpr void construct (Args &&...args)
 	{
 		::new (operator->()) T(std::forward<Args>(args)...);

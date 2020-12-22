@@ -9,6 +9,7 @@ list(APPEND pal_sources
 	pal/conv_hex.cpp
 	pal/error
 	pal/error.cpp
+	pal/expected
 	pal/hash
 	pal/intrusive_mpsc_queue
 	pal/intrusive_queue
@@ -17,6 +18,7 @@ list(APPEND pal_sources
 	pal/scoped_alloc
 	pal/span
 	pal/string
+	pal/uninitialized
 )
 
 list(APPEND pal_unittests_sources
@@ -26,6 +28,7 @@ list(APPEND pal_unittests_sources
 	pal/byte_order.test.cpp
 	pal/conv.test.cpp
 	pal/error.test.cpp
+	pal/expected.test.cpp
 	pal/hash.test.cpp
 	pal/intrusive_mpsc_queue.test.cpp
 	pal/intrusive_queue.test.cpp
@@ -33,6 +36,7 @@ list(APPEND pal_unittests_sources
 	pal/not_null.test.cpp
 	pal/scoped_alloc.test.cpp
 	pal/span.test.cpp
+	pal/uninitialized.test.cpp
 )
 
 include(pal/crypto/list.cmake)
