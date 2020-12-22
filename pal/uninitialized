@@ -1,0 +1,161 @@
+#pragma once // -*- C++ -*-
+
+/**
+ * \file pal/uninitialized
+ * Uninitialized memory storage for typed variable.
+ */
+
+#include <pal/__bits/lib>
+#include <type_traits>
+#include <utility>
+
+
+__pal_begin
+
+
+template <typename T, bool = std::is_trivially_destructible_v<T>>
+struct uninitialized_storage;
+
+
+/**
+ * Storage for uninitialized<T> memory block.
+ */
+template <typename T>
+struct uninitialized_storage<T, true>
+{
+	/// Memory block for storage
+	T data;
+
+	/**
+	 * Invokes T destructor in memory block. No-op for trivially
+	 * destructible type T
+	 */
+	constexpr void destruct () noexcept
+	{ }
+
+
+	/// Returns pointer to memory block
+	constexpr const T *operator-> () const noexcept
+	{
+		return &data;
+	}
+
+
+	/// Returns pointer to memory block
+	constexpr T *operator-> () noexcept
+	{
+		return &data;
+	}
+};
+
+
+#if !defined(__DOXYGEN__)
+
+template <typename T>
+struct uninitialized_storage<T, false>
+{
+	std::aligned_storage_t<sizeof(T)> data;
+
+
+	void destruct () noexcept(std::is_nothrow_destructible_v<T>)
+	{
+		operator->()->~T();
+	}
+
+
+	const T *operator-> () const noexcept
+	{
+		return reinterpret_cast<const T *>(&data);
+	}
+
+
+	T *operator-> () noexcept
+	{
+		return reinterpret_cast<T *>(&data);
+	}
+};
+
+#endif
+
+
+/**
+ * Uninitialized memory storage for typed variable.
+ *
+ * Provides memory block for \a T, not constructed during instantation of this
+ * class. This allows caller explicitly construct/destruct instance of T in
+ * memory storage. It is application responsibility to ensure proper lifetime
+ * handling. Fetching pointer or reference to internal memory block while it
+ * is not constructed yet or is already destructed is undefined behaviour.
+ */
+template <typename T>
+struct uninitialized: public uninitialized_storage<T>
+{
+	using uninitialized_storage<T>::operator->;
+
+
+	/// Constructs variable \a T in internal \a storage.
+	template <typename... Args>
+	constexpr void construct (Args &&...args)
+	{
+		::new (operator->()) T(std::forward<Args>(args)...);
+	}
+
+
+	/// Returns const reference to variable \a T.
+	constexpr const T &operator* () const & noexcept
+	{
+		return *operator->();
+	}
+
+
+	/// Returns reference to variable \a T.
+	constexpr T &operator* () & noexcept
+	{
+		return *operator->();
+	}
+
+
+	/// Return const rvalue reference to variable \a T.
+	constexpr const T &&operator* () const && noexcept
+	{
+		return std::move(*operator->());
+	}
+
+
+	/// Return rvalue reference to variable \a T.
+	constexpr T &&operator* () && noexcept
+	{
+		return std::move(*operator->());
+	}
+
+
+	/// Returns const reference to variable \a T.
+	constexpr const T &value () const & noexcept
+	{
+		return *operator->();
+	}
+
+
+	/// Returns reference to variable \a T.
+	constexpr T &value () & noexcept
+	{
+		return *operator->();
+	}
+
+
+	/// Return const rvalue reference to variable \a T.
+	constexpr const T &&value () const && noexcept
+	{
+		return std::move(*operator->());
+	}
+
+
+	/// Return rvalue reference to variable \a T.
+	constexpr T &&value () && noexcept
+	{
+		return std::move(*operator->());
+	}
+};
+
+
+__pal_end
