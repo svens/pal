@@ -727,6 +727,198 @@ TEMPLATE_TEST_CASE("expected", ""
 }
 
 
+template <typename TestType>
+TestType value_1 ()
+{
+	return TestType{1};
+}
+
+
+template <typename TestType>
+TestType value_2 ()
+{
+	return TestType{2};
+}
+
+
+template <>
+std::string value_1 ()
+{
+	return "1";
+}
+
+
+template <>
+std::string value_2 ()
+{
+	return "2";
+}
+
+
+TEMPLATE_TEST_CASE("expected::operator==", "", int, std::string)
+{
+	auto v1 = value_1<TestType>();
+	auto v2 = value_2<TestType>();
+	pal::unexpected<bool> u1{false}, u2{true};
+	pal::expected<TestType, bool> ev1{v1}, ev2{v2}, eu1{u1}, eu2{u2};
+
+	SECTION("x && y")
+	{
+		SECTION("expected & expected")
+		{
+			CHECK(ev1 == ev1);
+			CHECK_FALSE(ev1 == ev2);
+			CHECK(ev1 != ev2);
+			CHECK_FALSE(ev1 != ev1);
+		}
+
+		SECTION("expected & T")
+		{
+			CHECK(ev1 == v1);
+			CHECK(v1 == ev1);
+
+			CHECK_FALSE(ev1 == v2);
+			CHECK_FALSE(v2 == ev1);
+
+			CHECK(ev1 != v2);
+			CHECK(v2 != ev1);
+
+			CHECK_FALSE(ev1 != v1);
+			CHECK_FALSE(v1 != ev1);
+		}
+
+		SECTION("expected & unexpected")
+		{
+			CHECK_FALSE(ev1 == u1);
+			CHECK_FALSE(u1 == ev1);
+
+			CHECK(ev1 != u1);
+			CHECK(u1 != ev1);
+		}
+	}
+
+	SECTION("!x && y")
+	{
+		SECTION("expected & expected")
+		{
+			CHECK_FALSE(eu1 == ev1);
+			CHECK(eu1 != ev1);
+		}
+
+		SECTION("expected & T")
+		{
+			CHECK_FALSE(eu1 == v1);
+			CHECK_FALSE(v1 == eu1);
+
+			CHECK(eu1 != v1);
+			CHECK(v1 != eu1);
+		}
+
+		SECTION("expected & unexpected")
+		{
+			CHECK(eu1 == u1);
+			CHECK(u1 == eu1);
+
+			CHECK_FALSE(eu1 == u2);
+			CHECK_FALSE(u2 == eu1);
+
+			CHECK(eu1 != u2);
+			CHECK(u2 != eu1);
+
+			CHECK_FALSE(eu1 != u1);
+			CHECK_FALSE(u1 != eu1);
+		}
+	}
+
+	SECTION("x && !y")
+	{
+		SECTION("expected & expected")
+		{
+			CHECK_FALSE(ev1 == eu1);
+			CHECK(ev1 != eu1);
+		}
+	}
+
+	SECTION("!x && !y")
+	{
+		SECTION("expected & expected")
+		{
+			CHECK(eu1 == eu1);
+			CHECK(eu1 != eu2);
+		}
+	}
+}
+
+
+TEMPLATE_TEST_CASE("expected::operator==", "", void)
+{
+	pal::unexpected<bool> u1{false}, u2{true};
+	pal::expected<TestType, bool> ev1, ev2, eu1{u1}, eu2{u2};
+
+	SECTION("x && y")
+	{
+		SECTION("expected & expected")
+		{
+			CHECK(ev1 == ev1);
+			CHECK(ev1 == ev2);
+			CHECK_FALSE(ev1 != ev2);
+			CHECK_FALSE(ev1 != ev1);
+		}
+
+		SECTION("expected & unexpected")
+		{
+			CHECK_FALSE(ev1 == u1);
+			CHECK_FALSE(u1 == ev1);
+
+			CHECK(ev1 != u1);
+			CHECK(u1 != ev1);
+		}
+	}
+
+	SECTION("!x && y")
+	{
+		SECTION("expected & expected")
+		{
+			CHECK_FALSE(eu1 == ev1);
+			CHECK(eu1 != ev1);
+		}
+
+		SECTION("expected & unexpected")
+		{
+			CHECK(eu1 == u1);
+			CHECK(u1 == eu1);
+
+			CHECK_FALSE(eu1 == u2);
+			CHECK_FALSE(u2 == eu1);
+
+			CHECK(eu1 != u2);
+			CHECK(u2 != eu1);
+
+			CHECK_FALSE(eu1 != u1);
+			CHECK_FALSE(u1 != eu1);
+		}
+	}
+
+	SECTION("x && !y")
+	{
+		SECTION("expected & expected")
+		{
+			CHECK_FALSE(ev1 == eu1);
+			CHECK(ev1 != eu1);
+		}
+	}
+
+	SECTION("!x && !y")
+	{
+		SECTION("expected & expected")
+		{
+			CHECK(eu1 == eu1);
+			CHECK(eu1 != eu2);
+		}
+	}
+}
+
+
 constexpr uint16_t
 	nothrow				= 0b00'00'00'00'00'00'00'00,
 	//

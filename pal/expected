@@ -1186,12 +1186,108 @@ private:
 
 /**
  */
+template <typename T, typename E, typename U, typename G>
+constexpr bool operator== (const expected<T, E> &l, const expected<U, G> &r)
+{
+	if (l.has_value() && r.has_value())
+	{
+		if constexpr (std::is_void_v<T> && std::is_void_v<U>)
+		{
+			return true;
+		}
+		else
+		{
+			return *l == *r;
+		}
+	}
+	else if (!l.has_value() && !r.has_value())
+	{
+		return l.error() == r.error();
+	}
+	return false;
+}
+
+/**
+ */
+template <typename T, typename E, typename U, typename G>
+constexpr bool operator!= (const expected<T, E> &l, const expected<U, G> &r)
+{
+	return !(l == r);
+}
+
+/**
+ */
+template <typename T, typename E, typename U>
+constexpr bool operator== (const expected<T, E> &l, const U &r)
+{
+	return l.has_value() && *l == r;
+}
+
+/**
+ */
+template <typename T, typename E, typename U>
+constexpr bool operator== (const U &l, const expected<T, E> &r)
+{
+	return r == l;
+}
+
+/**
+ */
+template <typename T, typename E, typename U>
+constexpr bool operator!= (const expected<T, E> &l, const U &r)
+{
+	return !(l == r);
+}
+
+/**
+ */
+template <typename T, typename E, typename U>
+constexpr bool operator!= (const U &l, const expected<T, E> &r)
+{
+	return r != l;
+}
+
+/**
+ */
+template <typename T, typename E, typename G>
+constexpr bool operator== (const expected<T, E> &l, const unexpected<G> &r)
+{
+	return !l.has_value() && l.error() == r.value();
+}
+
+/**
+ */
+template <typename T, typename E, typename G>
+constexpr bool operator== (const unexpected<G> &l, const expected<T, E> &r)
+{
+	return r == l;
+}
+
+/**
+ */
+template <typename T, typename E, typename G>
+constexpr bool operator!= (const expected<T, E> &l, const unexpected<G> &r)
+{
+	return l.has_value() || l.error() != r.value();
+}
+
+/**
+ */
+template <typename T, typename E, typename G>
+constexpr bool operator!= (const unexpected<G> &l, const expected<T, E> &r)
+{
+	return r != l;
+}
+
+
+/**
+ */
 template <
 	typename T,
 	typename E,
 	typename = std::enable_if_t<__bits::expected_is_swappable_v<T, E>>
 >
-inline void swap (expected<T, E> &l, expected<T, E> &r) noexcept(noexcept(l.swap(r)))
+void swap (expected<T, E> &l, expected<T, E> &r) noexcept(noexcept(l.swap(r)))
 {
 	l.swap(r);
 }
@@ -1382,7 +1478,7 @@ template <typename E> unexpected(E) -> unexpected<E>;
 /**
  */
 template <typename E1, typename E2>
-inline constexpr bool operator== (const unexpected<E1> &l, const unexpected<E2> &r)
+constexpr bool operator== (const unexpected<E1> &l, const unexpected<E2> &r)
 {
 	return l.value() == r.value();
 }
@@ -1391,7 +1487,7 @@ inline constexpr bool operator== (const unexpected<E1> &l, const unexpected<E2> 
 /**
  */
 template <typename E1, typename E2>
-inline constexpr bool operator!= (const unexpected<E1> &l, const unexpected<E2> &r)
+constexpr bool operator!= (const unexpected<E1> &l, const unexpected<E2> &r)
 {
 	return l.value() != r.value();
 }
@@ -1403,7 +1499,7 @@ template <
 	typename E,
 	typename = std::enable_if_t<std::is_swappable_v<E>>
 >
-inline void swap (unexpected<E> &l, unexpected<E> &r) noexcept(noexcept(l.swap(r)))
+void swap (unexpected<E> &l, unexpected<E> &r) noexcept(noexcept(l.swap(r)))
 {
 	l.swap(r);
 }
