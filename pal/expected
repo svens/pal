@@ -2,7 +2,9 @@
 
 /**
  * \file pal/expected
- * Expected value or unexpected error variant.
+ * Temporary std::expected implementation until standardized.
+ *
+ * \see www.open-std.org/jtc1/sc22/wg21/docs/papers/2019/p0323r9.html
  */
 
 #include <pal/__bits/lib>
@@ -15,12 +17,185 @@
 
 __pal_begin
 
+/// \cond undocumented
 
-template <typename T, typename E>
-class expected;
+// unexpected<E> {{{1
 
 template <typename E>
-class unexpected;
+class unexpected
+{
+public:
+
+	static_assert(std::is_object_v<E>);
+	static_assert(!std::is_array_v<E>);
+
+	using error_type = E;
+
+
+	// Constructors {{{2
+
+	constexpr unexpected (const unexpected &) = default;
+	constexpr unexpected (unexpected &&) = default;
+
+
+	template <
+		typename... Args,
+		typename = std::enable_if_t<std::is_constructible_v<E, Args...>>
+	>
+	constexpr explicit unexpected (std::in_place_t, Args &&...args)
+		: value_{std::forward<Args>(args)...}
+	{ }
+
+
+	template <
+		typename U = E,
+		typename = std::enable_if_t<
+			std::is_constructible_v<E, U> &&
+			!std::is_same_v<std::remove_cvref_t<U>, std::in_place_t> &&
+			!std::is_same_v<std::remove_cvref_t<U>, unexpected<E>>
+		>
+	>
+	constexpr explicit unexpected (U &&e)
+		: value_{std::forward<U>(e)}
+	{ }
+
+
+	template <
+		typename U,
+		typename = std::enable_if_t<
+			std::is_constructible_v<E, const U &> &&
+			!std::is_constructible_v<E, unexpected<U> &> &&
+			!std::is_constructible_v<E, unexpected<U>> &&
+			!std::is_constructible_v<E, const unexpected<U> &> &&
+			!std::is_constructible_v<E, const unexpected<U>> &&
+			!std::is_convertible_v<unexpected<U> &, E> &&
+			!std::is_convertible_v<unexpected<U>, E> &&
+			!std::is_convertible_v<const unexpected<U> &, E> &&
+			!std::is_convertible_v<const unexpected<U>, E>
+		>
+	>
+	constexpr explicit(!std::is_convertible_v<const U &, E>) unexpected (const unexpected<U> &that)
+		: value_{that.value_}
+	{ }
+
+
+	template <
+		typename U,
+		typename = std::enable_if_t<
+			std::is_constructible_v<E, U> &&
+			!std::is_constructible_v<E, unexpected<U> &> &&
+			!std::is_constructible_v<E, unexpected<U>> &&
+			!std::is_constructible_v<E, const unexpected<U> &> &&
+			!std::is_constructible_v<E, const unexpected<U>> &&
+			!std::is_convertible_v<unexpected<U> &, E> &&
+			!std::is_convertible_v<unexpected<U>, E> &&
+			!std::is_convertible_v<const unexpected<U> &, E> &&
+			!std::is_convertible_v<const unexpected<U>, E>
+		>
+	>
+	constexpr explicit(!std::is_convertible_v<U, E>) unexpected (unexpected<U> &&that)
+		: value_{std::move(that.value_)}
+	{ }
+
+
+	// Assignments {{{2
+
+	constexpr unexpected &operator= (const unexpected &) = default;
+	constexpr unexpected &operator= (unexpected &&) = default;
+
+
+	template <
+		typename U = E,
+		typename = std::enable_if_t<std::is_assignable_v<E &, const U &>>
+	>
+	constexpr unexpected &operator= (const unexpected<U> &that)
+	{
+		unexpected{that.value()}.swap(*this);
+		return *this;
+	}
+
+
+	template <
+		typename U = E,
+		typename = std::enable_if_t<std::is_assignable_v<E &, U>>
+	>
+	constexpr unexpected &operator= (unexpected<U> &&that)
+	{
+		unexpected{std::move(that.value())}.swap(*this);
+		return *this;
+	}
+
+
+	// Observers {{{2
+
+	constexpr const E &value () const & noexcept
+	{
+		return value_;
+	}
+
+
+	constexpr E &value () & noexcept
+	{
+		return value_;
+	}
+
+
+	constexpr const E &&value () const && noexcept
+	{
+		return std::move(value_);
+	}
+
+
+	constexpr E &&value () && noexcept
+	{
+		return std::move(value_);
+	}
+
+
+	// Swap {{{2
+
+	void swap (unexpected &that) noexcept(std::is_nothrow_swappable_v<E>)
+	{
+		using std::swap;
+		swap(value_, that.value_);
+	}
+
+
+private:
+
+	E value_;
+	template <typename U> friend class unexpected;
+};
+
+
+template <typename E> unexpected(E) -> unexpected<E>;
+
+
+template <typename E1, typename E2>
+constexpr bool operator== (const unexpected<E1> &l, const unexpected<E2> &r)
+{
+	return l.value() == r.value();
+}
+
+
+template <typename E1, typename E2>
+constexpr bool operator!= (const unexpected<E1> &l, const unexpected<E2> &r)
+{
+	return l.value() != r.value();
+}
+
+
+template <
+	typename E,
+	typename = std::enable_if_t<std::is_swappable_v<E>>
+>
+void swap (unexpected<E> &l, unexpected<E> &r) noexcept(noexcept(l.swap(r)))
+{
+	l.swap(r);
+}
+
+
+// unexpect_t {{{1
 
 struct unexpect_t
 {
@@ -30,8 +205,7 @@ struct unexpect_t
 inline constexpr unexpect_t unexpect{};
 
 
-// pal::bad_expected_access<E> //{{{1
-
+// bad_expected_access {{{1
 
 template <typename E>
 class bad_expected_access;
@@ -90,8 +264,7 @@ private:
 };
 
 
-// pal::expected<T, E> //{{{1
-
+// expected<T, E> internals {{{1
 
 namespace __bits {
 
@@ -269,6 +442,8 @@ constexpr bool expected_is_nothrow_swappable_v<void, E> =
 } // namespace __bits
 
 
+// expected<T, E> {{{1
+
 template <typename T, typename E>
 class expected
 {
@@ -282,12 +457,8 @@ public:
 	using rebind = expected<U, error_type>;
 
 
-	//
-	// Constructors
-	//
+	// Constructors {{{2
 
-	/**
-	 */
 	template <
 		typename U = T,
 		typename = std::enable_if_t<
@@ -308,8 +479,6 @@ public:
 	constexpr expected (const expected &) = default;
 	constexpr expected (expected &&) = default;
 
-	/**
-	 */
 	template <
 		typename U,
 		typename G,
@@ -326,13 +495,6 @@ public:
 			!std::is_convertible_v<expected<U, G> &&, T> &&
 			!std::is_convertible_v<const expected<U, G> &, T> &&
 			!std::is_convertible_v<const expected<U, G> &&, T> &&
-
-			#if TODO
-				!std::is_constructible_v<unexpected<E>, expected<U, G> &> &&
-				!std::is_constructible_v<unexpected<E>, expected<U, G> &&> &&
-				!std::is_constructible_v<unexpected<E>, const expected<U, G> &> &&
-				!std::is_constructible_v<unexpected<E>, const expected<U, G> &&> &&
-			#endif
 
 			!std::is_convertible_v<expected<U, G> &, unexpected<E>> &&
 			!std::is_convertible_v<expected<U, G> &&, unexpected<E>> &&
@@ -355,8 +517,6 @@ public:
 	}
 
 
-	/**
-	 */
 	template <
 		typename U,
 		typename G,
@@ -373,13 +533,6 @@ public:
 			!std::is_convertible_v<expected<U, G> &&, T> &&
 			!std::is_convertible_v<const expected<U, G> &, T> &&
 			!std::is_convertible_v<const expected<U, G> &&, T> &&
-
-			#if TODO
-				!std::is_constructible_v<unexpected<E>, expected<U, G> &> &&
-				!std::is_constructible_v<unexpected<E>, expected<U, G> &&> &&
-				!std::is_constructible_v<unexpected<E>, const expected<U, G> &> &&
-				!std::is_constructible_v<unexpected<E>, const expected<U, G> &&> &&
-			#endif
 
 			!std::is_convertible_v<expected<U, G> &, unexpected<E>> &&
 			!std::is_convertible_v<expected<U, G> &&, unexpected<E>> &&
@@ -402,8 +555,6 @@ public:
 	}
 
 
-	/**
-	 */
 	template <
 		typename U = T,
 		typename = std::enable_if_t<
@@ -422,8 +573,6 @@ public:
 	}
 
 
-	/**
-	 */
 	template <
 		typename G = E,
 		typename = std::enable_if_t<std::is_constructible_v<E, const G &>>
@@ -436,8 +585,6 @@ public:
 	}
 
 
-	/**
-	 */
 	template <
 		typename G = E,
 		typename = std::enable_if_t<std::is_constructible_v<E, G &&>>
@@ -450,8 +597,6 @@ public:
 	}
 
 
-	/**
-	 */
 	template <
 		typename... Args,
 		typename = std::enable_if_t<
@@ -469,8 +614,6 @@ public:
 	}
 
 
-	/**
-	 */
 	template <
 		typename... Args,
 		typename = std::enable_if_t<std::is_constructible_v<E, Args...>>
@@ -482,20 +625,14 @@ public:
 	}
 
 
-	/**
-	 */
 	~expected ()
 	{
 		impl_.destruct();
 	}
 
 
-	//
-	// Assignments
-	//
+	// Assignments {{{2
 
-	/**
-	 */
 	expected &operator= (const expected &that)
 		noexcept
 		(
@@ -586,8 +723,6 @@ public:
 	}
 
 
-	/**
-	 */
 	template <
 		typename U = T,
 		typename G = E,
@@ -688,8 +823,6 @@ public:
 	}
 
 
-	/**
-	 */
 	template <
 		typename G = E,
 		typename = std::enable_if_t<
@@ -716,8 +849,6 @@ public:
 	}
 
 
-	/**
-	 */
 	template <
 		typename G = E,
 		typename = std::enable_if_t<
@@ -744,8 +875,6 @@ public:
 	}
 
 
-	/**
-	 */
 	template <
 		typename U = T,
 		typename = std::enable_if_t<
@@ -791,8 +920,6 @@ public:
 	}
 
 
-	/**
-	 */
 	template <
 		typename U = T,
 		typename = std::enable_if_t<std::is_void_v<U>>
@@ -807,8 +934,6 @@ public:
 	}
 
 
-	/**
-	 */
 	template <
 		typename U = T,
 		typename... Args,
@@ -855,9 +980,7 @@ public:
 	}
 
 
-	//
-	// Swap
-	//
+	// Swap {{{2
 
 	template <
 		typename U = T,
@@ -957,12 +1080,8 @@ public:
 	}
 
 
-	//
-	// Observers
-	//
+	// Observers {{{2
 
-	/**
-	 */
 	template <
 		typename U = T,
 		typename = std::enable_if_t<!std::is_void_v<U>>
@@ -973,8 +1092,6 @@ public:
 		return impl_.value.operator->();
 	}
 
-	/**
-	 */
 	template <
 		typename U = T,
 		typename = std::enable_if_t<!std::is_void_v<U>>
@@ -985,8 +1102,6 @@ public:
 		return impl_.value.operator->();
 	}
 
-	/**
-	 */
 	template <
 		typename U = T,
 		typename = std::enable_if_t<!std::is_void_v<U>>
@@ -997,8 +1112,6 @@ public:
 		return *operator->();
 	}
 
-	/**
-	 */
 	template <
 		typename U = T,
 		typename = std::enable_if_t<!std::is_void_v<U>>
@@ -1009,8 +1122,6 @@ public:
 		return *operator->();
 	}
 
-	/**
-	 */
 	template <
 		typename U = T,
 		typename = std::enable_if_t<!std::is_void_v<U>>
@@ -1021,8 +1132,6 @@ public:
 		return std::move(*operator->());
 	}
 
-	/**
-	 */
 	template <
 		typename U = T,
 		typename = std::enable_if_t<!std::is_void_v<U>>
@@ -1033,22 +1142,16 @@ public:
 		return std::move(*operator->());
 	}
 
-	/**
-	 */
 	constexpr bool has_value () const noexcept
 	{
 		return impl_.has_value;
 	}
 
-	/**
-	 */
 	constexpr explicit operator bool () const noexcept
 	{
 		return has_value();
 	}
 
-	/**
-	 */
 	template <
 		typename U = T,
 		typename = std::enable_if_t<!std::is_void_v<U>>
@@ -1062,8 +1165,6 @@ public:
 		throw bad_expected_access<E>(error());
 	}
 
-	/**
-	 */
 	template <
 		typename U = T,
 		typename = std::enable_if_t<!std::is_void_v<U>>
@@ -1077,8 +1178,6 @@ public:
 		throw bad_expected_access<E>(error());
 	}
 
-	/**
-	 */
 	template <
 		typename U = T,
 		typename = std::enable_if_t<!std::is_void_v<U>>
@@ -1092,8 +1191,6 @@ public:
 		throw bad_expected_access<E>(std::move(error()));
 	}
 
-	/**
-	 */
 	template <
 		typename U = T,
 		typename = std::enable_if_t<!std::is_void_v<U>>
@@ -1107,40 +1204,30 @@ public:
 		throw bad_expected_access<E>(std::move(error()));
 	}
 
-	/**
-	 */
 	constexpr const E &error () const &
 	{
 		expect_error();
 		return impl_.unexpected->value();
 	}
 
-	/**
-	 */
 	constexpr E &error () &
 	{
 		expect_error();
 		return impl_.unexpected->value();
 	}
 
-	/**
-	 */
 	constexpr const E &&error () const &&
 	{
 		expect_error();
 		return std::move(impl_.unexpected->value());
 	}
 
-	/**
-	 */
 	constexpr E &&error () &&
 	{
 		expect_error();
 		return std::move(impl_.unexpected->value());
 	}
 
-	/**
-	 */
 	template <
 		typename U,
 		typename = std::enable_if_t<
@@ -1153,8 +1240,6 @@ public:
 		return bool(*this) ? **this : static_cast<T>(std::forward<U>(v));
 	}
 
-	/**
-	 */
 	template <
 		typename U,
 		typename = std::enable_if_t<
@@ -1184,8 +1269,6 @@ private:
 };
 
 
-/**
- */
 template <typename T, typename E, typename U, typename G>
 constexpr bool operator== (const expected<T, E> &l, const expected<U, G> &r)
 {
@@ -1207,81 +1290,60 @@ constexpr bool operator== (const expected<T, E> &l, const expected<U, G> &r)
 	return false;
 }
 
-/**
- */
 template <typename T, typename E, typename U, typename G>
 constexpr bool operator!= (const expected<T, E> &l, const expected<U, G> &r)
 {
 	return !(l == r);
 }
 
-/**
- */
 template <typename T, typename E, typename U>
 constexpr bool operator== (const expected<T, E> &l, const U &r)
 {
 	return l.has_value() && *l == r;
 }
 
-/**
- */
 template <typename T, typename E, typename U>
 constexpr bool operator== (const U &l, const expected<T, E> &r)
 {
 	return r == l;
 }
 
-/**
- */
 template <typename T, typename E, typename U>
 constexpr bool operator!= (const expected<T, E> &l, const U &r)
 {
 	return !(l == r);
 }
 
-/**
- */
 template <typename T, typename E, typename U>
 constexpr bool operator!= (const U &l, const expected<T, E> &r)
 {
 	return r != l;
 }
 
-/**
- */
 template <typename T, typename E, typename G>
 constexpr bool operator== (const expected<T, E> &l, const unexpected<G> &r)
 {
 	return !l.has_value() && l.error() == r.value();
 }
 
-/**
- */
 template <typename T, typename E, typename G>
 constexpr bool operator== (const unexpected<G> &l, const expected<T, E> &r)
 {
 	return r == l;
 }
 
-/**
- */
 template <typename T, typename E, typename G>
 constexpr bool operator!= (const expected<T, E> &l, const unexpected<G> &r)
 {
 	return l.has_value() || l.error() != r.value();
 }
 
-/**
- */
 template <typename T, typename E, typename G>
 constexpr bool operator!= (const unexpected<G> &l, const expected<T, E> &r)
 {
 	return r != l;
 }
 
-
-/**
- */
 template <
 	typename T,
 	typename E,
@@ -1292,220 +1354,8 @@ void swap (expected<T, E> &l, expected<T, E> &r) noexcept(noexcept(l.swap(r)))
 	l.swap(r);
 }
 
-
-// pal::unexpected<E> {{{1
-
-
-template <typename E>
-class unexpected
-{
-public:
-
-	static_assert(std::is_object_v<E>);
-	static_assert(!std::is_array_v<E>);
-
-	using error_type = E;
-
-
-	//
-	// Constructors
-	//
-
-	constexpr unexpected (const unexpected &) = default;
-	constexpr unexpected (unexpected &&) = default;
-
-
-	/**
-	 */
-	template <
-		typename... Args,
-		typename = std::enable_if_t<std::is_constructible_v<E, Args...>>
-	>
-	constexpr explicit unexpected (std::in_place_t, Args &&...args)
-		: value_{std::forward<Args>(args)...}
-	{ }
-
-
-	/**
-	 */
-	template <
-		typename U = E,
-		typename = std::enable_if_t<
-			std::is_constructible_v<E, U> &&
-			!std::is_same_v<std::remove_cvref_t<U>, std::in_place_t> &&
-			!std::is_same_v<std::remove_cvref_t<U>, unexpected<E>>
-		>
-	>
-	constexpr explicit unexpected (U &&e)
-		: value_{std::forward<U>(e)}
-	{ }
-
-
-	/**
-	 */
-	template <
-		typename U,
-		typename = std::enable_if_t<
-			std::is_constructible_v<E, const U &> &&
-			!std::is_constructible_v<E, unexpected<U> &> &&
-			!std::is_constructible_v<E, unexpected<U>> &&
-			!std::is_constructible_v<E, const unexpected<U> &> &&
-			!std::is_constructible_v<E, const unexpected<U>> &&
-			!std::is_convertible_v<unexpected<U> &, E> &&
-			!std::is_convertible_v<unexpected<U>, E> &&
-			!std::is_convertible_v<const unexpected<U> &, E> &&
-			!std::is_convertible_v<const unexpected<U>, E>
-		>
-	>
-	constexpr explicit(!std::is_convertible_v<const U &, E>) unexpected (const unexpected<U> &that)
-		: value_{that.value_}
-	{ }
-
-
-	/**
-	 */
-	template <
-		typename U,
-		typename = std::enable_if_t<
-			std::is_constructible_v<E, U> &&
-			!std::is_constructible_v<E, unexpected<U> &> &&
-			!std::is_constructible_v<E, unexpected<U>> &&
-			!std::is_constructible_v<E, const unexpected<U> &> &&
-			!std::is_constructible_v<E, const unexpected<U>> &&
-			!std::is_convertible_v<unexpected<U> &, E> &&
-			!std::is_convertible_v<unexpected<U>, E> &&
-			!std::is_convertible_v<const unexpected<U> &, E> &&
-			!std::is_convertible_v<const unexpected<U>, E>
-		>
-	>
-	constexpr explicit(!std::is_convertible_v<U, E>) unexpected (unexpected<U> &&that)
-		: value_{std::move(that.value_)}
-	{ }
-
-
-	//
-	// Assignments
-	//
-
-	constexpr unexpected &operator= (const unexpected &) = default;
-	constexpr unexpected &operator= (unexpected &&) = default;
-
-
-	/**
-	 */
-	template <
-		typename U = E,
-		typename = std::enable_if_t<std::is_assignable_v<E &, const U &>>
-	>
-	constexpr unexpected &operator= (const unexpected<U> &that)
-	{
-		unexpected{that.value()}.swap(*this);
-		return *this;
-	}
-
-
-	/**
-	 */
-	template <
-		typename U = E,
-		typename = std::enable_if_t<std::is_assignable_v<E &, U>>
-	>
-	constexpr unexpected &operator= (unexpected<U> &&that)
-	{
-		unexpected{std::move(that.value())}.swap(*this);
-		return *this;
-	}
-
-
-	//
-	// Observers
-	//
-
-
-	/**
-	 */
-	constexpr const E &value () const & noexcept
-	{
-		return value_;
-	}
-
-
-	/**
-	 */
-	constexpr E &value () & noexcept
-	{
-		return value_;
-	}
-
-
-	/**
-	 */
-	constexpr const E &&value () const && noexcept
-	{
-		return std::move(value_);
-	}
-
-
-	/**
-	 */
-	constexpr E &&value () && noexcept
-	{
-		return std::move(value_);
-	}
-
-
-	//
-	// Swap
-	//
-
-	void swap (unexpected &that) noexcept(std::is_nothrow_swappable_v<E>)
-	{
-		using std::swap;
-		swap(value_, that.value_);
-	}
-
-
-private:
-
-	E value_;
-	template <typename U> friend class unexpected;
-};
-
-
-template <typename E> unexpected(E) -> unexpected<E>;
-
-
-/**
- */
-template <typename E1, typename E2>
-constexpr bool operator== (const unexpected<E1> &l, const unexpected<E2> &r)
-{
-	return l.value() == r.value();
-}
-
-
-/**
- */
-template <typename E1, typename E2>
-constexpr bool operator!= (const unexpected<E1> &l, const unexpected<E2> &r)
-{
-	return l.value() != r.value();
-}
-
-
-/**
- */
-template <
-	typename E,
-	typename = std::enable_if_t<std::is_swappable_v<E>>
->
-void swap (unexpected<E> &l, unexpected<E> &r) noexcept(noexcept(l.swap(r)))
-{
-	l.swap(r);
-}
-
-
 //}}}1
 
+/// \endcond
 
 __pal_end
