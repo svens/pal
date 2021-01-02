@@ -1,4 +1,4 @@
-#include <pal/expect>
+#include <pal/assert>
 #include <pal/test>
 
 
@@ -12,7 +12,7 @@ bool bool_fn (bool &side_effect, bool return_value)
 }
 
 
-TEST_CASE("expect")
+TEST_CASE("assert")
 {
 	SECTION("bool")
 	{
@@ -20,21 +20,21 @@ TEST_CASE("expect")
 
 		SECTION("true")
 		{
-			REQUIRE_NOTHROW(pal_expect(bool_fn(side_effect, true)));
-			CHECK(pal_expect(bool_fn(side_effect, true)) == true);
+			REQUIRE_NOTHROW(pal_assert(bool_fn(side_effect, true)));
+			CHECK(pal_assert(bool_fn(side_effect, true)) == true);
 		}
 
 		SECTION("false")
 		{
-			if constexpr (pal::expect_noexcept)
+			if constexpr (pal::assert_noexcept)
 			{
-				REQUIRE_NOTHROW(pal_expect(bool_fn(side_effect, false)));
-				CHECK(pal_expect(bool_fn(side_effect, false)) == false);
+				REQUIRE_NOTHROW(pal_assert(bool_fn(side_effect, false)));
+				CHECK(pal_assert(bool_fn(side_effect, false)) == false);
 			}
 			else
 			{
 				REQUIRE_THROWS_AS(
-					pal_expect(bool_fn(side_effect, false)),
+					pal_assert(bool_fn(side_effect, false)),
 					std::logic_error
 				);
 			}
@@ -48,21 +48,21 @@ TEST_CASE("expect")
 		SECTION("not_nullptr")
 		{
 			const char buf[] = "a", *p = buf;
-			REQUIRE_NOTHROW(pal_expect(p));
-			CHECK(pal_expect(p) == buf);
+			REQUIRE_NOTHROW(pal_assert(p));
+			CHECK(pal_assert(p) == buf);
 		}
 
 		SECTION("nullptr")
 		{
 			const char *p = nullptr;
-			if constexpr (pal::expect_noexcept)
+			if constexpr (pal::assert_noexcept)
 			{
-				REQUIRE_NOTHROW(pal_expect(p));
-				CHECK(pal_expect(p) == nullptr);
+				REQUIRE_NOTHROW(pal_assert(p));
+				CHECK(pal_assert(p) == nullptr);
 			}
 			else
 			{
-				REQUIRE_THROWS_AS(pal_expect(p), std::logic_error);
+				REQUIRE_THROWS_AS(pal_assert(p), std::logic_error);
 			}
 		}
 	}
@@ -73,21 +73,21 @@ TEST_CASE("expect")
 		{
 			auto buf = new char[3];
 			std::unique_ptr<char> p{buf};
-			REQUIRE_NOTHROW(pal_expect(p));
-			CHECK(pal_expect(p).get() == buf);
+			REQUIRE_NOTHROW(pal_assert(p));
+			CHECK(pal_assert(p).get() == buf);
 		}
 
 		SECTION("nullptr")
 		{
 			std::unique_ptr<char> p;
-			if constexpr (pal::expect_noexcept)
+			if constexpr (pal::assert_noexcept)
 			{
-				REQUIRE_NOTHROW(pal_expect(p));
-				CHECK(pal_expect(p) == nullptr);
+				REQUIRE_NOTHROW(pal_assert(p));
+				CHECK(pal_assert(p) == nullptr);
 			}
 			else
 			{
-				REQUIRE_THROWS_AS(pal_expect(p), std::logic_error);
+				REQUIRE_THROWS_AS(pal_assert(p), std::logic_error);
 			}
 		}
 	}
@@ -98,39 +98,39 @@ TEST_CASE("expect")
 		{
 			auto buf = new char[3];
 			std::shared_ptr<char> p{buf};
-			REQUIRE_NOTHROW(pal_expect(p));
-			CHECK(pal_expect(p).get() == buf);
+			REQUIRE_NOTHROW(pal_assert(p));
+			CHECK(pal_assert(p).get() == buf);
 		}
 
 		SECTION("nullptr")
 		{
 			std::shared_ptr<char> p;
-			if constexpr (pal::expect_noexcept)
+			if constexpr (pal::assert_noexcept)
 			{
-				REQUIRE_NOTHROW(pal_expect(p));
-				CHECK(pal_expect(p) == nullptr);
+				REQUIRE_NOTHROW(pal_assert(p));
+				CHECK(pal_assert(p) == nullptr);
 			}
 			else
 			{
-				REQUIRE_THROWS_AS(pal_expect(p), std::logic_error);
+				REQUIRE_THROWS_AS(pal_assert(p), std::logic_error);
 			}
 		}
 	}
 
 	SECTION("nullptr_t")
 	{
-		if constexpr (pal::expect_noexcept)
+		if constexpr (pal::assert_noexcept)
 		{
-			REQUIRE_NOTHROW(pal_expect(nullptr));
-			CHECK(pal_expect(nullptr) == nullptr);
+			REQUIRE_NOTHROW(pal_assert(nullptr));
+			CHECK(pal_assert(nullptr) == nullptr);
 		}
 		else
 		{
-			REQUIRE_THROWS_AS(pal_expect(nullptr), std::logic_error);
+			REQUIRE_THROWS_AS(pal_assert(nullptr), std::logic_error);
 		}
 	}
 
-	if constexpr (!pal::expect_noexcept)
+	if constexpr (!pal::assert_noexcept)
 	{
 		using Catch::Matchers::Contains;
 
@@ -138,7 +138,7 @@ TEST_CASE("expect")
 		{
 			try
 			{
-				pal_expect(1 > 2);
+				pal_assert(1 > 2);
 				FAIL("unexpected");
 			}
 			catch (const std::logic_error &e)
@@ -152,7 +152,7 @@ TEST_CASE("expect")
 			constexpr char message[] = "optional message";
 			try
 			{
-				pal_expect(1 > 2, message);
+				pal_assert(1 > 2, message);
 				FAIL("unexpected");
 			}
 			catch (const std::logic_error &e)

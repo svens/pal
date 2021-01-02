@@ -204,7 +204,7 @@ TEST_CASE("intrusive_queue")
 	}
 
 
-	if constexpr (!pal::expect_noexcept)
+	if constexpr (!pal::assert_noexcept)
 	{
 		SECTION("push null")
 		{

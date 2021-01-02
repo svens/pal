@@ -1,6 +1,6 @@
 #include <pal/__bits/platform_sdk>
 #include <pal/crypto/__bits/digest>
-#include <pal/expect>
+#include <pal/assert>
 #include <system_error>
 
 
@@ -218,7 +218,7 @@ struct provider_handle
 			&copied,
 			0
 		);
-		pal_expect(digest_size == expected_digest_size,
+		pal_assert(digest_size == expected_digest_size,
 			"Unexpected digest size"
 		);
 	}
