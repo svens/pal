@@ -5,113 +5,59 @@
 namespace {
 
 
-struct foo
+struct object_counter
 {
 	static inline size_t instances = 0;
-	size_t value{};
 
-	foo ()
-		: value{instances++}
-	{ }
-
-	foo (bool v)
+	object_counter ()
 	{
-		throw v;
+		instances++;
 	}
 
-	~foo ()
+	~object_counter ()
 	{
 		instances--;
-	}
-
-	int fn () const & noexcept
-	{
-		return 1;
-	}
-
-	int fn () & noexcept
-	{
-		return 2;
-	}
-
-	int fn () const && noexcept
-	{
-		return 3;
-	}
-
-	int fn () && noexcept
-	{
-		return 4;
 	}
 };
 
 
-TEST_CASE("uninitialized - foo")
+TEST_CASE("uninitialized")
 {
-	using T = pal::uninitialized<foo>;
+	SECTION("constexpr")
+	{
+		constexpr pal::uninitialized u1{1};
+		constexpr auto v1 = u1.get();
+		CHECK(u1.get() == v1);
 
-	CHECK(foo::instances == 0);
+		constexpr pal::uninitialized u2{u1};
+		constexpr auto v2 = *u2;
+		CHECK(u2.get() == v2);
+
+		constexpr pal::uninitialized u3{std::move(u2)};
+		constexpr auto v3 = *u3.operator->();
+		CHECK(u3.get() == v3);
+	}
+
+	using T = pal::uninitialized<object_counter>;
+
+	CHECK(object_counter::instances == 0);
 	T u;
-	CHECK(foo::instances == 0);
+	CHECK(object_counter::instances == 0);
 
 	SECTION("construct")
 	{
 		u.construct();
-		CHECK(foo::instances == 1);
-		foo::instances = 0;
+		CHECK(object_counter::instances == 1);
+		object_counter::instances = 0;
 	}
 
 	SECTION("destruct")
 	{
 		u.construct();
-		CHECK(foo::instances == 1);
+		CHECK(object_counter::instances == 1);
 		u.destruct();
-		CHECK(foo::instances == 0);
+		CHECK(object_counter::instances == 0);
 	}
-
-	SECTION("const T &")
-	{
-		u.construct();
-		CHECK(static_cast<const T &>(u)->fn() == 1);
-		CHECK((*static_cast<const T &>(u)).fn() == 1);
-		CHECK(static_cast<const T &>(u).value().fn() == 1);
-		u.destruct();
-	}
-
-	SECTION("T &")
-	{
-		u.construct();
-		CHECK(u->fn() == 2);
-		CHECK((*u).fn() == 2);
-		CHECK(u.value().fn() == 2);
-		u.destruct();
-	}
-
-	SECTION("const T &&")
-	{
-		u.construct();
-		CHECK((*static_cast<const T &&>(std::move(u))).fn() == 3);
-		CHECK(static_cast<const T &&>(std::move(u)).value().fn() == 3);
-		u.destruct();
-	}
-
-	SECTION("T &&")
-	{
-		u.construct();
-		CHECK((*std::move(u)).fn() == 4);
-		CHECK(std::move(u).value().fn() == 4);
-		u.destruct();
-	}
-
-	SECTION("throwing construct")
-	{
-		CHECK_THROWS_AS(
-			u.construct(true),
-			bool
-		);
-	}
-
-	CHECK(foo::instances == 0);
 }
 
 
@@ -119,39 +65,100 @@ using trivial_type = int;
 using non_trivial_type = std::string;
 
 
+template <typename T>
+T value ()
+{
+	return {};
+}
+
+
+template <>
+std::string value<std::string> ()
+{
+	return pal_test::case_name();
+}
+
+
 TEMPLATE_TEST_CASE("uninitialized", "",
 	trivial_type,
 	non_trivial_type)
 {
-	TestType value{};
+	auto v = value<TestType>();
 
 	using T = pal::uninitialized<TestType>;
-	T u;
-	u.construct(value);
+	T u{v};
 
-	SECTION("operator->")
+	SECTION("sizeof")
 	{
-		CHECK((const void *)static_cast<const T &>(u).operator->() == (const void *)&u.data);
-		CHECK((void *)u.operator->() == (void *)&u.data);
+		CHECK(sizeof(u) == sizeof(TestType));
+	}
+
+	SECTION("addressof")
+	{
+		CHECK((void *)std::addressof(u) == (void *)std::addressof(u.get()));
+	}
+
+	SECTION("uninitialized(const uninitialized &)")
+	{
+		auto x{u};
+		CHECK(x.get() == v);
+	}
+
+	SECTION("uninitialized(uninitialized &&)")
+	{
+		auto x{std::move(u)};
+		CHECK(x.get() == v);
+	}
+
+	SECTION("construct(const uninitialized &)")
+	{
+		T x;
+		x.construct(u);
+		CHECK(x.get() == v);
+	}
+
+	SECTION("construct(uninitialized &&)")
+	{
+		T x;
+		x.construct(std::move(u));
+		CHECK(x.get() == v);
+	}
+
+	SECTION("assign(const uninitialized &)")
+	{
+		T x{u};
+		x.assign(u);
+		CHECK(x.get() == v);
+	}
+
+	SECTION("assign(uninitialized &&)")
+	{
+		T x{u};
+		x.assign(std::move(u));
+		CHECK(x.get() == v);
+	}
+
+	SECTION("get")
+	{
+		CHECK(static_cast<const T &>(u).get() == v);
+		CHECK(u.get() == v);
+		CHECK(static_cast<const T &&>(std::move(u)).get() == v);
+		CHECK(std::move(u).get() == v);
 	}
 
 	SECTION("operator*")
 	{
-		CHECK(*static_cast<const T &>(u) == value);
-		CHECK(*u == value);
-		CHECK(*static_cast<const T &&>(std::move(u)) == value);
-		CHECK(*std::move(u) == value);
+		CHECK(*static_cast<const T &>(u) == v);
+		CHECK(*u == v);
+		CHECK(*static_cast<const T &&>(std::move(u)) == v);
+		CHECK(*std::move(u) == v);
 	}
 
-	SECTION("value")
+	SECTION("operator->")
 	{
-		CHECK(static_cast<const T &>(u).value() == value);
-		CHECK(u.value() == value);
-		CHECK(static_cast<const T &&>(std::move(u)).value() == value);
-		CHECK(std::move(u).value() == value);
+		CHECK(static_cast<const T &>(u).operator->() == (void *)&u);
+		CHECK(u.operator->() == (void *)&u);
 	}
-
-	u.destruct();
 }
 
 

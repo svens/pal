@@ -53,4 +53,106 @@ constexpr bool has_crypto_alloc_hook =
 ;
 
 
+constexpr uint16_t
+	nothrow				= 0b00'00'00'00'00'00'00'00,
+
+	default_ctor_can_throw		= 0b00'00'00'00'00'00'00'01,
+	default_ctor_throws		= 0b00'00'00'00'00'00'00'11,
+
+	emplace_ctor_can_throw		= 0b00'00'00'00'00'00'01'00,
+	emplace_ctor_throws		= 0b00'00'00'00'00'00'11'00,
+
+	copy_ctor_can_throw		= 0b00'00'00'00'00'01'00'00,
+	copy_ctor_throws		= 0b00'00'00'00'00'11'00'00,
+
+	move_ctor_can_throw		= 0b00'00'00'00'01'00'00'00,
+	move_ctor_throws		= 0b00'00'00'00'11'00'00'00,
+
+	emplace_assign_can_throw	= 0b00'00'00'01'00'00'00'00,
+	emplace_assign_throws		= 0b00'00'00'11'00'00'00'00,
+
+	copy_assign_can_throw		= 0b00'00'01'00'00'00'00'00,
+	copy_assign_throws		= 0b00'00'11'00'00'00'00'00,
+
+	move_assign_can_throw		= 0b00'01'00'00'00'00'00'00,
+	move_assign_throws		= 0b00'11'00'00'00'00'00'00,
+
+	ctor_can_throw			= default_ctor_can_throw
+					| emplace_ctor_can_throw
+					| copy_ctor_can_throw
+					| move_ctor_can_throw,
+
+	ctor_throws			= default_ctor_throws
+					| emplace_ctor_throws
+					| copy_ctor_throws
+					| move_ctor_throws;
+
+
+template <uint16_t ThrowControl>
+constexpr bool no_throw (uint16_t flag)
+{
+	return (ThrowControl & flag) == 0;
+}
+
+
+template <uint16_t ThrowControl>
+struct throwable
+{
+	bool value;
+
+	throwable () noexcept (no_throw<ThrowControl>(default_ctor_can_throw))
+		: value{false}
+	{
+		do_throw(ThrowControl, default_ctor_throws);
+	}
+
+	throwable (const throwable &that) noexcept(no_throw<ThrowControl>(copy_ctor_can_throw))
+		: value{that.value}
+	{
+		do_throw(ThrowControl, copy_ctor_throws);
+	}
+
+	throwable (throwable &&that) noexcept(no_throw<ThrowControl>(move_ctor_can_throw))
+		: value{that.value}
+	{
+		do_throw(ThrowControl, move_ctor_throws);
+	}
+
+	throwable (bool value) noexcept (no_throw<ThrowControl>(emplace_ctor_can_throw))
+		: value{value}
+	{
+		do_throw(ThrowControl, emplace_ctor_throws);
+	}
+
+	throwable &operator= (const throwable &that) noexcept(no_throw<ThrowControl>(copy_assign_can_throw))
+	{
+		value = that.value;
+		return do_throw(ThrowControl, copy_assign_throws);
+	}
+
+	throwable &operator= (throwable &&that) noexcept(no_throw<ThrowControl>(move_assign_can_throw))
+	{
+		value = std::move(that.value);
+		return do_throw(ThrowControl, move_assign_throws);
+	}
+
+	throwable &operator= (bool value) noexcept(no_throw<ThrowControl>(emplace_assign_can_throw))
+	{
+		this->value = value;
+		return do_throw(ThrowControl, emplace_assign_throws);
+	}
+
+private:
+
+	throwable &do_throw (uint16_t control, uint16_t flag)
+	{
+		if ((control & flag) == flag)
+		{
+			throw true;
+		}
+		return *this;
+	}
+};
+
+
 } // namespace pal_test

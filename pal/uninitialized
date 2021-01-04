@@ -13,71 +13,6 @@
 __pal_begin
 
 
-template <typename T, bool = std::is_trivially_destructible_v<T>>
-struct uninitialized_storage;
-
-
-/**
- * Storage for uninitialized<T> memory block.
- */
-template <typename T>
-struct uninitialized_storage<T, true>
-{
-	/// Memory block for storage
-	T data;
-
-	/**
-	 * Invokes T destructor in memory block. No-op for trivially
-	 * destructible type T
-	 */
-	constexpr void destruct () noexcept
-	{ }
-
-
-	/// Returns pointer to memory block
-	constexpr const T *operator-> () const noexcept
-	{
-		return &data;
-	}
-
-
-	/// Returns pointer to memory block
-	constexpr T *operator-> () noexcept
-	{
-		return &data;
-	}
-};
-
-
-#if !defined(__DOXYGEN__)
-
-template <typename T>
-struct uninitialized_storage<T, false>
-{
-	std::aligned_storage_t<sizeof(T)> data;
-
-
-	void destruct () noexcept(std::is_nothrow_destructible_v<T>)
-	{
-		operator->()->~T();
-	}
-
-
-	const T *operator-> () const noexcept
-	{
-		return reinterpret_cast<const T *>(&data);
-	}
-
-
-	T *operator-> () noexcept
-	{
-		return reinterpret_cast<T *>(&data);
-	}
-};
-
-#endif
-
-
 /**
  * Uninitialized memory storage for typed variable.
  *
@@ -88,91 +23,272 @@ struct uninitialized_storage<T, false>
  * is not constructed yet or is already destructed is undefined behaviour.
  */
 template <typename T>
-struct uninitialized: public uninitialized_storage<T>
+class uninitialized
 {
-	using uninitialized_storage<T>::operator->;
+public:
+
+	static_assert(!std::is_void_v<T>);
+	static_assert(!std::is_reference_v<T>);
 
 
-	/// Constructs variable \a T in internal \a storage as default value.
-	constexpr void construct ()
+	using value_type = std::remove_const_t<T>;
+
+
+	constexpr uninitialized () = default;
+	~uninitialized () = default;
+
+
+	/**
+	 * Constructs variable \a T in internal storage with value from \a that.
+	 */
+	constexpr uninitialized (const uninitialized &that)
+		noexcept(std::is_nothrow_copy_constructible_v<T>)
+		: storage_{that.get()}
+	{ }
+
+
+	/**
+	 * Constructs variable \a T in internal storage with value from \a that.
+	 */
+	constexpr uninitialized (uninitialized &&that)
+		noexcept(std::is_nothrow_move_constructible_v<T>)
+		: storage_{std::move(that.get())}
+	{ }
+
+
+	/**
+	 * Constructs variable \a T in internal storage with \a args.
+	 */
+	template <typename... Args>
+		requires(std::is_constructible_v<T, Args...>)
+	constexpr uninitialized (Args &&...args)
+		#if !defined(_MSC_BUILD)
+		noexcept(std::is_nothrow_constructible_v<T, Args...>)
+		#else
+		// TODO: error C2065: 'Args': undeclared identifier
+		#endif
+		: storage_{std::forward<Args>(args)...}
+	{ }
+
+
+	/**
+	 * Constructs variable \a T in internal storage as copy of value
+	 * from \a that.
+	 */
+	void construct (const uninitialized<T> &that)
+		noexcept(std::is_nothrow_copy_constructible_v<T>)
 	{
-		::new (operator->()) T;
+		::new (std::addressof(storage_)) value_type{that.get()};
 	}
 
 
-	/// Constructs variable \a T in internal \a storage as copy of \a arg
-	constexpr void construct (const T &arg)
+	/**
+	 * Constructs variable \a T in internal storage with value from \a that.
+	 */
+	void construct (uninitialized<T> &&that)
+		noexcept(std::is_nothrow_move_constructible_v<T>)
 	{
-		::new (operator->()) T(arg);
+		::new (std::addressof(storage_)) value_type{std::move(that.get())};
 	}
 
 
-	/// Constructs variable \a T in internal \a storage with \a args
-	template <
-		typename... Args,
-		typename = std::enable_if_t<std::is_constructible_v<T, Args...>>
-	>
-	constexpr void construct (Args &&...args)
+	/**
+	 * Constructs variable \a T in internal \a storage with \a args.
+	 */
+	template <typename... Args>
+		requires(std::is_constructible_v<T, Args...>)
+	void construct (Args &&...args)
+		noexcept(std::is_nothrow_constructible_v<T, Args...>)
 	{
-		::new (operator->()) T(std::forward<Args>(args)...);
+		::new (std::addressof(storage_)) value_type{std::forward<Args>(args)...};
 	}
 
 
-	/// Returns const reference to variable \a T.
+	/**
+	 * Assign variable \a T in internal storage as copy of value
+	 * from \a that.
+	 */
+	void assign (const uninitialized<T> &that)
+		noexcept(std::is_nothrow_copy_assignable_v<T>)
+	{
+		get() = that.get();
+	}
+
+
+	/**
+	 * Assign variable \a T in internal storage with value from \a that.
+	 */
+	void assign (uninitialized<T> &&that)
+		noexcept(std::is_nothrow_move_assignable_v<T>)
+	{
+		get() = std::move(that.get());
+	}
+
+
+	/**
+	 * Invokes T destructor in memory block. No-op for trivially
+	 * destructible type T
+	 */
+	constexpr void destruct ()
+		noexcept(std::is_nothrow_destructible_v<T>)
+	{
+		storage_.value.~value_type();
+	}
+
+
+	/**
+	 * Returns const reference to variable \a T.
+	 */
+	constexpr const T &get () const & noexcept
+	{
+		return storage_.value;
+	}
+
+
+	/**
+	 * Returns reference to variable \a T.
+	 */
+	constexpr T &get () & noexcept
+	{
+		return storage_.value;
+	}
+
+
+	/**
+	 * Returns const rvalue reference to variable \a T.
+	 */
+	constexpr const T &&get () const && noexcept
+	{
+		return std::move(storage_.value);
+	}
+
+
+	/**
+	 * Returns rvalue reference to variable \a T.
+	 */
+	constexpr T &&get () && noexcept
+	{
+		return std::move(storage_.value);
+	}
+
+
+	/**
+	 * Returns const reference to variable \a T.
+	 */
 	constexpr const T &operator* () const & noexcept
 	{
-		return *operator->();
+		return get();
 	}
 
 
-	/// Returns reference to variable \a T.
+	/**
+	 * Returns reference to variable \a T.
+	 */
 	constexpr T &operator* () & noexcept
 	{
-		return *operator->();
+		return get();
 	}
 
 
-	/// Return const rvalue reference to variable \a T.
+	/**
+	 * Returns const rvalue reference to variable \a T.
+	 */
 	constexpr const T &&operator* () const && noexcept
 	{
-		return std::move(*operator->());
+		return std::move(get());
 	}
 
 
-	/// Return rvalue reference to variable \a T.
+	/**
+	 * Returns rvalue reference to variable \a T.
+	 */
 	constexpr T &&operator* () && noexcept
 	{
-		return std::move(*operator->());
+		return std::move(get());
 	}
 
 
-	/// Returns const reference to variable \a T.
-	constexpr const T &value () const & noexcept
+	/**
+	 * Returns const pointer to variable \a T.
+	 */
+	constexpr const T *operator-> () const noexcept
 	{
-		return *operator->();
+		return std::addressof(get());
 	}
 
 
-	/// Returns reference to variable \a T.
-	constexpr T &value () & noexcept
+	/**
+	 * Returns const pointer to variable \a T.
+	 */
+	constexpr T *operator-> () noexcept
 	{
-		return *operator->();
+		return std::addressof(get());
 	}
 
 
-	/// Return const rvalue reference to variable \a T.
-	constexpr const T &&value () const && noexcept
+private:
+
+	template <typename U, bool = std::is_trivially_destructible_v<U>>
+	union storage
 	{
-		return std::move(*operator->());
-	}
+		bool empty;
+		U value;
 
+		constexpr storage () noexcept
+			: empty{}
+		{ }
 
-	/// Return rvalue reference to variable \a T.
-	constexpr T &&value () && noexcept
+		constexpr storage (const U &that)
+			noexcept(std::is_nothrow_copy_constructible_v<U>)
+			: value{that}
+		{ }
+
+		constexpr storage (U &&that)
+			noexcept(std::is_nothrow_move_constructible_v<U>)
+			: value{std::move(that)}
+		{ }
+
+		template <typename... Args>
+		constexpr storage (Args &&...args)
+			noexcept(std::is_nothrow_constructible_v<U, Args...>)
+			: value{std::forward<Args>(args)...}
+		{ }
+	};
+
+	template <typename U>
+	union storage<U, false>
 	{
-		return std::move(*operator->());
-	}
+		bool empty;
+		U value;
+
+		constexpr storage () noexcept
+			: empty{}
+		{ }
+
+		constexpr storage (const U &that)
+			noexcept(std::is_nothrow_copy_constructible_v<U>)
+			: value{that}
+		{ }
+
+		constexpr storage (U &&that)
+			noexcept(std::is_nothrow_move_constructible_v<U>)
+			: value{std::move(that)}
+		{ }
+
+		template <typename... Args>
+		constexpr storage (Args &&...args)
+			noexcept(std::is_nothrow_constructible_v<U, Args...>)
+			: value{std::forward<Args>(args)...}
+		{ }
+
+		~storage ()
+		{ }
+	};
+
+	storage<value_type> storage_{};
 };
+
+template <typename T> uninitialized(T) -> uninitialized<T>;
 
 
 __pal_end

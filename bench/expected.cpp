@@ -67,9 +67,7 @@ struct exception: public bench_base
 	{
 		try
 		{
-			auto result = func();
-			benchmark::DoNotOptimize(result);
-			return result;
+			return func();
 		}
 		catch (errc e)
 		{
