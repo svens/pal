@@ -22,7 +22,7 @@ struct bench_base
 };
 
 
-struct value: public bench_base
+struct value: public bench_base //{{{1
 {
 	using bench_base::bench_base;
 
@@ -50,7 +50,7 @@ struct value: public bench_base
 };
 
 
-struct exception: public bench_base
+struct exception: public bench_base //{{{1
 {
 	using bench_base::bench_base;
 
@@ -60,7 +60,7 @@ struct exception: public bench_base
 		{
 			return time(nullptr);
 		}
-		throw errc::failure;
+		throw std::exception{};
 	}
 
 	time_t run ()
@@ -69,16 +69,16 @@ struct exception: public bench_base
 		{
 			return func();
 		}
-		catch (errc e)
+		catch (const std::exception &e)
 		{
-			benchmark::DoNotOptimize(e);
+			benchmark::DoNotOptimize(e.what());
 			return {};
 		}
 	}
 };
 
 
-struct expected: public bench_base
+struct expected: public bench_base //{{{1
 {
 	using bench_base::bench_base;
 
@@ -93,17 +93,39 @@ struct expected: public bench_base
 
 	time_t run ()
 	{
-		if (auto r = func())
+		return func().value_or(time_t{});
+	}
+};
+
+
+struct expected_throw: public bench_base //{{{1
+{
+	using bench_base::bench_base;
+
+	pal::expected<time_t, errc> func ()
+	{
+		if (code_path == errc::success)
 		{
-			return *r;
+			return time(nullptr);
 		}
-		else
+		return pal::unexpected{errc::failure};
+	}
+
+	time_t run ()
+	{
+		try
 		{
-			benchmark::DoNotOptimize(r.error());
+			return func().value();
+		}
+		catch (const pal::bad_expected_access<errc> &e)
+		{
+			benchmark::DoNotOptimize(e.error());
 			return {};
 		}
 	}
 };
+
+//}}}1
 
 
 template <typename F>
@@ -119,10 +141,12 @@ void returns (benchmark::State &state, F f)
 BENCHMARK_CAPTURE(returns, value_success, value{errc::success});
 BENCHMARK_CAPTURE(returns, exception_success, exception{errc::success});
 BENCHMARK_CAPTURE(returns, expected_success, expected{errc::success});
+BENCHMARK_CAPTURE(returns, expected_throw_success, expected_throw{errc::success});
 
 BENCHMARK_CAPTURE(returns, value_failure, value{errc::failure});
 BENCHMARK_CAPTURE(returns, exception_failure, exception{errc::failure});
 BENCHMARK_CAPTURE(returns, expected_failure, expected{errc::failure});
+BENCHMARK_CAPTURE(returns, expected_throw_failure, expected_throw{errc::failure});
 
 
 } // namespace

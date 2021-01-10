@@ -1,7 +1,7 @@
 #if defined(_MSC_BUILD) && !defined(_DEBUG)
-	// With throwable<> class below some intentional test-throws make
-	// parts of code unreachable for MSVC Release build
-	// As it is test-specific, no point to fix.
+	// With throwable<> some intentional test-throws make parts of code
+	// unreachable for MSVC Release build.
+	// As it is test-specific, no point to try to find workaround.
 	#pragma warning(push)
 	#pragma warning(disable: 4702)
 #endif
@@ -13,35 +13,13 @@
 namespace {
 
 
-// unexpected {{{1
+using namespace pal_test;
 
 
-TEST_CASE("unexpected")
-{
-	using TestType = int;
-
-	SECTION("constexpr")
-	{
-		constexpr TestType value{1};
-
-		constexpr pal::unexpected x{value};
-		CHECK(x.value() == value);
-
-		constexpr pal::unexpected y{std::in_place, value};
-		CHECK(y.value() == value);
-
-		constexpr pal::unexpected w{x};
-		CHECK(w.value() == value);
-
-		constexpr pal::unexpected z{std::move(y)};
-		CHECK(z.value() == value);
-	}
-}
-
+// unexpected<T> {{{1
 
 using trivial_type = int;
 using non_trivial_type = std::string;
-
 
 template <typename TestType>
 TestType value ()
@@ -49,25 +27,21 @@ TestType value ()
 	return TestType{1};
 }
 
-
 template <>
 std::string value ()
 {
 	return "1";
 }
 
-
 short other_value (int)
 {
 	return 2;
 }
 
-
 std::string_view other_value (std::string)
 {
 	return "2";
 }
-
 
 TEMPLATE_TEST_CASE("unexpected", "",
 	trivial_type,
@@ -185,25 +159,46 @@ TEMPLATE_TEST_CASE("unexpected", "",
 }
 
 
+// unexpected<T>::constexpr {{{1
+
+TEST_CASE("unexpected::constexpr")
+{
+	using T = int;
+
+	constexpr T value{1};
+
+	constexpr pal::unexpected x{value};
+	static_assert(x.value() == value);
+
+	constexpr pal::unexpected y{std::in_place, value};
+	static_assert(y.value() == value);
+
+	constexpr pal::unexpected w{x};
+	static_assert(w.value() == value);
+
+	constexpr pal::unexpected z{std::move(y)};
+	static_assert(z.value() == value);
+}
+
+
 // expected<T, E> {{{1
 
-struct copy_and_move //{{{2
+struct trivial //{{{2
 {
 	int base{1};
 
-	copy_and_move () = default;
-	~copy_and_move () = default;
+	trivial () = default;
+	trivial (const trivial &) = default;
+	trivial (trivial &&) = default;
+	trivial &operator= (const trivial &) = default;
+	trivial &operator= (trivial &&) = default;
+	~trivial () = default;
 
-	copy_and_move (const copy_and_move &) = default;
-	copy_and_move (copy_and_move &&) = default;
-	copy_and_move &operator= (const copy_and_move &) = default;
-	copy_and_move &operator= (copy_and_move &&) = default;
-
-	constexpr copy_and_move (int v) noexcept
+	constexpr trivial (int v) noexcept
 		: base{v}
 	{}
 
-	copy_and_move &operator= (int v) noexcept
+	trivial &operator= (int v) noexcept
 	{
 		base = v;
 		return *this;
@@ -229,38 +224,57 @@ struct copy_and_move //{{{2
 		return 4 * base;
 	}
 };
+static_assert(std::is_trivially_copy_constructible_v<trivial>);
+static_assert(std::is_trivially_move_constructible_v<trivial>);
+static_assert(std::is_trivially_destructible_v<trivial>);
 
 
-struct copy_only: public copy_and_move //{{{2
+struct non_trivial: trivial //{{{2
 {
-	using copy_and_move::copy_and_move;
-	using copy_and_move::operator=;
+	using trivial::trivial;
+	using trivial::operator=;
+	~non_trivial () { }
+};
+static_assert(std::is_trivially_copy_constructible_v<non_trivial> == false);
+static_assert(std::is_trivially_move_constructible_v<non_trivial> == false);
+static_assert(std::is_trivially_destructible_v<non_trivial> == false);
 
-	copy_only (const copy_only &) = default;
-	copy_only &operator= (const copy_only &) = default;
+
+template <typename Base>
+struct copy_and_move: Base //{{{2
+{
+	using Base::Base;
+	using Base::operator=;
+};
+
+
+template <typename Base>
+struct copy_only: Base //{{{2
+{
+	using Base::Base;
+	using Base::operator=;
 
 	copy_only (copy_only &&) = delete;
 	copy_only &operator= (copy_only &&) = delete;
 };
 
 
-struct move_only: public copy_and_move //{{{2
+template <typename Base>
+struct move_only: Base //{{{2
 {
-	using copy_and_move::copy_and_move;
-	using copy_and_move::operator=;
-
-	move_only (move_only &&) = default;
-	move_only &operator= (move_only &&) = default;
+	using Base::Base;
+	using Base::operator=;
 
 	move_only (const move_only &) = delete;
 	move_only &operator= (const move_only &) = delete;
 };
 
 
-struct no_copy_or_move: public copy_and_move //{{{2
+template <typename Base>
+struct no_copy_or_move: Base //{{{2
 {
-	using copy_and_move::copy_and_move;
-	using copy_and_move::operator=;
+	using Base::Base;
+	using Base::operator=;
 
 	no_copy_or_move (const no_copy_or_move &) = delete;
 	no_copy_or_move &operator= (const no_copy_or_move &) = delete;
@@ -274,10 +288,14 @@ struct no_copy_or_move: public copy_and_move //{{{2
 
 
 TEMPLATE_TEST_CASE("expected", "",
-	no_copy_or_move,
-	copy_and_move,
-	copy_only,
-	move_only,
+	no_copy_or_move<trivial>,
+	copy_and_move<trivial>,
+	copy_only<trivial>,
+	move_only<trivial>,
+	no_copy_or_move<non_trivial>,
+	copy_and_move<non_trivial>,
+	copy_only<non_trivial>,
+	move_only<non_trivial>,
 	void)
 {
 	using T = pal::expected<TestType, int>;
@@ -287,44 +305,9 @@ TEMPLATE_TEST_CASE("expected", "",
 	// Constructors
 	//
 
-#if 0
-	SECTION("constexpr")
-	{
-		constexpr T e;
-		CHECK(e.has_value());
-
-		if constexpr (!std::is_void_v<TestType> && e)
-		{
-			constexpr auto v1 = e->base;
-			CHECK(v1 == 1);
-
-			constexpr auto v2 = (*e).base;
-			CHECK(v2 == 1);
-
-			constexpr auto v3 = e.value().base;
-			CHECK(v3 == 1);
-
-			if constexpr (std::is_copy_constructible_v<TestType>)
-			{
-				constexpr auto v4 = e.value_or(2).base;
-				CHECK(v4 == 1);
-			}
-
-			/* "T value_or(U&&) &&" is not const
-			if constexpr (std::is_move_constructible_v<TestType>)
-			{
-				constexpr auto v5 = std::move(e).value_or(2).base;
-				CHECK(v5 == 1);
-			}
-			*/
-		}
-	}
-#endif
-
 	SECTION("expected()")
 	{
 		T e;
-		CHECK(bool(e));
 		if constexpr (!std::is_void_v<TestType>)
 		{
 			CHECK(e->base == 1);
@@ -339,7 +322,7 @@ TEMPLATE_TEST_CASE("expected", "",
 			auto e1{e};
 			CHECK(e1.value().base == e.value().base);
 
-			T u{pal::unexpect, true};
+			T u{pal::unexpect, 100};
 			auto u1{u};
 			CHECK(u1.error() == u.error());
 		}
@@ -353,7 +336,7 @@ TEMPLATE_TEST_CASE("expected", "",
 			auto e1{std::move(e)};
 			CHECK(e1.value().base == e.value().base);
 
-			T u{pal::unexpect, true};
+			T u{pal::unexpect, 100};
 			auto u1{std::move(u)};
 			CHECK(u1.error() == u.error());
 		}
@@ -400,7 +383,7 @@ TEMPLATE_TEST_CASE("expected", "",
 	{
 		const pal::unexpected u{short(100)};
 		T e{u};
-		CHECK(!bool(e));
+		CHECK(!e);
 		CHECK(e.error() == 100);
 	}
 
@@ -408,7 +391,7 @@ TEMPLATE_TEST_CASE("expected", "",
 	{
 		const pal::unexpected<char> u{'\1'};
 		T e{u};
-		CHECK(!bool(e));
+		CHECK(!e);
 		CHECK(e.error() == 1);
 	}
 
@@ -416,7 +399,7 @@ TEMPLATE_TEST_CASE("expected", "",
 	{
 		pal::unexpected u{short(100)};
 		T e{std::move(u)};
-		CHECK(!bool(e));
+		CHECK(!e);
 		CHECK(e.error() == 100);
 	}
 
@@ -424,7 +407,7 @@ TEMPLATE_TEST_CASE("expected", "",
 	{
 		pal::unexpected<char> u{'\1'};
 		T e{std::move(u)};
-		CHECK(!bool(e));
+		CHECK(!e);
 		CHECK(e.error() == 1);
 	}
 
@@ -433,12 +416,12 @@ TEMPLATE_TEST_CASE("expected", "",
 		if constexpr (std::is_void_v<TestType>)
 		{
 			T e{std::in_place};
-			CHECK(bool(e));
+			CHECK(e);
 		}
 		else
 		{
 			T e{std::in_place, 2};
-			CHECK(bool(e));
+			CHECK(e);
 			CHECK(e->base == 2);
 		}
 	}
@@ -462,28 +445,28 @@ TEMPLATE_TEST_CASE("expected", "",
 			{
 				T x, y;
 				x = y;
-				CHECK(x.has_value());
+				CHECK(x);
 			}
 
 			SECTION("!x && y")
 			{
 				T x{pal::unexpect, 100}, y;
 				x = y;
-				CHECK(x.has_value());
+				CHECK(x);
 			}
 
 			SECTION("x && !y")
 			{
 				T x, y{pal::unexpect, 100};
 				x = y;
-				CHECK_FALSE(x.has_value());
+				CHECK_FALSE(x);
 			}
 
 			SECTION("!x && !y")
 			{
 				T x{pal::unexpect, false}, y{pal::unexpect, 100};
 				x = y;
-				CHECK_FALSE(x.has_value());
+				CHECK_FALSE(x);
 			}
 		}
 	}
@@ -668,6 +651,7 @@ TEMPLATE_TEST_CASE("expected", "",
 		}
 	}
 
+
 	//
 	// Observers
 	//
@@ -675,7 +659,7 @@ TEMPLATE_TEST_CASE("expected", "",
 	SECTION("observers")
 	{
 		T e;
-		CHECK(bool(e));
+		CHECK(e);
 		CHECK(e.has_value());
 
 		T u{pal::unexpect, 100};
@@ -830,15 +814,242 @@ TEMPLATE_TEST_CASE("expected", "",
 }
 
 
-// expected<T, E>::swap {{{1
+// expected<T, E>::constexpr {{{1
 
+TEMPLATE_TEST_CASE("expected::constexpr", "",
+	no_copy_or_move<trivial>,
+	copy_and_move<trivial>,
+	copy_only<trivial>,
+	move_only<trivial>,
+	void)
+{
+	using T = pal::expected<TestType, int>;
+
+	constexpr T e;
+	static_assert(e);
+
+	if constexpr (!std::is_void_v<TestType>)
+	{
+		static_assert(e->base == 1);
+		static_assert((*e).base == 1);
+		static_assert(e.value().base == 1);
+
+		constexpr T e1{2};
+		static_assert(e1);
+		static_assert(e1->base == 2);
+	}
+
+	constexpr T u{pal::unexpect, 100};
+	static_assert(!u);
+	static_assert(u.error() == 100);
+
+	if constexpr (std::is_copy_constructible_v<TestType>)
+	{
+		static_assert(e.value_or(2).base == 1);
+		static_assert(u.value_or(2).base == 2);
+
+		constexpr T e1{e};
+		static_assert(e1);
+		static_assert(e1->base == e->base);
+
+		constexpr T eu{u};
+		static_assert(!eu);
+		static_assert(eu.error() == u.error());
+	}
+}
+
+
+// expected<T, E>::operator= {{{1
+
+using value_ctor_nothrow = pal::expected<throwable<nothrow>, bool>;
+using value_ctor_can_throw = pal::expected<throwable<ctor_can_throw>, bool>;
+using value_copy_ctor_can_throw = pal::expected<throwable<copy_ctor_can_throw>, bool>;
+using value_copy_ctor_throws = pal::expected<throwable<copy_ctor_throws>, bool>;
+using value_move_ctor_can_throw = pal::expected<throwable<move_ctor_can_throw>, bool>;
+using value_copy_and_move_ctor_throws = pal::expected<throwable<copy_and_move_ctor_throws>, bool>;
+using value_emplace_ctor_can_throw = pal::expected<throwable<emplace_ctor_can_throw>, bool>;
+
+using error_ctor_can_throw = pal::expected<bool, throwable<ctor_can_throw>>;
+using error_copy_ctor_can_throw = pal::expected<bool, throwable<copy_ctor_can_throw>>;
+using error_move_ctor_can_throw = pal::expected<bool, throwable<move_ctor_can_throw>>;
+using error_copy_ctor_throws = pal::expected<bool, throwable<copy_ctor_throws>>;
+using error_copy_and_move_ctor_throws = pal::expected<bool, throwable<copy_and_move_ctor_throws>>;
+
+TEMPLATE_TEST_CASE("expected::operator=", "",
+	value_ctor_nothrow,
+	value_ctor_can_throw,
+	value_copy_ctor_can_throw,
+	value_move_ctor_can_throw,
+	error_ctor_can_throw,
+	error_copy_ctor_can_throw,
+	error_move_ctor_can_throw)
+{
+	using T = TestType;
+
+	auto [x, y] = GENERATE(table<T, T>(
+	{
+		{ T{false},                T{false}                },
+		{ T{pal::unexpect, false}, T{false}                },
+		{ T{false},                T{pal::unexpect, false} },
+		{ T{pal::unexpect, false}, T{pal::unexpect, false} },
+	}));
+
+	SECTION("copy")
+	{
+		x = y;
+	}
+
+	SECTION("move")
+	{
+		x = std::move(y);
+	}
+
+	CHECK(x.has_value() == y.has_value());
+}
+
+TEMPLATE_TEST_CASE("expected::operator=", "",
+	value_copy_ctor_throws,
+	value_copy_and_move_ctor_throws)
+{
+	SECTION("!x && y")
+	{
+		TestType x{pal::unexpect, false}, y{true};
+
+		SECTION("copy")
+		{
+			CHECK_THROWS_AS(x = y, bool);
+		}
+
+		SECTION("move")
+		{
+			if constexpr (std::is_same_v<TestType, value_copy_and_move_ctor_throws>)
+			{
+				CHECK_THROWS_AS(x = std::move(y), bool);
+			}
+		}
+
+		CHECK(!x);
+		CHECK(y);
+	}
+}
+
+TEMPLATE_TEST_CASE("expected::operator=", "",
+	error_copy_ctor_throws,
+	error_copy_and_move_ctor_throws)
+{
+	SECTION("x && !y")
+	{
+		TestType x{true}, y{pal::unexpect, false};
+
+		SECTION("copy")
+		{
+			CHECK_THROWS_AS(x = y, bool);
+		}
+
+		SECTION("move")
+		{
+			if constexpr (std::is_same_v<TestType, error_copy_and_move_ctor_throws>)
+			{
+				CHECK_THROWS_AS(x = std::move(y), bool);
+			}
+		}
+
+		CHECK(x);
+		CHECK(!y);
+	}
+}
+
+struct value_from_u_throws
+{
+	value_from_u_throws (bool do_throw) noexcept(false)
+	{
+		if (do_throw)
+		{
+			throw true;
+		}
+	}
+
+	value_from_u_throws &operator= (bool) noexcept(false)
+	{
+		throw true;
+	}
+};
+
+TEMPLATE_TEST_CASE("expected::operator=", "",
+	value_from_u_throws)
+{
+	using T = pal::expected<TestType, bool>;
+
+	SECTION("x")
+	{
+		T x{false};
+		CHECK_THROWS_AS(x = true, bool);
+		CHECK(x);
+	}
+
+	SECTION("!x throws")
+	{
+		T x{pal::unexpect, false};
+		CHECK_THROWS_AS(x = true, bool);
+		CHECK(!x);
+	}
+
+	SECTION("!x does not throw")
+	{
+		T x{pal::unexpect, false};
+		CHECK_NOTHROW(x = false);
+		CHECK(x);
+	}
+}
+
+
+// expected<T, E>::emplace {{{1
+
+TEMPLATE_TEST_CASE("expected::emplace", "",
+	value_ctor_nothrow,
+	value_emplace_ctor_can_throw,
+	value_ctor_can_throw)
+{
+	SECTION("x")
+	{
+		TestType x{true};
+		CHECK(x.emplace(false).value == false);
+		CHECK(x);
+	}
+
+	SECTION("!x")
+	{
+		TestType x{pal::unexpect, false};
+		CHECK(x.emplace(false).value == false);
+		CHECK(x);
+	}
+}
+
+
+using value_emplace_ctor_throws_1 = pal::expected<throwable<ctor_can_throw | emplace_ctor_throws>, bool>;
+using value_emplace_ctor_throws_2 = pal::expected<throwable<emplace_ctor_throws>, bool>;
+
+TEMPLATE_TEST_CASE("expected::emplace", "",
+	value_emplace_ctor_throws_1,
+	value_emplace_ctor_throws_2)
+{
+	SECTION("!x")
+	{
+		TestType x{pal::unexpect, false};
+		CHECK_THROWS_AS(x.emplace(false), bool);
+		CHECK_FALSE(x.has_value());
+	}
+}
+
+
+// expected<T, E>::swap {{{1
 
 TEST_CASE("expected::swap")
 {
 	using std::swap;
 
-	using move_ctor_can_throw_t = pal_test::throwable<pal_test::move_ctor_can_throw>;
-	using move_ctor_throws_t = pal_test::throwable<pal_test::move_ctor_throws>;
+	using move_ctor_can_throw_t = throwable<move_ctor_can_throw>;
+	using move_ctor_throws_t = throwable<move_ctor_throws>;
 
 	SECTION("nothrow_move_constructible<T>")
 	{
@@ -950,6 +1161,475 @@ TEST_CASE("expected::swap")
 			CHECK(x.error().value);
 			CHECK(*y);
 		}
+	}
+}
+
+
+// expected<T, E>::operator== {{{1
+
+template <typename TestType>
+TestType value_1 ()
+{
+	return TestType{1};
+}
+
+template <typename TestType>
+TestType value_2 ()
+{
+	return TestType{2};
+}
+
+template <>
+std::string value_1 ()
+{
+	return "1";
+}
+
+template <>
+std::string value_2 ()
+{
+	return "2";
+}
+
+TEMPLATE_TEST_CASE("expected::operator==", "",
+	int, std::string)
+{
+	auto v1 = value_1<TestType>();
+	auto v2 = value_2<TestType>();
+	pal::unexpected<bool> u1{false}, u2{true};
+	pal::expected<TestType, bool> ev1{v1}, ev2{v2}, eu1{u1}, eu2{u2};
+
+	SECTION("x && y")
+	{
+		SECTION("expected & expected")
+		{
+			CHECK(ev1 == ev1);
+			CHECK_FALSE(ev1 == ev2);
+			CHECK(ev1 != ev2);
+			CHECK_FALSE(ev1 != ev1);
+		}
+
+		SECTION("expected & T")
+		{
+			CHECK(ev1 == v1);
+			CHECK(v1 == ev1);
+
+			CHECK_FALSE(ev1 == v2);
+			CHECK_FALSE(v2 == ev1);
+
+			CHECK(ev1 != v2);
+			CHECK(v2 != ev1);
+
+			CHECK_FALSE(ev1 != v1);
+			CHECK_FALSE(v1 != ev1);
+		}
+
+		SECTION("expected & unexpected")
+		{
+			CHECK_FALSE(ev1 == u1);
+			CHECK_FALSE(u1 == ev1);
+
+			CHECK(ev1 != u1);
+			CHECK(u1 != ev1);
+		}
+	}
+
+	SECTION("!x && y")
+	{
+		SECTION("expected & expected")
+		{
+			CHECK_FALSE(eu1 == ev1);
+			CHECK(eu1 != ev1);
+		}
+
+		SECTION("expected & T")
+		{
+			CHECK_FALSE(eu1 == v1);
+			CHECK_FALSE(v1 == eu1);
+
+			CHECK(eu1 != v1);
+			CHECK(v1 != eu1);
+		}
+
+		SECTION("expected & unexpected")
+		{
+			CHECK(eu1 == u1);
+			CHECK(u1 == eu1);
+
+			CHECK_FALSE(eu1 == u2);
+			CHECK_FALSE(u2 == eu1);
+
+			CHECK(eu1 != u2);
+			CHECK(u2 != eu1);
+
+			CHECK_FALSE(eu1 != u1);
+			CHECK_FALSE(u1 != eu1);
+		}
+	}
+
+	SECTION("x && !y")
+	{
+		SECTION("expected & expected")
+		{
+			CHECK_FALSE(ev1 == eu1);
+			CHECK(ev1 != eu1);
+		}
+	}
+
+	SECTION("!x && !y")
+	{
+		SECTION("expected & expected")
+		{
+			CHECK(eu1 == eu1);
+			CHECK(eu1 != eu2);
+		}
+	}
+}
+
+TEMPLATE_TEST_CASE("expected::operator==", "",
+	void)
+{
+	pal::unexpected<bool> u1{false}, u2{true};
+	pal::expected<TestType, bool> ev1, ev2, eu1{u1}, eu2{u2};
+
+	SECTION("x && y")
+	{
+		SECTION("expected & expected")
+		{
+			CHECK(ev1 == ev1);
+			CHECK(ev1 == ev2);
+			CHECK_FALSE(ev1 != ev2);
+			CHECK_FALSE(ev1 != ev1);
+		}
+
+		SECTION("expected & unexpected")
+		{
+			CHECK_FALSE(ev1 == u1);
+			CHECK_FALSE(u1 == ev1);
+
+			CHECK(ev1 != u1);
+			CHECK(u1 != ev1);
+		}
+	}
+
+	SECTION("!x && y")
+	{
+		SECTION("expected & expected")
+		{
+			CHECK_FALSE(eu1 == ev1);
+			CHECK(eu1 != ev1);
+		}
+
+		SECTION("expected & unexpected")
+		{
+			CHECK(eu1 == u1);
+			CHECK(u1 == eu1);
+
+			CHECK_FALSE(eu1 == u2);
+			CHECK_FALSE(u2 == eu1);
+
+			CHECK(eu1 != u2);
+			CHECK(u2 != eu1);
+
+			CHECK_FALSE(eu1 != u1);
+			CHECK_FALSE(u1 != eu1);
+		}
+	}
+
+	SECTION("x && !y")
+	{
+		SECTION("expected & expected")
+		{
+			CHECK_FALSE(ev1 == eu1);
+			CHECK(ev1 != eu1);
+		}
+	}
+
+	SECTION("!x && !y")
+	{
+		SECTION("expected & expected")
+		{
+			CHECK(eu1 == eu1);
+			CHECK(eu1 != eu2);
+		}
+	}
+}
+
+
+// expected<[non_]trivial, [non_]trivial> //{{{1
+
+using trivial_trivial = pal::expected<trivial_type, trivial_type>;
+using trivial_non_trivial = pal::expected<trivial_type, non_trivial_type>;
+using non_trivial_trivial = pal::expected<non_trivial_type, trivial_type>;
+using non_trivial_non_trivial = pal::expected<non_trivial_type, non_trivial_type>;
+
+TEMPLATE_TEST_CASE("expected", "",
+	trivial_trivial,
+	trivial_non_trivial,
+	non_trivial_trivial,
+	non_trivial_non_trivial)
+{
+	using T = typename TestType::value_type;
+	const auto v1 = value<T>();
+	const auto v2 = other_value(v1);
+	using U = std::remove_cvref_t<decltype(v2)>;
+
+	using E = typename TestType::error_type;
+	const auto e1 = value<E>();
+	const auto e2 = other_value(e1);
+	using G = std::remove_cvref_t<decltype(e2)>;
+
+	using other_t = pal::expected<U, G>;
+
+	SECTION("expected()")
+	{
+		TestType x;
+		CHECK(x.value() == T{});
+	}
+
+	SECTION("expected(const expected &)")
+	{
+		TestType x{v1}, y{x};
+		CHECK(y.value() == v1);
+	}
+
+	SECTION("expected(expected &&)")
+	{
+		TestType x, y{std::move(x)};
+		CHECK(y.value() == T{});
+	}
+
+	SECTION("expected(const expected<U, G> &)")
+	{
+		other_t x{v2};
+		TestType y{x};
+		CHECK(y.value() == v2);
+	}
+
+	SECTION("expected(expected<U, G> &&)")
+	{
+		other_t x{v2};
+		TestType y{std::move(x)};
+		CHECK(y.value() == v2);
+	}
+
+	SECTION("expected(U &&)")
+	{
+		TestType x{v2};
+		CHECK(x.value() == v2);
+	}
+
+	SECTION("expected(const unexpected<E> &)")
+	{
+		pal::unexpected<E> e{std::in_place};
+		TestType x{e};
+		CHECK(x.error() == E{});
+	}
+
+	SECTION("expected(const unexpected<G> &)")
+	{
+		pal::unexpected<G> e{std::in_place};
+		TestType x{e};
+		CHECK(x.error() == E{});
+	}
+
+	SECTION("expected(unexpected<E> &&)")
+	{
+		pal::unexpected<E> e{std::in_place};
+		TestType x{std::move(e)};
+		CHECK(x.error() == E{});
+	}
+
+	SECTION("expected(unexpected<G> &&)")
+	{
+		pal::unexpected<G> e{std::in_place};
+		TestType x{std::move(e)};
+		CHECK(x.error() == E{});
+	}
+
+	SECTION("expected(in_place)")
+	{
+		TestType x{std::in_place, v1};
+		CHECK(x.value() == v1);
+	}
+
+	SECTION("expected(unexpect)")
+	{
+		TestType x{pal::unexpect, e1};
+		CHECK(x.error() == e1);
+	}
+
+	SECTION("operator=(const expected &)")
+	{
+		TestType x, y{pal::unexpect, e1};
+		y = x;
+		CHECK(y.value() == T{});
+	}
+
+	SECTION("operator=(expected &&)")
+	{
+		TestType x, y{pal::unexpect, e1};
+		y = std::move(x);
+		CHECK(y.value() == T{});
+	}
+
+	SECTION("operator=(const unexpected<G> &)")
+	{
+		pal::unexpected<G> x{e2};
+		TestType y;
+		y = x;
+		CHECK(y.error() == e2);
+	}
+
+	SECTION("operator=(unexpected<G> &&)")
+	{
+		pal::unexpected<G> x{e2};
+		TestType y;
+		y = std::move(x);
+		CHECK(y.error() == e2);
+	}
+
+	SECTION("operator=(U &&)")
+	{
+		TestType x{v1};
+		x = std::move(v2);
+		CHECK(x.value() == v2);
+	}
+
+	SECTION("emplace")
+	{
+		TestType x{v1};
+		CHECK(x.emplace(v2) == v2);
+		CHECK(x.value() == v2);
+	}
+}
+
+
+// expected<void, [non_]trivial> //{{{1
+
+using void_trivial = pal::expected<void, trivial_type>;
+using void_non_trivial = pal::expected<void, non_trivial_type>;
+
+TEMPLATE_TEST_CASE("expected", "",
+	void_trivial,
+	void_non_trivial)
+{
+	using E = typename TestType::error_type;
+	const auto e1 = value<E>();
+	const auto e2 = other_value(e1);
+	using G = std::remove_cvref_t<decltype(e2)>;
+
+	using other_t = pal::expected<void, G>;
+	other_t unused;
+	(void)unused;
+
+	SECTION("expected()")
+	{
+		TestType x;
+		CHECK(x);
+	}
+
+	SECTION("expected(const expected &)")
+	{
+		TestType x, y{x};
+		CHECK(y);
+	}
+
+	SECTION("expected(expected &&)")
+	{
+		TestType x, y{std::move(x)};
+		CHECK(y);
+	}
+
+	SECTION("expected(const expected<U, G> &)")
+	{
+		other_t x;
+		TestType y{x};
+		CHECK(y);
+	}
+
+	SECTION("expected(expected<U, G> &&)")
+	{
+		other_t x;
+		TestType y{std::move(x)};
+		CHECK(y);
+	}
+
+	SECTION("expected(const unexpected<E> &)")
+	{
+		pal::unexpected<E> e{std::in_place};
+		TestType x{e};
+		CHECK(x.error() == E{});
+	}
+
+	SECTION("expected(const unexpected<G> &)")
+	{
+		pal::unexpected<G> e{std::in_place};
+		TestType x{e};
+		CHECK(x.error() == E{});
+	}
+
+	SECTION("expected(unexpected<E> &&)")
+	{
+		pal::unexpected<E> e{std::in_place};
+		TestType x{std::move(e)};
+		CHECK(x.error() == E{});
+	}
+
+	SECTION("expected(unexpected<G> &&)")
+	{
+		pal::unexpected<G> e{std::in_place};
+		TestType x{std::move(e)};
+		CHECK(x.error() == E{});
+	}
+
+	SECTION("expected(in_place)")
+	{
+		TestType x{std::in_place};
+		CHECK(x);
+	}
+
+	SECTION("expected(unexpect)")
+	{
+		TestType x{pal::unexpect, e1};
+		CHECK(x.error() == e1);
+	}
+
+	SECTION("operator=(const expected &)")
+	{
+		TestType x, y{pal::unexpect, e1};
+		y = x;
+		CHECK(y);
+	}
+
+	SECTION("operator=(expected &&)")
+	{
+		TestType x, y{pal::unexpect, e1};
+		y = std::move(x);
+		CHECK(y);
+	}
+
+	SECTION("operator=(const unexpected<G> &)")
+	{
+		pal::unexpected<G> x{e2};
+		TestType y;
+		y = x;
+		CHECK(y.error() == e2);
+	}
+
+	SECTION("operator=(unexpected<G> &&)")
+	{
+		pal::unexpected<G> x{e2};
+		TestType y;
+		y = std::move(x);
+		CHECK(y.error() == e2);
+	}
+
+	SECTION("emplace")
+	{
+		TestType x{pal::unexpect, e1};
+		x.emplace();
+		CHECK(x);
 	}
 }
 
