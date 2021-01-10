@@ -660,10 +660,7 @@ struct expected_storage: expected_storage_base<T, E>
 			std::is_nothrow_copy_assignable_v<T>
 		)
 	{
-		if constexpr (!std::is_void_v<T>)
-		{
-			this->value = that.value;
-		}
+		this->value = that.value;
 	}
 
 
@@ -677,12 +674,7 @@ struct expected_storage: expected_storage_base<T, E>
 			)
 		)
 	{
-		if constexpr (std::is_void_v<T>)
-		{
-			unexpected_dtor();
-			this->has_value = true;
-		}
-		else if constexpr (std::is_nothrow_copy_constructible_v<T>)
+		if constexpr (std::is_nothrow_copy_constructible_v<T>)
 		{
 			unexpected_dtor();
 			value_ctor(that.value);
@@ -720,11 +712,7 @@ struct expected_storage: expected_storage_base<T, E>
 			)
 		)
 	{
-		if constexpr (std::is_void_v<T>)
-		{
-			unexpected_ctor(that.unexpected.value());
-		}
-		else if constexpr (std::is_nothrow_copy_constructible_v<E>)
+		if constexpr (std::is_nothrow_copy_constructible_v<E>)
 		{
 			value_dtor();
 			unexpected_ctor(that.unexpected.value());
@@ -794,10 +782,7 @@ struct expected_storage: expected_storage_base<T, E>
 			std::is_nothrow_move_assignable_v<T>
 		)
 	{
-		if constexpr (!std::is_void_v<T>)
-		{
-			this->value = std::move(that.value);
-		}
+		this->value = std::move(that.value);
 	}
 
 
@@ -808,12 +793,7 @@ struct expected_storage: expected_storage_base<T, E>
 			std::is_nothrow_move_constructible_v<T>
 		)
 	{
-		if constexpr (std::is_void_v<T>)
-		{
-			unexpected_dtor();
-			this->has_value = true;
-		}
-		else if constexpr (std::is_nothrow_move_constructible_v<T>)
+		if constexpr (std::is_nothrow_move_constructible_v<T>)
 		{
 			unexpected_dtor();
 			value_ctor(std::move(that.value));
@@ -842,11 +822,7 @@ struct expected_storage: expected_storage_base<T, E>
 			std::is_nothrow_move_constructible_v<E>
 		)
 	{
-		if constexpr (std::is_void_v<T>)
-		{
-			unexpected_ctor(std::move(that.unexpected.value()));
-		}
-		else if constexpr (std::is_nothrow_move_constructible_v<E>)
+		if constexpr (std::is_nothrow_move_constructible_v<E>)
 		{
 			value_dtor();
 			unexpected_ctor(std::move(that.unexpected.value()));

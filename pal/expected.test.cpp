@@ -1389,28 +1389,66 @@ TEMPLATE_TEST_CASE("expected", "",
 
 	SECTION("expected(const expected &)")
 	{
-		TestType x{v1}, y{x};
-		CHECK(y.value() == v1);
+		SECTION("x")
+		{
+			TestType x{v1}, y{x};
+			CHECK(y.value() == v1);
+		}
+
+		SECTION("!x")
+		{
+			TestType x{pal::unexpect, e1}, y{x};
+			CHECK(y.error() == e1);
+		}
 	}
 
 	SECTION("expected(expected &&)")
 	{
-		TestType x, y{std::move(x)};
-		CHECK(y.value() == T{});
+		SECTION("x")
+		{
+			TestType x, y{std::move(x)};
+			CHECK(y.value() == T{});
+		}
+
+		SECTION("!x")
+		{
+			TestType x{pal::unexpect, e1}, y{std::move(x)};
+			CHECK(y.error() == e1);
+		}
 	}
 
 	SECTION("expected(const expected<U, G> &)")
 	{
-		other_t x{v2};
-		TestType y{x};
-		CHECK(y.value() == v2);
+		SECTION("x")
+		{
+			other_t x{v2};
+			TestType y{x};
+			CHECK(y.value() == v2);
+		}
+
+		SECTION("!x")
+		{
+			other_t x{pal::unexpect, e2};
+			TestType y{x};
+			CHECK(y.error() == e2);
+		}
 	}
 
 	SECTION("expected(expected<U, G> &&)")
 	{
-		other_t x{v2};
-		TestType y{std::move(x)};
-		CHECK(y.value() == v2);
+		SECTION("x")
+		{
+			other_t x{v2};
+			TestType y{std::move(x)};
+			CHECK(y.value() == v2);
+		}
+
+		SECTION("!x")
+		{
+			other_t x{pal::unexpect, e2};
+			TestType y{std::move(x)};
+			CHECK(y.error() == e2);
+		}
 	}
 
 	SECTION("expected(U &&)")
@@ -1461,46 +1499,136 @@ TEMPLATE_TEST_CASE("expected", "",
 
 	SECTION("operator=(const expected &)")
 	{
-		TestType x, y{pal::unexpect, e1};
-		y = x;
-		CHECK(y.value() == T{});
+		SECTION("x && y")
+		{
+			TestType x, y{v1};
+			x = y;
+			CHECK(x.value() == v1);
+		}
+
+		SECTION("!x && y")
+		{
+			TestType x{pal::unexpect, e1}, y{v1};
+			x = y;
+			CHECK(x.value() == v1);
+		}
+
+		SECTION("x && !y")
+		{
+			TestType x, y{pal::unexpect, e1};
+			x = y;
+			CHECK(x.error() == e1);
+		}
+
+		SECTION("!x && !y")
+		{
+			TestType x{pal::unexpect, e1}, y{pal::unexpect, e2};
+			x = y;
+			CHECK(x.error() == e2);
+		}
 	}
 
 	SECTION("operator=(expected &&)")
 	{
-		TestType x, y{pal::unexpect, e1};
-		y = std::move(x);
-		CHECK(y.value() == T{});
+		SECTION("x && y")
+		{
+			TestType x, y{v1};
+			x = std::move(y);
+			CHECK(x.value() == v1);
+		}
+
+		SECTION("!x && y")
+		{
+			TestType x{pal::unexpect, e1}, y{v1};
+			x = std::move(y);
+			CHECK(x.value() == v1);
+		}
+
+		SECTION("x && !y")
+		{
+			TestType x, y{pal::unexpect, e1};
+			x = std::move(y);
+			CHECK(x.error() == e1);
+		}
+
+		SECTION("!x && !y")
+		{
+			TestType x{pal::unexpect, e1}, y{pal::unexpect, e2};
+			x = std::move(y);
+			CHECK(x.error() == e2);
+		}
 	}
 
 	SECTION("operator=(const unexpected<G> &)")
 	{
-		pal::unexpected<G> x{e2};
-		TestType y;
-		y = x;
-		CHECK(y.error() == e2);
+		SECTION("x")
+		{
+			TestType x;
+			pal::unexpected<G> y{e2};
+			x = y;
+			CHECK(x.error() == e2);
+		}
+
+		SECTION("!x")
+		{
+			TestType x{pal::unexpect, e1};
+			pal::unexpected<G> y{e2};
+			x = y;
+			CHECK(x.error() == e2);
+		}
 	}
 
 	SECTION("operator=(unexpected<G> &&)")
 	{
-		pal::unexpected<G> x{e2};
-		TestType y;
-		y = std::move(x);
-		CHECK(y.error() == e2);
+		SECTION("x")
+		{
+			TestType x;
+			pal::unexpected<G> y{e2};
+			x = std::move(y);
+			CHECK(x.error() == e2);
+		}
+
+		SECTION("!x")
+		{
+			TestType x{pal::unexpect, e1};
+			pal::unexpected<G> y{e2};
+			x = std::move(y);
+			CHECK(x.error() == e2);
+		}
 	}
 
 	SECTION("operator=(U &&)")
 	{
-		TestType x{v1};
-		x = std::move(v2);
-		CHECK(x.value() == v2);
+		SECTION("x")
+		{
+			TestType x{v1};
+			x = std::move(v2);
+			CHECK(x.value() == v2);
+		}
+
+		SECTION("!x")
+		{
+			TestType x{pal::unexpect, e1};
+			x = std::move(v2);
+			CHECK(x.value() == v2);
+		}
 	}
 
 	SECTION("emplace")
 	{
-		TestType x{v1};
-		CHECK(x.emplace(v2) == v2);
-		CHECK(x.value() == v2);
+		SECTION("x")
+		{
+			TestType x{v1};
+			CHECK(x.emplace(v2) == v2);
+			CHECK(x.value() == v2);
+		}
+
+		SECTION("!x")
+		{
+			TestType x{pal::unexpect, e1};
+			CHECK(x.emplace(v2) == v2);
+			CHECK(x.value() == v2);
+		}
 	}
 }
 
@@ -1531,28 +1659,66 @@ TEMPLATE_TEST_CASE("expected", "",
 
 	SECTION("expected(const expected &)")
 	{
-		TestType x, y{x};
-		CHECK(y);
+		SECTION("x")
+		{
+			TestType x, y{x};
+			CHECK(y);
+		}
+
+		SECTION("!x")
+		{
+			TestType x{pal::unexpect, e1}, y{x};
+			CHECK(y.error() == e1);
+		}
 	}
 
 	SECTION("expected(expected &&)")
 	{
-		TestType x, y{std::move(x)};
-		CHECK(y);
+		SECTION("x")
+		{
+			TestType x, y{std::move(x)};
+			CHECK(y);
+		}
+
+		SECTION("!x")
+		{
+			TestType x{pal::unexpect, e1}, y{std::move(x)};
+			CHECK(y.error() == e1);
+		}
 	}
 
 	SECTION("expected(const expected<U, G> &)")
 	{
-		other_t x;
-		TestType y{x};
-		CHECK(y);
+		SECTION("x")
+		{
+			other_t x;
+			TestType y{x};
+			CHECK(y);
+		}
+
+		SECTION("!x")
+		{
+			other_t x{pal::unexpect, e2};
+			TestType y{x};
+			CHECK(y.error() == e2);
+		}
 	}
 
 	SECTION("expected(expected<U, G> &&)")
 	{
-		other_t x;
-		TestType y{std::move(x)};
-		CHECK(y);
+		SECTION("x")
+		{
+			other_t x;
+			TestType y{std::move(x)};
+			CHECK(y);
+		}
+
+		SECTION("!x")
+		{
+			other_t x{pal::unexpect, e2};
+			TestType y{std::move(x)};
+			CHECK(y.error() == e2);
+		}
 	}
 
 	SECTION("expected(const unexpected<E> &)")
@@ -1597,39 +1763,119 @@ TEMPLATE_TEST_CASE("expected", "",
 
 	SECTION("operator=(const expected &)")
 	{
-		TestType x, y{pal::unexpect, e1};
-		y = x;
-		CHECK(y);
+		SECTION("x && y")
+		{
+			TestType x, y;
+			x = y;
+			CHECK(x);
+		}
+
+		SECTION("!x && y")
+		{
+			TestType x{pal::unexpect, e1}, y;
+			x = y;
+			CHECK(x);
+		}
+
+		SECTION("x && !y")
+		{
+			TestType x, y{pal::unexpect, e1};
+			x = y;
+			CHECK(!x);
+		}
+
+		SECTION("!x && !y")
+		{
+			TestType x{pal::unexpect, e1}, y{pal::unexpect, e1};
+			x = y;
+			CHECK(!x);
+		}
 	}
 
 	SECTION("operator=(expected &&)")
 	{
-		TestType x, y{pal::unexpect, e1};
-		y = std::move(x);
-		CHECK(y);
+		SECTION("x && y")
+		{
+			TestType x, y;
+			x = std::move(y);
+			CHECK(x);
+		}
+
+		SECTION("!x && y")
+		{
+			TestType x{pal::unexpect, e1}, y;
+			x = std::move(y);
+			CHECK(x);
+		}
+
+		SECTION("x && !y")
+		{
+			TestType x, y{pal::unexpect, e1};
+			x = std::move(y);
+			CHECK(!x);
+		}
+
+		SECTION("!x && !y")
+		{
+			TestType x{pal::unexpect, e1}, y{pal::unexpect, e1};
+			x = std::move(y);
+			CHECK(!x);
+		}
 	}
 
 	SECTION("operator=(const unexpected<G> &)")
 	{
-		pal::unexpected<G> x{e2};
-		TestType y;
-		y = x;
-		CHECK(y.error() == e2);
+		SECTION("x")
+		{
+			pal::unexpected<G> y{e2};
+			TestType x;
+			x = y;
+			CHECK(x.error() == e2);
+		}
+
+		SECTION("!x")
+		{
+			pal::unexpected<G> y{e2};
+			TestType x{pal::unexpect, e1};
+			x = y;
+			CHECK(x.error() == e2);
+		}
 	}
 
 	SECTION("operator=(unexpected<G> &&)")
 	{
-		pal::unexpected<G> x{e2};
-		TestType y;
-		y = std::move(x);
-		CHECK(y.error() == e2);
+		SECTION("x")
+		{
+			pal::unexpected<G> y{e2};
+			TestType x;
+			x = std::move(y);
+			CHECK(x.error() == e2);
+		}
+
+		SECTION("!x")
+		{
+			pal::unexpected<G> y{e2};
+			TestType x{pal::unexpect, e1};
+			x = std::move(y);
+			CHECK(x.error() == e2);
+		}
 	}
 
 	SECTION("emplace")
 	{
-		TestType x{pal::unexpect, e1};
-		x.emplace();
-		CHECK(x);
+		SECTION("x")
+		{
+			TestType x;
+			x.emplace();
+			CHECK(x);
+		}
+
+		SECTION("!x")
+		{
+			TestType x{pal::unexpect, e1};
+			x.emplace();
+			CHECK(x);
+		}
 	}
 }
 
