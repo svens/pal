@@ -28,12 +28,8 @@ struct value: public bench_base //{{{1
 
 	errc func (time_t &result)
 	{
-		if (code_path == errc::success)
-		{
-			result = time(nullptr);
-			return errc::success;
-		}
-		return errc::failure;
+		result = time(nullptr);
+		return code_path;
 	}
 
 	time_t run ()
@@ -56,11 +52,12 @@ struct exception: public bench_base //{{{1
 
 	time_t func ()
 	{
-		if (code_path == errc::success)
+		auto result = time(nullptr);
+		if (code_path == errc::failure)
 		{
-			return time(nullptr);
+			throw std::exception{};
 		}
-		throw std::exception{};
+		return result;
 	}
 
 	time_t run ()
@@ -84,9 +81,10 @@ struct expected: public bench_base //{{{1
 
 	pal::expected<time_t, errc> func ()
 	{
+		auto result = time(nullptr);
 		if (code_path == errc::success)
 		{
-			return time(nullptr);
+			return result;
 		}
 		return pal::unexpected{errc::failure};
 	}
@@ -98,18 +96,9 @@ struct expected: public bench_base //{{{1
 };
 
 
-struct expected_throw: public bench_base //{{{1
+struct expected_throw: public expected //{{{1
 {
-	using bench_base::bench_base;
-
-	pal::expected<time_t, errc> func ()
-	{
-		if (code_path == errc::success)
-		{
-			return time(nullptr);
-		}
-		return pal::unexpected{errc::failure};
-	}
+	using expected::expected;
 
 	time_t run ()
 	{
