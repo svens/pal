@@ -82,6 +82,9 @@ constexpr uint16_t
 					| copy_ctor_can_throw
 					| move_ctor_can_throw,
 
+	copy_and_move_ctor_throws	= copy_ctor_throws
+					| move_ctor_throws,
+
 	ctor_throws			= default_ctor_throws
 					| emplace_ctor_throws
 					| copy_ctor_throws
