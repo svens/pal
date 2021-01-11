@@ -14,6 +14,16 @@ __pal_begin
 
 
 /**
+ * Tag type passed to uninitialized to indicate not to default construct
+ * internal storage
+ */
+struct no_init_t {};
+
+/// \see no_init_t
+constexpr no_init_t no_init{};
+
+
+/**
  * Uninitialized memory storage for typed variable.
  *
  * Provides memory block for \a T, not constructed during instantation of this
@@ -27,32 +37,38 @@ class uninitialized
 {
 public:
 
-	static_assert(!std::is_void_v<T>);
 	static_assert(!std::is_reference_v<T>);
+	static_assert(!std::is_same_v<std::remove_cv_t<T>, void>);
+	static_assert(!std::is_same_v<std::remove_cv_t<T>, no_init_t>);
+
+	/// Contained value type
+	using value_type = T;
 
 
-	using value_type = std::remove_const_t<T>;
-
-
+	/**
+	 * Default constructs variable T in internal storage.
+	 */
 	constexpr uninitialized () = default;
+
+
+	uninitialized (const uninitialized &) = delete;
+	uninitialized (uninitialized &&) = delete;
+	uninitialized &operator= (const uninitialized &) = delete;
+	uninitialized &operator= (uninitialized &&) = delete;
+
+
+	/**
+	 * No-op. It is application responsibility to destruct() T before this
+	 * object goes out of scope.
+	 */
 	~uninitialized () = default;
 
 
 	/**
-	 * Constructs variable \a T in internal storage with value from \a that.
+	 * Constructs uninitialized object without constructing variable \a T.
 	 */
-	constexpr uninitialized (const uninitialized &that)
-		noexcept(std::is_nothrow_copy_constructible_v<T>)
-		: storage_{that.get()}
-	{ }
-
-
-	/**
-	 * Constructs variable \a T in internal storage with value from \a that.
-	 */
-	constexpr uninitialized (uninitialized &&that)
-		noexcept(std::is_nothrow_move_constructible_v<T>)
-		: storage_{std::move(that.get())}
+	constexpr uninitialized (no_init_t tag) noexcept
+		: storage_{tag}
 	{ }
 
 
@@ -63,33 +79,12 @@ public:
 		requires(std::is_constructible_v<T, Args...>)
 	constexpr uninitialized (Args &&...args)
 		#if !defined(_MSC_BUILD)
-		noexcept(std::is_nothrow_constructible_v<T, Args...>)
+			noexcept(std::is_nothrow_constructible_v<T, Args...>)
 		#else
-		// TODO: error C2065: 'Args': undeclared identifier
+			// TODO: error C2065: 'Args': undeclared identifier
 		#endif
 		: storage_{std::forward<Args>(args)...}
 	{ }
-
-
-	/**
-	 * Constructs variable \a T in internal storage as copy of value
-	 * from \a that.
-	 */
-	void construct (const uninitialized<T> &that)
-		noexcept(std::is_nothrow_copy_constructible_v<T>)
-	{
-		::new (std::addressof(storage_)) value_type{that.get()};
-	}
-
-
-	/**
-	 * Constructs variable \a T in internal storage with value from \a that.
-	 */
-	void construct (uninitialized<T> &&that)
-		noexcept(std::is_nothrow_move_constructible_v<T>)
-	{
-		::new (std::addressof(storage_)) value_type{std::move(that.get())};
-	}
 
 
 	/**
@@ -100,7 +95,7 @@ public:
 	void construct (Args &&...args)
 		noexcept(std::is_nothrow_constructible_v<T, Args...>)
 	{
-		::new (std::addressof(storage_)) value_type{std::forward<Args>(args)...};
+		::new(std::addressof(storage_)) T{std::forward<Args>(args)...};
 	}
 
 
@@ -108,20 +103,30 @@ public:
 	 * Assign variable \a T in internal storage as copy of value
 	 * from \a that.
 	 */
-	void assign (const uninitialized<T> &that)
+	void assign (const T &that)
 		noexcept(std::is_nothrow_copy_assignable_v<T>)
+		#if !defined(__apple_build_version__)
+			requires(std::is_copy_assignable_v<T>)
+		#else
+			// TODO: expected ';' at end of declaration list
+		#endif
 	{
-		get() = that.get();
+		get() = that;
 	}
 
 
 	/**
 	 * Assign variable \a T in internal storage with value from \a that.
 	 */
-	void assign (uninitialized<T> &&that)
+	void assign (T &&that)
 		noexcept(std::is_nothrow_move_assignable_v<T>)
+		#if !defined(__apple_build_version__)
+			requires(std::is_move_assignable_v<T>)
+		#else
+			// TODO: expected ';' at end of declaration list
+		#endif
 	{
-		get() = std::move(that.get());
+		get() = std::move(that);
 	}
 
 
@@ -129,7 +134,7 @@ public:
 	 * Invokes T destructor in memory block. No-op for trivially
 	 * destructible type T
 	 */
-	constexpr void destruct ()
+	void destruct ()
 		noexcept(std::is_nothrow_destructible_v<T>)
 	{
 		storage_.value.~value_type();
@@ -231,58 +236,60 @@ private:
 	template <typename U, bool = std::is_trivially_destructible_v<U>>
 	union storage
 	{
-		bool empty;
 		U value;
+		no_init_t empty;
 
 		constexpr storage () noexcept
-			: empty{}
-		{ }
-
-		constexpr storage (const U &that)
-			noexcept(std::is_nothrow_copy_constructible_v<U>)
-			: value{that}
-		{ }
-
-		constexpr storage (U &&that)
-			noexcept(std::is_nothrow_move_constructible_v<U>)
-			: value{std::move(that)}
+			: value{}
 		{ }
 
 		template <typename... Args>
+			requires(std::is_constructible_v<U, Args &&...>)
 		constexpr storage (Args &&...args)
-			noexcept(std::is_nothrow_constructible_v<U, Args...>)
+			noexcept(std::is_nothrow_constructible_v<U, Args &&...>)
 			: value{std::forward<Args>(args)...}
 		{ }
+
+		constexpr storage (no_init_t tag) noexcept
+			: empty{tag}
+		{ }
+
+		~storage () = default;
+
+		storage (const storage &) = delete;
+		storage (storage &&) = delete;
+		storage &operator= (const storage &) = delete;
+		storage &operator= (storage &&) = delete;
 	};
 
 	template <typename U>
 	union storage<U, false>
 	{
-		bool empty;
 		U value;
+		no_init_t empty;
 
 		constexpr storage () noexcept
-			: empty{}
-		{ }
-
-		constexpr storage (const U &that)
-			noexcept(std::is_nothrow_copy_constructible_v<U>)
-			: value{that}
-		{ }
-
-		constexpr storage (U &&that)
-			noexcept(std::is_nothrow_move_constructible_v<U>)
-			: value{std::move(that)}
+			: value{}
 		{ }
 
 		template <typename... Args>
+			requires(std::is_constructible_v<U, Args &&...>)
 		constexpr storage (Args &&...args)
-			noexcept(std::is_nothrow_constructible_v<U, Args...>)
+			noexcept(std::is_nothrow_constructible_v<U, Args &&...>)
 			: value{std::forward<Args>(args)...}
+		{ }
+
+		constexpr storage (no_init_t tag) noexcept
+			: empty{tag}
 		{ }
 
 		~storage ()
 		{ }
+
+		storage (const storage &) = delete;
+		storage (storage &&) = delete;
+		storage &operator= (const storage &) = delete;
+		storage &operator= (storage &&) = delete;
 	};
 
 	storage<value_type> storage_{};

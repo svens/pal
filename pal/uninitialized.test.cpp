@@ -25,23 +25,23 @@ TEST_CASE("uninitialized")
 {
 	SECTION("constexpr")
 	{
-		constexpr pal::uninitialized u1{1};
+		constexpr pal::uninitialized<int> u{pal::no_init};
+		(void)u;
+
+		constexpr pal::uninitialized<int> u1;
 		constexpr auto v1 = u1.get();
-		CHECK(u1.get() == v1);
+		static_assert(*u1 == v1);
+		static_assert(*(u1.operator->()) == v1);
 
-		constexpr pal::uninitialized u2{u1};
-		constexpr auto v2 = *u2;
-		CHECK(u2.get() == v2);
-
-		constexpr pal::uninitialized u3{std::move(u2)};
-		constexpr auto v3 = *u3.operator->();
-		CHECK(u3.get() == v3);
+		constexpr pal::uninitialized u2{1};
+		constexpr auto v2 = u2.get();
+		static_assert(*u2 == v2);
+		static_assert(*(u2.operator->()) == v2);
 	}
 
-	using T = pal::uninitialized<object_counter>;
 
 	CHECK(object_counter::instances == 0);
-	T u;
+	pal::uninitialized<object_counter> u{pal::no_init};
 	CHECK(object_counter::instances == 0);
 
 	SECTION("construct")
@@ -66,14 +66,14 @@ using non_trivial_type = std::string;
 
 
 template <typename T>
-T value ()
+T value_1 ()
 {
-	return {};
+	return 1;
 }
 
 
 template <>
-std::string value<std::string> ()
+std::string value_1<std::string> ()
 {
 	return pal_test::case_name();
 }
@@ -83,10 +83,12 @@ TEMPLATE_TEST_CASE("uninitialized", "",
 	trivial_type,
 	non_trivial_type)
 {
-	auto v = value<TestType>();
+	pal::uninitialized<TestType> def;
+	CHECK(def.get() == TestType{});
 
-	using T = pal::uninitialized<TestType>;
-	T u{v};
+	auto v1 = value_1<TestType>();
+	pal::uninitialized u{v1};
+	using T = decltype(u);
 
 	SECTION("sizeof")
 	{
@@ -98,60 +100,48 @@ TEMPLATE_TEST_CASE("uninitialized", "",
 		CHECK((void *)std::addressof(u) == (void *)std::addressof(u.get()));
 	}
 
-	SECTION("uninitialized(const uninitialized &)")
+	SECTION("construct")
 	{
-		auto x{u};
-		CHECK(x.get() == v);
+		pal::uninitialized<TestType> empty{pal::no_init};
+		empty.construct();
+		CHECK(empty.get() == def.get());
+		empty.destruct();
 	}
 
-	SECTION("uninitialized(uninitialized &&)")
+	SECTION("construct / destruct")
 	{
-		auto x{std::move(u)};
-		CHECK(x.get() == v);
+		u.destruct();
+		u.construct(def.get());
+		CHECK(u.get() == def.get());
 	}
 
-	SECTION("construct(const uninitialized &)")
+	SECTION("assign(const T &)")
 	{
-		T x;
-		x.construct(u);
-		CHECK(x.get() == v);
+		u.assign(def.get());
+		CHECK(u.get() == def.get());
 	}
 
-	SECTION("construct(uninitialized &&)")
+	SECTION("assign(T &&)")
 	{
-		T x;
-		x.construct(std::move(u));
-		CHECK(x.get() == v);
-	}
-
-	SECTION("assign(const uninitialized &)")
-	{
-		T x{u};
-		x.assign(u);
-		CHECK(x.get() == v);
-	}
-
-	SECTION("assign(uninitialized &&)")
-	{
-		T x{u};
-		x.assign(std::move(u));
-		CHECK(x.get() == v);
+		auto v = def.get();
+		u.assign(std::move(v));
+		CHECK(u.get() == def.get());
 	}
 
 	SECTION("get")
 	{
-		CHECK(static_cast<const T &>(u).get() == v);
-		CHECK(u.get() == v);
-		CHECK(static_cast<const T &&>(std::move(u)).get() == v);
-		CHECK(std::move(u).get() == v);
+		CHECK(static_cast<const T &>(u).get() == v1);
+		CHECK(u.get() == v1);
+		CHECK(static_cast<const T &&>(std::move(u)).get() == v1);
+		CHECK(std::move(u).get() == v1);
 	}
 
 	SECTION("operator*")
 	{
-		CHECK(*static_cast<const T &>(u) == v);
-		CHECK(*u == v);
-		CHECK(*static_cast<const T &&>(std::move(u)) == v);
-		CHECK(*std::move(u) == v);
+		CHECK(*static_cast<const T &>(u) == v1);
+		CHECK(*u == v1);
+		CHECK(*static_cast<const T &&>(std::move(u)) == v1);
+		CHECK(*std::move(u) == v1);
 	}
 
 	SECTION("operator->")
@@ -159,6 +149,9 @@ TEMPLATE_TEST_CASE("uninitialized", "",
 		CHECK(static_cast<const T &>(u).operator->() == (void *)&u);
 		CHECK(u.operator->() == (void *)&u);
 	}
+
+	def.destruct();
+	u.destruct();
 }
 
 
