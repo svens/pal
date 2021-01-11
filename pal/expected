@@ -8,7 +8,6 @@
  */
 
 #include <pal/__bits/lib>
-#include <pal/uninitialized>
 #include <pal/assert>
 #include <stdexcept>
 #include <type_traits>
