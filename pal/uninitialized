@@ -13,69 +13,14 @@
 __pal_begin
 
 
-template <typename T, bool = std::is_trivially_destructible_v<T>>
-struct uninitialized_storage;
-
-
 /**
- * Storage for uninitialized<T> memory block.
+ * Tag type passed to uninitialized to indicate not to default construct
+ * internal storage
  */
-template <typename T>
-struct uninitialized_storage<T, true>
-{
-	/// Memory block for storage
-	T data;
+struct no_init_t {};
 
-	/**
-	 * Invokes T destructor in memory block. No-op for trivially
-	 * destructible type T
-	 */
-	constexpr void destruct () noexcept
-	{ }
-
-
-	/// Returns pointer to memory block
-	constexpr const T *operator-> () const noexcept
-	{
-		return &data;
-	}
-
-
-	/// Returns pointer to memory block
-	constexpr T *operator-> () noexcept
-	{
-		return &data;
-	}
-};
-
-
-#if !defined(__DOXYGEN__)
-
-template <typename T>
-struct uninitialized_storage<T, false>
-{
-	std::aligned_storage_t<sizeof(T)> data;
-
-
-	void destruct () noexcept(std::is_nothrow_destructible_v<T>)
-	{
-		operator->()->~T();
-	}
-
-
-	const T *operator-> () const noexcept
-	{
-		return reinterpret_cast<const T *>(&data);
-	}
-
-
-	T *operator-> () noexcept
-	{
-		return reinterpret_cast<T *>(&data);
-	}
-};
-
-#endif
+/// \see no_init_t
+constexpr no_init_t no_init{};
 
 
 /**
@@ -88,91 +33,269 @@ struct uninitialized_storage<T, false>
  * is not constructed yet or is already destructed is undefined behaviour.
  */
 template <typename T>
-struct uninitialized: public uninitialized_storage<T>
+class uninitialized
 {
-	using uninitialized_storage<T>::operator->;
+public:
+
+	static_assert(!std::is_reference_v<T>);
+	static_assert(!std::is_same_v<std::remove_cv_t<T>, void>);
+	static_assert(!std::is_same_v<std::remove_cv_t<T>, no_init_t>);
+
+	/// Contained value type
+	using value_type = T;
 
 
-	/// Constructs variable \a T in internal \a storage as default value.
-	constexpr void construct ()
+	/**
+	 * Default constructs variable T in internal storage.
+	 */
+	constexpr uninitialized () = default;
+
+
+	uninitialized (const uninitialized &) = delete;
+	uninitialized (uninitialized &&) = delete;
+	uninitialized &operator= (const uninitialized &) = delete;
+	uninitialized &operator= (uninitialized &&) = delete;
+
+
+	/**
+	 * No-op. It is application responsibility to destruct() T before this
+	 * object goes out of scope.
+	 */
+	~uninitialized () = default;
+
+
+	/**
+	 * Constructs uninitialized object without constructing variable \a T.
+	 */
+	constexpr uninitialized (no_init_t tag) noexcept
+		: storage_{tag}
+	{ }
+
+
+	/**
+	 * Constructs variable \a T in internal storage with \a args.
+	 */
+	template <typename... Args>
+		requires(std::is_constructible_v<T, Args...>)
+	constexpr uninitialized (Args &&...args)
+		#if !defined(_MSC_BUILD)
+			noexcept(std::is_nothrow_constructible_v<T, Args...>)
+		#else
+			// TODO: error C2065: 'Args': undeclared identifier
+		#endif
+		: storage_{std::forward<Args>(args)...}
+	{ }
+
+
+	/**
+	 * Constructs variable \a T in internal \a storage with \a args.
+	 */
+	template <typename... Args>
+		requires(std::is_constructible_v<T, Args...>)
+	void construct (Args &&...args)
+		noexcept(std::is_nothrow_constructible_v<T, Args...>)
 	{
-		::new (operator->()) T;
+		::new(std::addressof(storage_)) T{std::forward<Args>(args)...};
 	}
 
 
-	/// Constructs variable \a T in internal \a storage as copy of \a arg
-	constexpr void construct (const T &arg)
+	/**
+	 * Assign variable \a T in internal storage as copy of value
+	 * from \a that.
+	 */
+	void assign (const T &that)
+		noexcept(std::is_nothrow_copy_assignable_v<T>)
+		#if !defined(__apple_build_version__)
+			requires(std::is_copy_assignable_v<T>)
+		#else
+			// TODO: expected ';' at end of declaration list
+		#endif
 	{
-		::new (operator->()) T(arg);
+		get() = that;
 	}
 
 
-	/// Constructs variable \a T in internal \a storage with \a args
-	template <
-		typename... Args,
-		typename = std::enable_if_t<std::is_constructible_v<T, Args...>>
-	>
-	constexpr void construct (Args &&...args)
+	/**
+	 * Assign variable \a T in internal storage with value from \a that.
+	 */
+	void assign (T &&that)
+		noexcept(std::is_nothrow_move_assignable_v<T>)
+		#if !defined(__apple_build_version__)
+			requires(std::is_move_assignable_v<T>)
+		#else
+			// TODO: expected ';' at end of declaration list
+		#endif
 	{
-		::new (operator->()) T(std::forward<Args>(args)...);
+		get() = std::move(that);
 	}
 
 
-	/// Returns const reference to variable \a T.
+	/**
+	 * Invokes T destructor in memory block. No-op for trivially
+	 * destructible type T
+	 */
+	void destruct ()
+		noexcept(std::is_nothrow_destructible_v<T>)
+	{
+		storage_.value.~value_type();
+	}
+
+
+	/**
+	 * Returns const reference to variable \a T.
+	 */
+	constexpr const T &get () const & noexcept
+	{
+		return storage_.value;
+	}
+
+
+	/**
+	 * Returns reference to variable \a T.
+	 */
+	constexpr T &get () & noexcept
+	{
+		return storage_.value;
+	}
+
+
+	/**
+	 * Returns const rvalue reference to variable \a T.
+	 */
+	constexpr const T &&get () const && noexcept
+	{
+		return std::move(storage_.value);
+	}
+
+
+	/**
+	 * Returns rvalue reference to variable \a T.
+	 */
+	constexpr T &&get () && noexcept
+	{
+		return std::move(storage_.value);
+	}
+
+
+	/**
+	 * Returns const reference to variable \a T.
+	 */
 	constexpr const T &operator* () const & noexcept
 	{
-		return *operator->();
+		return get();
 	}
 
 
-	/// Returns reference to variable \a T.
+	/**
+	 * Returns reference to variable \a T.
+	 */
 	constexpr T &operator* () & noexcept
 	{
-		return *operator->();
+		return get();
 	}
 
 
-	/// Return const rvalue reference to variable \a T.
+	/**
+	 * Returns const rvalue reference to variable \a T.
+	 */
 	constexpr const T &&operator* () const && noexcept
 	{
-		return std::move(*operator->());
+		return std::move(get());
 	}
 
 
-	/// Return rvalue reference to variable \a T.
+	/**
+	 * Returns rvalue reference to variable \a T.
+	 */
 	constexpr T &&operator* () && noexcept
 	{
-		return std::move(*operator->());
+		return std::move(get());
 	}
 
 
-	/// Returns const reference to variable \a T.
-	constexpr const T &value () const & noexcept
+	/**
+	 * Returns const pointer to variable \a T.
+	 */
+	constexpr const T *operator-> () const noexcept
 	{
-		return *operator->();
+		return std::addressof(get());
 	}
 
 
-	/// Returns reference to variable \a T.
-	constexpr T &value () & noexcept
+	/**
+	 * Returns const pointer to variable \a T.
+	 */
+	constexpr T *operator-> () noexcept
 	{
-		return *operator->();
+		return std::addressof(get());
 	}
 
 
-	/// Return const rvalue reference to variable \a T.
-	constexpr const T &&value () const && noexcept
+private:
+
+	template <typename U, bool = std::is_trivially_destructible_v<U>>
+	union storage
 	{
-		return std::move(*operator->());
-	}
+		U value;
+		no_init_t empty;
 
+		constexpr storage () noexcept
+			: value{}
+		{ }
 
-	/// Return rvalue reference to variable \a T.
-	constexpr T &&value () && noexcept
+		template <typename... Args>
+			requires(std::is_constructible_v<U, Args &&...>)
+		constexpr storage (Args &&...args)
+			noexcept(std::is_nothrow_constructible_v<U, Args &&...>)
+			: value{std::forward<Args>(args)...}
+		{ }
+
+		constexpr storage (no_init_t tag) noexcept
+			: empty{tag}
+		{ }
+
+		~storage () = default;
+
+		storage (const storage &) = delete;
+		storage (storage &&) = delete;
+		storage &operator= (const storage &) = delete;
+		storage &operator= (storage &&) = delete;
+	};
+
+	template <typename U>
+	union storage<U, false>
 	{
-		return std::move(*operator->());
-	}
+		U value;
+		no_init_t empty;
+
+		constexpr storage () noexcept
+			: value{}
+		{ }
+
+		template <typename... Args>
+			requires(std::is_constructible_v<U, Args &&...>)
+		constexpr storage (Args &&...args)
+			noexcept(std::is_nothrow_constructible_v<U, Args &&...>)
+			: value{std::forward<Args>(args)...}
+		{ }
+
+		constexpr storage (no_init_t tag) noexcept
+			: empty{tag}
+		{ }
+
+		~storage ()
+		{ }
+
+		storage (const storage &) = delete;
+		storage (storage &&) = delete;
+		storage &operator= (const storage &) = delete;
+		storage &operator= (storage &&) = delete;
+	};
+
+	storage<value_type> storage_{};
 };
+
+template <typename T> uninitialized(T) -> uninitialized<T>;
 
 
 __pal_end

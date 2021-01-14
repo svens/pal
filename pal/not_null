@@ -64,56 +64,18 @@ public:
 
 
 	/// Construct not_null from \a that
-	template <typename U,
-		std::enable_if_t<
-			std::is_constructible_v<Pointer, U>
-			&&
-			!std::is_convertible_v<U, Pointer>,
-			int
-		> = 0
-	>
-	constexpr explicit not_null (const not_null<U> &that)
-		: ptr_(that.as_nullable())
-	{ }
-
-
-	/// Construct not_null from \a that
-	template <typename U,
-		std::enable_if_t<
-			std::is_constructible_v<Pointer, U>
-			&&
-			!std::is_convertible_v<U, Pointer>
-			&&
-			!std::is_pointer_v<U>,
-			int
-		> = 0
-	>
-	constexpr explicit not_null (not_null<U> &&that)
-		: ptr_(std::move(that).as_nullable())
-	{ }
-
-
-	/// Construct not_null from \a that
-	template <typename U,
-		std::enable_if_t<
-			std::is_convertible_v<U, Pointer>,
-			int
-		> = 0
-	>
+	template <typename U>
+		requires(std::is_constructible_v<Pointer, U>)
+		explicit(!std::is_convertible_v<U, Pointer>)
 	constexpr not_null (const not_null<U> &that)
 		: ptr_(that.as_nullable())
 	{ }
 
 
 	/// Construct not_null from \a that
-	template <typename U,
-		std::enable_if_t<
-			std::is_convertible_v<U, Pointer>
-			&&
-			!std::is_pointer_v<U>,
-			int
-		> = 0
-	>
+	template <typename U>
+		requires(std::is_constructible_v<Pointer, U> && !std::is_pointer_v<U>)
+		explicit(!std::is_convertible_v<U, Pointer>)
 	constexpr not_null (not_null<U> &&that)
 		: ptr_(std::move(that).as_nullable())
 	{ }
