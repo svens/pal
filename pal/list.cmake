@@ -15,6 +15,7 @@ list(APPEND pal_sources
 	pal/intrusive_queue
 	pal/intrusive_stack
 	pal/not_null
+	pal/result
 	pal/scoped_alloc
 	pal/span
 	pal/string
@@ -34,6 +35,7 @@ list(APPEND pal_unittests_sources
 	pal/intrusive_queue.test.cpp
 	pal/intrusive_stack.test.cpp
 	pal/not_null.test.cpp
+	pal/result.test.cpp
 	pal/scoped_alloc.test.cpp
 	pal/span.test.cpp
 	pal/uninitialized.test.cpp
