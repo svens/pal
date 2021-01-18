@@ -12,9 +12,7 @@
 
 namespace {
 
-
 using namespace pal_test;
-
 
 // unexpected<T> {{{1
 
@@ -787,6 +785,7 @@ TEMPLATE_TEST_CASE("expected", "",
 				if constexpr (std::is_copy_constructible_v<TestType>)
 				{
 					CHECK(e.value_or(0).fn() == 4);
+					CHECK(u.value_or(10).fn() == 40);
 				}
 			}
 
@@ -795,22 +794,11 @@ TEMPLATE_TEST_CASE("expected", "",
 				if constexpr (std::is_move_constructible_v<TestType>)
 				{
 					CHECK(std::move(e).value_or(0).fn() == 4);
+					CHECK(std::move(u).value_or(10).fn() == 40);
 				}
 			}
 		}
 	}
-
-	//
-	// Equality
-	//
-
-	//
-	// Comparison with T
-	//
-
-	//
-	// Comparison with unexpected<E>
-	//
 }
 
 
@@ -824,6 +812,9 @@ TEMPLATE_TEST_CASE("expected::constexpr", "",
 	void)
 {
 	using T = pal::expected<TestType, int>;
+
+	static_assert(pal::is_expected_v<T>);
+	static_assert(!pal::is_expected_v<TestType>);
 
 	constexpr T e;
 	static_assert(e);
@@ -1356,6 +1347,948 @@ TEMPLATE_TEST_CASE("expected::operator==", "",
 }
 
 
+// expected<T, E>::and_then {{{1
+
+TEST_CASE("expected::and_then")
+{
+	SECTION("int")
+	{
+		using T = pal::expected<int, int>;
+		auto f = [](int v) { return T{v * v}; };
+
+		SECTION("expected")
+		{
+			SECTION("const T &")
+			{
+				const T e = 2;
+				CHECK(e.and_then(f).value() == 4);
+			}
+
+			SECTION("T &")
+			{
+				T e = 2;
+				CHECK(e.and_then(f).value() == 4);
+			}
+
+			SECTION("const T &&")
+			{
+				const T e = 2;
+				CHECK(std::move(e).and_then(f).value() == 4);
+			}
+
+			SECTION("T &&")
+			{
+				T e = 2;
+				CHECK(std::move(e).and_then(f).value() == 4);
+			}
+		}
+
+		SECTION("unexpected")
+		{
+			SECTION("const T &")
+			{
+				const T e{pal::unexpect, 2};
+				CHECK(e.and_then(f).error() == 2);
+			}
+
+			SECTION("T &")
+			{
+				T e{pal::unexpect, 2};
+				CHECK(e.and_then(f).error() == 2);
+			}
+
+			SECTION("const T &&")
+			{
+				const T e{pal::unexpect, 2};
+				CHECK(std::move(e).and_then(f).error() == 2);
+			}
+
+			SECTION("T &&")
+			{
+				T e{pal::unexpect, 2};
+				CHECK(std::move(e).and_then(f).error() == 2);
+			}
+		}
+	}
+
+	SECTION("void")
+	{
+		using T = pal::expected<void, int>;
+		auto f = []() { return T{}; };
+
+		SECTION("expected")
+		{
+			SECTION("const T &")
+			{
+				const T e;
+				CHECK(e.and_then(f).has_value());
+			}
+
+			SECTION("T &")
+			{
+				T e;
+				CHECK(e.and_then(f).has_value());
+			}
+
+			SECTION("const T &&")
+			{
+				const T e;
+				CHECK(std::move(e).and_then(f).has_value());
+			}
+
+			SECTION("T &&")
+			{
+				T e;
+				CHECK(std::move(e).and_then(f).has_value());
+			}
+		}
+
+		SECTION("unexpected")
+		{
+			SECTION("const T &")
+			{
+				const T e{pal::unexpect, 2};
+				CHECK(e.and_then(f).error() == 2);
+			}
+
+			SECTION("T &")
+			{
+				T e{pal::unexpect, 2};
+				CHECK(e.and_then(f).error() == 2);
+			}
+
+			SECTION("const T &&")
+			{
+				const T e{pal::unexpect, 2};
+				CHECK(std::move(e).and_then(f).error() == 2);
+			}
+
+			SECTION("T &&")
+			{
+				T e{pal::unexpect, 2};
+				CHECK(std::move(e).and_then(f).error() == 2);
+			}
+		}
+	}
+
+	SECTION("chain")
+	{
+		using T = pal::expected<int, int>;
+
+		auto ok = [&](int v) { return T{v * v}; };
+		auto err = [&](int v) { return T{pal::unexpect, v}; };
+
+		CHECK(T{2}.and_then(ok).and_then(ok).value() == 16);
+		CHECK(T{2}.and_then(ok).and_then(err).error() == 4);
+		CHECK(T{2}.and_then(err).and_then(err).error() == 2);
+		CHECK(T{pal::unexpect, 3}.and_then(err).and_then(err).error() == 3);
+	}
+}
+
+
+// expected<T, E>::or_else {{{1
+
+TEST_CASE("expected::or_else")
+{
+	SECTION("int")
+	{
+		using T = pal::expected<int, int>;
+		auto f = [](int v) { return T{v * v}; };
+
+		SECTION("expected")
+		{
+			SECTION("const T &")
+			{
+				const T e = 2;
+				CHECK(e.or_else(f).value() == 2);
+			}
+
+			SECTION("T &")
+			{
+				T e = 2;
+				CHECK(e.or_else(f).value() == 2);
+			}
+
+			SECTION("const T &&")
+			{
+				const T e = 2;
+				CHECK(std::move(e).or_else(f).value() == 2);
+			}
+
+			SECTION("T &&")
+			{
+				T e = 2;
+				CHECK(std::move(e).or_else(f).value() == 2);
+			}
+		}
+
+		SECTION("unexpected")
+		{
+			SECTION("const T &")
+			{
+				const T e{pal::unexpect, 2};
+				CHECK(e.or_else(f).value() == 4);
+			}
+
+			SECTION("T &")
+			{
+				T e{pal::unexpect, 2};
+				CHECK(e.or_else(f).value() == 4);
+			}
+
+			SECTION("const T &&")
+			{
+				const T e{pal::unexpect, 2};
+				CHECK(std::move(e).or_else(f).value() == 4);
+			}
+
+			SECTION("T &&")
+			{
+				T e{pal::unexpect, 2};
+				CHECK(std::move(e).or_else(f).value() == 4);
+			}
+		}
+	}
+
+	SECTION("void")
+	{
+		using T = pal::expected<void, int>;
+		auto f = [](int v) { return T{pal::unexpect, v * v}; };
+
+		SECTION("expected")
+		{
+			SECTION("const T &")
+			{
+				const T e;
+				CHECK(e.or_else(f).has_value());
+			}
+
+			SECTION("T &")
+			{
+				T e;
+				CHECK(e.or_else(f).has_value());
+			}
+
+			SECTION("const T &&")
+			{
+				const T e;
+				CHECK(std::move(e).or_else(f).has_value());
+			}
+
+			SECTION("T &&")
+			{
+				T e;
+				CHECK(std::move(e).or_else(f).has_value());
+			}
+		}
+
+		SECTION("unexpected")
+		{
+			SECTION("const T &")
+			{
+				const T e{pal::unexpect, 2};
+				CHECK(e.or_else(f).error() == 4);
+			}
+
+			SECTION("T &")
+			{
+				T e{pal::unexpect, 2};
+				CHECK(e.or_else(f).error() == 4);
+			}
+
+			SECTION("const T &&")
+			{
+				const T e{pal::unexpect, 2};
+				CHECK(std::move(e).or_else(f).error() == 4);
+			}
+
+			SECTION("T &&")
+			{
+				T e{pal::unexpect, 2};
+				CHECK(std::move(e).or_else(f).error() == 4);
+			}
+		}
+	}
+
+	SECTION("chain")
+	{
+		using T = pal::expected<int, int>;
+
+		auto ok = [&](int v) { return T{v * v}; };
+		auto err = [&](int v) { return T{pal::unexpect, v}; };
+
+		CHECK(T{2}.or_else(ok).or_else(ok).value() == 2);
+		CHECK(T{2}.or_else(err).or_else(ok).value() == 2);
+		CHECK(T{pal::unexpect, 2}.or_else(ok).or_else(err).value() == 4);
+		CHECK(T{pal::unexpect, 2}.or_else(err).or_else(err).error() == 2);
+	}
+}
+
+
+// expected<T, E>::map {{{1
+
+TEST_CASE("expected::map")
+{
+	SECTION("int -> short")
+	{
+		using T = pal::expected<int, int>;
+		using U = pal::expected<short, int>;
+		auto f = [](int v) -> short { return short(v * v); };
+
+		SECTION("expected")
+		{
+			SECTION("const T &")
+			{
+				const T e = 2;
+				auto r = e.map(f);
+				CHECK(r.value() == 4);
+				static_assert(std::is_same_v<decltype(r), U>);
+			}
+
+			SECTION("T &")
+			{
+				T e = 2;
+				auto r = e.map(f);
+				CHECK(r.value() == 4);
+				static_assert(std::is_same_v<decltype(r), U>);
+			}
+
+			SECTION("const T &&")
+			{
+				const T e = 2;
+				auto r = std::move(e).map(f);
+				CHECK(r.value() == 4);
+				static_assert(std::is_same_v<decltype(r), U>);
+			}
+
+			SECTION("T &&")
+			{
+				T e = 2;
+				auto r = std::move(e).map(f);
+				CHECK(r.value() == 4);
+				static_assert(std::is_same_v<decltype(r), U>);
+			}
+		}
+
+		SECTION("unexpected")
+		{
+			SECTION("const T &")
+			{
+				const T e{pal::unexpect, 2};
+				auto r = e.map(f);
+				CHECK(r.error() == 2);
+				static_assert(std::is_same_v<decltype(r), U>);
+			}
+
+			SECTION("T &")
+			{
+				T e{pal::unexpect, 2};
+				auto r = e.map(f);
+				CHECK(r.error() == 2);
+				static_assert(std::is_same_v<decltype(r), U>);
+			}
+
+			SECTION("const T &&")
+			{
+				const T e{pal::unexpect, 2};
+				auto r = std::move(e).map(f);
+				CHECK(r.error() == 2);
+				static_assert(std::is_same_v<decltype(r), U>);
+			}
+
+			SECTION("T &&")
+			{
+				T e{pal::unexpect, 2};
+				auto r = std::move(e).map(f);
+				CHECK(r.error() == 2);
+				static_assert(std::is_same_v<decltype(r), U>);
+			}
+		}
+	}
+
+	SECTION("int -> void")
+	{
+		using T = pal::expected<int, int>;
+		using U = pal::expected<void, int>;
+		auto f = [](int) { (void)0; };
+
+		SECTION("expected")
+		{
+			SECTION("const T &")
+			{
+				const T e = 2;
+				auto r = e.map(f);
+				CHECK(r.has_value());
+				static_assert(std::is_same_v<decltype(r), U>);
+			}
+
+			SECTION("T &")
+			{
+				T e = 2;
+				auto r = e.map(f);
+				CHECK(r.has_value());
+				static_assert(std::is_same_v<decltype(r), U>);
+			}
+
+			SECTION("const T &&")
+			{
+				const T e = 2;
+				auto r = std::move(e).map(f);
+				CHECK(r.has_value());
+				static_assert(std::is_same_v<decltype(r), U>);
+			}
+
+			SECTION("T &&")
+			{
+				T e = 2;
+				auto r = std::move(e).map(f);
+				CHECK(r.has_value());
+				static_assert(std::is_same_v<decltype(r), U>);
+			}
+		}
+
+		SECTION("unexpected")
+		{
+			SECTION("const T &")
+			{
+				const T e{pal::unexpect, 2};
+				auto r = e.map(f);
+				CHECK(r.error() == 2);
+				static_assert(std::is_same_v<decltype(r), U>);
+			}
+
+			SECTION("T &")
+			{
+				T e{pal::unexpect, 2};
+				auto r = e.map(f);
+				CHECK(r.error() == 2);
+				static_assert(std::is_same_v<decltype(r), U>);
+			}
+
+			SECTION("const T &&")
+			{
+				const T e{pal::unexpect, 2};
+				auto r = std::move(e).map(f);
+				CHECK(r.error() == 2);
+				static_assert(std::is_same_v<decltype(r), U>);
+			}
+
+			SECTION("T &&")
+			{
+				T e{pal::unexpect, 2};
+				auto r = std::move(e).map(f);
+				CHECK(r.error() == 2);
+				static_assert(std::is_same_v<decltype(r), U>);
+			}
+		}
+	}
+
+	SECTION("void -> int")
+	{
+		using T = pal::expected<void, int>;
+		using U = pal::expected<int, int>;
+		auto f = []() -> int { return 2; };
+
+		SECTION("expected")
+		{
+			SECTION("const T &")
+			{
+				const T e;
+				auto r = e.map(f);
+				CHECK(r.value() == 2);
+				static_assert(std::is_same_v<decltype(r), U>);
+			}
+
+			SECTION("T &")
+			{
+				T e;
+				auto r = e.map(f);
+				CHECK(r.value() == 2);
+				static_assert(std::is_same_v<decltype(r), U>);
+			}
+
+			SECTION("const T &&")
+			{
+				const T e;
+				auto r = std::move(e).map(f);
+				CHECK(r.value() == 2);
+				static_assert(std::is_same_v<decltype(r), U>);
+			}
+
+			SECTION("T &&")
+			{
+				T e;
+				auto r = std::move(e).map(f);
+				CHECK(r.value() == 2);
+				static_assert(std::is_same_v<decltype(r), U>);
+			}
+		}
+
+		SECTION("unexpected")
+		{
+			SECTION("const T &")
+			{
+				const T e{pal::unexpect, 3};
+				auto r = e.map(f);
+				CHECK(r.error() == 3);
+				static_assert(std::is_same_v<decltype(r), U>);
+			}
+
+			SECTION("T &")
+			{
+				T e{pal::unexpect, 3};
+				auto r = e.map(f);
+				CHECK(r.error() == 3);
+				static_assert(std::is_same_v<decltype(r), U>);
+			}
+
+			SECTION("const T &&")
+			{
+				const T e{pal::unexpect, 3};
+				auto r = std::move(e).map(f);
+				CHECK(r.error() == 3);
+				static_assert(std::is_same_v<decltype(r), U>);
+			}
+
+			SECTION("T &&")
+			{
+				T e{pal::unexpect, 3};
+				auto r = std::move(e).map(f);
+				CHECK(r.error() == 3);
+				static_assert(std::is_same_v<decltype(r), U>);
+			}
+		}
+	}
+
+	SECTION("void -> void")
+	{
+		using T = pal::expected<void, int>;
+		using U = pal::expected<void, int>;
+
+		bool f_called = false;
+		auto f = [&]() { f_called = true; };
+
+		SECTION("expected")
+		{
+			SECTION("const T &")
+			{
+				const T e;
+				f_called = false;
+				auto r = e.map(f);
+				CHECK(f_called);
+				CHECK(r.has_value());
+				static_assert(std::is_same_v<decltype(r), U>);
+			}
+
+			SECTION("T &")
+			{
+				T e;
+				f_called = false;
+				auto r = e.map(f);
+				CHECK(f_called);
+				CHECK(r.has_value());
+				static_assert(std::is_same_v<decltype(r), U>);
+			}
+
+			SECTION("const T &&")
+			{
+				const T e;
+				f_called = false;
+				auto r = std::move(e).map(f);
+				CHECK(f_called);
+				CHECK(r.has_value());
+				static_assert(std::is_same_v<decltype(r), U>);
+			}
+
+			SECTION("T &&")
+			{
+				const T e;
+				f_called = false;
+				auto r = std::move(e).map(f);
+				CHECK(f_called);
+				CHECK(r.has_value());
+				static_assert(std::is_same_v<decltype(r), U>);
+			}
+		}
+
+		SECTION("unexpected")
+		{
+			SECTION("const T &")
+			{
+				const T e{pal::unexpect, 3};
+				f_called = false;
+				auto r = e.map(f);
+				CHECK(!f_called);
+				CHECK(r.error() == 3);
+				static_assert(std::is_same_v<decltype(r), U>);
+			}
+
+			SECTION("T &")
+			{
+				T e{pal::unexpect, 3};
+				f_called = false;
+				auto r = e.map(f);
+				CHECK(!f_called);
+				CHECK(r.error() == 3);
+				static_assert(std::is_same_v<decltype(r), U>);
+			}
+
+			SECTION("const T &&")
+			{
+				const T e{pal::unexpect, 3};
+				f_called = false;
+				auto r = std::move(e).map(f);
+				CHECK(!f_called);
+				CHECK(r.error() == 3);
+				static_assert(std::is_same_v<decltype(r), U>);
+			}
+
+			SECTION("T &&")
+			{
+				T e{pal::unexpect, 3};
+				f_called = false;
+				auto r = std::move(e).map(f);
+				CHECK(!f_called);
+				CHECK(r.error() == 3);
+				static_assert(std::is_same_v<decltype(r), U>);
+			}
+		}
+	}
+}
+
+
+// expected<T, E>::map_error {{{1
+
+TEST_CASE("expected::map_error")
+{
+	SECTION("int -> short")
+	{
+		using T = pal::expected<int, int>;
+		using U = pal::expected<int, short>;
+		auto f = [](int v) -> short { return short(v * v); };
+
+		SECTION("expected")
+		{
+			SECTION("const T &")
+			{
+				const T e = 2;
+				auto r = e.map_error(f);
+				CHECK(r.value() == 2);
+				static_assert(std::is_same_v<decltype(r), U>);
+			}
+
+			SECTION("T &")
+			{
+				T e = 2;
+				auto r = e.map_error(f);
+				CHECK(r.value() == 2);
+				static_assert(std::is_same_v<decltype(r), U>);
+			}
+
+			SECTION("const T &&")
+			{
+				const T e = 2;
+				auto r = std::move(e).map_error(f);
+				CHECK(r.value() == 2);
+				static_assert(std::is_same_v<decltype(r), U>);
+			}
+
+			SECTION("T &&")
+			{
+				T e = 2;
+				auto r = std::move(e).map_error(f);
+				CHECK(r.value() == 2);
+				static_assert(std::is_same_v<decltype(r), U>);
+			}
+		}
+
+		SECTION("unexpected")
+		{
+			SECTION("const T &")
+			{
+				const T e{pal::unexpect, 2};
+				auto r = e.map_error(f);
+				CHECK(r.error() == 4);
+				static_assert(std::is_same_v<decltype(r), U>);
+			}
+
+			SECTION("T &")
+			{
+				T e{pal::unexpect, 2};
+				auto r = e.map_error(f);
+				CHECK(r.error() == 4);
+				static_assert(std::is_same_v<decltype(r), U>);
+			}
+
+			SECTION("const T &&")
+			{
+				const T e{pal::unexpect, 2};
+				auto r = std::move(e).map_error(f);
+				CHECK(r.error() == 4);
+				static_assert(std::is_same_v<decltype(r), U>);
+			}
+
+			SECTION("T &&")
+			{
+				T e{pal::unexpect, 2};
+				auto r = std::move(e).map_error(f);
+				CHECK(r.error() == 4);
+				static_assert(std::is_same_v<decltype(r), U>);
+			}
+		}
+	}
+
+	SECTION("int -> monostate")
+	{
+		using T = pal::expected<int, int>;
+		using U = pal::expected<int, std::monostate>;
+		auto f = [](int) { (void)0; };
+
+		SECTION("expected")
+		{
+			SECTION("const T &")
+			{
+				const T e = 2;
+				auto r = e.map_error(f);
+				CHECK(r.value() == 2);
+				static_assert(std::is_same_v<decltype(r), U>);
+			}
+
+			SECTION("T &")
+			{
+				T e = 2;
+				auto r = e.map_error(f);
+				CHECK(r.value() == 2);
+				static_assert(std::is_same_v<decltype(r), U>);
+			}
+
+			SECTION("const T &&")
+			{
+				const T e = 2;
+				auto r = std::move(e).map_error(f);
+				CHECK(r.value() == 2);
+				static_assert(std::is_same_v<decltype(r), U>);
+			}
+
+			SECTION("T &&")
+			{
+				T e = 2;
+				auto r = std::move(e).map_error(f);
+				CHECK(r.value() == 2);
+				static_assert(std::is_same_v<decltype(r), U>);
+			}
+		}
+
+		SECTION("unexpected")
+		{
+			SECTION("const T &")
+			{
+				const T e{pal::unexpect, 2};
+				auto r = e.map_error(f);
+				CHECK(!r.has_value());
+				static_assert(std::is_same_v<decltype(r), U>);
+			}
+
+			SECTION("T &")
+			{
+				T e{pal::unexpect, 2};
+				auto r = e.map_error(f);
+				CHECK(!r.has_value());
+				static_assert(std::is_same_v<decltype(r), U>);
+			}
+
+			SECTION("const T &&")
+			{
+				const T e{pal::unexpect, 2};
+				auto r = std::move(e).map_error(f);
+				CHECK(!r.has_value());
+				static_assert(std::is_same_v<decltype(r), U>);
+			}
+
+			SECTION("T &&")
+			{
+				T e{pal::unexpect, 2};
+				auto r = std::move(e).map_error(f);
+				CHECK(!r.has_value());
+				static_assert(std::is_same_v<decltype(r), U>);
+			}
+		}
+	}
+
+	SECTION("<void,int> -> <void,short>")
+	{
+		using T = pal::expected<void, int>;
+		using U = pal::expected<void, short>;
+		auto f = [](int v) -> short { return short(v * v); };
+
+		SECTION("expected")
+		{
+			SECTION("const T &")
+			{
+				const T e;
+				auto r = e.map_error(f);
+				CHECK(r.has_value());
+				static_assert(std::is_same_v<decltype(r), U>);
+			}
+
+			SECTION("T &")
+			{
+				T e;
+				auto r = e.map_error(f);
+				CHECK(r.has_value());
+				static_assert(std::is_same_v<decltype(r), U>);
+			}
+
+			SECTION("const T &&")
+			{
+				const T e;
+				auto r = std::move(e).map_error(f);
+				CHECK(r.has_value());
+				static_assert(std::is_same_v<decltype(r), U>);
+			}
+
+			SECTION("T &&")
+			{
+				T e;
+				auto r = std::move(e).map_error(f);
+				CHECK(r.has_value());
+				static_assert(std::is_same_v<decltype(r), U>);
+			}
+		}
+
+		SECTION("unexpected")
+		{
+			SECTION("const T &")
+			{
+				const T e{pal::unexpect, 2};
+				auto r = e.map_error(f);
+				CHECK(r.error() == 4);
+				static_assert(std::is_same_v<decltype(r), U>);
+			}
+
+			SECTION("T &")
+			{
+				T e{pal::unexpect, 2};
+				auto r = e.map_error(f);
+				CHECK(r.error() == 4);
+				static_assert(std::is_same_v<decltype(r), U>);
+			}
+
+			SECTION("const T &&")
+			{
+				const T e{pal::unexpect, 2};
+				auto r = std::move(e).map_error(f);
+				CHECK(r.error() == 4);
+				static_assert(std::is_same_v<decltype(r), U>);
+			}
+
+			SECTION("T &&")
+			{
+				T e{pal::unexpect, 2};
+				auto r = std::move(e).map_error(f);
+				CHECK(r.error() == 4);
+				static_assert(std::is_same_v<decltype(r), U>);
+			}
+		}
+	}
+
+	SECTION("<void,int> -> <void,std::monostate>")
+	{
+		using T = pal::expected<void, int>;
+		using U = pal::expected<void, std::monostate>;
+
+		bool f_called = false;
+		auto f = [&](int) { f_called = true; };
+
+		SECTION("expected")
+		{
+			SECTION("const T &")
+			{
+				const T e;
+				f_called = false;
+				auto r = e.map_error(f);
+				CHECK(!f_called);
+				CHECK(r.has_value());
+				static_assert(std::is_same_v<decltype(r), U>);
+			}
+
+			SECTION("T &")
+			{
+				T e;
+				f_called = false;
+				auto r = e.map_error(f);
+				CHECK(!f_called);
+				CHECK(r.has_value());
+				static_assert(std::is_same_v<decltype(r), U>);
+			}
+
+			SECTION("const T &&")
+			{
+				const T e;
+				f_called = false;
+				auto r = std::move(e).map_error(f);
+				CHECK(!f_called);
+				CHECK(r.has_value());
+				static_assert(std::is_same_v<decltype(r), U>);
+			}
+
+			SECTION("T &&")
+			{
+				const T e;
+				f_called = false;
+				auto r = std::move(e).map_error(f);
+				CHECK(!f_called);
+				CHECK(r.has_value());
+				static_assert(std::is_same_v<decltype(r), U>);
+			}
+		}
+
+		SECTION("unexpected")
+		{
+			SECTION("const T &")
+			{
+				const T e{pal::unexpect, 2};
+				f_called = false;
+				auto r = e.map_error(f);
+				CHECK(f_called);
+				CHECK(!r.has_value());
+				static_assert(std::is_same_v<decltype(r), U>);
+			}
+
+			SECTION("T &")
+			{
+				T e{pal::unexpect, 2};
+				f_called = false;
+				auto r = e.map_error(f);
+				CHECK(f_called);
+				CHECK(!r.has_value());
+				static_assert(std::is_same_v<decltype(r), U>);
+			}
+
+			SECTION("const T &&")
+			{
+				const T e{pal::unexpect, 2};
+				f_called = false;
+				auto r = std::move(e).map_error(f);
+				CHECK(f_called);
+				CHECK(!r.has_value());
+				static_assert(std::is_same_v<decltype(r), U>);
+			}
+
+			SECTION("T &&")
+			{
+				T e{pal::unexpect, 2};
+				f_called = false;
+				auto r = std::move(e).map_error(f);
+				CHECK(f_called);
+				CHECK(!r.has_value());
+				static_assert(std::is_same_v<decltype(r), U>);
+			}
+		}
+	}
+}
+
+
 // expected<[non_]trivial, [non_]trivial> //{{{1
 
 using trivial_trivial = pal::expected<trivial_type, trivial_type>;
@@ -1880,7 +2813,6 @@ TEMPLATE_TEST_CASE("expected", "",
 }
 
 // }}}1
-
 
 } // namespace
 

@@ -9,9 +9,11 @@
 
 #include <pal/__bits/lib>
 #include <pal/assert>
+#include <functional>
 #include <stdexcept>
 #include <type_traits>
 #include <utility>
+#include <variant>
 
 
 __pal_begin
@@ -1049,8 +1051,190 @@ struct expected_move_assign<T, E, non_trivial_v>: expected_copy_assign<T, E>
 template <typename T, typename E>
 using expected_impl = expected_move_assign<T, E>;
 
+
+template <typename T>
+constexpr bool is_expected_v = false;
+
+template <typename T, typename E>
+constexpr bool is_expected_v<expected<T, E>> = true;
+
+
+template <typename Expected>
+using value_t = typename std::decay_t<Expected>::value_type;
+
+template <typename Expected>
+using error_t = typename std::decay_t<Expected>::error_type;
+
+
+template <typename Expected, typename F>
+	requires(!std::is_void_v<value_t<Expected>>)
+constexpr auto and_then (Expected &&e, F &&f)
+{
+	using R = decltype(std::invoke(std::declval<F>(), *std::declval<Expected>()));
+	static_assert(is_expected_v<R>);
+	if (e.has_value())
+	{
+		return std::invoke(std::forward<F>(f), *std::forward<Expected>(e));
+	}
+	return R{unexpect, std::forward<Expected>(e).error()};
+}
+
+
+template <typename Expected, typename F>
+	requires(std::is_void_v<value_t<Expected>>)
+constexpr auto and_then (Expected &&e, F &&f)
+{
+	using R = decltype(std::invoke(std::declval<F>()));
+	static_assert(is_expected_v<R>);
+	if (e.has_value())
+	{
+		return std::invoke(std::forward<F>(f));
+	}
+	return R{unexpect, std::forward<Expected>(e).error()};
+}
+
+
+template <typename Expected, typename F>
+constexpr auto or_else (Expected &&e, F &&f)
+{
+	using R = decltype(std::invoke(std::declval<F>(), std::declval<Expected>().error()));
+	static_assert(is_expected_v<R>);
+	if (e.has_value())
+	{
+		return std::forward<Expected>(e);
+	}
+	return std::invoke(std::forward<F>(f), std::forward<Expected>(e).error());
+}
+
+
+// expected<T, E> -> expected<U, E>
+template <typename Expected, typename F,
+	typename R = decltype(std::invoke(std::declval<F>(), *std::declval<Expected>()))
+>
+	requires(!std::is_void_v<value_t<Expected>> && !std::is_void_v<R>)
+constexpr auto map (Expected &&e, F &&f)
+{
+	using result_t = expected<std::decay_t<R>, error_t<Expected>>;
+	if (e.has_value())
+	{
+		return result_t{std::invoke(std::forward<F>(f), *std::forward<Expected>(e))};
+	}
+	return result_t{unexpect, std::forward<Expected>(e).error()};
+}
+
+// expected<T, E> -> expected<void, E>
+template <typename Expected, typename F,
+	typename R = decltype(std::invoke(std::declval<F>(), *std::declval<Expected>()))
+>
+	requires(!std::is_void_v<value_t<Expected>> && std::is_void_v<R>)
+constexpr auto map (Expected &&e, F &&f)
+{
+	using result_t = expected<void, error_t<Expected>>;
+	if (e.has_value())
+	{
+		std::invoke(std::forward<F>(f), *std::forward<Expected>(e));
+		return result_t{};
+	}
+	return result_t{unexpect, std::forward<Expected>(e).error()};
+}
+
+// expected<void, E> -> expected<T, E>
+template <typename Expected, typename F,
+	typename R = decltype(std::invoke(std::declval<F>()))
+>
+	requires(std::is_void_v<value_t<Expected>> && !std::is_void_v<R>)
+constexpr auto map (Expected &&e, F &&f)
+{
+	using result_t = expected<std::decay_t<R>, error_t<Expected>>;
+	if (e.has_value())
+	{
+		return result_t{std::invoke(std::forward<F>(f))};
+	}
+	return result_t{unexpect, std::forward<Expected>(e).error()};
+}
+
+// expected<void, E> -> expected<void, E>
+template <typename Expected, typename F,
+	typename R = decltype(std::invoke(std::declval<F>()))
+>
+	requires(std::is_void_v<value_t<Expected>> && std::is_void_v<R>)
+constexpr auto map (Expected &&e, F &&f)
+{
+	using result_t = expected<void, error_t<Expected>>;
+	if (e.has_value())
+	{
+		std::invoke(std::forward<F>(f));
+		return result_t{};
+	}
+	return result_t{unexpect, std::forward<Expected>(e).error()};
+}
+
+
+// expected<T, E> -> expected<T, G>
+template <typename Expected, typename F,
+	typename R = decltype(std::invoke(std::declval<F>(), std::declval<Expected>().error()))
+>
+	requires(!std::is_void_v<value_t<Expected>> && !std::is_void_v<R>)
+constexpr auto map_error (Expected &&e, F &&f)
+{
+	using result_t = expected<value_t<Expected>, std::decay_t<R>>;
+	if (e.has_value())
+	{
+		return result_t{*std::forward<Expected>(e)};
+	}
+	return result_t{unexpect, std::invoke(std::forward<F>(f), std::forward<Expected>(e).error())};
+}
+
+// expected<T, E> -> expected<T, std::monostate>
+template <typename Expected, typename F,
+	typename R = decltype(std::invoke(std::declval<F>(), std::declval<Expected>().error()))
+>
+	requires(!std::is_void_v<value_t<Expected>> && std::is_void_v<R>)
+constexpr auto map_error (Expected &&e, F &&f)
+{
+	using result_t = expected<value_t<Expected>, std::monostate>;
+	if (e.has_value())
+	{
+		return result_t{*std::forward<Expected>(e)};
+	}
+	std::invoke(std::forward<F>(f), std::forward<Expected>(e).error());
+	return result_t{unexpect, std::monostate{}};
+}
+
+// expected<void, E> -> expected<void, G>
+template <typename Expected, typename F,
+	typename R = decltype(std::invoke(std::declval<F>(), std::declval<Expected>().error()))
+>
+	requires(std::is_void_v<value_t<Expected>> && !std::is_void_v<R>)
+constexpr auto map_error (Expected &&e, F &&f)
+{
+	using result_t = expected<void, std::decay_t<R>>;
+	if (e.has_value())
+	{
+		return result_t{};
+	}
+	return result_t{unexpect, std::invoke(std::forward<F>(f), std::forward<Expected>(e).error())};
+}
+
+// expected<void, E> -> expected<void, std::monostate>
+template <typename Expected, typename F,
+	typename R = decltype(std::invoke(std::declval<F>(), std::declval<Expected>().error()))
+>
+	requires(std::is_void_v<value_t<Expected>> && std::is_void_v<R>)
+constexpr auto map_error (Expected &&e, F &&f)
+{
+	using result_t = expected<value_t<Expected>, std::monostate>;
+	if (e.has_value())
+	{
+		return result_t{};
+	}
+	std::invoke(std::forward<F>(f), std::forward<Expected>(e).error());
+	return result_t{unexpect, std::monostate{}};
+}
+
+
 template <typename T, typename E, typename U, typename G, typename UR, typename GR>
-static constexpr bool expected_converts_from_v =
+constexpr bool expected_converts_from_v =
 	((std::is_void_v<T> && std::is_void_v<U>) || std::is_constructible_v<T, UR>) &&
 	std::is_constructible_v<E, GR> &&
 
@@ -1076,7 +1260,7 @@ static constexpr bool expected_converts_from_v =
 ;
 
 template <typename T, typename E>
-static constexpr bool expected_is_swappable_v =
+constexpr bool expected_is_swappable_v =
 	std::is_swappable_v<T> &&
 	std::is_swappable_v<E> &&
 	(
@@ -1091,13 +1275,13 @@ static constexpr bool expected_is_swappable_v =
 ;
 
 template <typename E>
-static constexpr bool expected_is_swappable_v<void, E> =
+constexpr bool expected_is_swappable_v<void, E> =
 	std::is_swappable_v<E> &&
 	std::is_move_constructible_v<E>
 ;
 
 template <typename T, typename E>
-static constexpr bool expected_is_nothrow_swappable_v =
+constexpr bool expected_is_nothrow_swappable_v =
 	std::is_nothrow_move_constructible_v<T> &&
 	std::is_nothrow_swappable_v<T> &&
 	std::is_nothrow_move_constructible_v<E> &&
@@ -1105,7 +1289,7 @@ static constexpr bool expected_is_nothrow_swappable_v =
 ;
 
 template <typename E>
-static constexpr bool expected_is_nothrow_swappable_v<void, E> =
+constexpr bool expected_is_nothrow_swappable_v<void, E> =
 	std::is_nothrow_move_constructible_v<E> &&
 	std::is_nothrow_swappable_v<E>
 ;
@@ -1115,6 +1299,11 @@ static constexpr bool expected_is_nothrow_swappable_v<void, E> =
 
 
 // expected<T, E> {{{1
+
+template <typename T>
+constexpr bool is_expected_v = __bits::is_expected_v<std::decay_t<T>>;
+
+
 template <typename T, typename E>
 class expected: private __bits::expected_impl<T, E>
 {
@@ -1580,6 +1769,104 @@ public:
 		return impl::has_value ? std::move(impl::value) : static_cast<T>(std::forward<U>(v));
 	}
 
+	// Extensions {{{2
+
+	template <typename F>
+	constexpr auto and_then (F &&f) const &
+	{
+		return __bits::and_then(*this, std::forward<F>(f));
+	}
+
+	template <typename F>
+	constexpr auto and_then (F &&f) &
+	{
+		return __bits::and_then(*this, std::forward<F>(f));
+	}
+
+	template <typename F>
+	constexpr auto and_then (F &&f) const &&
+	{
+		return __bits::and_then(std::move(*this), std::forward<F>(f));
+	}
+
+	template <typename F>
+	constexpr auto and_then (F &&f) &&
+	{
+		return __bits::and_then(std::move(*this), std::forward<F>(f));
+	}
+
+	template <typename F>
+	constexpr auto or_else (F &&f) const &
+	{
+		return __bits::or_else(*this, std::forward<F>(f));
+	}
+
+	template <typename F>
+	constexpr auto or_else (F &&f) &
+	{
+		return __bits::or_else(*this, std::forward<F>(f));
+	}
+
+	template <typename F>
+	constexpr auto or_else (F &&f) const &&
+	{
+		return __bits::or_else(std::move(*this), std::forward<F>(f));
+	}
+
+	template <typename F>
+	constexpr auto or_else (F &&f) &&
+	{
+		return __bits::or_else(std::move(*this), std::forward<F>(f));
+	}
+
+	template <typename F>
+	constexpr auto map (F &&f) const &
+	{
+		return __bits::map(*this, std::forward<F>(f));
+	}
+
+	template <typename F>
+	constexpr auto map (F &&f) &
+	{
+		return __bits::map(*this, std::forward<F>(f));
+	}
+
+	template <typename F>
+	constexpr auto map (F &&f) const &&
+	{
+		return __bits::map(std::move(*this), std::forward<F>(f));
+	}
+
+	template <typename F>
+	constexpr auto map (F &&f) &&
+	{
+		return __bits::map(std::move(*this), std::forward<F>(f));
+	}
+
+	template <typename F>
+	constexpr auto map_error (F &&f) const &
+	{
+		return __bits::map_error(*this, std::forward<F>(f));
+	}
+
+	template <typename F>
+	constexpr auto map_error (F &&f) &
+	{
+		return __bits::map_error(*this, std::forward<F>(f));
+	}
+
+	template <typename F>
+	constexpr auto map_error (F &&f) const &&
+	{
+		return __bits::map_error(std::move(*this), std::forward<F>(f));
+	}
+
+	template <typename F>
+	constexpr auto map_error (F &&f) &&
+	{
+		return __bits::map_error(std::move(*this), std::forward<F>(f));
+	}
+
 	//}}}2
 
 
@@ -1768,6 +2055,7 @@ void swap (expected<T, E> &l, expected<T, E> &r)
 {
 	l.swap(r);
 }
+
 
 //}}}1
 
