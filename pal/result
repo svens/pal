@@ -1,0 +1,78 @@
+#pragma once // -*- C++ -*-
+
+/**
+ * \file pal/result
+ * Convenience type pal::result<T> for std::expected<T, std::error_code>
+ */
+
+#include <pal/__bits/lib>
+#include <pal/expected>
+#include <system_error>
+#include <type_traits>
+
+
+__pal_begin
+
+
+/**
+ * Convenience wrapper for std::expected<T, E> where E is std::error_code.
+ */
+template <typename T>
+using result = expected<T, std::error_code>;
+
+
+/**
+ * Invoke \a Expr returning std::expected<T, E>. Returns result of \a Expr if
+ * value is set. Otherwise throws E.
+ */
+#define pal_try(Expr) internal
+
+
+namespace __bits {
+
+#undef pal_try
+#define pal_try(Expr) pal::__bits::try_impl(Expr)
+
+template <typename T>
+constexpr auto try_impl (T &&result)
+	noexcept(std::is_nothrow_move_assignable_v<T>)
+{
+	return std::move(result);
+}
+
+template <typename T, typename E>
+constexpr auto try_impl (expected<T, E> &&result)
+	noexcept(false)
+{
+	if (result.has_value())
+	{
+		return std::move(*result);
+	}
+	throw result.error();
+}
+
+template <typename T>
+constexpr auto try_impl (result<T> &&result)
+	noexcept(false)
+{
+	if (result.has_value())
+	{
+		return std::move(*result);
+	}
+	throw std::system_error(result.error());
+}
+
+template <>
+constexpr auto try_impl (result<void> &&result)
+	noexcept(false)
+{
+	if (!result.has_value())
+	{
+		throw std::system_error(result.error());
+	}
+}
+
+} // namespace __bits
+
+
+__pal_end
