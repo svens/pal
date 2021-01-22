@@ -65,7 +65,7 @@ public:
 
 
 	template <typename... Args>
-		requires(std::is_constructible_v<E, Args...>)
+	requires(std::is_constructible_v<E, Args...>)
 	explicit constexpr unexpected (std::in_place_t, Args &&...args)
 		noexcept(std::is_nothrow_constructible_v<E, Args...>)
 		: value_{std::forward<Args>(args)...}
@@ -73,7 +73,7 @@ public:
 
 
 	template <typename U>
-		requires(std::is_constructible_v<E, U> && constructible_from_value<U>)
+	requires(std::is_constructible_v<E, U> && constructible_from_value<U>)
 	explicit constexpr unexpected (U &&e)
 		noexcept(std::is_nothrow_constructible_v<E, U>)
 		: value_{std::forward<U>(e)}
@@ -81,8 +81,8 @@ public:
 
 
 	template <typename U>
-		requires(std::is_constructible_v<E, const U &> && convertible_from_unexpected_v<U>)
-		explicit(!std::is_convertible_v<const U &, E>)
+	requires(std::is_constructible_v<E, const U &> && convertible_from_unexpected_v<U>)
+	explicit(!std::is_convertible_v<const U &, E>)
 	constexpr unexpected (const unexpected<U> &that)
 		noexcept(std::is_nothrow_constructible_v<E, const U &>)
 		: value_{that.value_}
@@ -90,8 +90,8 @@ public:
 
 
 	template <typename U>
-		requires(std::is_constructible_v<E, U> && convertible_from_unexpected_v<U>)
-		explicit(!std::is_convertible_v<U, E>)
+	requires(std::is_constructible_v<E, U> && convertible_from_unexpected_v<U>)
+	explicit(!std::is_convertible_v<U, E>)
 	constexpr unexpected (unexpected<U> &&that)
 		noexcept(std::is_nothrow_constructible_v<E, U &&>)
 		: value_{std::move(that.value_)}
@@ -107,7 +107,7 @@ public:
 
 
 	template <typename U = E>
-		requires(std::is_assignable_v<E, const U &>)
+	requires(std::is_assignable_v<E, const U &>)
 	constexpr unexpected &operator= (const unexpected<U> &that)
 	{
 		unexpected{that.value()}.swap(*this);
@@ -116,7 +116,7 @@ public:
 
 
 	template <typename U = E>
-		requires(std::is_assignable_v<E, U>)
+	requires(std::is_assignable_v<E, U>)
 	constexpr unexpected &operator= (unexpected<U> &&that)
 	{
 		unexpected{std::move(that.value())}.swap(*this);
@@ -195,7 +195,7 @@ constexpr bool operator!= (const unexpected<E1> &l, const unexpected<E2> &r)
 
 
 template <typename E>
-	requires(std::is_swappable_v<E>)
+requires(std::is_swappable_v<E>)
 void swap (unexpected<E> &l, unexpected<E> &r)
 	noexcept(noexcept(l.swap(r)))
 {
@@ -307,14 +307,14 @@ struct expected_storage_base
 	{ }
 
 	template <typename... Args>
-		requires(std::is_constructible_v<T, Args &&...>)
+	requires(std::is_constructible_v<T, Args &&...>)
 	constexpr expected_storage_base (std::in_place_t, Args &&...args)
 		: has_value{true}
 		, value{std::forward<Args>(args)...}
 	{ }
 
 	template <typename... Args>
-		requires(std::is_constructible_v<E, Args &&...>)
+	requires(std::is_constructible_v<E, Args &&...>)
 	constexpr expected_storage_base (unexpect_t, Args &&...args)
 		: has_value{false}
 		, unexpected{std::forward<Args>(args)...}
@@ -356,14 +356,14 @@ struct expected_storage_base<T, E, true, true>
 	{ }
 
 	template <typename... Args>
-		requires(std::is_constructible_v<T, Args &&...>)
+	requires(std::is_constructible_v<T, Args &&...>)
 	constexpr expected_storage_base (std::in_place_t, Args &&...args)
 		: has_value{true}
 		, value{std::forward<Args>(args)...}
 	{ }
 
 	template <typename... Args>
-		requires(std::is_constructible_v<E, Args &&...>)
+	requires(std::is_constructible_v<E, Args &&...>)
 	constexpr expected_storage_base (unexpect_t, Args &&...args)
 		: has_value{false}
 		, unexpected{std::forward<Args>(args)...}
@@ -399,14 +399,14 @@ struct expected_storage_base<T, E, true, false>
 	{ }
 
 	template <typename... Args>
-		requires(std::is_constructible_v<T, Args &&...>)
+	requires(std::is_constructible_v<T, Args &&...>)
 	constexpr expected_storage_base (std::in_place_t, Args &&...args)
 		: has_value{true}
 		, value{std::forward<Args>(args)...}
 	{ }
 
 	template <typename... Args>
-		requires(std::is_constructible_v<E, Args &&...>)
+	requires(std::is_constructible_v<E, Args &&...>)
 	constexpr expected_storage_base (unexpect_t, Args &&...args)
 		: has_value{false}
 		, unexpected{std::forward<Args>(args)...}
@@ -444,14 +444,14 @@ struct expected_storage_base<T, E, false, true>
 	{ }
 
 	template <typename... Args>
-		requires(std::is_constructible_v<T, Args &&...>)
+	requires(std::is_constructible_v<T, Args &&...>)
 	constexpr expected_storage_base (std::in_place_t, Args &&...args)
 		: has_value{true}
 		, value{std::forward<Args>(args)...}
 	{ }
 
 	template <typename... Args>
-		requires(std::is_constructible_v<E, Args &&...>)
+	requires(std::is_constructible_v<E, Args &&...>)
 	constexpr expected_storage_base (unexpect_t, Args &&...args)
 		: has_value{false}
 		, unexpected{std::forward<Args>(args)...}
@@ -494,7 +494,7 @@ struct expected_storage_base<void, E, false, false>
 	{ }
 
 	template <typename... Args>
-		requires(std::is_constructible_v<E, Args &&...>)
+	requires(std::is_constructible_v<E, Args &&...>)
 	constexpr expected_storage_base (unexpect_t, Args &&...args)
 		: has_value{false}
 		, unexpected{std::forward<Args>(args)...}
@@ -568,7 +568,7 @@ struct expected_storage_base<void, E, false, true>
 	{ }
 
 	template <typename... Args>
-		requires(std::is_constructible_v<E, Args &&...>)
+	requires(std::is_constructible_v<E, Args &&...>)
 	constexpr expected_storage_base (unexpect_t, Args &&...args)
 		: has_value{false}
 		, unexpected{std::forward<Args>(args)...}
@@ -1155,7 +1155,7 @@ constexpr auto or_else (Expected &&e, F &&f)
 template <typename Expected, typename F,
 	typename R = decltype(std::invoke(std::declval<F>(), *std::declval<Expected>()))
 >
-	requires(!std::is_void_v<value_t<Expected>> && !std::is_void_v<R>)
+requires(!std::is_void_v<value_t<Expected>> && !std::is_void_v<R>)
 constexpr auto map (Expected &&e, F &&f)
 {
 	using result_t = expected<std::decay_t<R>, error_t<Expected>>;
@@ -1170,7 +1170,7 @@ constexpr auto map (Expected &&e, F &&f)
 template <typename Expected, typename F,
 	typename R = decltype(std::invoke(std::declval<F>(), *std::declval<Expected>()))
 >
-	requires(!std::is_void_v<value_t<Expected>> && std::is_void_v<R>)
+requires(!std::is_void_v<value_t<Expected>> && std::is_void_v<R>)
 constexpr auto map (Expected &&e, F &&f)
 {
 	using result_t = expected<void, error_t<Expected>>;
@@ -1186,7 +1186,7 @@ constexpr auto map (Expected &&e, F &&f)
 template <typename Expected, typename F,
 	typename R = decltype(std::invoke(std::declval<F>()))
 >
-	requires(std::is_void_v<value_t<Expected>> && !std::is_void_v<R>)
+requires(std::is_void_v<value_t<Expected>> && !std::is_void_v<R>)
 constexpr auto map (Expected &&e, F &&f)
 {
 	using result_t = expected<std::decay_t<R>, error_t<Expected>>;
@@ -1201,7 +1201,7 @@ constexpr auto map (Expected &&e, F &&f)
 template <typename Expected, typename F,
 	typename R = decltype(std::invoke(std::declval<F>()))
 >
-	requires(std::is_void_v<value_t<Expected>> && std::is_void_v<R>)
+requires(std::is_void_v<value_t<Expected>> && std::is_void_v<R>)
 constexpr auto map (Expected &&e, F &&f)
 {
 	using result_t = expected<void, error_t<Expected>>;
@@ -1220,7 +1220,7 @@ constexpr auto map (Expected &&e, F &&f)
 template <typename Expected, typename F,
 	typename R = decltype(std::invoke(std::declval<F>(), std::declval<Expected>().error()))
 >
-	requires(!std::is_void_v<value_t<Expected>> && !std::is_void_v<R>)
+requires(!std::is_void_v<value_t<Expected>> && !std::is_void_v<R>)
 constexpr auto map_error (Expected &&e, F &&f)
 {
 	using result_t = expected<value_t<Expected>, std::decay_t<R>>;
@@ -1235,7 +1235,7 @@ constexpr auto map_error (Expected &&e, F &&f)
 template <typename Expected, typename F,
 	typename R = decltype(std::invoke(std::declval<F>(), std::declval<Expected>().error()))
 >
-	requires(!std::is_void_v<value_t<Expected>> && std::is_void_v<R>)
+requires(!std::is_void_v<value_t<Expected>> && std::is_void_v<R>)
 constexpr auto map_error (Expected &&e, F &&f)
 {
 	using result_t = expected<value_t<Expected>, std::monostate>;
@@ -1251,7 +1251,7 @@ constexpr auto map_error (Expected &&e, F &&f)
 template <typename Expected, typename F,
 	typename R = decltype(std::invoke(std::declval<F>(), std::declval<Expected>().error()))
 >
-	requires(std::is_void_v<value_t<Expected>> && !std::is_void_v<R>)
+requires(std::is_void_v<value_t<Expected>> && !std::is_void_v<R>)
 constexpr auto map_error (Expected &&e, F &&f)
 {
 	using result_t = expected<void, std::decay_t<R>>;
@@ -1266,7 +1266,7 @@ constexpr auto map_error (Expected &&e, F &&f)
 template <typename Expected, typename F,
 	typename R = decltype(std::invoke(std::declval<F>(), std::declval<Expected>().error()))
 >
-	requires(std::is_void_v<value_t<Expected>> && std::is_void_v<R>)
+requires(std::is_void_v<value_t<Expected>> && std::is_void_v<R>)
 constexpr auto map_error (Expected &&e, F &&f)
 {
 	using result_t = expected<value_t<Expected>, std::monostate>;
@@ -1382,24 +1382,22 @@ public:
 	// Constructors {{{2
 
 	template <typename U, typename G>
-		requires
+	requires(
+		__bits::expected_converts_from_v<
+			T, E, U, G,
+			std::add_lvalue_reference_t<const U>,
+			const G &
+		>
+	)
+	explicit(
 		(
-			__bits::expected_converts_from_v<
-				T, E, U, G,
-				std::add_lvalue_reference_t<const U>,
-				const G &
-			>
+			std::is_void_v<T> &&
+			std::is_void_v<U> &&
+			!std::is_convertible_v<std::add_lvalue_reference_t<const U>, T>
 		)
-		explicit
-		(
-			(
-				std::is_void_v<T> &&
-				std::is_void_v<U> &&
-				!std::is_convertible_v<std::add_lvalue_reference_t<const U>, T>
-			)
-			||
-			!std::is_convertible_v<const G &, E>
-		)
+		||
+		!std::is_convertible_v<const G &, E>
+	)
 	constexpr expected (const expected<U, G> &that)
 		: impl{__bits::no_init}
 	{
@@ -1422,24 +1420,22 @@ public:
 
 
 	template <typename U, typename G>
-		requires
+	requires(
+		__bits::expected_converts_from_v<
+			T, E, U, G,
+			std::add_rvalue_reference_t<U>,
+			G &&
+		>
+	)
+	explicit(
 		(
-			__bits::expected_converts_from_v<
-				T, E, U, G,
-				std::add_rvalue_reference_t<U>,
-				G &&
-			>
+			std::is_void_v<T> &&
+			std::is_void_v<U> &&
+			!std::is_convertible_v<std::add_rvalue_reference_t<U>, T>
 		)
-		explicit
-		(
-			(
-				std::is_void_v<T> &&
-				std::is_void_v<U> &&
-				!std::is_convertible_v<std::add_rvalue_reference_t<U>, T>
-			)
-			||
-			!std::is_convertible_v<G &&, E>
-		)
+		||
+		!std::is_convertible_v<G &&, E>
+	)
 	constexpr expected (expected<U, G> &&that)
 		: impl{__bits::no_init}
 	{
@@ -1462,14 +1458,13 @@ public:
 
 
 	template <typename U = T>
-		requires
-		(
-			!std::is_void_v<U> &&
-			std::is_constructible_v<T, U &&> &&
-			!std::is_same_v<std::remove_cvref_t<U>, std::in_place_t> &&
-			!std::is_same_v<std::remove_cvref_t<U>, expected<T, E>> &&
-			!std::is_same_v<std::remove_cvref_t<U>, unexpected<E>>
-		)
+	requires(
+		!std::is_void_v<U> &&
+		std::is_constructible_v<T, U &&> &&
+		!std::is_same_v<std::remove_cvref_t<U>, std::in_place_t> &&
+		!std::is_same_v<std::remove_cvref_t<U>, expected<T, E>> &&
+		!std::is_same_v<std::remove_cvref_t<U>, unexpected<E>>
+	)
 	explicit(!std::is_convertible_v<U &&, T>)
 	constexpr expected (U &&v)
 		: impl{std::in_place, std::forward<U>(v)}
@@ -1477,7 +1472,7 @@ public:
 
 
 	template <typename G = E>
-		requires(std::is_constructible_v<E, const G &>)
+	requires(std::is_constructible_v<E, const G &>)
 	explicit(!std::is_convertible_v<const G &, E>)
 	constexpr expected (const unexpected<G> &e)
 		noexcept(std::is_nothrow_constructible_v<E, const G &>)
@@ -1486,7 +1481,7 @@ public:
 
 
 	template <typename G = E>
-		requires(std::is_constructible_v<E, G &&>)
+	requires(std::is_constructible_v<E, G &&>)
 	explicit(!std::is_convertible_v<G &&, E>)
 	constexpr expected (unexpected<G> &&e)
 		noexcept(std::is_nothrow_constructible_v<E, G &&>)
@@ -1495,11 +1490,10 @@ public:
 
 
 	template <typename... Args>
-		requires
-		(
-			(std::is_void_v<T> && sizeof...(Args) == 0) ||
-			(!std::is_void_v<T> && std::is_constructible_v<T, Args...>)
-		)
+	requires(
+		(std::is_void_v<T> && sizeof...(Args) == 0) ||
+		(!std::is_void_v<T> && std::is_constructible_v<T, Args...>)
+	)
 	explicit constexpr expected (std::in_place_t tag, Args &&...args)
 		noexcept(std::is_nothrow_constructible_v<T, Args...>)
 		: impl{tag, std::forward<Args>(args)...}
@@ -1507,7 +1501,7 @@ public:
 
 
 	template <typename... Args>
-		requires(std::is_constructible_v<E, Args...>)
+	requires(std::is_constructible_v<E, Args...>)
 	explicit constexpr expected (unexpect_t tag, Args &&...args)
 		noexcept(std::is_nothrow_constructible_v<E, Args...>)
 		: impl{tag, std::forward<Args>(args)...}
@@ -1517,11 +1511,10 @@ public:
 	// Assignment {{{2
 
 	template <typename G = E>
-		requires
-		(
-			std::is_nothrow_copy_constructible_v<G> &&
-			std::is_copy_assignable_v<G>
-		)
+	requires(
+		std::is_nothrow_copy_constructible_v<G> &&
+		std::is_copy_assignable_v<G>
+	)
 	expected &operator= (const unexpected<G> &e)
 	{
 		if (impl::has_value)
@@ -1538,11 +1531,10 @@ public:
 
 
 	template <typename G = E>
-		requires
-		(
-			std::is_nothrow_move_constructible_v<G> &&
-			std::is_move_assignable_v<G>
-		)
+	requires(
+		std::is_nothrow_move_constructible_v<G> &&
+		std::is_move_assignable_v<G>
+	)
 	expected &operator= (unexpected<G> &&e)
 	{
 		if (impl::has_value)
@@ -1559,15 +1551,14 @@ public:
 
 
 	template <typename U = T>
-		requires
-		(
-			!std::is_void_v<T> &&
-			!std::is_same_v<expected<T, E>, std::remove_cvref_t<U>> &&
-			!std::conjunction_v<std::is_scalar<T>, std::is_same<T, std::decay_t<U>>> &&
-			std::is_constructible_v<T, U> &&
-			std::is_assignable_v<std::add_lvalue_reference_t<T>, U> &&
-			std::is_nothrow_move_constructible_v<E>
-		)
+	requires(
+		!std::is_void_v<T> &&
+		!std::is_same_v<expected<T, E>, std::remove_cvref_t<U>> &&
+		!std::conjunction_v<std::is_scalar<T>, std::is_same<T, std::decay_t<U>>> &&
+		std::is_constructible_v<T, U> &&
+		std::is_assignable_v<std::add_lvalue_reference_t<T>, U> &&
+		std::is_nothrow_move_constructible_v<E>
+	)
 	expected &operator= (U &&v)
 	{
 		if (impl::has_value)
@@ -1601,7 +1592,7 @@ public:
 
 
 	template <typename U = T>
-		requires(std::is_void_v<U>)
+	requires(std::is_void_v<U>)
 	void emplace ()
 	{
 		if (!impl::has_value)
@@ -1613,11 +1604,10 @@ public:
 
 
 	template <typename U = T, typename... Args>
-		requires
-		(
-			!std::is_void_v<T> &&
-			std::is_constructible_v<T, Args &&...>
-		)
+	requires(
+		!std::is_void_v<T> &&
+		std::is_constructible_v<T, Args &&...>
+	)
 	U &emplace (Args &&...args)
 	{
 		if (impl::has_value)
@@ -1660,7 +1650,7 @@ public:
 	// Swap {{{2
 
 	template <typename U = T, typename G = E>
-		requires(__bits::expected_is_swappable_v<U, G>)
+	requires(__bits::expected_is_swappable_v<U, G>)
 	void swap (expected &that)
 		noexcept(__bits::expected_is_nothrow_swappable_v<U, G>)
 	{
@@ -1698,7 +1688,7 @@ public:
 
 
 	template <typename U = T>
-		requires(!std::is_void_v<U>)
+	requires(!std::is_void_v<U>)
 	constexpr const U *operator-> () const noexcept
 	{
 		return std::addressof(impl::value);
@@ -1706,7 +1696,7 @@ public:
 
 
 	template <typename U = T>
-		requires(!std::is_void_v<U>)
+	requires(!std::is_void_v<U>)
 	constexpr U *operator-> () noexcept
 	{
 		return std::addressof(impl::value);
@@ -1714,7 +1704,7 @@ public:
 
 
 	template <typename U = T>
-		requires(!std::is_void_v<U>)
+	requires(!std::is_void_v<U>)
 	constexpr const U &operator* () const &
 	{
 		return impl::value;
@@ -1722,7 +1712,7 @@ public:
 
 
 	template <typename U = T>
-		requires(!std::is_void_v<U>)
+	requires(!std::is_void_v<U>)
 	constexpr U &operator* () &
 	{
 		return impl::value;
@@ -1730,7 +1720,7 @@ public:
 
 
 	template <typename U = T>
-		requires(!std::is_void_v<U>)
+	requires(!std::is_void_v<U>)
 	constexpr const U &&operator* () const &&
 	{
 		return std::move(impl::value);
@@ -1738,7 +1728,7 @@ public:
 
 
 	template <typename U = T>
-		requires(!std::is_void_v<U>)
+	requires(!std::is_void_v<U>)
 	constexpr U &&operator* () &&
 	{
 		return std::move(impl::value);
@@ -1770,7 +1760,7 @@ public:
 
 
 	template <typename U = T>
-		requires(!std::is_void_v<U>)
+	requires(!std::is_void_v<U>)
 	constexpr const U &value () const &
 	{
 		return require_value(), impl::value;
@@ -1778,7 +1768,7 @@ public:
 
 
 	template <typename U = T>
-		requires(!std::is_void_v<U>)
+	requires(!std::is_void_v<U>)
 	constexpr U &value () &
 	{
 		return require_value(), impl::value;
@@ -1786,7 +1776,7 @@ public:
 
 
 	template <typename U = T>
-		requires(!std::is_void_v<U>)
+	requires(!std::is_void_v<U>)
 	constexpr const U &&value () const &&
 	{
 		return require_value(), std::move(impl::value);
@@ -1794,7 +1784,7 @@ public:
 
 
 	template <typename U = T>
-		requires(!std::is_void_v<U>)
+	requires(!std::is_void_v<U>)
 	constexpr U &&value () &&
 	{
 		return require_value(), std::move(impl::value);
@@ -1802,7 +1792,7 @@ public:
 
 
 	template <typename U>
-		requires(std::is_copy_constructible_v<T> && std::is_convertible_v<U, T>)
+	requires(std::is_copy_constructible_v<T> && std::is_convertible_v<U, T>)
 	constexpr T value_or (U &&v) const &
 	{
 		return impl::has_value ? impl::value : static_cast<T>(std::forward<U>(v));
@@ -1810,7 +1800,7 @@ public:
 
 
 	template <typename U>
-		requires(std::is_move_constructible_v<T> && std::is_convertible_v<U, T>)
+	requires(std::is_move_constructible_v<T> && std::is_convertible_v<U, T>)
 	constexpr T value_or (U &&v) &&
 	{
 		return impl::has_value ? std::move(impl::value) : static_cast<T>(std::forward<U>(v));
@@ -2096,7 +2086,7 @@ constexpr bool operator!= (const unexpected<G> &l, const expected<T, E> &r)
 
 
 template <typename T, typename E>
-	requires(__bits::expected_is_swappable_v<T, E>)
+requires(__bits::expected_is_swappable_v<T, E>)
 void swap (expected<T, E> &l, expected<T, E> &r)
 	noexcept(noexcept(l.swap(r)))
 {

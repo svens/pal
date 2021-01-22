@@ -76,7 +76,7 @@ public:
 	 * Constructs variable \a T in internal storage with \a args.
 	 */
 	template <typename... Args>
-		requires(std::is_constructible_v<T, Args...>)
+	requires(std::is_constructible_v<T, Args...>)
 	constexpr uninitialized (Args &&...args)
 		#if !defined(_MSC_BUILD)
 			noexcept(std::is_nothrow_constructible_v<T, Args...>)
@@ -91,7 +91,7 @@ public:
 	 * Constructs variable \a T in internal \a storage with \a args.
 	 */
 	template <typename... Args>
-		requires(std::is_constructible_v<T, Args...>)
+	requires(std::is_constructible_v<T, Args...>)
 	void construct (Args &&...args)
 		noexcept(std::is_nothrow_constructible_v<T, Args...>)
 	{
@@ -244,7 +244,7 @@ private:
 		{ }
 
 		template <typename... Args>
-			requires(std::is_constructible_v<U, Args &&...>)
+		requires(std::is_constructible_v<U, Args &&...>)
 		constexpr storage (Args &&...args)
 			noexcept(std::is_nothrow_constructible_v<U, Args &&...>)
 			: value{std::forward<Args>(args)...}
@@ -273,7 +273,7 @@ private:
 		{ }
 
 		template <typename... Args>
-			requires(std::is_constructible_v<U, Args &&...>)
+		requires(std::is_constructible_v<U, Args &&...>)
 		constexpr storage (Args &&...args)
 			noexcept(std::is_nothrow_constructible_v<U, Args &&...>)
 			: value{std::forward<Args>(args)...}
