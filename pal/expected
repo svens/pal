@@ -1125,28 +1125,26 @@ constexpr auto and_then (Expected &&e, F &&f)
 template <typename Expected, typename F,
 	typename R = decltype(std::invoke(std::declval<F>(), std::declval<Expected>().error()))
 >
-	requires(!std::is_void_v<R>)
+requires(is_expected_v<R>)
 constexpr auto or_else (Expected &&e, F &&f)
 {
-	static_assert(is_expected_v<R>);
-	if (e.has_value())
+	if (!e.has_value())
 	{
-		return std::forward<Expected>(e);
+		return std::invoke(std::forward<F>(f), std::forward<Expected>(e).error());
 	}
-	return std::invoke(std::forward<F>(f), std::forward<Expected>(e).error());
+	return std::forward<Expected>(e);
 }
 
 template <typename Expected, typename F,
 	typename R = decltype(std::invoke(std::declval<F>(), std::declval<Expected>().error()))
 >
-	requires(std::is_void_v<R>)
+requires(std::is_void_v<R>)
 constexpr auto or_else (Expected &&e, F &&f)
 {
-	if (e.has_value())
+	if (!e.has_value())
 	{
-		return std::forward<Expected>(e);
+		std::invoke(std::forward<F>(f), std::forward<Expected>(e).error());
 	}
-	std::invoke(std::forward<F>(f), std::forward<Expected>(e).error());
 	return std::forward<Expected>(e);
 }
 
