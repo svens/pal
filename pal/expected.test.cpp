@@ -1354,33 +1354,43 @@ TEST_CASE("expected::and_then")
 	SECTION("int")
 	{
 		using T = pal::expected<int, int>;
-		auto f = [](int v) { return T{v * v}; };
+
+		auto fe = [](int v) { return T{v * v}; };
+
+		typename T::value_type fv_arg{};
+		auto fv = [&](int v) { fv_arg = v; };
 
 		SECTION("expected")
 		{
 			SECTION("const T &")
 			{
 				const T e = 2;
-				CHECK(e.and_then(f).value() == 4);
+				CHECK(e.and_then(fe).value() == 4);
+				CHECK(e.and_then(fv).value() == 2);
 			}
 
 			SECTION("T &")
 			{
 				T e = 2;
-				CHECK(e.and_then(f).value() == 4);
+				CHECK(e.and_then(fe).value() == 4);
+				CHECK(e.and_then(fv).value() == 2);
 			}
 
 			SECTION("const T &&")
 			{
 				const T e = 2;
-				CHECK(std::move(e).and_then(f).value() == 4);
+				CHECK(std::move(e).and_then(fe).value() == 4);
+				CHECK(std::move(e).and_then(fv).value() == 2);
 			}
 
 			SECTION("T &&")
 			{
 				T e = 2;
-				CHECK(std::move(e).and_then(f).value() == 4);
+				CHECK(std::move(e).and_then(fe).value() == 4);
+				CHECK(std::move(e).and_then(fv).value() == 2);
 			}
+
+			CHECK(fv_arg == 2);
 		}
 
 		SECTION("unexpected")
@@ -1388,59 +1398,75 @@ TEST_CASE("expected::and_then")
 			SECTION("const T &")
 			{
 				const T e{pal::unexpect, 2};
-				CHECK(e.and_then(f).error() == 2);
+				CHECK(e.and_then(fe).error() == 2);
+				CHECK(e.and_then(fv).error() == 2);
 			}
 
 			SECTION("T &")
 			{
 				T e{pal::unexpect, 2};
-				CHECK(e.and_then(f).error() == 2);
+				CHECK(e.and_then(fe).error() == 2);
+				CHECK(e.and_then(fv).error() == 2);
 			}
 
 			SECTION("const T &&")
 			{
 				const T e{pal::unexpect, 2};
-				CHECK(std::move(e).and_then(f).error() == 2);
+				CHECK(std::move(e).and_then(fe).error() == 2);
+				CHECK(std::move(e).and_then(fv).error() == 2);
 			}
 
 			SECTION("T &&")
 			{
 				T e{pal::unexpect, 2};
-				CHECK(std::move(e).and_then(f).error() == 2);
+				CHECK(std::move(e).and_then(fe).error() == 2);
+				CHECK(std::move(e).and_then(fv).error() == 2);
 			}
+
+			CHECK(fv_arg == 0);
 		}
 	}
 
 	SECTION("void")
 	{
 		using T = pal::expected<void, int>;
-		auto f = []() { return T{}; };
+
+		auto fe = []() { return T{}; };
+
+		bool fv_called = false;
+		auto fv = [&]() { fv_called = true; };
 
 		SECTION("expected")
 		{
 			SECTION("const T &")
 			{
 				const T e;
-				CHECK(e.and_then(f).has_value());
+				CHECK(e.and_then(fe).has_value());
+				CHECK(e.and_then(fv).has_value());
 			}
 
 			SECTION("T &")
 			{
 				T e;
-				CHECK(e.and_then(f).has_value());
+				CHECK(e.and_then(fe).has_value());
+				CHECK(e.and_then(fv).has_value());
 			}
 
 			SECTION("const T &&")
 			{
 				const T e;
-				CHECK(std::move(e).and_then(f).has_value());
+				CHECK(std::move(e).and_then(fe).has_value());
+				CHECK(std::move(e).and_then(fv).has_value());
 			}
 
 			SECTION("T &&")
 			{
 				T e;
-				CHECK(std::move(e).and_then(f).has_value());
+				CHECK(std::move(e).and_then(fe).has_value());
+				CHECK(std::move(e).and_then(fv).has_value());
 			}
+
+			CHECK(fv_called);
 		}
 
 		SECTION("unexpected")
@@ -1448,26 +1474,32 @@ TEST_CASE("expected::and_then")
 			SECTION("const T &")
 			{
 				const T e{pal::unexpect, 2};
-				CHECK(e.and_then(f).error() == 2);
+				CHECK(e.and_then(fe).error() == 2);
+				CHECK(e.and_then(fv).error() == 2);
 			}
 
 			SECTION("T &")
 			{
 				T e{pal::unexpect, 2};
-				CHECK(e.and_then(f).error() == 2);
+				CHECK(e.and_then(fe).error() == 2);
+				CHECK(e.and_then(fv).error() == 2);
 			}
 
 			SECTION("const T &&")
 			{
 				const T e{pal::unexpect, 2};
-				CHECK(std::move(e).and_then(f).error() == 2);
+				CHECK(std::move(e).and_then(fe).error() == 2);
+				CHECK(std::move(e).and_then(fv).error() == 2);
 			}
 
 			SECTION("T &&")
 			{
 				T e{pal::unexpect, 2};
-				CHECK(std::move(e).and_then(f).error() == 2);
+				CHECK(std::move(e).and_then(fe).error() == 2);
+				CHECK(std::move(e).and_then(fv).error() == 2);
 			}
+
+			CHECK(fv_called == false);
 		}
 	}
 
@@ -1493,33 +1525,43 @@ TEST_CASE("expected::or_else")
 	SECTION("int")
 	{
 		using T = pal::expected<int, int>;
-		auto f = [](int v) { return T{v * v}; };
+
+		auto fe = [](int v) { return T{v * v}; };
+
+		typename T::value_type fv_arg{};
+		auto fv = [&](int v) { fv_arg = v; };
 
 		SECTION("expected")
 		{
 			SECTION("const T &")
 			{
 				const T e = 2;
-				CHECK(e.or_else(f).value() == 2);
+				CHECK(e.or_else(fe).value() == 2);
+				CHECK(e.or_else(fv).value() == 2);
 			}
 
 			SECTION("T &")
 			{
 				T e = 2;
-				CHECK(e.or_else(f).value() == 2);
+				CHECK(e.or_else(fe).value() == 2);
+				CHECK(e.or_else(fv).value() == 2);
 			}
 
 			SECTION("const T &&")
 			{
 				const T e = 2;
-				CHECK(std::move(e).or_else(f).value() == 2);
+				CHECK(std::move(e).or_else(fe).value() == 2);
+				CHECK(std::move(e).or_else(fv).value() == 2);
 			}
 
 			SECTION("T &&")
 			{
 				T e = 2;
-				CHECK(std::move(e).or_else(f).value() == 2);
+				CHECK(std::move(e).or_else(fe).value() == 2);
+				CHECK(std::move(e).or_else(fv).value() == 2);
 			}
+
+			CHECK(fv_arg == 0);
 		}
 
 		SECTION("unexpected")
@@ -1527,59 +1569,75 @@ TEST_CASE("expected::or_else")
 			SECTION("const T &")
 			{
 				const T e{pal::unexpect, 2};
-				CHECK(e.or_else(f).value() == 4);
+				CHECK(e.or_else(fe).value() == 4);
+				CHECK(e.or_else(fv).error() == 2);
 			}
 
 			SECTION("T &")
 			{
 				T e{pal::unexpect, 2};
-				CHECK(e.or_else(f).value() == 4);
+				CHECK(e.or_else(fe).value() == 4);
+				CHECK(e.or_else(fv).error() == 2);
 			}
 
 			SECTION("const T &&")
 			{
 				const T e{pal::unexpect, 2};
-				CHECK(std::move(e).or_else(f).value() == 4);
+				CHECK(std::move(e).or_else(fe).value() == 4);
+				CHECK(std::move(e).or_else(fv).error() == 2);
 			}
 
 			SECTION("T &&")
 			{
 				T e{pal::unexpect, 2};
-				CHECK(std::move(e).or_else(f).value() == 4);
+				CHECK(std::move(e).or_else(fe).value() == 4);
+				CHECK(std::move(e).or_else(fv).error() == 2);
 			}
+
+			CHECK(fv_arg == 2);
 		}
 	}
 
 	SECTION("void")
 	{
 		using T = pal::expected<void, int>;
-		auto f = [](int v) { return T{pal::unexpect, v * v}; };
+
+		auto fe = [](int v) { return T{pal::unexpect, v * v}; };
+
+		typename T::error_type fv_arg{};
+		auto fv = [&](int v) { fv_arg = v; };
 
 		SECTION("expected")
 		{
 			SECTION("const T &")
 			{
 				const T e;
-				CHECK(e.or_else(f).has_value());
+				CHECK(e.or_else(fe).has_value());
+				CHECK(e.or_else(fv).has_value());
 			}
 
 			SECTION("T &")
 			{
 				T e;
-				CHECK(e.or_else(f).has_value());
+				CHECK(e.or_else(fe).has_value());
+				CHECK(e.or_else(fv).has_value());
 			}
 
 			SECTION("const T &&")
 			{
 				const T e;
-				CHECK(std::move(e).or_else(f).has_value());
+				CHECK(std::move(e).or_else(fe).has_value());
+				CHECK(std::move(e).or_else(fv).has_value());
 			}
 
 			SECTION("T &&")
 			{
 				T e;
-				CHECK(std::move(e).or_else(f).has_value());
+				CHECK(std::move(e).or_else(fe).has_value());
+				CHECK(std::move(e).or_else(fv).has_value());
 			}
+
+			CHECK(fv_arg == 0);
 		}
 
 		SECTION("unexpected")
@@ -1587,26 +1645,32 @@ TEST_CASE("expected::or_else")
 			SECTION("const T &")
 			{
 				const T e{pal::unexpect, 2};
-				CHECK(e.or_else(f).error() == 4);
+				CHECK(e.or_else(fe).error() == 4);
+				CHECK(e.or_else(fv).error() == 2);
 			}
 
 			SECTION("T &")
 			{
 				T e{pal::unexpect, 2};
-				CHECK(e.or_else(f).error() == 4);
+				CHECK(e.or_else(fe).error() == 4);
+				CHECK(e.or_else(fv).error() == 2);
 			}
 
 			SECTION("const T &&")
 			{
 				const T e{pal::unexpect, 2};
-				CHECK(std::move(e).or_else(f).error() == 4);
+				CHECK(std::move(e).or_else(fe).error() == 4);
+				CHECK(std::move(e).or_else(fv).error() == 2);
 			}
 
 			SECTION("T &&")
 			{
 				T e{pal::unexpect, 2};
-				CHECK(std::move(e).or_else(f).error() == 4);
+				CHECK(std::move(e).or_else(fe).error() == 4);
+				CHECK(std::move(e).or_else(fv).error() == 2);
 			}
+
+			CHECK(fv_arg == 2);
 		}
 	}
 
