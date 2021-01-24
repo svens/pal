@@ -22,6 +22,15 @@ using result = expected<T, std::error_code>;
 
 
 /**
+ * Return unexpected{std::make_error_code(ec)}
+ */
+inline unexpected<std::error_code> make_unexpected (std::errc ec) noexcept
+{
+	return unexpected{std::make_error_code(ec)};
+}
+
+
+/**
  * Invoke \a Expr returning std::expected<T, E>. Returns result of \a Expr if
  * value is set. Otherwise throws E.
  */
