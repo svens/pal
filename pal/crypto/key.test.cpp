@@ -1,5 +1,6 @@
 #include <pal/crypto/key>
 #include <pal/crypto/certificate>
+#include <pal/crypto/error>
 #include <pal/crypto/test>
 
 
@@ -125,7 +126,8 @@ TEST_CASE("crypto/key", tags)
 		auto &[_, priv] = keys();
 		char sig_buf[1024];
 		auto sig = priv.sign<md5>(pal_test::case_name(), sig_buf);
-		CHECK_FALSE(sig.has_value());
+		REQUIRE(!sig.has_value());
+		CHECK(sig.error() == pal::crypto::errc::invalid_digest_algorithm);
 	}
 }
 
@@ -133,48 +135,72 @@ TEST_CASE("crypto/key", tags)
 TEMPLATE_TEST_CASE("crypto/key", tags, sha1, sha256, sha384, sha512)
 {
 	auto &[pub, priv] = keys();
+	REQUIRE(pub);
+	REQUIRE(priv);
 	char sig_buf[1024];
 
 	SECTION("sign / verify_signature")
 	{
-		auto sig = *priv.sign<TestType>(pal_test::case_name(), sig_buf);
+		auto sig = priv.sign<TestType>(pal_test::case_name(), sig_buf).value();
 		CHECK(sig.data() != nullptr);
 		CHECK(sig.size() == 256);
-		CHECK(pub.verify_signature<TestType>(pal_test::case_name(), sig));
+		CHECK(pub.verify_signature<TestType>(pal_test::case_name(), sig).value());
+	}
+
+	SECTION("sign: no key")
+	{
+		private_key key;
+		auto sig = key.sign<TestType>(pal_test::case_name(), sig_buf);
+		REQUIRE(!sig);
+		CHECK(sig.error() == pal::crypto::errc::no_key);
+	}
+
+	SECTION("verify_signature: no key")
+	{
+		auto sig = priv.sign<TestType>(pal_test::case_name(), sig_buf).value();
+		public_key key;
+		auto result = key.verify_signature<TestType>(pal_test::case_name(), sig);
+		REQUIRE(!result);
+		CHECK(result.error() == pal::crypto::errc::no_key);
 	}
 
 	SECTION("sign: too small signature buffer")
 	{
 		char buf[1];
 		auto sig = priv.sign<TestType>(pal_test::case_name(), buf);
-		CHECK(sig->data() == nullptr);
-		CHECK(sig->size() == 256);
+		REQUIRE(!sig);
+		CHECK(sig.error() == std::errc::result_out_of_range);
 	}
 
 	SECTION("verify_signature: invalid digest algorithm")
 	{
-		auto sig = *priv.sign<TestType>(pal_test::case_name(), sig_buf);
-		CHECK_FALSE(pub.verify_signature<md5>(pal_test::case_name(), sig));
+		auto sig = priv.sign<TestType>(pal_test::case_name(), sig_buf).value();
+		auto result = pub.verify_signature<md5>(pal_test::case_name(), sig);
+		REQUIRE(!result);
+		CHECK(result.error() == pal::crypto::errc::invalid_digest_algorithm);
 	}
 
 	SECTION("verify_signature: invalid size signature")
 	{
-		auto sig = *priv.sign<TestType>(pal_test::case_name(), sig_buf);
+		auto sig = priv.sign<TestType>(pal_test::case_name(), sig_buf).value();
 		sig = sig.first(sig.size() / 2);
-		CHECK_FALSE(pub.verify_signature<TestType>(pal_test::case_name(), sig));
+		auto result = pub.verify_signature<TestType>(pal_test::case_name(), sig);
+		CHECK(!result.value());
 	}
 
 	SECTION("verify_signature: invalid signature")
 	{
-		auto sig = *priv.sign<TestType>(pal_test::case_name(), sig_buf);
+		auto sig = priv.sign<TestType>(pal_test::case_name(), sig_buf).value();
 		sig_buf[sig.size() / 2] ^= 1;
-		CHECK_FALSE(pub.verify_signature<TestType>(pal_test::case_name(), sig));
+		auto result = pub.verify_signature<TestType>(pal_test::case_name(), sig);
+		CHECK(!result.value());
 	}
 
 	SECTION("verify_signature: different message")
 	{
-		auto sig = *priv.sign<TestType>("hello", sig_buf);
-		CHECK_FALSE(pub.verify_signature<TestType>("goodbye", sig));
+		auto sig = priv.sign<TestType>("hello", sig_buf).value();
+		auto result = pub.verify_signature<TestType>("goodbye", sig);
+		CHECK(!result.value());
 	}
 }
 

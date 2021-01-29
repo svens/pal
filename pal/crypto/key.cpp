@@ -1,7 +1,9 @@
 #include <pal/__bits/platform_sdk>
 #include <pal/crypto/key>
 
-#if __pal_os_macos //{{{1
+#if __pal_os_linux //{{{1
+	#include <openssl/err.h>
+#elif __pal_os_macos //{{{1
 	#include <algorithm>
 	#include <Security/SecItem.h>
 #elif __pal_os_windows //{{{1
@@ -56,7 +58,7 @@ inline const EVP_MD *to_algorithm (size_t digest_algorithm) noexcept
 } // namespace
 
 
-std::optional<std::span<std::byte>> private_key::sign (
+result<std::span<std::byte>> private_key::sign (
 	size_t digest_algorithm,
 	const std::span<const std::byte> &message,
 	std::span<std::byte> &&signature) noexcept
@@ -64,50 +66,75 @@ std::optional<std::span<std::byte>> private_key::sign (
 	auto algorithm = to_algorithm(digest_algorithm);
 	if (!algorithm)
 	{
-		return std::nullopt;
+		return make_unexpected(errc::invalid_digest_algorithm);
+	}
+
+	unique_ref<::EVP_MD_CTX *, ::EVP_MD_CTX_free> ctx = EVP_MD_CTX_new();
+	if (!ctx)
+	{
+		return pal::make_unexpected(std::errc::not_enough_memory);
+	}
+
+	if (::EVP_DigestSignInit(ctx.ref, nullptr, algorithm, nullptr, key_.ref) != 1 ||
+		::EVP_DigestSignUpdate(ctx.ref, message.data(), message.size()) != 1)
+	{
+		return unexpected{std::error_code(::ERR_get_error(), system_category())};
 	}
 
 	size_t sig_size = 0;
-	unique_ref<::EVP_MD_CTX *, ::EVP_MD_CTX_free> ctx = EVP_MD_CTX_new();
-	::EVP_DigestSignInit(ctx.ref, nullptr, algorithm, nullptr, key_.ref);
-	::EVP_DigestSignUpdate(ctx.ref, message.data(), message.size());
-	::EVP_DigestSignFinal(ctx.ref, nullptr, &sig_size);
-
-	if (sig_size > signature.size())
+	if (::EVP_DigestSignFinal(ctx.ref, nullptr, &sig_size) != 1)
 	{
-		return std::make_optional<std::span<std::byte>>(
-			static_cast<std::byte *>(0),
-			sig_size
-		);
+		return unexpected{std::error_code(::ERR_get_error(), system_category())};
 	}
 
-	::EVP_DigestSignFinal(
-		ctx.ref,
-		reinterpret_cast<uint8_t *>(signature.data()),
-		&sig_size
-	);
+	if (signature.size() >= sig_size)
+	{
+		::EVP_DigestSignFinal(
+			ctx.ref,
+			reinterpret_cast<uint8_t *>(signature.data()),
+			&sig_size
+		);
+		return signature.first(sig_size);
+	}
 
-	return std::make_optional(signature.first(sig_size));
+	return pal::make_unexpected(std::errc::result_out_of_range);
 }
 
 
-bool public_key::verify_signature (
+result<bool> public_key::verify_signature (
 	size_t digest_algorithm,
 	const std::span<const std::byte> &message,
 	const std::span<const std::byte> &signature) noexcept
 {
-	if (auto algorithm = to_algorithm(digest_algorithm))
+	auto algorithm = to_algorithm(digest_algorithm);
+	if (!algorithm)
 	{
-		unique_ref<::EVP_MD_CTX *, ::EVP_MD_CTX_free> ctx = EVP_MD_CTX_new();
-		::EVP_DigestVerifyInit(ctx.ref, nullptr, algorithm, nullptr, key_.ref);
-		::EVP_DigestVerifyUpdate(ctx.ref, message.data(), message.size());
-		return ::EVP_DigestVerifyFinal(
-			ctx.ref,
-			reinterpret_cast<const uint8_t *>(signature.data()),
-			signature.size()
-		);
+		return make_unexpected(errc::invalid_digest_algorithm);
 	}
-	return {};
+
+	unique_ref<::EVP_MD_CTX *, ::EVP_MD_CTX_free> ctx = EVP_MD_CTX_new();
+	if (!ctx)
+	{
+		return pal::make_unexpected(std::errc::not_enough_memory);
+	}
+
+	if (::EVP_DigestVerifyInit(ctx.ref, nullptr, algorithm, nullptr, key_.ref) != 1 ||
+		::EVP_DigestVerifyUpdate(ctx.ref, message.data(), message.size()) != 1)
+	{
+		return unexpected{std::error_code(::ERR_get_error(), system_category())};
+	}
+
+	auto result = ::EVP_DigestVerifyFinal(
+		ctx.ref,
+		reinterpret_cast<const uint8_t *>(signature.data()),
+		signature.size()
+	);
+	if (result == 0 || result == 1)
+	{
+		return result == 1;
+	}
+
+	return unexpected{std::error_code(::ERR_get_error(), system_category())};
 }
 
 
@@ -176,7 +203,7 @@ inline unique_ref<::CFDataRef> make_data (
 } // namespace
 
 
-std::optional<std::span<std::byte>> private_key::sign (
+result<std::span<std::byte>> private_key::sign (
 	size_t digest_algorithm,
 	const std::span<const std::byte> &message,
 	std::span<std::byte> &&signature) noexcept
@@ -184,7 +211,7 @@ std::optional<std::span<std::byte>> private_key::sign (
 	auto algorithm = to_algorithm(algorithm_, digest_algorithm);
 	if (!algorithm)
 	{
-		return std::nullopt;
+		return make_unexpected(errc::invalid_digest_algorithm);
 	}
 
 	unique_ref<::CFErrorRef> status;
@@ -195,26 +222,27 @@ std::optional<std::span<std::byte>> private_key::sign (
 		&status.ref
 	);
 
-	size_t sig_size = ::CFDataGetLength(sig.ref);
-	if (sig_size <= signature.size())
+	if (sig)
 	{
-		auto sig_ptr = ::CFDataGetBytePtr(sig.ref);
-		std::uninitialized_copy(
-			sig_ptr,
-			sig_ptr + sig_size,
-			reinterpret_cast<uint8_t *>(signature.data())
-		);
-		return std::make_optional(signature.first(sig_size));
+		size_t sig_size = ::CFDataGetLength(sig.ref);
+		if (sig_size <= signature.size())
+		{
+			auto sig_ptr = ::CFDataGetBytePtr(sig.ref);
+			std::uninitialized_copy(
+				sig_ptr,
+				sig_ptr + sig_size,
+				reinterpret_cast<uint8_t *>(signature.data())
+			);
+			return signature.first(sig_size);
+		}
+		return pal::make_unexpected(std::errc::result_out_of_range);
 	}
 
-	return std::make_optional<std::span<std::byte>>(
-		static_cast<std::byte *>(0),
-		sig_size
-	);
+	return unexpected{std::error_code(::CFErrorGetCode(status.ref), system_category())};
 }
 
 
-bool public_key::verify_signature (
+result<bool> public_key::verify_signature (
 	size_t digest_algorithm,
 	const std::span<const std::byte> &message,
 	const std::span<const std::byte> &signature) noexcept
@@ -222,7 +250,7 @@ bool public_key::verify_signature (
 	auto algorithm = to_algorithm(algorithm_, digest_algorithm);
 	if (!algorithm)
 	{
-		return {};
+		return make_unexpected(errc::invalid_digest_algorithm);
 	}
 
 	unique_ref<CFErrorRef> status;
@@ -236,10 +264,10 @@ bool public_key::verify_signature (
 
 	if (status.ref == nullptr || ::CFErrorGetCode(status.ref) == ::errSecVerifyFailed)
 	{
-		return result;
+		return bool(result);
 	}
 
-	return false;
+	return unexpected{std::error_code(::CFErrorGetCode(status.ref), system_category())};
 }
 
 
@@ -370,7 +398,7 @@ const wchar_t *get_algorithm_and_digest (
 } // namespace
 
 
-std::optional<std::span<std::byte>> private_key::sign (
+result<std::span<std::byte>> private_key::sign (
 	size_t digest_algorithm,
 	const std::span<const std::byte> &message,
 	std::span<std::byte> &&signature) noexcept
@@ -385,36 +413,36 @@ std::optional<std::span<std::byte>> private_key::sign (
 		digest,
 		digest_size
 	);
-	if (padding.pszAlgId)
+	if (!padding.pszAlgId)
 	{
-		auto sig_size = static_cast<DWORD>(signature.size());
-		auto status = ::NCryptSignHash(
-			key_.ref,
-			&padding,
-			digest,
-			digest_size,
-			reinterpret_cast<PBYTE>(signature.data()),
-			sig_size,
-			&sig_size,
-			BCRYPT_PAD_PKCS1
-		);
-		if (status == ERROR_SUCCESS)
-		{
-			return std::make_optional(signature.first(sig_size));
-		}
-		else if (status == NTE_BUFFER_TOO_SMALL)
-		{
-			return std::make_optional<std::span<std::byte>>(
-				static_cast<std::byte *>(0),
-				sig_size
-			);
-		}
+		return make_unexpected(errc::invalid_digest_algorithm);
 	}
-	return std::nullopt;
+
+	auto sig_size = static_cast<DWORD>(signature.size());
+	auto status = ::NCryptSignHash(
+		key_.ref,
+		&padding,
+		digest,
+		digest_size,
+		reinterpret_cast<PBYTE>(signature.data()),
+		sig_size,
+		&sig_size,
+		BCRYPT_PAD_PKCS1
+	);
+	if (status == ERROR_SUCCESS)
+	{
+		return signature.first(sig_size);
+	}
+	else if (status == NTE_BUFFER_TOO_SMALL)
+	{
+		return pal::make_unexpected(std::errc::result_out_of_range);
+	}
+
+	return unexpected{std::error_code(status, system_category())};
 }
 
 
-bool public_key::verify_signature (
+result<bool> public_key::verify_signature (
 	size_t digest_algorithm,
 	const std::span<const std::byte> &message,
 	const std::span<const std::byte> &signature) noexcept
@@ -431,7 +459,7 @@ bool public_key::verify_signature (
 	);
 	if (!padding.pszAlgId)
 	{
-		return false;
+		return make_unexpected(errc::invalid_digest_algorithm);
 	}
 
 	auto status = ::BCryptVerifySignature(
@@ -443,8 +471,15 @@ bool public_key::verify_signature (
 		static_cast<DWORD>(signature.size()),
 		BCRYPT_PAD_PKCS1
 	);
-
-	return status == STATUS_SUCCESS;
+	switch (status)
+	{
+		case STATUS_SUCCESS:
+			return true;
+		case STATUS_INVALID_SIGNATURE:
+		case STATUS_INVALID_PARAMETER:
+			return false;
+	}
+	return unexpected{std::error_code(status, system_category())};
 }
 
 
