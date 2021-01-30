@@ -18,7 +18,9 @@ namespace crypto {
 #define __pal_crypto_errc(Impl) \
 	Impl(__0, "internal") \
 	Impl(no_key, "no key") \
-	Impl(invalid_digest_algorithm, "invalid digest algorithm")
+	Impl(invalid_digest_algorithm, "invalid digest algorithm") \
+	Impl(certificate_extension_not_found, "certificate extension not found") \
+	Impl(certificate_extension_decoding_error, "certificate extension decoding error")
 
 
 /**

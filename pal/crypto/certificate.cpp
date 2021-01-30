@@ -128,19 +128,23 @@ std::string_view normalized_ip_string (
 } // namespace
 
 
-std::optional<certificate> certificate::from_pem (const std::string_view &pem) noexcept
+result<certificate> certificate::from_pem (const std::string_view &pem) noexcept
 {
-	if (auto der = scoped_alloc<std::byte, 8192>(std::nothrow, pem.size() / 4 * 3))
+	auto der = scoped_alloc<std::byte, 8192>(std::nothrow, pem.size() / 4 * 3);
+	if (!der)
 	{
-		if (auto der_size = pem_to_der(pem, der.get()))
+		return pal::make_unexpected(std::errc::not_enough_memory);
+	}
+
+	if (auto der_size = pem_to_der(pem, der.get()))
+	{
+		if (auto x509 = load_der({der.get(), der_size}))
 		{
-			if (auto x509 = load_der({der.get(), der_size}))
-			{
-				return std::make_optional(certificate{std::move(x509)});
-			}
+			return certificate{std::move(x509)};
 		}
 	}
-	return std::nullopt;
+
+	return pal::make_unexpected(std::errc::invalid_argument);
 }
 
 
@@ -278,13 +282,13 @@ std::span<uint8_t> certificate::serial_number (std::span<uint8_t> dest) const no
 }
 
 
-std::optional<std::span<uint8_t>> certificate::authority_key_identifier (
+result<std::span<uint8_t>> certificate::authority_key_identifier (
 	std::span<uint8_t> dest) const noexcept
 {
 	auto index = ::X509_get_ext_by_NID(impl_.ref, NID_authority_key_identifier, -1);
 	if (index < 0)
 	{
-		return std::nullopt;
+		return make_unexpected(errc::certificate_extension_not_found);
 	}
 
 	unique_ref<AUTHORITY_KEYID *, &::AUTHORITY_KEYID_free> decoded
@@ -296,13 +300,13 @@ std::optional<std::span<uint8_t>> certificate::authority_key_identifier (
 
 	if (!decoded)
 	{
-		return std::nullopt;
+		return make_unexpected(errc::certificate_extension_decoding_error);
 	}
 
 	size_t required_size = decoded.ref->keyid->length;
 	if (required_size > dest.size())
 	{
-		return std::make_optional(std::span{static_cast<uint8_t *>(0), required_size});
+		return pal::make_unexpected(std::errc::result_out_of_range);
 	}
 
 	dest = dest.first(required_size);
@@ -311,17 +315,17 @@ std::optional<std::span<uint8_t>> certificate::authority_key_identifier (
 	{
 		b = *key_id++;
 	}
-	return std::make_optional(dest);
+	return dest;
 }
 
 
-std::optional<std::span<uint8_t>> certificate::subject_key_identifier (
+result<std::span<uint8_t>> certificate::subject_key_identifier (
 	std::span<uint8_t> dest) const noexcept
 {
 	auto index = ::X509_get_ext_by_NID(impl_.ref, NID_subject_key_identifier, -1);
 	if (index < 0)
 	{
-		return std::nullopt;
+		return make_unexpected(errc::certificate_extension_not_found);
 	}
 
 	unique_ref<ASN1_OCTET_STRING *, &::ASN1_OCTET_STRING_free> decoded
@@ -333,13 +337,13 @@ std::optional<std::span<uint8_t>> certificate::subject_key_identifier (
 
 	if (!decoded)
 	{
-		return std::nullopt;
+		return make_unexpected(errc::certificate_extension_decoding_error);
 	}
 
 	size_t required_size = decoded.ref->length;
 	if (required_size > dest.size())
 	{
-		return std::make_optional(std::span{static_cast<uint8_t *>(0), required_size});
+		return pal::make_unexpected(std::errc::result_out_of_range);
 	}
 
 	dest = dest.first(required_size);
@@ -348,7 +352,7 @@ std::optional<std::span<uint8_t>> certificate::subject_key_identifier (
 	{
 		b = *key_id++;
 	}
-	return std::make_optional(dest);
+	return dest;
 }
 
 
@@ -731,7 +735,7 @@ std::span<uint8_t> certificate::serial_number (std::span<uint8_t> dest) const no
 namespace {
 
 
-std::optional<std::span<uint8_t>> key_id (
+result<std::span<uint8_t>> key_id (
 	::SecCertificateRef cert,
 	::CFTypeRef oid,
 	std::span<uint8_t> dest) noexcept
@@ -748,7 +752,7 @@ std::optional<std::span<uint8_t>> key_id (
 		size_t required_size = last - first;
 		if (required_size > dest.size())
 		{
-			return std::make_optional(std::span{static_cast<uint8_t *>(0), required_size});
+			return pal::make_unexpected(std::errc::result_out_of_range);
 		}
 
 		dest = dest.first(required_size);
@@ -756,23 +760,23 @@ std::optional<std::span<uint8_t>> key_id (
 		{
 			b = *first++;
 		}
-		return std::make_optional(dest);
+		return dest;
 	}
-	return std::nullopt;
+	return make_unexpected(errc::certificate_extension_not_found);
 }
 
 
 } // namespace
 
 
-std::optional<std::span<uint8_t>> certificate::authority_key_identifier (
+result<std::span<uint8_t>> certificate::authority_key_identifier (
 	std::span<uint8_t> dest) const noexcept
 {
 	return key_id(impl_.ref, kSecOIDAuthorityKeyIdentifier, dest);
 }
 
 
-std::optional<std::span<uint8_t>> certificate::subject_key_identifier (
+result<std::span<uint8_t>> certificate::subject_key_identifier (
 	std::span<uint8_t> dest) const noexcept
 {
 	return key_id(impl_.ref, kSecOIDSubjectKeyIdentifier, dest);
@@ -1211,7 +1215,7 @@ private:
 };
 
 
-std::optional<std::span<uint8_t>> certificate::authority_key_identifier (
+result<std::span<uint8_t>> certificate::authority_key_identifier (
 	std::span<uint8_t> dest) const noexcept
 {
 	auto ext = ::CertFindExtension(szOID_AUTHORITY_KEY_IDENTIFIER2,
@@ -1220,7 +1224,7 @@ std::optional<std::span<uint8_t>> certificate::authority_key_identifier (
 	);
 	if (!ext)
 	{
-		return std::nullopt;
+		return make_unexpected(errc::certificate_extension_not_found);
 	}
 
 	asn_decoder<CERT_AUTHORITY_KEY_ID2_INFO, 2048> decoded
@@ -1231,14 +1235,14 @@ std::optional<std::span<uint8_t>> certificate::authority_key_identifier (
 	};
 	if (!decoded.get())
 	{
-		return std::nullopt;
+		return make_unexpected(errc::certificate_extension_decoding_error);
 	}
 	const auto &info = *decoded.get();
 
 	size_t required_size = info.KeyId.cbData;
 	if (required_size > dest.size())
 	{
-		return std::make_optional(std::span{static_cast<uint8_t *>(0), required_size});
+		return pal::make_unexpected(std::errc::result_out_of_range);
 	}
 
 	dest = dest.first(required_size);
@@ -1247,11 +1251,11 @@ std::optional<std::span<uint8_t>> certificate::authority_key_identifier (
 	{
 		b = *key_id++;
 	}
-	return std::make_optional(dest);
+	return dest;
 }
 
 
-std::optional<std::span<uint8_t>> certificate::subject_key_identifier (
+result<std::span<uint8_t>> certificate::subject_key_identifier (
 	std::span<uint8_t> dest) const noexcept
 {
 	auto ext = ::CertFindExtension(szOID_SUBJECT_KEY_IDENTIFIER,
@@ -1260,7 +1264,7 @@ std::optional<std::span<uint8_t>> certificate::subject_key_identifier (
 	);
 	if (!ext)
 	{
-		return std::nullopt;
+		return make_unexpected(errc::certificate_extension_not_found);
 	}
 
 	asn_decoder<CRYPT_DATA_BLOB, 2048> decoded
@@ -1271,14 +1275,14 @@ std::optional<std::span<uint8_t>> certificate::subject_key_identifier (
 	};
 	if (!decoded.get())
 	{
-		return std::nullopt;
+		return make_unexpected(errc::certificate_extension_decoding_error);
 	}
 	const auto &blob = *decoded.get();
 
 	size_t required_size = blob.cbData;
 	if (required_size > dest.size())
 	{
-		return std::make_optional(std::span{static_cast<uint8_t *>(0), required_size});
+		return pal::make_unexpected(std::errc::result_out_of_range);
 	}
 
 	dest = dest.first(required_size);
@@ -1287,7 +1291,7 @@ std::optional<std::span<uint8_t>> certificate::subject_key_identifier (
 	{
 		b = *key_id++;
 	}
-	return std::make_optional(dest);
+	return dest;
 }
 
 
