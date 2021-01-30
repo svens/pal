@@ -75,29 +75,26 @@ result<std::span<std::byte>> private_key::sign (
 		return pal::make_unexpected(std::errc::not_enough_memory);
 	}
 
-	if (::EVP_DigestSignInit(ctx.ref, nullptr, algorithm, nullptr, key_.ref) != 1 ||
-		::EVP_DigestSignUpdate(ctx.ref, message.data(), message.size()) != 1)
-	{
-		return unexpected{std::error_code(::ERR_get_error(), system_category())};
-	}
-
 	size_t sig_size = 0;
-	if (::EVP_DigestSignFinal(ctx.ref, nullptr, &sig_size) != 1)
+	auto result =
+		::EVP_DigestSignInit(ctx.ref, nullptr, algorithm, nullptr, key_.ref) == 1 &&
+		::EVP_DigestSignUpdate(ctx.ref, message.data(), message.size()) == 1 &&
+		::EVP_DigestSignFinal(ctx.ref, nullptr, &sig_size) == 1;
+	if (!result)
 	{
 		return unexpected{std::error_code(::ERR_get_error(), system_category())};
 	}
-
-	if (signature.size() >= sig_size)
+	else if (sig_size > signature.size())
 	{
-		::EVP_DigestSignFinal(
-			ctx.ref,
-			reinterpret_cast<uint8_t *>(signature.data()),
-			&sig_size
-		);
-		return signature.first(sig_size);
+		return pal::make_unexpected(std::errc::result_out_of_range);
 	}
 
-	return pal::make_unexpected(std::errc::result_out_of_range);
+	::EVP_DigestSignFinal(
+		ctx.ref,
+		reinterpret_cast<uint8_t *>(signature.data()),
+		&sig_size
+	);
+	return signature.first(sig_size);
 }
 
 
@@ -118,22 +115,21 @@ result<bool> public_key::verify_signature (
 		return pal::make_unexpected(std::errc::not_enough_memory);
 	}
 
-	if (::EVP_DigestVerifyInit(ctx.ref, nullptr, algorithm, nullptr, key_.ref) != 1 ||
-		::EVP_DigestVerifyUpdate(ctx.ref, message.data(), message.size()) != 1)
+	auto result =
+		::EVP_DigestVerifyInit(ctx.ref, nullptr, algorithm, nullptr, key_.ref) == 1 &&
+		::EVP_DigestVerifyUpdate(ctx.ref, message.data(), message.size()) == 1;
+	if (result)
 	{
-		return unexpected{std::error_code(::ERR_get_error(), system_category())};
+		result = ::EVP_DigestVerifyFinal(
+			ctx.ref,
+			reinterpret_cast<const uint8_t *>(signature.data()),
+			signature.size()
+		);
+		if (result == 0 || result == 1)
+		{
+			return bool(result);
+		}
 	}
-
-	auto result = ::EVP_DigestVerifyFinal(
-		ctx.ref,
-		reinterpret_cast<const uint8_t *>(signature.data()),
-		signature.size()
-	);
-	if (result == 0 || result == 1)
-	{
-		return result == 1;
-	}
-
 	return unexpected{std::error_code(::ERR_get_error(), system_category())};
 }
 
@@ -471,14 +467,15 @@ result<bool> public_key::verify_signature (
 		static_cast<DWORD>(signature.size()),
 		BCRYPT_PAD_PKCS1
 	);
-	switch (status)
+	if (status == STATUS_SUCCESS)
 	{
-		case STATUS_SUCCESS:
-			return true;
-		case STATUS_INVALID_SIGNATURE:
-		case STATUS_INVALID_PARAMETER:
-			return false;
+		return true;
 	}
+	else if (status == STATUS_INVALID_SIGNATURE || status == STATUS_INVALID_PARAMETER)
+	{
+		return false;
+	}
+
 	return unexpected{std::error_code(status, system_category())};
 }
 

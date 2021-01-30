@@ -137,29 +137,30 @@ TEMPLATE_TEST_CASE("crypto/key", tags, sha1, sha256, sha384, sha512)
 	auto &[pub, priv] = keys();
 	REQUIRE(pub);
 	REQUIRE(priv);
+	const auto message = pal_test::case_name();
 	char sig_buf[1024];
 
 	SECTION("sign / verify_signature")
 	{
-		auto sig = priv.sign<TestType>(pal_test::case_name(), sig_buf).value();
+		auto sig = priv.sign<TestType>(message, sig_buf).value();
 		CHECK(sig.data() != nullptr);
 		CHECK(sig.size() == 256);
-		CHECK(pub.verify_signature<TestType>(pal_test::case_name(), sig).value());
+		CHECK(pub.verify_signature<TestType>(message, sig).value());
 	}
 
 	SECTION("sign: no key")
 	{
 		private_key key;
-		auto sig = key.sign<TestType>(pal_test::case_name(), sig_buf);
+		auto sig = key.sign<TestType>(message, sig_buf);
 		REQUIRE(!sig);
 		CHECK(sig.error() == pal::crypto::errc::no_key);
 	}
 
 	SECTION("verify_signature: no key")
 	{
-		auto sig = priv.sign<TestType>(pal_test::case_name(), sig_buf).value();
+		auto sig = priv.sign<TestType>(message, sig_buf).value();
 		public_key key;
-		auto result = key.verify_signature<TestType>(pal_test::case_name(), sig);
+		auto result = key.verify_signature<TestType>(message, sig);
 		REQUIRE(!result);
 		CHECK(result.error() == pal::crypto::errc::no_key);
 	}
@@ -167,32 +168,32 @@ TEMPLATE_TEST_CASE("crypto/key", tags, sha1, sha256, sha384, sha512)
 	SECTION("sign: too small signature buffer")
 	{
 		char buf[1];
-		auto sig = priv.sign<TestType>(pal_test::case_name(), buf);
+		auto sig = priv.sign<TestType>(message, buf);
 		REQUIRE(!sig);
 		CHECK(sig.error() == std::errc::result_out_of_range);
 	}
 
 	SECTION("verify_signature: invalid digest algorithm")
 	{
-		auto sig = priv.sign<TestType>(pal_test::case_name(), sig_buf).value();
-		auto result = pub.verify_signature<md5>(pal_test::case_name(), sig);
+		auto sig = priv.sign<TestType>(message, sig_buf).value();
+		auto result = pub.verify_signature<md5>(message, sig);
 		REQUIRE(!result);
 		CHECK(result.error() == pal::crypto::errc::invalid_digest_algorithm);
 	}
 
 	SECTION("verify_signature: invalid size signature")
 	{
-		auto sig = priv.sign<TestType>(pal_test::case_name(), sig_buf).value();
+		auto sig = priv.sign<TestType>(message, sig_buf).value();
 		sig = sig.first(sig.size() / 2);
-		auto result = pub.verify_signature<TestType>(pal_test::case_name(), sig);
+		auto result = pub.verify_signature<TestType>(message, sig);
 		CHECK(!result.value());
 	}
 
 	SECTION("verify_signature: invalid signature")
 	{
-		auto sig = priv.sign<TestType>(pal_test::case_name(), sig_buf).value();
+		auto sig = priv.sign<TestType>(message, sig_buf).value();
 		sig_buf[sig.size() / 2] ^= 1;
-		auto result = pub.verify_signature<TestType>(pal_test::case_name(), sig);
+		auto result = pub.verify_signature<TestType>(message, sig);
 		CHECK(!result.value());
 	}
 
@@ -201,6 +202,26 @@ TEMPLATE_TEST_CASE("crypto/key", tags, sha1, sha256, sha384, sha512)
 		auto sig = priv.sign<TestType>("hello", sig_buf).value();
 		auto result = pub.verify_signature<TestType>("goodbye", sig);
 		CHECK(!result.value());
+	}
+
+	if constexpr (pal::is_linux_build)
+	{
+		SECTION("sign: alloc error")
+		{
+			pal_test::bad_alloc_once x;
+			auto sig = priv.sign<TestType>(message, sig_buf);
+			REQUIRE(!sig);
+			CHECK(sig.error() == std::errc::not_enough_memory);
+		}
+
+		SECTION("verify_signature: alloc error")
+		{
+			auto sig = priv.sign<TestType>(message, sig_buf).value();
+			pal_test::bad_alloc_once x;
+			auto result = pub.verify_signature<TestType>(message, sig);
+			REQUIRE(!result);
+			CHECK(result.error() == std::errc::not_enough_memory);
+		}
 	}
 }
 
