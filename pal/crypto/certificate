@@ -201,11 +201,9 @@ public:
 	/**
 	 * Store serial number of \a this certificate into \a dest.
 	 *
-	 * - If \a dest is big enough, returns actually stored data range
-	 * - If \a dest is too small or on memory allocation failure returns
-	 *   span with data() == nullptr and size_bytes() == required size.
+	 * \returns span of actually stored data.
 	 */
-	std::span<uint8_t> serial_number (std::span<uint8_t> dest) const noexcept;
+	result<std::span<uint8_t>> serial_number (std::span<uint8_t> dest) const noexcept;
 
 
 	/**

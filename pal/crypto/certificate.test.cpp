@@ -328,7 +328,7 @@ TEST_CASE("crypto/certificate")
 		auto cert = certificate::from_pem(pem).value();
 
 		uint8_t buf[64];
-		auto serial_number = pal_test::to_hex(cert.serial_number(buf));
+		auto serial_number = pal_test::to_hex(cert.serial_number(buf).value());
 		CHECK(serial_number == expected);
 	}
 
@@ -337,8 +337,8 @@ TEST_CASE("crypto/certificate")
 		auto cert = certificate::from_pem(test_cert::ca_pem).value();
 		uint8_t buf[1];
 		auto span = cert.serial_number(buf);
-		CHECK(span.data() == nullptr);
-		CHECK(span.size_bytes() == 8);
+		REQUIRE(!span);
+		CHECK(span.error() == std::errc::result_out_of_range);
 	}
 
 	SECTION("serial_number: alloc failure")
@@ -349,8 +349,8 @@ TEST_CASE("crypto/certificate")
 			uint8_t buf[64];
 			pal_test::bad_alloc_once x;
 			auto span = cert.serial_number(buf);
-			CHECK(span.data() == nullptr);
-			CHECK(span.size_bytes() == 8);
+			REQUIRE(!span);
+			CHECK(span.error() == std::errc::not_enough_memory);
 		}
 	}
 
@@ -765,7 +765,7 @@ TEST_CASE("crypto/certificate/store", "[!mayfail]")
 		for (auto &cert: certs)
 		{
 			uint8_t buf[16];
-			auto serial_number = pal_test::to_hex(cert.serial_number(buf));
+			auto serial_number = pal_test::to_hex(cert.serial_number(buf).value());
 
 			if (serial_number == "1001")
 			{

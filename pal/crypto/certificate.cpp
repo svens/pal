@@ -257,13 +257,12 @@ void certificate::digest (std::byte *result, hash_fn h) const noexcept
 }
 
 
-std::span<uint8_t> certificate::serial_number (std::span<uint8_t> dest) const noexcept
+result<std::span<uint8_t>> certificate::serial_number (std::span<uint8_t> dest) const noexcept
 {
 	auto sn = ::X509_get_serialNumber(impl_.ref);
-	size_t required_size = sn->length;
-	if (required_size > dest.size())
+	if (size_t(sn->length) > dest.size())
 	{
-		return {static_cast<uint8_t *>(0), required_size};
+		return pal::make_unexpected(std::errc::result_out_of_range);
 	}
 
 	std::unique_ptr<::BIGNUM, void(*)(::BIGNUM *)> bn
@@ -278,7 +277,7 @@ std::span<uint8_t> certificate::serial_number (std::span<uint8_t> dest) const no
 		return dest;
 	}
 
-	return {static_cast<uint8_t *>(0), required_size};
+	return pal::make_unexpected(std::errc::not_enough_memory);
 }
 
 
@@ -706,7 +705,7 @@ void certificate::digest (std::byte *result, hash_fn h) const noexcept
 }
 
 
-std::span<uint8_t> certificate::serial_number (std::span<uint8_t> dest) const noexcept
+result<std::span<uint8_t>> certificate::serial_number (std::span<uint8_t> dest) const noexcept
 {
 	unique_ref<::CFDataRef> value = ::SecCertificateCopySerialNumberData(impl_.ref, nullptr);
 
@@ -720,7 +719,7 @@ std::span<uint8_t> certificate::serial_number (std::span<uint8_t> dest) const no
 	size_t required_size = last - first;
 	if (required_size > dest.size())
 	{
-		return {static_cast<uint8_t *>(0), required_size};
+		return pal::make_unexpected(std::errc::result_out_of_range);
 	}
 
 	dest = dest.first(required_size);
@@ -1122,7 +1121,7 @@ void certificate::digest (std::byte *result, hash_fn h) const noexcept
 }
 
 
-std::span<uint8_t> certificate::serial_number (std::span<uint8_t> dest) const noexcept
+result<std::span<uint8_t>> certificate::serial_number (std::span<uint8_t> dest) const noexcept
 {
 	auto first = impl_.ref->pCertInfo->SerialNumber.pbData;
 	auto last = first + impl_.ref->pCertInfo->SerialNumber.cbData;
@@ -1135,7 +1134,7 @@ std::span<uint8_t> certificate::serial_number (std::span<uint8_t> dest) const no
 	size_t required_size = last - first;
 	if (required_size > dest.size())
 	{
-		return {static_cast<uint8_t *>(0), required_size};
+		return pal::make_unexpected(std::errc::result_out_of_range);
 	}
 
 	dest = dest.first(required_size);
