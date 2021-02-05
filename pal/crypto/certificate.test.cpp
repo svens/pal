@@ -37,13 +37,14 @@ TEST_CASE("crypto/certificate")
 	SECTION("from_pem")
 	{
 		auto client = certificate::from_pem(test_cert::client_pem);
-		CHECK(client.has_value());
+		CHECK(client);
 	}
 
 	SECTION("from_pem: empty")
 	{
 		auto client = certificate::from_pem("");
-		CHECK_FALSE(client.has_value());
+		REQUIRE(!client);
+		CHECK(client.error() == std::errc::invalid_argument);
 	}
 
 	SECTION("from_pem: first from multiple")
@@ -59,7 +60,7 @@ TEST_CASE("crypto/certificate")
 		std::string pem{test_cert::client_pem};
 		pem.insert(pem.size() / 2, (16 * 1024) / 3 * 4, '\n');
 		auto client = certificate::from_pem(pem);
-		CHECK(client.has_value());
+		CHECK(client);
 	}
 
 	SECTION("from_pem: alloc error")
@@ -68,7 +69,8 @@ TEST_CASE("crypto/certificate")
 		pem.insert(pem.size() / 2, (16 * 1024) / 3 * 4, '\n');
 		pal_test::bad_alloc_once x;
 		auto client = certificate::from_pem(pem);
-		CHECK_FALSE(client.has_value());
+		REQUIRE(!client);
+		CHECK(client.error() == std::errc::not_enough_memory);
 	}
 
 	SECTION("from_pem: invalid header")
@@ -76,7 +78,8 @@ TEST_CASE("crypto/certificate")
 		auto pem = test_cert::client_pem;
 		pem.remove_prefix(1);
 		auto client = certificate::from_pem(pem);
-		CHECK_FALSE(client.has_value());
+		REQUIRE(!client);
+		CHECK(client.error() == std::errc::invalid_argument);
 	}
 
 	SECTION("from_pem: invalid footer")
@@ -84,7 +87,8 @@ TEST_CASE("crypto/certificate")
 		auto pem = test_cert::client_pem;
 		pem.remove_suffix(1);
 		auto client = certificate::from_pem(pem);
-		CHECK_FALSE(client.has_value());
+		REQUIRE(!client);
+		CHECK(client.error() == std::errc::invalid_argument);
 	}
 
 	SECTION("from_pem: invalid base64 content")
@@ -92,7 +96,8 @@ TEST_CASE("crypto/certificate")
 		std::string pem{test_cert::client_pem};
 		pem[pem.size()/2] = '-';
 		auto client = certificate::from_pem(pem);
-		CHECK_FALSE(client.has_value());
+		REQUIRE(!client);
+		CHECK(client.error() == std::errc::invalid_argument);
 	}
 
 	SECTION("from_pem: invalid cert content")
@@ -100,14 +105,15 @@ TEST_CASE("crypto/certificate")
 		std::string pem{test_cert::client_pem};
 		pem.insert(pem.size() / 2, 8, 'X');
 		auto client = certificate::from_pem(pem);
-		CHECK_FALSE(client.has_value());
+		REQUIRE(!client);
+		CHECK(client.error() == std::errc::invalid_argument);
 	}
 
 	SECTION("from_der")
 	{
 		auto der = pal_test::to_der(test_cert::client_pem);
 		auto client = certificate::from_der(der);
-		CHECK(client.has_value());
+		CHECK(client);
 	}
 
 	SECTION("from_der: invalid content")
@@ -115,19 +121,20 @@ TEST_CASE("crypto/certificate")
 		auto der = pal_test::to_der(test_cert::client_pem);
 		der.insert(der.size() / 2, 8, 'X');
 		auto client = certificate::from_der(der);
-		CHECK_FALSE(client.has_value());
+		REQUIRE(!client);
+		CHECK(client.error() == std::errc::invalid_argument);
 	}
 
 	SECTION("compare")
 	{
 		CHECK(null == null);
 
-		auto client = certificate::from_pem(test_cert::client_pem);
+		auto client = certificate::from_pem(test_cert::client_pem).value();
 		CHECK(client != null);
 		CHECK(null != client);
 		CHECK(client == client);
 
-		auto server = certificate::from_pem(test_cert::server_pem);
+		auto server = certificate::from_pem(test_cert::server_pem).value();
 		CHECK(server != null);
 		CHECK(null != server);
 		CHECK(server == server);
@@ -138,7 +145,7 @@ TEST_CASE("crypto/certificate")
 
 	SECTION("copy constructor")
 	{
-		auto c1 = certificate::from_pem(test_cert::client_pem);
+		auto c1 = certificate::from_pem(test_cert::client_pem).value();
 		auto c2{c1};
 		CHECK(c2 == c1);
 		CHECK(c2);
@@ -152,7 +159,7 @@ TEST_CASE("crypto/certificate")
 
 	SECTION("copy assign")
 	{
-		auto c1 = *certificate::from_pem(test_cert::client_pem);
+		auto c1 = certificate::from_pem(test_cert::client_pem).value();
 		certificate c2;
 		c2 = c1;
 		CHECK(c2 == c1);
@@ -161,7 +168,7 @@ TEST_CASE("crypto/certificate")
 
 	SECTION("move constructor")
 	{
-		auto c1 = *certificate::from_pem(test_cert::client_pem);
+		auto c1 = certificate::from_pem(test_cert::client_pem).value();
 		auto c2{std::move(c1)};
 		CHECK(c2);
 		CHECK(c2);
@@ -170,7 +177,7 @@ TEST_CASE("crypto/certificate")
 
 	SECTION("move assign")
 	{
-		auto c1 = *certificate::from_pem(test_cert::client_pem);
+		auto c1 = certificate::from_pem(test_cert::client_pem).value();
 		certificate c2;
 		c2 = std::move(c1);
 		CHECK(c2 != c1);
@@ -180,7 +187,7 @@ TEST_CASE("crypto/certificate")
 
 	SECTION("swap")
 	{
-		auto c1 = *certificate::from_pem(test_cert::client_pem);
+		auto c1 = certificate::from_pem(test_cert::client_pem).value();
 		certificate c2;
 		CHECK(c2.is_null());
 
@@ -194,7 +201,7 @@ TEST_CASE("crypto/certificate")
 		CHECK(null.is_null());
 		CHECK_FALSE(null);
 
-		auto client = *certificate::from_pem(test_cert::client_pem);
+		auto client = certificate::from_pem(test_cert::client_pem).value();
 		CHECK_FALSE(client.is_null());
 		CHECK(client);
 	}
@@ -210,19 +217,19 @@ TEST_CASE("crypto/certificate")
 				{ test_cert::client_pem, 3 },
 			})
 		);
-		auto cert = *certificate::from_pem(pem);
+		auto cert = certificate::from_pem(pem).value();
 		CHECK(cert.version() == expected_version);
 	}
 
 	SECTION("not_before / not_after")
 	{
-		auto cert = *certificate::from_pem(GENERATE(
+		auto cert = certificate::from_pem(GENERATE(
 			test_cert::ca_pem,
 			test_cert::intermediate_pem,
 			test_cert::server_pem,
 			test_cert::client_pem,
 			test_cert::self_signed_pem
-		));
+		)).value();
 
 		CHECK(cert.not_before() != certificate::time_type{});
 		CHECK(cert.not_before() > far_past());
@@ -235,12 +242,12 @@ TEST_CASE("crypto/certificate")
 
 	SECTION("not_expired_at")
 	{
-		auto cert = *certificate::from_pem(GENERATE(
+		auto cert = certificate::from_pem(GENERATE(
 			test_cert::ca_pem,
 			test_cert::intermediate_pem,
 			test_cert::server_pem,
 			test_cert::client_pem
-		));
+		)).value();
 		CHECK(cert.not_expired_at(now()));
 		CHECK_FALSE(cert.not_expired_at(far_past()));
 		CHECK_FALSE(cert.not_expired_at(far_future()));
@@ -248,12 +255,12 @@ TEST_CASE("crypto/certificate")
 
 	SECTION("not_expired_for")
 	{
-		auto cert = *certificate::from_pem(GENERATE(
+		auto cert = certificate::from_pem(GENERATE(
 			test_cert::ca_pem,
 			test_cert::intermediate_pem,
 			test_cert::server_pem,
 			test_cert::client_pem
-		));
+		)).value();
 		CHECK(cert.not_expired_for(24h, now()));
 		CHECK_FALSE(cert.not_expired_for(24h * 365 * 100, now()));
 		CHECK_FALSE(cert.not_expired_for(24h, far_past()));
@@ -280,7 +287,7 @@ TEST_CASE("crypto/certificate")
 				"a1e42e5a8a5af09fa70cf57524f8214f7b027352"
 			},
 		}));
-		auto cert = *certificate::from_pem(pem);
+		auto cert = certificate::from_pem(pem).value();
 		auto digest = pal_test::to_hex(cert.digest<pal::crypto::sha1>());
 		CHECK(digest == expected);
 	}
@@ -305,7 +312,7 @@ TEST_CASE("crypto/certificate")
 				"9e3bfe8d98a99299f4a604e97ad5df2ccbbc04b1e600a1899f2dd1e96840edc346f958b95c532f45b244ecce5a346304438e7f34e20a0419743a0e91accac252"
 			},
 		}));
-		auto cert = *certificate::from_pem(pem);
+		auto cert = certificate::from_pem(pem).value();
 		auto digest = pal_test::to_hex(cert.digest<pal::crypto::sha512>());
 		CHECK(digest == expected);
 	}
@@ -318,32 +325,32 @@ TEST_CASE("crypto/certificate")
 			{ test_cert::server_pem, "1001" },
 			{ test_cert::client_pem, "1002" },
 		}));
-		auto cert = *certificate::from_pem(pem);
+		auto cert = certificate::from_pem(pem).value();
 
 		uint8_t buf[64];
-		auto serial_number = pal_test::to_hex(cert.serial_number(buf));
+		auto serial_number = pal_test::to_hex(cert.serial_number(buf).value());
 		CHECK(serial_number == expected);
 	}
 
 	SECTION("serial_number: buffer too small")
 	{
-		auto cert = *certificate::from_pem(test_cert::ca_pem);
+		auto cert = certificate::from_pem(test_cert::ca_pem).value();
 		uint8_t buf[1];
 		auto span = cert.serial_number(buf);
-		CHECK(span.data() == nullptr);
-		CHECK(span.size_bytes() == 8);
+		REQUIRE(!span);
+		CHECK(span.error() == std::errc::result_out_of_range);
 	}
 
 	SECTION("serial_number: alloc failure")
 	{
 		if constexpr (pal::is_linux_build)
 		{
-			auto cert = *certificate::from_pem(test_cert::ca_pem);
+			auto cert = certificate::from_pem(test_cert::ca_pem).value();
 			uint8_t buf[64];
 			pal_test::bad_alloc_once x;
 			auto span = cert.serial_number(buf);
-			CHECK(span.data() == nullptr);
-			CHECK(span.size_bytes() == 8);
+			REQUIRE(!span);
+			CHECK(span.error() == std::errc::not_enough_memory);
 		}
 	}
 
@@ -355,38 +362,41 @@ TEST_CASE("crypto/certificate")
 			{ test_cert::server_pem, "12a96089b19bcb9b97fa2d173532158664930668" },
 			{ test_cert::client_pem, "12a96089b19bcb9b97fa2d173532158664930668" },
 		}));
-		auto cert = *certificate::from_pem(pem);
+		auto cert = certificate::from_pem(pem).value();
 
 		uint8_t buf[64];
-		auto aki = pal_test::to_hex(*cert.authority_key_identifier(buf));
+		auto aki = pal_test::to_hex(cert.authority_key_identifier(buf).value());
 		CHECK(aki == expected);
 	}
 
 	SECTION("authority_key_identifier: no extension")
 	{
-		auto cert = *certificate::from_pem(test_cert::self_signed_pem);
+		auto cert = certificate::from_pem(test_cert::self_signed_pem).value();
 		uint8_t buf[64];
-		CHECK_FALSE(cert.authority_key_identifier(buf).has_value());
+		auto aki = cert.authority_key_identifier(buf);
+		REQUIRE(!aki);
+		CHECK(aki.error() == pal::crypto::errc::certificate_extension_not_found);
 	}
 
 	SECTION("authority_key_identifier: buffer too small")
 	{
-		auto cert = *certificate::from_pem(test_cert::ca_pem);
+		auto cert = certificate::from_pem(test_cert::ca_pem).value();
 		uint8_t buf[1];
-		auto span = cert.authority_key_identifier(buf);
-		REQUIRE(span.has_value());
-		CHECK(span->data() == nullptr);
-		CHECK(span->size_bytes() == 20);
+		auto aki = cert.authority_key_identifier(buf);
+		REQUIRE(!aki);
+		CHECK(aki.error() == std::errc::result_out_of_range);
 	}
 
 	SECTION("authority_key_identifier: allocation error")
 	{
 		if constexpr (pal::is_linux_build)
 		{
-			auto cert = *certificate::from_pem(test_cert::ca_pem);
+			auto cert = certificate::from_pem(test_cert::ca_pem).value();
 			uint8_t buf[64];
 			pal_test::bad_alloc_once x;
-			CHECK_FALSE(cert.authority_key_identifier(buf).has_value());
+			auto aki = cert.authority_key_identifier(buf);
+			REQUIRE(!aki);
+			CHECK(aki.error() == pal::crypto::errc::certificate_extension_decoding_error);
 		}
 	}
 
@@ -398,47 +408,50 @@ TEST_CASE("crypto/certificate")
 			{ test_cert::server_pem, "1d559063dee9d2b3f8ba1f358d2d07176e91aabc" },
 			{ test_cert::client_pem, "214ee57389b3c2300ffffac93e64291c782f328b" },
 		}));
-		auto cert = *certificate::from_pem(pem);
+		auto cert = certificate::from_pem(pem).value();
 
 		uint8_t buf[64];
-		auto ski = pal_test::to_hex(*cert.subject_key_identifier(buf));
+		auto ski = pal_test::to_hex(cert.subject_key_identifier(buf).value());
 		CHECK(ski == expected);
 	}
 
 	SECTION("subject_key_identifier: no extension")
 	{
-		auto cert = *certificate::from_pem(test_cert::self_signed_pem);
+		auto cert = certificate::from_pem(test_cert::self_signed_pem).value();
 		uint8_t buf[64];
-		CHECK_FALSE(cert.subject_key_identifier(buf).has_value());
+		auto ski = cert.subject_key_identifier(buf);
+		REQUIRE(!ski);
+		CHECK(ski.error() == pal::crypto::errc::certificate_extension_not_found);
 	}
 
 	SECTION("subject_key_identifier: buffer too small")
 	{
-		auto cert = *certificate::from_pem(test_cert::ca_pem);
+		auto cert = certificate::from_pem(test_cert::ca_pem).value();
 		uint8_t buf[1];
-		auto span = cert.subject_key_identifier(buf);
-		REQUIRE(span.has_value());
-		CHECK(span->data() == nullptr);
-		CHECK(span->size_bytes() == 20);
+		auto ski = cert.subject_key_identifier(buf);
+		REQUIRE(!ski);
+		CHECK(ski.error() == std::errc::result_out_of_range);
 	}
 
 	SECTION("subject_key_identifier: allocation error")
 	{
 		if constexpr (pal::is_linux_build)
 		{
-			auto cert = *certificate::from_pem(test_cert::ca_pem);
+			auto cert = certificate::from_pem(test_cert::ca_pem).value();
 			uint8_t buf[64];
 			pal_test::bad_alloc_once x;
-			CHECK_FALSE(cert.subject_key_identifier(buf).has_value());
+			auto ski = cert.subject_key_identifier(buf);
+			REQUIRE(!ski);
+			CHECK(ski.error() == pal::crypto::errc::certificate_extension_decoding_error);
 		}
 	}
 
 	SECTION("issued_by / is_self_signed")
 	{
-		auto ca = *certificate::from_pem(test_cert::ca_pem);
-		auto intermediate = *certificate::from_pem(test_cert::intermediate_pem);
-		auto server = *certificate::from_pem(test_cert::server_pem);
-		auto client = *certificate::from_pem(test_cert::client_pem);
+		auto ca = certificate::from_pem(test_cert::ca_pem).value();
+		auto intermediate = certificate::from_pem(test_cert::intermediate_pem).value();
+		auto server = certificate::from_pem(test_cert::server_pem).value();
+		auto client = certificate::from_pem(test_cert::client_pem).value();
 
 		CHECK(ca.is_self_signed());
 		CHECK(ca.issued_by(ca));
@@ -509,7 +522,7 @@ TEST_CASE("crypto/certificate")
 				}
 			},
 		}));
-		auto cert = *certificate::from_pem(pem);
+		auto cert = certificate::from_pem(pem).value();
 		CHECK(cert.issuer() == expected);
 
 		CHECK(cert.issuer("invalid_oid").empty());
@@ -566,7 +579,7 @@ TEST_CASE("crypto/certificate")
 				}
 			},
 		}));
-		auto cert = *certificate::from_pem(pem);
+		auto cert = certificate::from_pem(pem).value();
 		CHECK(cert.subject() == expected);
 
 		CHECK(cert.subject("invalid_oid").empty());
@@ -598,7 +611,7 @@ TEST_CASE("crypto/certificate")
 				test_cert::client_pem, { }
 			},
 		}));
-		auto cert = *certificate::from_pem(pem);
+		auto cert = certificate::from_pem(pem).value();
 		CHECK(cert.issuer_alt_name() == expected);
 	}
 
@@ -630,7 +643,7 @@ TEST_CASE("crypto/certificate")
 				}
 			},
 		}));
-		auto cert = *certificate::from_pem(pem);
+		auto cert = certificate::from_pem(pem).value();
 		CHECK(cert.subject_alt_name() == expected);
 	}
 
@@ -712,7 +725,7 @@ TEST_CASE("crypto/certificate/store", "[!mayfail]")
 	SECTION("load_one(with_common_name)")
 	{
 		auto cert = certificate::load_one(with_common_name("pal.alt.ee"));
-		REQUIRE(cert.has_value());
+		REQUIRE(cert);
 
 		auto [_, value] = cert->subject(oid::common_name)[0];
 		CHECK(value == "pal.alt.ee");
@@ -721,7 +734,8 @@ TEST_CASE("crypto/certificate/store", "[!mayfail]")
 	SECTION("load_one(with_common_name) not found")
 	{
 		auto cert = certificate::load_one(with_common_name(pal_test::case_name()));
-		CHECK_FALSE(cert.has_value());
+		REQUIRE(!cert);
+		CHECK(cert.error() == std::errc::no_such_file_or_directory);
 	}
 
 	SECTION("load_all(with_common_name)")
@@ -751,7 +765,7 @@ TEST_CASE("crypto/certificate/store", "[!mayfail]")
 		for (auto &cert: certs)
 		{
 			uint8_t buf[16];
-			auto serial_number = pal_test::to_hex(cert.serial_number(buf));
+			auto serial_number = pal_test::to_hex(cert.serial_number(buf).value());
 
 			if (serial_number == "1001")
 			{

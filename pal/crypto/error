@@ -1,0 +1,81 @@
+#pragma once // -*- C++ -*-
+
+/**
+ * \file pal/crypto/error
+ * Crypto module errors
+ */
+
+#include <pal/__bits/lib>
+#include <pal/result>
+
+
+__pal_begin
+
+
+namespace crypto {
+
+
+#define __pal_crypto_errc(Impl) \
+	Impl(__0, "internal") \
+	Impl(no_key, "no key") \
+	Impl(invalid_digest_algorithm, "invalid digest algorithm") \
+	Impl(certificate_extension_not_found, "certificate extension not found") \
+	Impl(certificate_extension_decoding_error, "certificate extension decoding error")
+
+
+/**
+ * PAL crypto module errors
+ */
+enum class errc: int
+{
+	#define __pal_crypto_errc_enum(Code, Message) Code,
+	__pal_crypto_errc(__pal_crypto_errc_enum)
+	#undef __pal_crypto_errc_enum
+};
+
+
+/**
+ * Returns reference to PAL library crypto module error category.
+ * The \c name() virtual function returns string "crypto".
+ */
+const std::error_category &category () noexcept;
+
+
+/**
+ * Returns reference to OS error category for crypto module errors.
+ */
+const std::error_category &system_category () noexcept;
+
+
+/**
+ * Make \c std::error_code from pal::crypto::errc \a ec
+ */
+inline std::error_code make_error_code (errc ec) noexcept
+{
+	return {static_cast<int>(ec), category()};
+}
+
+
+/**
+ * Return unexpected{make_error_code(ec)}
+ */
+inline unexpected<std::error_code> make_unexpected (errc ec) noexcept
+{
+	return unexpected{make_error_code(ec)};
+}
+
+
+} // namespace crypto
+
+
+__pal_end
+
+
+namespace std {
+
+template <>
+struct is_error_code_enum<pal::crypto::errc>
+	: true_type
+{ };
+
+} // namespace std

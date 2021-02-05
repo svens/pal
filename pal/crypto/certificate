@@ -9,13 +9,12 @@
 
 #include <pal/__bits/lib>
 #include <pal/crypto/__bits/x509>
+#include <pal/crypto/error>
 #include <pal/crypto/hash>
 #include <pal/crypto/key>
 #include <pal/crypto/oid>
-#include <pal/error>
 #include <chrono>
 #include <deque>
-#include <optional>
 #include <span>
 #include <string>
 #include <string_view>
@@ -202,31 +201,25 @@ public:
 	/**
 	 * Store serial number of \a this certificate into \a dest.
 	 *
-	 * - If \a dest is big enough, returns actually stored data range
-	 * - If \a dest is too small or on memory allocation failure returns
-	 *   span with data() == nullptr and size_bytes() == required size.
+	 * \returns span of actually stored data.
 	 */
-	std::span<uint8_t> serial_number (std::span<uint8_t> dest) const noexcept;
+	result<std::span<uint8_t>> serial_number (std::span<uint8_t> dest) const noexcept;
 
 
 	/**
 	 * Store authority key identifier of \a this certificate into \a dest.
 	 *
-	 * - If \a dest is big enough, returns actually stored data range
-	 * - If \a dest is too small returns span with data() == nullptr and
-	 *   size_bytes() == required size.
+	 * \returns span of actually stored data.
 	 */
-	std::optional<std::span<uint8_t>> authority_key_identifier (std::span<uint8_t> dest) const noexcept;
+	result<std::span<uint8_t>> authority_key_identifier (std::span<uint8_t> dest) const noexcept;
 
 
 	/**
 	 * Store subject key identifier of \a this certificate into \a dest.
 	 *
-	 * - If \a dest is big enough, returns actually stored data range
-	 * - If \a dest is too small returns span with data() == nullptr and
-	 *   size_bytes() == required size.
+	 * \returns span of actually stored data.
 	 */
-	std::optional<std::span<uint8_t>> subject_key_identifier (std::span<uint8_t> dest) const noexcept;
+	result<std::span<uint8_t>> subject_key_identifier (std::span<uint8_t> dest) const noexcept;
 
 
 	/**
@@ -309,13 +302,13 @@ public:
 	 * Load and construct new certificate from DER encoded \a span.
 	 */
 	template <typename Data>
-	static std::optional<certificate> from_der (const Data &data) noexcept
+	static result<certificate> from_der (const Data &data) noexcept
 	{
 		if (auto cert = load_der(std::as_bytes(std::span{data})))
 		{
-			return std::make_optional(certificate{std::move(cert)});
+			return certificate{std::move(cert)};
 		}
-		return std::nullopt;
+		return pal::make_unexpected(std::errc::invalid_argument);
 	}
 
 
@@ -323,7 +316,7 @@ public:
 	 * Load and construct new certificate from \a pem (if there are
 	 * multiple, only first is extracted).
 	 */
-	static std::optional<certificate> from_pem (const std::string_view &pem) noexcept;
+	static result<certificate> from_pem (const std::string_view &pem) noexcept;
 
 
 	/**
@@ -384,22 +377,23 @@ public:
 
 	/**
 	 * Load first certificate from system store that satisfies \a
-	 * predicate. If no such certificate, returns std::nullopt.
+	 * predicate. If no such certificate, returns
+	 * std::errc::no_such_file_or_directory
 	 *
 	 * \copydetails load_all()
 	 */
 	template <typename Predicate>
-	static std::optional<certificate> load_one (Predicate predicate) noexcept
+	static result<certificate> load_one (Predicate predicate) noexcept
 	{
 		__bits::x509_store_loop sys_cert_store;
 		while (auto c = certificate{sys_cert_store.next()})
 		{
 			if (predicate(c))
 			{
-				return std::make_optional(std::move(c));
+				return c;
 			}
 		}
-		return std::nullopt;
+		return pal::make_unexpected(std::errc::no_such_file_or_directory);
 	}
 
 
