@@ -44,7 +44,8 @@ constexpr uint64_t fnv_1a_64 (const uint8_t *first, const uint8_t *last,
  *
  * See ThirdPartySources.txt for copyright notices.
  */
-inline uint64_t fnv_1a_64 (std::span<const std::byte> span,
+template <typename T, size_t Extent>
+inline uint64_t fnv_1a_64 (std::span<T, Extent> span,
 	uint64_t h = fnv_1a_64_init) noexcept
 {
 	auto p = reinterpret_cast<const uint8_t *>(span.data());

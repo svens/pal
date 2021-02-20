@@ -8,7 +8,7 @@ namespace {
 TEST_CASE("hash")
 {
 	char data[] = "0123";
-	auto span = std::as_bytes(std::span{data});
+	auto span = std::span{data};
 	auto a = pal::fnv_1a_64(span);
 	uint64_t b{};
 
