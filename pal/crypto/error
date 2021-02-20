@@ -6,7 +6,7 @@
  */
 
 #include <pal/__bits/lib>
-#include <pal/result>
+#include <pal/error>
 
 
 __pal_begin

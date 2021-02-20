@@ -8,11 +8,11 @@ namespace {
 
 TEST_CASE("error")
 {
+	#define __pal_errc_value(Code, Message) pal::errc::Code,
+
 	SECTION("errc")
 	{
-		#define __pal_errc_value(Code, Message) pal::errc::Code,
 		std::error_code ec = GENERATE(values({__pal_errc(__pal_errc_value)}));
-		#undef __pal_errc_value
 		CAPTURE(ec);
 
 		SECTION("message")
@@ -41,6 +41,16 @@ TEST_CASE("error")
 		CHECK(ec.message() == "unknown");
 		CHECK(ec.category() == pal::error_category());
 		CHECK(ec.category().name() == std::string{"pal"});
+	}
+
+
+	SECTION("make_unexpected")
+	{
+		auto errc = GENERATE(values({__pal_errc(__pal_errc_value)}));
+		auto u = pal::make_unexpected(errc);
+		CHECK(u.value().message() != "unknown");
+		CHECK(u.value().category() == pal::error_category());
+		CHECK(u.value().category().name() == std::string{"pal"});
 	}
 
 

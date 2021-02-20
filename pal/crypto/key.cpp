@@ -17,6 +17,9 @@ __pal_begin
 namespace crypto {
 
 
+using pal::make_unexpected;
+
+
 #if __pal_os_linux //{{{1
 
 
@@ -72,7 +75,7 @@ result<std::span<std::byte>> private_key::sign (
 	unique_ref<::EVP_MD_CTX *, ::EVP_MD_CTX_free> ctx = EVP_MD_CTX_new();
 	if (!ctx)
 	{
-		return pal::make_unexpected(std::errc::not_enough_memory);
+		return make_unexpected(std::errc::not_enough_memory);
 	}
 
 	size_t sig_size = 0;
@@ -86,7 +89,7 @@ result<std::span<std::byte>> private_key::sign (
 	}
 	else if (sig_size > signature.size())
 	{
-		return pal::make_unexpected(std::errc::result_out_of_range);
+		return make_unexpected(std::errc::result_out_of_range);
 	}
 
 	::EVP_DigestSignFinal(
@@ -112,7 +115,7 @@ result<bool> public_key::verify_signature (
 	unique_ref<::EVP_MD_CTX *, ::EVP_MD_CTX_free> ctx = EVP_MD_CTX_new();
 	if (!ctx)
 	{
-		return pal::make_unexpected(std::errc::not_enough_memory);
+		return make_unexpected(std::errc::not_enough_memory);
 	}
 
 	auto result =
@@ -231,7 +234,7 @@ result<std::span<std::byte>> private_key::sign (
 			);
 			return signature.first(sig_size);
 		}
-		return pal::make_unexpected(std::errc::result_out_of_range);
+		return make_unexpected(std::errc::result_out_of_range);
 	}
 
 	return unexpected{std::error_code(::CFErrorGetCode(status.ref), system_category())};
@@ -431,7 +434,7 @@ result<std::span<std::byte>> private_key::sign (
 	}
 	else if (status == NTE_BUFFER_TOO_SMALL)
 	{
-		return pal::make_unexpected(std::errc::result_out_of_range);
+		return make_unexpected(std::errc::result_out_of_range);
 	}
 
 	return unexpected{std::error_code(status, system_category())};

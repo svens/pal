@@ -6,7 +6,7 @@
  */
 
 #include <pal/__bits/lib>
-#include <system_error>
+#include <pal/result>
 
 
 __pal_begin
@@ -40,6 +40,15 @@ const std::error_category &error_category () noexcept;
 inline std::error_code make_error_code (errc ec) noexcept
 {
 	return {static_cast<int>(ec), error_category()};
+}
+
+
+/**
+ * Return unexpected{make_error_code(ec)}
+ */
+inline unexpected<std::error_code> make_unexpected (errc ec) noexcept
+{
+	return unexpected{make_error_code(ec)};
 }
 
 

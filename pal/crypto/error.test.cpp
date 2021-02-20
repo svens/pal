@@ -8,11 +8,11 @@ namespace {
 
 TEST_CASE("crypto/error")
 {
+	#define __pal_crypto_errc_value(Code, Message) pal::crypto::errc::Code,
+
 	SECTION("errc")
 	{
-		#define __pal_crypto_errc_value(Code, Message) pal::crypto::errc::Code,
 		std::error_code ec = GENERATE(values({__pal_crypto_errc(__pal_crypto_errc_value)}));
-		#undef __pal_crypto_errc_value
 		CAPTURE(ec);
 
 		SECTION("message")
@@ -47,6 +47,15 @@ TEST_CASE("crypto/error")
 		{
 			CHECK(ec.category().name() == std::string{"crypto"});
 		}
+	}
+
+	SECTION("make_unexpected")
+	{
+		auto errc = GENERATE(values({__pal_crypto_errc(__pal_crypto_errc_value)}));
+		auto u = pal::crypto::make_unexpected(errc);
+		CHECK(u.value().message() != "unknown");
+		CHECK(u.value().category() == pal::crypto::category());
+		CHECK(u.value().category().name() == std::string{"crypto"});
 	}
 }
 

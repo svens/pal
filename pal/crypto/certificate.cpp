@@ -21,6 +21,9 @@ __pal_begin
 namespace crypto {
 
 
+using pal::make_unexpected;
+
+
 namespace {
 
 
@@ -133,7 +136,7 @@ result<certificate> certificate::from_pem (const std::string_view &pem) noexcept
 	auto der = scoped_alloc<std::byte, 8192>(std::nothrow, pem.size() / 4 * 3);
 	if (!der)
 	{
-		return pal::make_unexpected(std::errc::not_enough_memory);
+		return make_unexpected(std::errc::not_enough_memory);
 	}
 
 	if (auto der_size = pem_to_der(pem, der.get()))
@@ -144,7 +147,7 @@ result<certificate> certificate::from_pem (const std::string_view &pem) noexcept
 		}
 	}
 
-	return pal::make_unexpected(std::errc::invalid_argument);
+	return make_unexpected(std::errc::invalid_argument);
 }
 
 
@@ -262,7 +265,7 @@ result<std::span<uint8_t>> certificate::serial_number (std::span<uint8_t> dest) 
 	auto sn = ::X509_get_serialNumber(impl_.ref);
 	if (size_t(sn->length) > dest.size())
 	{
-		return pal::make_unexpected(std::errc::result_out_of_range);
+		return make_unexpected(std::errc::result_out_of_range);
 	}
 
 	std::unique_ptr<::BIGNUM, void(*)(::BIGNUM *)> bn
@@ -277,7 +280,7 @@ result<std::span<uint8_t>> certificate::serial_number (std::span<uint8_t> dest) 
 		return dest;
 	}
 
-	return pal::make_unexpected(std::errc::not_enough_memory);
+	return make_unexpected(std::errc::not_enough_memory);
 }
 
 
@@ -305,7 +308,7 @@ result<std::span<uint8_t>> certificate::authority_key_identifier (
 	size_t required_size = decoded.ref->keyid->length;
 	if (required_size > dest.size())
 	{
-		return pal::make_unexpected(std::errc::result_out_of_range);
+		return make_unexpected(std::errc::result_out_of_range);
 	}
 
 	dest = dest.first(required_size);
@@ -342,7 +345,7 @@ result<std::span<uint8_t>> certificate::subject_key_identifier (
 	size_t required_size = decoded.ref->length;
 	if (required_size > dest.size())
 	{
-		return pal::make_unexpected(std::errc::result_out_of_range);
+		return make_unexpected(std::errc::result_out_of_range);
 	}
 
 	dest = dest.first(required_size);
@@ -719,7 +722,7 @@ result<std::span<uint8_t>> certificate::serial_number (std::span<uint8_t> dest) 
 	size_t required_size = last - first;
 	if (required_size > dest.size())
 	{
-		return pal::make_unexpected(std::errc::result_out_of_range);
+		return make_unexpected(std::errc::result_out_of_range);
 	}
 
 	dest = dest.first(required_size);
@@ -751,7 +754,7 @@ result<std::span<uint8_t>> key_id (
 		size_t required_size = last - first;
 		if (required_size > dest.size())
 		{
-			return pal::make_unexpected(std::errc::result_out_of_range);
+			return make_unexpected(std::errc::result_out_of_range);
 		}
 
 		dest = dest.first(required_size);
@@ -1134,7 +1137,7 @@ result<std::span<uint8_t>> certificate::serial_number (std::span<uint8_t> dest) 
 	size_t required_size = last - first;
 	if (required_size > dest.size())
 	{
-		return pal::make_unexpected(std::errc::result_out_of_range);
+		return make_unexpected(std::errc::result_out_of_range);
 	}
 
 	dest = dest.first(required_size);
@@ -1241,7 +1244,7 @@ result<std::span<uint8_t>> certificate::authority_key_identifier (
 	size_t required_size = info.KeyId.cbData;
 	if (required_size > dest.size())
 	{
-		return pal::make_unexpected(std::errc::result_out_of_range);
+		return make_unexpected(std::errc::result_out_of_range);
 	}
 
 	dest = dest.first(required_size);
@@ -1281,7 +1284,7 @@ result<std::span<uint8_t>> certificate::subject_key_identifier (
 	size_t required_size = blob.cbData;
 	if (required_size > dest.size())
 	{
-		return pal::make_unexpected(std::errc::result_out_of_range);
+		return make_unexpected(std::errc::result_out_of_range);
 	}
 
 	dest = dest.first(required_size);
