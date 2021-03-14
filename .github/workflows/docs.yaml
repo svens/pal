@@ -10,11 +10,13 @@ jobs:
 
     steps:
       - uses: actions/checkout@v2
+        with:
+          submodules: true
 
       - name: Generate
         run: |
           sudo apt-get install --yes g++-10 cmake doxygen graphviz
-          CC=gcc-10 CXX=g++-10 cmake . -Dpal_docs=yes -Dpal_unittests=no
+          CC=gcc-10 CXX=g++-10 cmake . -Dpal_doc=yes -Dpal_test=no
           cmake --build . --target pal-doc
 
       - name: Publish

@@ -20,6 +20,8 @@ jobs:
 
     steps:
       - uses: actions/checkout@v2
+        with:
+          submodules: true
 
       - name: Configure buildsystem
         run: |
@@ -66,6 +68,8 @@ jobs:
 
     steps:
       - uses: actions/checkout@v2
+        with:
+          submodules: true
 
       - name: Configure buildsystem
         run: |
@@ -74,7 +78,7 @@ jobs:
             | gunzip -c \
             | tar xvf -
           sudo make -C lcov-1.15 install
-          CC=gcc-10 CXX=g++-10 COV=gcov-10 cmake . -DCMAKE_BUILD_TYPE=Coverage
+          CC=gcc-10 CXX=g++-10 COV=gcov-10 cmake . -DCMAKE_BUILD_TYPE=Debug -Dpal_cov=yes
 
       - name: Generate test coverage
         run: SSL_CERT_FILE=scripts/test-chain.pem cmake --build . --target pal-cov
