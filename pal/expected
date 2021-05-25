@@ -994,8 +994,9 @@ struct expected_copy_assign<T, E, non_trivial_v>: expected_move_ctor<T, E>
 	expected_copy_assign (expected_copy_assign &&) = default;
 	expected_copy_assign &operator= (expected_copy_assign &&) = default;
 
-	expected_copy_assign &operator= (const expected_copy_assign &that)
+	auto operator= (const expected_copy_assign &that)
 		noexcept(noexcept(this->assign(that)))
+		-> expected_copy_assign &
 	{
 		this->assign(that);
 		return *this;
@@ -1037,8 +1038,9 @@ struct expected_move_assign<T, E, non_trivial_v>: expected_copy_assign<T, E>
 	expected_move_assign (expected_move_assign &&) = default;
 	expected_move_assign &operator= (const expected_move_assign &) = default;
 
-	expected_move_assign &operator= (expected_move_assign &&that)
+	auto operator= (expected_move_assign &&that)
 		noexcept(noexcept(this->assign(std::move(that))))
+		-> expected_move_assign &
 	{
 		this->assign(std::move(that));
 		return *this;
