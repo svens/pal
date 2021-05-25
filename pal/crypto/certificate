@@ -448,14 +448,18 @@ inline auto with_fqdn (std::string expected)
 		{
 			if (type == alt_name::dns)
 			{
-				if (value.starts_with("*."))
+				std::string_view fqdn = value, match = expected;
+				if (fqdn.starts_with("*."))
 				{
-					if (expected.ends_with(value.substr(1)))
+					auto first_segment = match.find('.');
+					if (first_segment == match.npos)
 					{
-						return true;
+						continue;
 					}
+					match.remove_prefix(first_segment + 1);
+					fqdn.remove_prefix(2);
 				}
-				else if (value == expected)
+				if (fqdn == match)
 				{
 					return true;
 				}
