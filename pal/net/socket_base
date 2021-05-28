@@ -1,0 +1,91 @@
+#pragma once // -*- C++ -*-
+
+/**
+ * \file pal/net/socket_base
+ * Base socket types and values
+ */
+
+#include <pal/__bits/lib>
+#include <pal/net/__bits/socket>
+#include <pal/result>
+
+
+__pal_begin
+
+
+namespace net {
+
+
+/**
+ * Initialize socket library. There is no need to call it explicitly as it is
+ * also invoked internlly by static initialization. Only exception is when
+ * application layer own static initilization order depends on winsock library
+ * to be already loaded. It can be safely called multiple times.
+ */
+inline const result<void> &init () noexcept
+{
+	return __bits::init();
+}
+
+
+/**
+ * Common socket types and constants.
+ */
+class socket_base
+{
+public:
+
+	/// Native socket handle type
+	using native_handle_type = __bits::native_socket;
+
+
+	/// \{
+	/// Socket shutdown types
+	using shutdown_type = __bits::shutdown_type;
+	/// Disable further receive operations
+	static constexpr shutdown_type shutdown_receive = shutdown_type::receive;
+	/// Disable further send operations
+	static constexpr shutdown_type shutdown_send = shutdown_type::send;
+	/// Disable further send/receive operations
+	static constexpr shutdown_type shutdown_both = shutdown_type::both;
+	/// \}
+
+
+	/// \{
+	/// Socket state change waiting types
+	using wait_type = __bits::wait_type;
+	/// Wait for socket to become readable
+	static constexpr wait_type wait_read = wait_type::read;
+	/// Wait for socket to become writable
+	static constexpr wait_type wait_write = wait_type::write;
+	/// Wait until socket has pending error condition
+	static constexpr wait_type wait_error = wait_type::error;
+	/// \}
+
+
+	/// \{
+	/// Bitmask flags for send/receive functions
+	using message_flags = __bits::message_flags;
+	/// Wait for socket to become readable
+	static constexpr message_flags message_peek = MSG_PEEK;
+	/// Wait for socket to become writable
+	static constexpr message_flags message_out_of_band = MSG_OOB;
+	/// Wait until socket has pending error condition
+	static constexpr message_flags message_do_not_route = MSG_DONTROUTE;
+	/// \}
+
+
+	/// Limit on length of queue of pending incoming connections
+	static constexpr int max_listen_connections = SOMAXCONN;
+
+
+protected:
+
+	~socket_base () = default;
+};
+
+
+} // namespace net
+
+
+__pal_end

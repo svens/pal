@@ -39,8 +39,10 @@ inline unexpected<std::error_code> make_unexpected (std::errc ec) noexcept
 
 namespace __bits {
 
+/// \cond
 #undef pal_try
 #define pal_try(Expr) pal::__bits::try_impl(Expr)
+/// \endcond
 
 template <typename T>
 constexpr auto try_impl (T &&result)

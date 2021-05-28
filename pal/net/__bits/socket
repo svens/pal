@@ -1,0 +1,178 @@
+#pragma once // -*- C++ -*-
+
+#include <pal/__bits/lib>
+#include <pal/result>
+#include <pal/span>
+#include <array>
+#include <chrono>
+#include <memory>
+
+#if __pal_os_linux || __pal_os_macos
+	#include <netinet/in.h>
+	#include <netinet/tcp.h>
+	#include <poll.h>
+	#include <sys/socket.h>
+	#include <sys/time.h>
+#elif __pal_os_windows
+	#include <winsock2.h>
+	#include <mswsock.h>
+#endif
+
+
+__pal_begin
+
+
+namespace net::__bits {
+
+
+const result<void> &init () noexcept;
+
+
+constexpr int iov_max_length = 4;
+
+
+#if __pal_os_linux || __pal_os_macos //{{{1
+
+using native_socket = int;
+constexpr native_socket invalid_native_socket = -1;
+
+using sa_family = ::sa_family_t;
+using message_flags = int;
+using timeval = ::timeval;
+
+struct message: ::msghdr
+{
+	std::array<::iovec, iov_max_length> iov{};
+
+	message () noexcept
+		: msghdr{}
+	{
+		msg_iov = iov.data();
+	}
+
+	template <typename SpanSequence>
+	bool msg (const SpanSequence &spans) noexcept
+	{
+		msg_iovlen = 0;
+		auto it = span_sequence_begin(spans);
+		const auto end = span_sequence_end(spans);
+		while (it != end && static_cast<size_t>(msg_iovlen) != iov.size())
+		{
+			auto &v = iov[msg_iovlen++];
+			auto &s = *it++;
+			v.iov_base = const_cast<void *>(
+				static_cast<const void *>(s.data())
+			);
+			v.iov_len = s.size_bytes();
+		}
+		return it == end && static_cast<size_t>(msg_iovlen) <= iov.size();
+	}
+};
+
+constexpr std::chrono::milliseconds to_chrono_ms (const timeval &tv)
+{
+	return std::chrono::milliseconds{tv.tv_sec * 1000 + tv.tv_usec / 1000};
+}
+
+constexpr void from_chrono_ms (timeval &tv, const std::chrono::milliseconds &t)
+{
+	tv.tv_sec = t.count() / 1000;
+	tv.tv_usec = (t.count() - tv.tv_sec * 1000) * 1000;
+}
+
+#elif __pal_os_windows //{{{1
+
+using native_socket = SOCKET;
+constexpr native_socket invalid_native_socket = INVALID_SOCKET;
+
+using sa_family = ::ADDRESS_FAMILY;
+using message_flags = ::DWORD;
+using timeval = ::DWORD;
+
+struct message
+{
+	std::array<::WSABUF, iov_max_length> msg_iov{};
+	DWORD msg_iovlen{};
+	sockaddr *msg_name{};
+	INT msg_namelen{};
+	message_flags msg_flags{};
+
+	template <typename SpanSequence>
+	bool msg (const SpanSequence &spans) noexcept
+	{
+		msg_iovlen = 0;
+		auto it = span_sequence_begin(spans);
+		const auto end = span_sequence_end(spans);
+		while (it != end && static_cast<size_t>(msg_iovlen) != msg_iov.size())
+		{
+			auto &v = msg_iov[msg_iovlen++];
+			auto &s = *it++;
+			v.buf = const_cast<CHAR *>(s.data());
+			v.len = static_cast<ULONG>(s.size_bytes());
+		}
+		return it == end && static_cast<size_t>(msg_iovlen) <= msg_iov.size();
+	}
+};
+
+constexpr std::chrono::milliseconds to_chrono_ms (const timeval &t)
+{
+	return std::chrono::milliseconds{t};
+}
+
+constexpr void from_chrono_ms (timeval &t, const std::chrono::milliseconds &v)
+{
+	t = static_cast<timeval>(v.count());
+}
+
+constexpr auto SHUT_RD = SD_RECEIVE;
+constexpr auto SHUT_WR = SD_SEND;
+constexpr auto SHUT_RDWR = SD_BOTH;
+
+extern ::LPFN_CONNECTEX ConnectEx;
+extern ::LPFN_ACCEPTEX AcceptEx;
+extern ::LPFN_GETACCEPTEXSOCKADDRS GetAcceptExSockaddrs;
+
+#endif //}}}1
+
+
+constexpr int reuse_port =
+#if defined(SO_REUSEPORT_LB)
+	SO_REUSEPORT_LB
+#elif defined(SO_REUSEPORT)
+	SO_REUSEPORT
+#else
+	-1
+#endif
+;
+
+
+enum class shutdown_type
+{
+	receive = SHUT_RD,
+	send = SHUT_WR,
+	both = SHUT_RDWR,
+};
+
+
+enum class wait_type: int
+{
+	read = POLLIN,
+	write = POLLOUT,
+	error = POLLERR,
+};
+
+
+struct socket
+{
+	struct impl_type;
+	std::unique_ptr<impl_type> impl;
+
+	socket () noexcept;
+	~socket () noexcept;
+};
+
+
+} // namespace net::__bits
+
+
+__pal_end
