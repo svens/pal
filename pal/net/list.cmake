@@ -7,6 +7,7 @@ list(APPEND pal_sources
     # socket
     pal/net/socket
     pal/net/socket_base
+    pal/net/socket_option
 
     # internet
     pal/net/ip/__bits/inet
@@ -15,4 +16,5 @@ list(APPEND pal_sources
 list(APPEND pal_test_sources
     pal/net/test
     pal/net/init.test.cpp
+    pal/net/socket_option.test.cpp
 )

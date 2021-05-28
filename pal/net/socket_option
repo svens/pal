@@ -1,0 +1,398 @@
+#pragma once // -*- C++ -*-
+
+/**
+ * \file pal/net/socket_option
+ * Socket option types.
+ */
+
+#include <pal/__bits/lib>
+#include <pal/net/__bits/socket>
+#include <pal/result>
+
+
+__pal_begin
+
+
+namespace net {
+
+
+/**
+ * Socket option storage for type \a T
+ */
+template <typename T>
+struct socket_option_storage
+{
+	socket_option_storage () noexcept = default;
+
+
+	/**
+	 * Construct socket option storage with \a value
+	 */
+	explicit socket_option_storage (int value) noexcept
+		: value_{value}
+	{ }
+
+
+	/**
+	 * \returns Current value from the socket option storage.
+	 */
+	int value () const noexcept
+	{
+		return value_;
+	}
+
+
+	/**
+	 * \returns Pointer to internal socket option storage.
+	 */
+	template <typename Protocol>
+	void *data (const Protocol &) noexcept
+	{
+		return std::addressof(value_);
+	}
+
+
+	/**
+	 * \returns Pointer to internal socket option storage.
+	 */
+	template <typename Protocol>
+	const void *data (const Protocol &) const noexcept
+	{
+		return std::addressof(value_);
+	}
+
+
+	/**
+	 * \returns Size of internal socket option storage (in bytes).
+	 */
+	template <typename Protocol>
+	constexpr size_t size (const Protocol &) const noexcept
+	{
+		return sizeof(value_);
+	}
+
+
+	/**
+	 * Resize socket option storage. This method is no-op and it returns
+	 * error if \a size is different from size() return value.
+	 */
+	template <typename Protocol>
+	result<void> resize (const Protocol &, size_t size) noexcept
+	{
+		if (size == sizeof(value_))
+		{
+			return {};
+		}
+		return make_unexpected(std::errc::invalid_argument);
+	}
+
+
+protected:
+
+	/**
+	 * Socket option value storage
+	 */
+	T value_{};
+};
+
+
+/**
+ * Boolean socket option value.
+ */
+template <>
+struct socket_option_storage<bool>: socket_option_storage<int>
+{
+	socket_option_storage () noexcept = default;
+
+
+	/**
+	 * Construct socket option storage with \a value
+	 */
+	explicit socket_option_storage (bool value) noexcept
+		: socket_option_storage<int>{value}
+	{ }
+
+
+	/**
+	 * \returns Current value from the socket option storage.
+	 */
+	bool value () const noexcept
+	{
+		return socket_option_storage<int>::value_;
+	}
+
+
+	/**
+	 * \copydoc value()
+	 */
+	explicit operator bool () const noexcept
+	{
+		return value();
+	}
+
+
+	/**
+	 * \returns !value()
+	 */
+	bool operator! () const noexcept
+	{
+		return !value();
+	}
+};
+
+
+/**
+ * Generic socket option \a Name of type \a T on \a Level.
+ */
+template <typename T, int Level, int Name>
+struct socket_option: socket_option_storage<T>
+{
+	using socket_option_storage<T>::socket_option_storage;
+
+
+	/**
+	 * Set new \a value for socket option.
+	 */
+	socket_option &operator= (T value) noexcept
+	{
+		socket_option_storage<T>::value_ = value;
+		return *this;
+	}
+
+
+	/**
+	 * \returns Socket option level
+	 */
+	template <typename Protocol>
+	int level (const Protocol &) const noexcept
+	{
+		return Level;
+	}
+
+
+	/**
+	 * \returns Socket option name
+	 */
+	template <typename Protocol>
+	int name (const Protocol &) const noexcept
+	{
+		return Name;
+	}
+};
+
+
+/// \defgroup socket_option Socket options
+/// \{
+
+
+/**
+ * Determines whether a socket permits sending of broadcast messages, if
+ * supported by protocol.
+ */
+using broadcast = socket_option<bool, SOL_SOCKET, SO_BROADCAST>;
+
+
+/**
+ * Determines whether debugging information is recorded by the
+ * underlying protocol.
+ */
+using debug = socket_option<bool, SOL_SOCKET, SO_DEBUG>;
+
+
+/**
+ * Determines whether outgoing messages bypass standard routing
+ * facilities.
+ */
+using do_not_route = socket_option<bool, SOL_SOCKET, SO_DONTROUTE>;
+
+
+/**
+ * Determines whether socket permits sending of keep_alive messages,
+ * if supported by the protocol.
+ */
+using keepalive = socket_option<bool, SOL_SOCKET, SO_KEEPALIVE>;
+
+
+/**
+ * Determines whether out-of-band data (also known as urgent data) is
+ * received inline.
+ */
+using out_of_band_inline = socket_option<bool, SOL_SOCKET, SO_OOBINLINE>;
+
+
+/**
+ * Determines whether the validation of endpoints used for binding a
+ * socket should allow the reuse of local endpoints, if supported by
+ * protocol.
+ */
+using reuse_address = socket_option<bool, SOL_SOCKET, SO_REUSEADDR>;
+
+
+/**
+ * Determines whether the validation of ports used for binding a
+ * socket should allow the reuse of local port, if supported by
+ * protocol.
+ */
+using reuse_port = socket_option<bool, SOL_SOCKET, __bits::reuse_port>;
+
+
+/**
+ * Specify the size of the receive buffer associated with socket.
+ */
+using receive_buffer_size = socket_option<int, SOL_SOCKET, SO_RCVBUF>;
+
+
+/**
+ * Specifies the minimum number of bytes to process for socket input
+ * operations.
+ */
+using receive_low_watermark = socket_option<int, SOL_SOCKET, SO_RCVLOWAT>;
+
+
+/**
+ * Specify the size of the send buffer associated with socket.
+ */
+using send_buffer_size = socket_option<int, SOL_SOCKET, SO_SNDBUF>;
+
+
+/**
+ * Specifies the minimum number of bytes to process for socket output
+ * operations.
+ */
+using send_low_watermark = socket_option<int, SOL_SOCKET, SO_SNDLOWAT>;
+
+
+/**
+ * Controls behaviour when a socket is closed and unsent data is present.
+ */
+struct linger: socket_option<::linger, SOL_SOCKET, SO_LINGER>
+{
+	linger () noexcept = default;
+
+
+	/**
+	 * Construct linger option with enabled() == \a e and timeout() == \a t
+	 */
+	linger (bool e, const std::chrono::seconds &t) noexcept
+	{
+		enabled(e);
+		timeout(t);
+	}
+
+
+	/**
+	 * \returns true if lingering is enabled
+	 */
+	bool enabled () const noexcept
+	{
+		return value_.l_onoff;
+	}
+
+
+	/**
+	 * Sets whether lingering is enabled
+	 */
+	void enabled (bool e) noexcept
+	{
+		value_.l_onoff = e;
+	}
+
+
+	/**
+	 * \returns lingering timeout in seconds
+	 */
+	std::chrono::seconds timeout () const noexcept
+	{
+		return std::chrono::seconds{value_.l_linger};
+	}
+
+
+	/**
+	 * Sets lingering timeout in seconds
+	 */
+	void timeout (const std::chrono::seconds &t) noexcept
+	{
+		value_.l_linger = static_cast<decltype(value_.l_linger)>(t.count());
+	}
+};
+
+
+/**
+ * Timeout for blocking receive calls if there is no incoming data.
+ */
+struct receive_timeout: socket_option<__bits::timeval, SOL_SOCKET, SO_RCVTIMEO>
+{
+	receive_timeout () noexcept = default;
+
+
+	/**
+	 * Construct receive_timeout option with timeout() == \a t
+	 */
+	receive_timeout (const std::chrono::milliseconds &t) noexcept
+	{
+		timeout(t);
+	}
+
+
+	/**
+	 * \returns receive timeout in milliseconds
+	 */
+	std::chrono::milliseconds timeout () const noexcept
+	{
+		return __bits::to_chrono_ms(value_);
+	}
+
+
+	/**
+	 * Sets receive timeout in milliseconds
+	 */
+	void timeout (const std::chrono::milliseconds &t) noexcept
+	{
+		__bits::from_chrono_ms(value_, t);
+	}
+};
+
+
+/**
+ * Timeout for blocking send calls if there is no room to copy outgoing data.
+ */
+struct send_timeout: socket_option<__bits::timeval, SOL_SOCKET, SO_SNDTIMEO>
+{
+	send_timeout () noexcept = default;
+
+
+	/**
+	 * Construct send_timeout option with timeout() == \a t
+	 */
+	send_timeout (const std::chrono::milliseconds &t) noexcept
+	{
+		timeout(t);
+	}
+
+
+	/**
+	 * \returns send timeout in milliseconds
+	 */
+	std::chrono::milliseconds timeout () const noexcept
+	{
+		return __bits::to_chrono_ms(value_);
+	}
+
+
+	/**
+	 * Set send timeout in milliseconds
+	 */
+	void timeout (const std::chrono::milliseconds &t) noexcept
+	{
+		__bits::from_chrono_ms(value_, t);
+	}
+};
+
+
+/// \}
+
+
+} // namespace net
+
+
+__pal_end

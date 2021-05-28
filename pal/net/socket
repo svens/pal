@@ -6,3 +6,4 @@
  */
 
 #include <pal/net/socket_base>
+#include <pal/net/socket_option>
