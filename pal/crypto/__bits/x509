@@ -13,8 +13,6 @@
 #elif __pal_os_windows
 	#include <pal/__bits/platform_sdk>
 	#include <wincrypt.h>
-	#pragma comment(lib, "crypt32")
-	#pragma comment(lib, "ncrypt")
 #endif
 
 

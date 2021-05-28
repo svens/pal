@@ -37,7 +37,7 @@ if(pal_test OR pal_bench)
         set(pal_libs WITH_LIBS ${OPENSSL_CRYPTO_LIBRARY} Threads::Threads)
     elseif(${CMAKE_SYSTEM_NAME} STREQUAL "Windows")
         # Windows
-        set(pal_libs WITH_LIBS)
+        set(pal_libs WITH_LIBS bcrypt crypt32 ncrypt ntdll ws2_32)
     endif()
 endif()
 

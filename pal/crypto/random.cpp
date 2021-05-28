@@ -8,7 +8,6 @@
 	#include <CommonCrypto/CommonRandom.h>
 #elif __pal_os_windows
 	#include <bcrypt.h>
-	#pragma comment(lib, "bcrypt")
 #endif
 
 

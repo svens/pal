@@ -14,7 +14,6 @@
 	#include <pal/__bits/platform_sdk>
 	#include <bcrypt.h>
 	#include <algorithm>
-	#pragma comment(lib, "bcrypt")
 #endif
 
 

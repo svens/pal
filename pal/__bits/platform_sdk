@@ -20,6 +20,5 @@
 		#undef WIN32_NO_STATUS
 		#include <winternl.h>
 		#include <ntstatus.h>
-		#pragma comment(lib, "ntdll")
 	#endif
 #endif
