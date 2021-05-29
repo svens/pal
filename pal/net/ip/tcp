@@ -1,0 +1,96 @@
+#pragma once // -*- C++ -*-
+
+/**
+ * \file pal/net/ip/tcp
+ * TCP stream-oriented protocol
+ */
+
+#include <pal/__bits/lib>
+#include <pal/net/basic_stream_socket>
+
+
+__pal_begin
+
+
+namespace net::ip {
+
+
+/**
+ * Encapsulate types and constants for TCP sockets.
+ */
+class tcp
+{
+public:
+
+	/// TCP stream socket
+	using socket = basic_stream_socket<tcp>;
+
+	tcp () = delete;
+
+	/// TCP/IPv4 internet protocol
+	static constexpr tcp v4 () noexcept
+	{
+		return tcp{AF_INET};
+	}
+
+	/// TCP/IPv6 internet protocol
+	static constexpr tcp v6 () noexcept
+	{
+		return tcp{AF_INET6};
+	}
+
+	/// Return value suitable passing as domain argument for socket(2)
+	constexpr int family () const noexcept
+	{
+		return family_;
+	}
+
+	/// Return value suitable passing as type argument for socket(2)
+	constexpr int type () const noexcept
+	{
+		return SOCK_STREAM;
+	}
+
+	/// Return value suitable passing as protocol argument for socket(2)
+	constexpr int protocol () const noexcept
+	{
+		return IPPROTO_TCP;
+	}
+
+
+	/**
+	 * \ingroup socket_option
+	 * Determines whether a TCP socket will avoid coalescing of small
+	 * segments (i.e. disable Nagle's algorithm)
+	 */
+	using no_delay = socket_option<bool, IPPROTO_TCP, TCP_NODELAY>;
+
+
+private:
+
+	int family_;
+
+	constexpr explicit tcp (int family)
+		: family_{family}
+	{ }
+};
+
+
+/// Return true if \a a == \a b
+constexpr bool operator== (const tcp &a, const tcp &b) noexcept
+{
+	return a.family() == b.family();
+}
+
+
+/// Return true if \a a != \a b
+constexpr bool operator!= (const tcp &a, const tcp &b) noexcept
+{
+	return !(a == b);
+}
+
+
+} // namespace net::ip
+
+
+__pal_end

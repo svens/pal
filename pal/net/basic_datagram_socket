@@ -1,0 +1,61 @@
+#pragma once // -*- C++ -*-
+
+/**
+ * \file pal/net/basic_datagram_socket
+ * Generic datagram-oriented socket
+ */
+
+#include <pal/__bits/lib>
+#include <pal/net/basic_socket>
+
+
+__pal_begin
+
+
+namespace net {
+
+
+/**
+ * Datagram socket that can be used to send and receive discrete messages of
+ * fixed maximum length.
+ */
+template <typename Protocol>
+class basic_datagram_socket: public basic_socket<Protocol>
+{
+public:
+
+	/// Socket protocol
+	using typename basic_socket<Protocol>::protocol_type;
+
+
+private:
+
+	using basic_socket<Protocol>::basic_socket;
+
+	template <typename P>
+	friend result<basic_datagram_socket<P>> make_datagram_socket (const P &protocol) noexcept;
+};
+
+
+/**
+ * Create new datagram socket of \a protocol.
+ */
+template <typename Protocol>
+result<basic_datagram_socket<Protocol>> make_datagram_socket (const Protocol &protocol) noexcept
+{
+	basic_datagram_socket<Protocol> socket;
+	if (auto r = socket.open(protocol))
+	{
+		return socket;
+	}
+	else
+	{
+		return unexpected{r.error()};
+	}
+}
+
+
+} // namespace net
+
+
+__pal_end

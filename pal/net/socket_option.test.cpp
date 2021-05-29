@@ -5,10 +5,17 @@
 namespace {
 
 
+using namespace pal_test;
 using namespace std::chrono_literals;
 
 
-TEMPLATE_LIST_TEST_CASE("net/socket_option", "", pal_test::protocol_types)
+TEMPLATE_TEST_CASE("net/socket_option", "",
+	udp_v4,
+	tcp_v4,
+	udp_v6,
+	tcp_v6,
+	udp_v6_only,
+	tcp_v6_only)
 {
 	SECTION("int")
 	{

@@ -1,0 +1,9 @@
+#pragma once // -*- C++ -*-
+
+/**
+ * \file pal/net/internet
+ * Convenience header including all internet protocol related headers
+ */
+
+#include <pal/net/ip/tcp>
+#include <pal/net/ip/udp>

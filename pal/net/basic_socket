@@ -1,0 +1,122 @@
+#pragma once // -*- C++ -*-
+
+/**
+ * \file pal/net/basic_socket
+ * Generic socket base class
+ */
+
+#include <pal/__bits/lib>
+#include <pal/net/socket_base>
+#include <pal/assert>
+
+
+__pal_begin
+
+
+namespace net {
+
+
+/**
+ * Base for basic_datagram_socket<Protocol> and basic_stream_socket<Protocol>
+ * classes. It provides functionality common for both types of sockets.
+ */
+template <typename Protocol>
+class basic_socket: public socket_base
+{
+public:
+
+	/// Socket protocol
+	using protocol_type = Protocol;
+
+
+	/**
+	 * \returns true if this socket was opened by previous call to open()
+	 * or assign().
+	 */
+	bool is_open () const noexcept
+	{
+		return socket_.is_open();
+	}
+
+
+	/**
+	 * Return native socket handle.
+	 */
+	native_handle_type native_handle () const noexcept
+	{
+		return socket_.handle();
+	}
+
+
+	/**
+	 * Return native_handle(), setting internal handle to invalid value.
+	 */
+	native_handle_type release () noexcept
+	{
+		return socket_.release();
+	}
+
+
+	/**
+	 * Create new socket instance of \a protocol. It is undefined
+	 * behaviour to open already opened socket.
+	 */
+	result<void> open (const protocol_type &protocol) noexcept(assert_noexcept)
+	{
+		pal_assert(!is_open());
+		if (auto s = socket_.open(protocol.family(), protocol.type(), protocol.protocol()))
+		{
+			socket_ = std::move(*s);
+			return {};
+		}
+		else
+		{
+			return unexpected{s.error()};
+		}
+	}
+
+
+	/**
+	 * Set new socket \a handle. If this socket is already opened, it is
+	 * closed before assignment.
+	 */
+	result<void> assign (const protocol_type &protocol, native_handle_type handle) noexcept(assert_noexcept)
+	{
+		if (handle != -1)
+		{
+			return socket_.assign(
+				protocol.family(),
+				protocol.type(),
+				protocol.protocol(),
+				handle
+			);
+		}
+		else if (socket_.is_open())
+		{
+			return socket_.close();
+		}
+		return {};
+	}
+
+
+	/**
+	 * Close socket and release associated resources.
+	 * TODO: document pending asynchronous operations
+	 */
+	result<void> close () noexcept(assert_noexcept)
+	{
+		pal_assert(is_open());
+		return socket_.close();
+	}
+
+
+protected:
+
+	__bits::socket socket_{};
+};
+
+
+} // namespace net
+
+
+__pal_end

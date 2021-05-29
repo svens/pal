@@ -1,38 +1,58 @@
 #pragma once // -*- C++ -*-
 
 #include <pal/test>
+#include <pal/net/socket>
+#include <pal/net/internet>
 #include <type_traits>
 
+#if __pal_os_linux || __pal_os_macos
+	#include <unistd.h>
+#endif
 
 namespace pal_test {
 
 
-struct tcp_v4
+struct handle_guard
 {
-	static constexpr auto protocol_v = 1;
+	pal::net::socket_base::native_handle_type handle;
+
+	handle_guard (pal::net::socket_base::native_handle_type handle) noexcept
+		: handle{handle}
+	{ }
+
+	~handle_guard () noexcept
+	{
+		if (handle != -1)
+		{
+			#if __pal_os_linux || __pal_os_macos
+				(void)::close(handle);
+			#elif __pal_os_windows
+				(void)::closesocket(handle);
+			#endif
+		}
+	}
 };
 
 
 struct udp_v4
 {
-	static constexpr auto protocol_v = 2;
-};
+	static constexpr auto protocol_v = pal::net::ip::udp::v4();
 
-
-struct tcp_v6
-{
-	static constexpr auto protocol_v = 3;
+	static auto make_socket ()
+	{
+		return pal::net::make_datagram_socket(protocol_v);
+	}
 };
 
 
 struct udp_v6
 {
-	static constexpr auto protocol_v = 4;
-};
+	static constexpr auto protocol_v = pal::net::ip::udp::v6();
 
-
-struct tcp_v6_only: tcp_v6
-{
+	static auto make_socket ()
+	{
+		return pal::net::make_datagram_socket(protocol_v);
+	}
 };
 
 
@@ -41,17 +61,54 @@ struct udp_v6_only: udp_v6
 };
 
 
-using protocol_types = std::tuple<tcp_v4, udp_v4, tcp_v6, udp_v6, tcp_v6_only, udp_v6_only>;
-using stream_protocol_types = std::tuple<tcp_v4, tcp_v6, tcp_v6_only>;
-using datagram_protocol_types = std::tuple<udp_v4, udp_v6, udp_v6_only>;
+struct tcp_v4
+{
+	static constexpr auto protocol_v = pal::net::ip::tcp::v4();
+
+	static auto make_socket ()
+	{
+		return pal::net::make_stream_socket(protocol_v);
+	}
+};
 
 
-template <typename T>
-constexpr bool is_tcp_v = false
-	|| std::is_same_v<T, tcp_v4>
-	|| std::is_same_v<T, tcp_v6>
-	|| std::is_same_v<T, tcp_v6_only>
-;
+struct tcp_v6
+{
+	static constexpr auto protocol_v = pal::net::ip::tcp::v6();
+
+	static auto make_socket ()
+	{
+		return pal::net::make_stream_socket(protocol_v);
+	}
+};
+
+
+struct tcp_v6_only: tcp_v6
+{
+};
+
+
+struct invalid_protocol
+{
+	using socket = pal::net::basic_socket<invalid_protocol>;
+
+	static constexpr int invalid_value = (std::numeric_limits<int>::max)();
+
+	constexpr int family () const noexcept
+	{
+		return invalid_value;
+	}
+
+	constexpr int type () const noexcept
+	{
+		return invalid_value;
+	}
+
+	constexpr int protocol () const noexcept
+	{
+		return invalid_value;
+	}
+};
 
 
 template <typename T>
@@ -63,18 +120,26 @@ constexpr bool is_udp_v = false
 
 
 template <typename T>
-constexpr bool is_v4_v = false
+constexpr bool is_tcp_v = false
 	|| std::is_same_v<T, tcp_v4>
+	|| std::is_same_v<T, tcp_v6>
+	|| std::is_same_v<T, tcp_v6_only>
+;
+
+
+template <typename T>
+constexpr bool is_v4_v = false
 	|| std::is_same_v<T, udp_v4>
+	|| std::is_same_v<T, tcp_v4>
 ;
 
 
 template <typename T>
 constexpr bool is_v6_v = false
-	|| std::is_same_v<T, tcp_v6>
 	|| std::is_same_v<T, udp_v6>
-	|| std::is_same_v<T, tcp_v6_only>
 	|| std::is_same_v<T, udp_v6_only>
+	|| std::is_same_v<T, tcp_v6>
+	|| std::is_same_v<T, tcp_v6_only>
 ;
 
 

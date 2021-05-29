@@ -165,10 +165,30 @@ enum class wait_type: int
 struct socket
 {
 	struct impl_type;
-	std::unique_ptr<impl_type> impl;
+	using impl_ptr = std::unique_ptr<impl_type>;
+	impl_ptr impl;
 
 	socket () noexcept;
+	socket (impl_ptr impl) noexcept;
+
+	socket (socket &&) noexcept;
+	socket &operator= (socket &&) noexcept;
 	~socket () noexcept;
+
+	socket (const socket &) = delete;
+	socket &operator= (const socket &) = delete;
+
+	bool is_open () const noexcept
+	{
+		return impl.get() != nullptr;
+	}
+
+	native_socket handle () const noexcept;
+	native_socket release () noexcept;
+
+	static result<socket> open (int domain, int type, int protocol) noexcept;
+	result<void> assign (int domain, int type, int protocol, native_socket handle) noexcept;
+	result<void> close () noexcept;
 };
 
 

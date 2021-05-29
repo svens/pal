@@ -1,0 +1,61 @@
+#pragma once // -*- C++ -*-
+
+/**
+ * \file pal/net/basic_stream_socket
+ * Generic stream-oriented socket
+ */
+
+#include <pal/__bits/lib>
+#include <pal/net/basic_socket>
+
+
+__pal_begin
+
+
+namespace net {
+
+
+/**
+ * Stream socket that can be used to exchange data with peer over a sequenced,
+ * reliable, bidirectional connection-oriented byte stream.
+ */
+template <typename Protocol>
+class basic_stream_socket: public basic_socket<Protocol>
+{
+public:
+
+	/// Socket protocol
+	using typename basic_socket<Protocol>::protocol_type;
+
+
+private:
+
+	using basic_socket<Protocol>::basic_socket;
+
+	template <typename P>
+	friend result<basic_stream_socket<P>> make_datagram_socket (const P &protocol) noexcept;
+};
+
+
+/**
+ * Create new stream socket of \a protocol.
+ */
+template <typename Protocol>
+result<basic_stream_socket<Protocol>> make_stream_socket (const Protocol &protocol) noexcept
+{
+	basic_stream_socket<Protocol> socket;
+	if (auto r = socket.open(protocol))
+	{
+		return socket;
+	}
+	else
+	{
+		return unexpected{r.error()};
+	}
+}
+
+
+} // namespace net
+
+
+__pal_end
