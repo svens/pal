@@ -41,7 +41,8 @@ private:
  * Create new stream socket of \a protocol.
  */
 template <typename Protocol>
-result<basic_stream_socket<Protocol>> make_stream_socket (const Protocol &protocol) noexcept
+auto make_stream_socket (const Protocol &protocol) noexcept
+	-> result<basic_stream_socket<Protocol>>
 {
 	basic_stream_socket<Protocol> socket;
 	if (auto r = socket.open(protocol))

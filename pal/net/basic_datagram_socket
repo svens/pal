@@ -41,7 +41,8 @@ private:
  * Create new datagram socket of \a protocol.
  */
 template <typename Protocol>
-result<basic_datagram_socket<Protocol>> make_datagram_socket (const Protocol &protocol) noexcept
+auto make_datagram_socket (const Protocol &protocol) noexcept
+	-> result<basic_datagram_socket<Protocol>>
 {
 	basic_datagram_socket<Protocol> socket;
 	if (auto r = socket.open(protocol))

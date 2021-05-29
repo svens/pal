@@ -6,6 +6,7 @@
  */
 
 #include <pal/__bits/lib>
+#include <pal/net/basic_socket_acceptor>
 #include <pal/net/basic_stream_socket>
 
 
@@ -24,6 +25,9 @@ public:
 
 	/// TCP stream socket
 	using socket = basic_stream_socket<tcp>;
+
+	/// TCP socket acceptor
+	using acceptor = basic_socket_acceptor<tcp>;
 
 	tcp () = delete;
 

@@ -1,0 +1,146 @@
+#pragma once // -*- C++ -*-
+
+/**
+ * \file pal/net/basic_socket_acceptor
+ * Incoming socket connect requests acceptor
+ */
+
+#include <pal/__bits/lib>
+#include <pal/net/socket_base>
+#include <pal/assert>
+
+
+__pal_begin
+
+
+namespace net {
+
+
+/**
+ * Incoming socket connect requests listener and acceptor
+ */
+template <typename AcceptableProtocol>
+class basic_socket_acceptor: public socket_base
+{
+public:
+
+	/// Accepted sockets' protocol type
+	using protocol_type = AcceptableProtocol;
+
+	/// Protocol-specific socket type
+	using socket_type = typename AcceptableProtocol::socket;
+
+
+	/**
+	 * \returns true if this acceptor was opened by previous call to open()
+	 * or assign().
+	 */
+	bool is_open () const noexcept
+	{
+		return acceptor_.is_open();
+	}
+
+
+	/**
+	 * Return native acceptor handle.
+	 */
+	native_handle_type native_handle () const noexcept
+	{
+		return acceptor_.handle();
+	}
+
+
+	/**
+	 * Return native_handle(), setting internal handle to invalid value.
+	 */
+	native_handle_type release () noexcept
+	{
+		return acceptor_.release();
+	}
+
+
+	/**
+	 * Create new acceptor instance of \a protocol. It is undefined
+	 * behaviour to open already opened acceptor.
+	 */
+	result<void> open (const protocol_type &protocol) noexcept(assert_noexcept)
+	{
+		pal_assert(!is_open());
+		if (auto s = acceptor_.open(protocol.family(), protocol.type(), protocol.protocol()))
+		{
+			acceptor_ = std::move(*s);
+			return {};
+		}
+		else
+		{
+			return unexpected{s.error()};
+		}
+	}
+
+
+	/**
+	 * Set new acceptor \a handle. If this acceptor is already opened, it
+	 * is closed before assignment.
+	 */
+	result<void> assign (const protocol_type &protocol, native_handle_type handle) noexcept(assert_noexcept)
+	{
+		if (handle != -1)
+		{
+			return acceptor_.assign(
+				protocol.family(),
+				protocol.type(),
+				protocol.protocol(),
+				handle
+			);
+		}
+		else if (acceptor_.is_open())
+		{
+			return acceptor_.close();
+		}
+		return {};
+	}
+
+
+	/**
+	 * Close acceptor and release associated resources.
+	 * TODO: document pending asynchronous operations
+	 */
+	result<void> close () noexcept(assert_noexcept)
+	{
+		pal_assert(is_open());
+		return acceptor_.close();
+	}
+
+
+protected:
+
+	__bits::socket acceptor_{};
+
+	template <typename P>
+	friend result<basic_socket_acceptor<P>> make_socket_acceptor (const P &protocol) noexcept;
+};
+
+
+/**
+ * Create new socket acceptor for \a AcceptableProtocol \a protocol
+ */
+template <typename AcceptableProtocol>
+auto make_socket_acceptor (const AcceptableProtocol &protocol) noexcept
+	-> result<basic_socket_acceptor<AcceptableProtocol>>
+{
+	basic_socket_acceptor<AcceptableProtocol> acceptor;
+	if (auto r = acceptor.open(protocol))
+	{
+		return acceptor;
+	}
+	else
+	{
+		return unexpected{r.error()};
+	}
+}
+
+
+} // namespace net
+
+
+__pal_end

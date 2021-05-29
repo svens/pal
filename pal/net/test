@@ -69,6 +69,11 @@ struct tcp_v4
 	{
 		return pal::net::make_stream_socket(protocol_v);
 	}
+
+	static auto make_acceptor ()
+	{
+		return pal::net::make_socket_acceptor(protocol_v);
+	}
 };
 
 
@@ -79,6 +84,11 @@ struct tcp_v6
 	static auto make_socket ()
 	{
 		return pal::net::make_stream_socket(protocol_v);
+	}
+
+	static auto make_acceptor ()
+	{
+		return pal::net::make_socket_acceptor(protocol_v);
 	}
 };
 

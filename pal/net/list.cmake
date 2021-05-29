@@ -8,6 +8,7 @@ list(APPEND pal_sources
     # socket
     pal/net/basic_datagram_socket
     pal/net/basic_socket
+    pal/net/basic_socket_acceptor
     pal/net/basic_stream_socket
     pal/net/socket
     pal/net/socket_base
@@ -22,6 +23,7 @@ list(APPEND pal_sources
 list(APPEND pal_test_sources
     pal/net/test
     pal/net/basic_socket.test.cpp
+    pal/net/basic_socket_acceptor.test.cpp
     pal/net/socket_base.test.cpp
     pal/net/socket_option.test.cpp
 )
