@@ -14,6 +14,7 @@ list(APPEND pal_sources
     # internet
     pal/net/ip/__bits/inet
     pal/net/internet
+    pal/net/ip/address
     pal/net/ip/address_v4
     pal/net/ip/address_v6
     pal/net/ip/tcp
@@ -30,6 +31,7 @@ list(APPEND pal_test_sources
     pal/net/socket_option.test.cpp
 
     # internet
+    pal/net/ip/address.test.cpp
     pal/net/ip/address_v4.test.cpp
     pal/net/ip/address_v6.test.cpp
 )
