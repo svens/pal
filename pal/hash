@@ -6,7 +6,7 @@
  */
 
 #include <pal/__bits/lib>
-#include <span>
+#include <iterator>
 
 
 __pal_begin
@@ -24,9 +24,10 @@ constexpr uint64_t fnv_1a_64_init = 0xcbf29ce484222325ULL;
  *
  * See ThirdPartySources.txt for copyright notices.
  */
-constexpr uint64_t fnv_1a_64 (const uint8_t *first, const uint8_t *last,
-	uint64_t h = fnv_1a_64_init) noexcept
+template <typename It>
+constexpr uint64_t fnv_1a_64 (It first, It last, uint64_t h = fnv_1a_64_init) noexcept
 {
+	static_assert(sizeof(decltype(*first)) == sizeof(char));
 	while (first != last)
 	{
 		h ^= *first++;
@@ -44,12 +45,10 @@ constexpr uint64_t fnv_1a_64 (const uint8_t *first, const uint8_t *last,
  *
  * See ThirdPartySources.txt for copyright notices.
  */
-template <typename T, size_t Extent>
-inline uint64_t fnv_1a_64 (std::span<T, Extent> span,
-	uint64_t h = fnv_1a_64_init) noexcept
+template <typename Span>
+constexpr auto fnv_1a_64 (const Span &span, uint64_t h = fnv_1a_64_init) noexcept
 {
-	auto p = reinterpret_cast<const uint8_t *>(span.data());
-	return fnv_1a_64(p, p + span.size_bytes(), h);
+	return fnv_1a_64(std::cbegin(span), std::cend(span), h);
 }
 
 
