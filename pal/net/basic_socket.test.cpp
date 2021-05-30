@@ -1,3 +1,4 @@
+#include <pal/net/basic_socket>
 #include <pal/net/test>
 
 

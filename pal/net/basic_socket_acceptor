@@ -82,7 +82,7 @@ public:
 	 * Set new acceptor \a handle. If this acceptor is already opened, it
 	 * is closed before assignment.
 	 */
-	result<void> assign (const protocol_type &protocol, native_handle_type handle) noexcept(assert_noexcept)
+	result<void> assign (const protocol_type &protocol, native_handle_type handle) noexcept
 	{
 		if (handle != -1)
 		{
@@ -112,7 +112,7 @@ public:
 	}
 
 
-protected:
+private:
 
 	__bits::socket acceptor_{};
 

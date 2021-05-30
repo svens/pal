@@ -1,11 +1,8 @@
 list(APPEND pal_sources
-    # internal
+    # socket
     pal/net/__bits/socket
     pal/net/__bits/socket_posix.cpp
     pal/net/__bits/socket_windows.cpp
-    pal/net/ip/__bits/inet
-
-    # socket
     pal/net/basic_datagram_socket
     pal/net/basic_socket
     pal/net/basic_socket_acceptor
@@ -15,15 +12,22 @@ list(APPEND pal_sources
     pal/net/socket_option
 
     # internet
+    pal/net/ip/__bits/inet
     pal/net/internet
+    pal/net/ip/address_v4
     pal/net/ip/tcp
     pal/net/ip/udp
 )
 
 list(APPEND pal_test_sources
     pal/net/test
+
+    # socket
     pal/net/basic_socket.test.cpp
     pal/net/basic_socket_acceptor.test.cpp
     pal/net/socket_base.test.cpp
     pal/net/socket_option.test.cpp
+
+    # internet
+    pal/net/ip/address_v4.test.cpp
 )

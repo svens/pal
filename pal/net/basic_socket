@@ -80,7 +80,7 @@ public:
 	 * Set new socket \a handle. If this socket is already opened, it is
 	 * closed before assignment.
 	 */
-	result<void> assign (const protocol_type &protocol, native_handle_type handle) noexcept(assert_noexcept)
+	result<void> assign (const protocol_type &protocol, native_handle_type handle) noexcept
 	{
 		if (handle != -1)
 		{

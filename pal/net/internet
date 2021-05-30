@@ -5,5 +5,6 @@
  * Convenience header including all internet protocol related headers
  */
 
+#include <pal/net/ip/address_v4>
 #include <pal/net/ip/tcp>
 #include <pal/net/ip/udp>
