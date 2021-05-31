@@ -160,6 +160,7 @@ private:
 	bytes_type bytes_;
 
 	friend result<address_v6> make_address_v6 (const char *) noexcept;
+	template <typename Protocol> friend class basic_endpoint;
 };
 
 /// Return true if \a a == \a b

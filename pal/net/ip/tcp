@@ -8,6 +8,7 @@
 #include <pal/__bits/lib>
 #include <pal/net/basic_socket_acceptor>
 #include <pal/net/basic_stream_socket>
+#include <pal/net/ip/basic_endpoint>
 
 
 __pal_begin
@@ -22,6 +23,9 @@ namespace net::ip {
 class tcp
 {
 public:
+
+	/// TCP socket endpoint
+	using endpoint = basic_endpoint<tcp>;
 
 	/// TCP stream socket
 	using socket = basic_stream_socket<tcp>;
@@ -77,6 +81,8 @@ private:
 	constexpr explicit tcp (int family)
 		: family_{family}
 	{ }
+
+	friend class basic_endpoint<tcp>;
 };
 
 

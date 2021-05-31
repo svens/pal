@@ -168,6 +168,8 @@ private:
 		address_v4 v4_;
 		address_v6 v6_;
 	};
+
+	template <typename Protocol> friend class basic_endpoint;
 };
 
 /// Return true if \a a == \a b
@@ -246,7 +248,6 @@ inline result<address> make_address (const std::string_view &text) noexcept
 	}
 	return make_unexpected(std::errc::invalid_argument);
 }
-
 
 
 } // namespace net::ip
