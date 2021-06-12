@@ -27,6 +27,9 @@ public:
 	/// Accepted sockets' protocol type
 	using protocol_type = AcceptableProtocol;
 
+	/// Protocol-specific endpoint type
+	using endpoint_type = typename AcceptableProtocol::endpoint;
+
 	/// Protocol-specific socket type
 	using socket_type = typename AcceptableProtocol::socket;
 
@@ -38,6 +41,15 @@ public:
 	bool is_open () const noexcept
 	{
 		return acceptor_.is_open();
+	}
+
+
+	/**
+	 * Returns socket protocol (has valid value only if is_open()).
+	 */
+	protocol_type protocol () const noexcept
+	{
+		return protocol_type{acceptor_.family()};
 	}
 
 
@@ -112,12 +124,96 @@ public:
 	}
 
 
+	/**
+	 * Return locally bound endpoint associated with this socket
+	 */
+	result<endpoint_type> local_endpoint () const noexcept
+	{
+		endpoint_type endpoint;
+		auto size = endpoint.capacity();
+		auto r = acceptor_.local_endpoint(endpoint.data(), &size);
+		if (r)
+		{
+			endpoint.resize(size);
+			return endpoint;
+		}
+		return unexpected{r.error()};
+	}
+
+
+	/**
+	 * Bind this socket to local \a endpoint
+	 */
+	result<void> bind (const endpoint_type &endpoint) noexcept
+	{
+		return acceptor_.bind(endpoint.data(), endpoint.size());
+	}
+
+
+	/**
+	 * Mark acceptor as ready to accept connections. \a backlog parameter
+	 * sets the maximum length for the queue of pending connection requests.
+	 */
+	result<void> listen (int backlog = max_listen_connections) noexcept
+	{
+		return acceptor_.listen(backlog);
+	}
+
+
+	/**
+	 * Extract socket from queue of pending connections of this acceptor.
+	 * If there are no pending connections, blocks until new arrives.
+	 */
+	result<socket_type> accept () noexcept
+	{
+		return accept(nullptr, nullptr);
+	}
+
+
+	/**
+	 * \copydoc accept()
+	 * Store newly accepted connections' remote endpoint into \a endpoint.
+	 */
+	result<socket_type> accept (endpoint_type &endpoint) noexcept
+	{
+		auto size = endpoint.capacity();
+		if (auto socket = accept(endpoint.data(), &size))
+		{
+			(void)endpoint.resize(size);
+			return socket;
+		}
+		else
+		{
+			return unexpected{socket.error()};
+		}
+	}
+
+
 private:
 
 	__bits::socket acceptor_{};
 
-	template <typename P>
-	friend result<basic_socket_acceptor<P>> make_socket_acceptor (const P &protocol) noexcept;
+	result<socket_type> accept (void *endpoint, size_t *endpoint_size) noexcept
+	{
+		if (auto handle = acceptor_.accept(endpoint, endpoint_size))
+		{
+			__bits::handle_guard guard{*handle};
+			socket_type socket;
+			if (auto assign = socket.assign(protocol(), guard.handle))
+			{
+				guard.release();
+				return socket;
+			}
+			else
+			{
+				return unexpected{assign.error()};
+			}
+		}
+		else
+		{
+			return unexpected{handle.error()};
+		}
+	}
 };
 
 
@@ -129,13 +225,13 @@ auto make_socket_acceptor (const AcceptableProtocol &protocol) noexcept
 	-> result<basic_socket_acceptor<AcceptableProtocol>>
 {
 	basic_socket_acceptor<AcceptableProtocol> acceptor;
-	if (auto r = acceptor.open(protocol))
+	if (auto open = acceptor.open(protocol))
 	{
 		return acceptor;
 	}
 	else
 	{
-		return unexpected{r.error()};
+		return unexpected{open.error()};
 	}
 }
 

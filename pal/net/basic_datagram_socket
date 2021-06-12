@@ -31,9 +31,6 @@ public:
 private:
 
 	using basic_socket<Protocol>::basic_socket;
-
-	template <typename P>
-	friend result<basic_datagram_socket<P>> make_datagram_socket (const P &protocol) noexcept;
 };
 
 
@@ -45,13 +42,13 @@ auto make_datagram_socket (const Protocol &protocol) noexcept
 	-> result<basic_datagram_socket<Protocol>>
 {
 	basic_datagram_socket<Protocol> socket;
-	if (auto r = socket.open(protocol))
+	if (auto open = socket.open(protocol))
 	{
 		return socket;
 	}
 	else
 	{
-		return unexpected{r.error()};
+		return unexpected{open.error()};
 	}
 }
 

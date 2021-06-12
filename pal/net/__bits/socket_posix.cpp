@@ -38,6 +38,14 @@ void init_handle (native_socket handle) noexcept
 	}
 }
 
+unexpected<std::error_code> sys_error (int e = errno) noexcept
+{
+	return unexpected<std::error_code>{std::in_place, e, std::generic_category()};
+}
+
+} // namespace
+
+
 result<void> close_handle (native_socket handle) noexcept
 {
 	for (;;)
@@ -53,19 +61,15 @@ result<void> close_handle (native_socket handle) noexcept
 	}
 }
 
-} // namespace
-
 
 struct socket::impl_type
 {
 	native_socket handle = invalid_native_socket;
+	int family{};
 
 	~impl_type () noexcept
 	{
-		if (handle != invalid_native_socket)
-		{
-			(void)close_handle(handle);
-		}
+		handle_guard{handle};
 	}
 };
 
@@ -85,48 +89,51 @@ socket::socket (impl_ptr impl) noexcept
 { }
 
 
-result<socket> socket::open (int domain, int type, int protocol) noexcept
+result<socket> socket::open (int family, int type, int protocol) noexcept
 {
 	auto errc = std::errc::not_enough_memory;
 	if (auto impl = impl_ptr{new(std::nothrow) impl_type})
 	{
-		impl->handle = ::socket(domain, type, protocol);
+		impl->handle = ::socket(family, type, protocol);
 		if (impl->handle != invalid_native_socket)
 		{
+			impl->family = family;
 			init_handle(impl->handle);
 			return impl;
 		}
 
 		// public API deals with Protocol types/instances, translate
 		// invalid argument(s) into std::errc::protocol_not_supported
+		errc = static_cast<std::errc>(errno);
 		if constexpr (is_linux_build)
 		{
-			if (errno == EINVAL)
+			if (errc == std::errc::invalid_argument)
 			{
-				errno = EPROTONOSUPPORT;
+				errc = std::errc::protocol_not_supported;
 			}
 		}
 		else if constexpr (is_macos_build)
 		{
-			if (errno == EAFNOSUPPORT)
+			if (errc == std::errc::address_family_not_supported)
 			{
-				errno = EPROTONOSUPPORT;
+				errc = std::errc::protocol_not_supported;
 			}
 		}
-		errc = static_cast<std::errc>(errno);
 	}
 	return make_unexpected(errc);
 }
 
 
-result<void> socket::assign (int, int, int, native_socket handle) noexcept
+result<void> socket::assign (int family, int, int, native_socket handle) noexcept
 {
 	if (impl)
 	{
+		impl->family = family;
 		return close_handle(std::exchange(impl->handle, handle));
 	}
 	else if ((impl = impl_ptr{new(std::nothrow) impl_type}))
 	{
+		impl->family = family;
 		impl->handle = handle;
 		return {};
 	}
@@ -146,10 +153,87 @@ native_socket socket::handle () const noexcept
 }
 
 
+int socket::family () const noexcept
+{
+	return impl->family;
+}
+
+
 native_socket socket::release () noexcept
 {
 	auto s = std::move(impl);
 	return std::exchange(s->handle, invalid_native_socket);
+}
+
+
+result<void> socket::bind (const void *endpoint, size_t endpoint_size) noexcept
+{
+	if (::bind(impl->handle, static_cast<const sockaddr *>(endpoint), endpoint_size) == 0)
+	{
+		return {};
+	}
+	return sys_error();
+}
+
+
+result<void> socket::listen (int backlog) noexcept
+{
+	if (::listen(impl->handle, backlog) == 0)
+	{
+		return {};
+	}
+	return sys_error();
+}
+
+
+result<native_socket> socket::accept (void *endpoint, size_t *endpoint_size) noexcept
+{
+	socklen_t size = endpoint_size ? *endpoint_size : 0;
+	auto h = ::accept(impl->handle, static_cast<sockaddr *>(endpoint), &size);
+	if (h > -1)
+	{
+		init_handle(h);
+		if (endpoint_size)
+		{
+			*endpoint_size = size;
+		}
+		return h;
+	}
+	return sys_error();
+}
+
+
+result<void> socket::connect (const void *endpoint, size_t endpoint_size) noexcept
+{
+	if (::connect(impl->handle, static_cast<const sockaddr *>(endpoint), endpoint_size) == 0)
+	{
+		return {};
+	}
+	return sys_error();
+}
+
+
+result<void> socket::local_endpoint (void *endpoint, size_t *endpoint_size) const noexcept
+{
+	auto size = static_cast<socklen_t>(*endpoint_size);
+	if (::getsockname(impl->handle, static_cast<sockaddr *>(endpoint), &size) == 0)
+	{
+		*endpoint_size = size;
+		return {};
+	}
+	return sys_error();
+}
+
+
+result<void> socket::remote_endpoint (void *endpoint, size_t *endpoint_size) const noexcept
+{
+	auto size = static_cast<socklen_t>(*endpoint_size);
+	if (::getpeername(impl->handle, static_cast<sockaddr *>(endpoint), &size) == 0)
+	{
+		*endpoint_size = size;
+		return {};
+	}
+	return sys_error();
 }
 
 

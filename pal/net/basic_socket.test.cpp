@@ -17,6 +17,8 @@ TEMPLATE_TEST_CASE("net/basic_socket", "",
 	tcp_v6_only)
 {
 	using protocol_t = decltype(TestType::protocol_v);
+	using endpoint_t = typename protocol_t::endpoint;
+
 	typename protocol_t::socket s;
 	CHECK_FALSE(s.is_open());
 
@@ -25,6 +27,7 @@ TEMPLATE_TEST_CASE("net/basic_socket", "",
 	s = std::move(*r);
 	REQUIRE(s.is_open());
 	CHECK(s.native_handle() != -1);
+	CHECK(s.protocol() == TestType::protocol_v);
 
 	SECTION("move ctor")
 	{
@@ -38,6 +41,7 @@ TEMPLATE_TEST_CASE("net/basic_socket", "",
 		std::decay_t<decltype(s)> s1;
 		s1 = std::move(s);
 		CHECK(s1.is_open());
+		CHECK(s1.protocol() == TestType::protocol_v);
 		CHECK_FALSE(s.is_open());
 	}
 
@@ -53,6 +57,7 @@ TEMPLATE_TEST_CASE("net/basic_socket", "",
 		REQUIRE_FALSE(s.is_open());
 		REQUIRE(s.open(TestType::protocol_v));
 		CHECK(s.is_open());
+		CHECK(s.protocol() == TestType::protocol_v);
 	}
 
 	SECTION("open already opened")
@@ -78,6 +83,7 @@ TEMPLATE_TEST_CASE("net/basic_socket", "",
 		REQUIRE(s.assign(TestType::protocol_v, new_handle));
 		CHECK(s.native_handle() == new_handle);
 		CHECK(s.native_handle() != old_handle);
+		CHECK(s.protocol() == TestType::protocol_v);
 	}
 
 	SECTION("assign closed")
@@ -87,6 +93,7 @@ TEMPLATE_TEST_CASE("net/basic_socket", "",
 		REQUIRE(s.assign(TestType::protocol_v, new_handle));
 		CHECK(s.native_handle() == new_handle);
 		CHECK(s.native_handle() != guard.handle);
+		CHECK(s.protocol() == TestType::protocol_v);
 	}
 
 	SECTION("assign invalid")
@@ -106,9 +113,9 @@ TEMPLATE_TEST_CASE("net/basic_socket", "",
 	{
 		pal_test::handle_guard guard{s.release()};
 		pal_test::bad_alloc_once x;
-		auto e = s.assign(TestType::protocol_v, guard.handle);
-		REQUIRE_FALSE(e);
-		CHECK(e.error() == std::errc::not_enough_memory);
+		auto assign = s.assign(TestType::protocol_v, guard.handle);
+		REQUIRE_FALSE(assign);
+		CHECK(assign.error() == std::errc::not_enough_memory);
 	}
 
 	SECTION("close")
@@ -120,9 +127,9 @@ TEMPLATE_TEST_CASE("net/basic_socket", "",
 	SECTION("close invalidated")
 	{
 		pal_test::handle_guard{s.native_handle()};
-		auto e = s.close();
-		REQUIRE_FALSE(e);
-		CHECK(e.error() == std::errc::bad_file_descriptor);
+		auto close = s.close();
+		REQUIRE_FALSE(close);
+		CHECK(close.error() == std::errc::bad_file_descriptor);
 	}
 
 	SECTION("close already closed")
@@ -143,6 +150,116 @@ TEMPLATE_TEST_CASE("net/basic_socket", "",
 		r = TestType::make_socket();
 		REQUIRE_FALSE(r);
 		CHECK(r.error() == std::errc::not_enough_memory);
+	}
+
+	SECTION("local_endpoint")
+	{
+		// see SECTION("bind")
+		SUCCEED();
+
+		SECTION("unbound")
+		{
+			auto local_endpoint = s.local_endpoint();
+			REQUIRE(local_endpoint);
+			CHECK(local_endpoint->address().is_v4() == pal_test::is_v4_v<TestType>);
+			CHECK(local_endpoint->address().is_unspecified());
+			CHECK(local_endpoint->port() == 0);
+		}
+
+		SECTION("bad file descriptor")
+		{
+			pal_test::handle_guard{s.native_handle()};
+			auto local_endpoint = s.local_endpoint();
+			REQUIRE_FALSE(local_endpoint);
+			CHECK(local_endpoint.error() == std::errc::bad_file_descriptor);
+		}
+	}
+
+	SECTION("remote_endpoint")
+	{
+		// see SECTION("connect")
+		SUCCEED();
+
+		SECTION("not connected")
+		{
+			auto remote_endpoint = s.remote_endpoint();
+			REQUIRE_FALSE(remote_endpoint);
+			CHECK(remote_endpoint.error() == std::errc::not_connected);
+		}
+
+		SECTION("bad file descriptor")
+		{
+			pal_test::handle_guard{s.native_handle()};
+			auto remote_endpoint = s.remote_endpoint();
+			REQUIRE_FALSE(remote_endpoint);
+			CHECK(remote_endpoint.error() == std::errc::bad_file_descriptor);
+		}
+	}
+
+	SECTION("bind")
+	{
+		endpoint_t endpoint{TestType::loopback_v, 0};
+		REQUIRE(pal_test::bind_next_available_port(s, endpoint));
+		CHECK(s.local_endpoint().value() == endpoint);
+
+		SECTION("address in use")
+		{
+			r = TestType::make_socket();
+			REQUIRE(r);
+			auto bind = r->bind(endpoint);
+			REQUIRE_FALSE(bind);
+			CHECK(bind.error() == std::errc::address_in_use);
+		}
+
+		SECTION("bad file descriptor")
+		{
+			pal_test::handle_guard{s.native_handle()};
+			auto bind = s.bind(endpoint);
+			REQUIRE_FALSE(bind);
+			CHECK(bind.error() == std::errc::bad_file_descriptor);
+		}
+	}
+
+	SECTION("connect")
+	{
+		endpoint_t endpoint{TestType::loopback_v, 0};
+
+		if constexpr (pal_test::is_tcp_v<TestType>)
+		{
+			auto a = TestType::make_acceptor().value();
+			REQUIRE(pal_test::bind_next_available_port(a, endpoint));
+			REQUIRE(a.listen());
+
+			SECTION("success")
+			{
+				auto connect = s.connect(endpoint);
+				REQUIRE(connect);
+				CHECK(s.remote_endpoint().value() == endpoint);
+			}
+
+			SECTION("no listener")
+			{
+				REQUIRE(a.close());
+				auto connect = s.connect(endpoint);
+				REQUIRE_FALSE(connect);
+				CHECK(connect.error() == std::errc::connection_refused);
+			}
+		}
+		else if constexpr (pal_test::is_udp_v<TestType>)
+		{
+			endpoint.port(pal_test::next_port(TestType::protocol_v));
+			auto connect = s.connect(endpoint);
+			REQUIRE(connect);
+			CHECK(s.remote_endpoint().value() == endpoint);
+		}
+
+		SECTION("bad file descriptor")
+		{
+			pal_test::handle_guard{s.native_handle()};
+			auto connect = s.connect(endpoint);
+			REQUIRE_FALSE(connect);
+			CHECK(connect.error() == std::errc::bad_file_descriptor);
+		}
 	}
 }
 

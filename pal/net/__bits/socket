@@ -162,6 +162,32 @@ enum class wait_type: int
 };
 
 
+result<void> close_handle (native_socket handle) noexcept;
+
+
+struct handle_guard
+{
+	native_socket handle;
+
+	handle_guard (native_socket handle) noexcept
+		: handle{handle}
+	{ }
+
+	~handle_guard () noexcept
+	{
+		if (handle != invalid_native_socket)
+		{
+			(void)close_handle(handle);
+		}
+	}
+
+	native_socket release () noexcept
+	{
+		return std::exchange(handle, invalid_native_socket);
+	}
+};
+
+
 struct socket
 {
 	struct impl_type;
@@ -186,9 +212,17 @@ struct socket
 	native_socket handle () const noexcept;
 	native_socket release () noexcept;
 
-	static result<socket> open (int domain, int type, int protocol) noexcept;
-	result<void> assign (int domain, int type, int protocol, native_socket handle) noexcept;
+	int family () const noexcept;
+
+	static result<socket> open (int family, int type, int protocol) noexcept;
+	result<void> assign (int family, int type, int protocol, native_socket handle) noexcept;
 	result<void> close () noexcept;
+	result<void> bind (const void *endpoint, size_t endpoint_size) noexcept;
+	result<void> listen (int backlog) noexcept;
+	result<native_socket> accept (void *endpoint, size_t *endpoint_size) noexcept;
+	result<void> connect (const void *endpoint, size_t endpoint_size) noexcept;
+	result<void> local_endpoint (void *endpoint, size_t *endpoint_size) const noexcept;
+	result<void> remote_endpoint (void *endpoint, size_t *endpoint_size) const noexcept;
 };
 
 

@@ -29,6 +29,10 @@ public:
 	using protocol_type = Protocol;
 
 
+	/// Protocol-specific endpoint type
+	using endpoint_type = typename Protocol::endpoint;
+
+
 	/**
 	 * \returns true if this socket was opened by previous call to open()
 	 * or assign().
@@ -36,6 +40,15 @@ public:
 	bool is_open () const noexcept
 	{
 		return socket_.is_open();
+	}
+
+
+	/**
+	 * Returns socket protocol (has valid value only if is_open()).
+	 */
+	protocol_type protocol () const noexcept
+	{
+		return protocol_type{socket_.family()};
 	}
 
 
@@ -107,6 +120,58 @@ public:
 	{
 		pal_assert(is_open());
 		return socket_.close();
+	}
+
+
+	/**
+	 * Return locally bound endpoint associated with this socket
+	 */
+	result<endpoint_type> local_endpoint () const noexcept
+	{
+		endpoint_type endpoint;
+		auto size = endpoint.capacity();
+		auto r = socket_.local_endpoint(endpoint.data(), &size);
+		if (r)
+		{
+			endpoint.resize(size);
+			return endpoint;
+		}
+		return unexpected{r.error()};
+	}
+
+
+	/**
+	 * Return remote endpoint associated with this socket
+	 */
+	result<endpoint_type> remote_endpoint () const noexcept
+	{
+		endpoint_type endpoint;
+		auto size = endpoint.capacity();
+		auto r = socket_.remote_endpoint(endpoint.data(), &size);
+		if (r)
+		{
+			endpoint.resize(size);
+			return endpoint;
+		}
+		return unexpected{r.error()};
+	}
+
+
+	/**
+	 * Bind this socket to local \a endpoint
+	 */
+	result<void> bind (const endpoint_type &endpoint) noexcept
+	{
+		return socket_.bind(endpoint.data(), endpoint.size());
+	}
+
+
+	/**
+	 * Connect socket to specified remote \a endpoint
+	 */
+	result<void> connect (const endpoint_type &endpoint) noexcept
+	{
+		return socket_.connect(endpoint.data(), endpoint.size());
 	}
 
 

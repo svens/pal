@@ -71,6 +71,7 @@ private:
 	{ }
 
 	friend class basic_endpoint<udp>;
+	friend class basic_socket<udp>;
 };
 
 

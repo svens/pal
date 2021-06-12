@@ -3,6 +3,9 @@
 
 #if __pal_os_windows
 
+#include <algorithm>
+#include <ws2tcpip.h>
+
 
 __pal_begin
 
@@ -126,13 +129,27 @@ void init_handle (native_socket handle, int type) noexcept
 }
 
 
-result<void> close_handle (native_socket handle) noexcept
+bool make_family_specific_any (int family, void *endpoint, int *endpoint_size) noexcept
 {
-	if (::closesocket(handle) == 0)
+	int size = 0;
+	if (family == AF_INET)
 	{
-		return {};
+		size = sizeof(sockaddr_in);
 	}
-	return sys_error();
+	else if (family == AF_INET6)
+	{
+		size = sizeof(sockaddr_in6);
+	}
+
+	if (!size || size > *endpoint_size)
+	{
+		return false;
+	}
+
+	*endpoint_size = size;
+	std::fill_n(static_cast<std::byte *>(endpoint), size, std::byte{});
+	static_cast<sockaddr *>(endpoint)->sa_family = static_cast<sa_family>(family);
+	return true;
 }
 
 
@@ -146,16 +163,24 @@ const result<void> &init () noexcept
 }
 
 
+result<void> close_handle (native_socket handle) noexcept
+{
+	if (::closesocket(handle) == 0)
+	{
+		return {};
+	}
+	return sys_error();
+}
+
+
 struct socket::impl_type
 {
 	native_socket handle = invalid_native_socket;
+	int family;
 
 	~impl_type () noexcept
 	{
-		if (handle != invalid_native_socket)
-		{
-			(void)close_handle(handle);
-		}
+		handle_guard{handle};
 	}
 };
 
@@ -175,14 +200,15 @@ socket::socket (impl_ptr impl) noexcept
 { }
 
 
-result<socket> socket::open (int domain, int type, int protocol) noexcept
+result<socket> socket::open (int family, int type, int protocol) noexcept
 {
 	auto e = ERROR_NOT_ENOUGH_MEMORY;
 	if (auto impl = impl_ptr{new(std::nothrow) impl_type})
 	{
-		impl->handle = ::WSASocketW(domain, type, protocol, nullptr, 0, WSA_FLAG_OVERLAPPED);
+		impl->handle = ::WSASocketW(family, type, protocol, nullptr, 0, WSA_FLAG_OVERLAPPED);
 		if (impl->handle != invalid_native_socket)
 		{
+			impl->family = family;
 			init_handle(impl->handle, type);
 			return impl;
 		}
@@ -199,14 +225,16 @@ result<socket> socket::open (int domain, int type, int protocol) noexcept
 }
 
 
-result<void> socket::assign (int, int, int, native_socket handle) noexcept
+result<void> socket::assign (int family, int, int, native_socket handle) noexcept
 {
 	if (impl)
 	{
+		impl->family = family;
 		return close_handle(std::exchange(impl->handle, handle));
 	}
 	else if ((impl = impl_ptr{new(std::nothrow) impl_type}))
 	{
+		impl->family = family;
 		impl->handle = handle;
 		return {};
 	}
@@ -226,10 +254,133 @@ native_socket socket::handle () const noexcept
 }
 
 
+int socket::family () const noexcept
+{
+	return impl->family;
+}
+
+
 native_socket socket::release () noexcept
 {
 	auto s = std::move(impl);
 	return std::exchange(s->handle, invalid_native_socket);
+}
+
+
+result<void> socket::bind (const void *endpoint, size_t endpoint_size) noexcept
+{
+	if (::bind(impl->handle, static_cast<const sockaddr *>(endpoint), static_cast<int>(endpoint_size)) == 0)
+	{
+		return {};
+	}
+	return sys_error();
+}
+
+
+result<void> socket::listen (int backlog) noexcept
+{
+	int e = 0;
+
+	// Posix: if socket is not bound yet, it is done automatically
+	// Windows: returns error. Align with Posix: bind and retry listen once
+
+	for (auto i = 0;  i < 2;  ++i)
+	{
+		if (::listen(impl->handle, backlog) == 0)
+		{
+			return {};
+		}
+
+		e = ::WSAGetLastError();
+		if (e == WSAEINVAL)
+		{
+			sockaddr_storage ss{};
+			int ss_size = sizeof(ss);
+			if (!make_family_specific_any(impl->family, &ss, &ss_size))
+			{
+				break;
+			}
+			else if (::bind(impl->handle, reinterpret_cast<sockaddr *>(&ss), ss_size) == 0)
+			{
+				continue;
+			}
+		}
+
+		break;
+	}
+
+	return sys_error();
+}
+
+
+result<native_socket> socket::accept (void *endpoint, size_t *endpoint_size) noexcept
+{
+	int size = 0, *size_p = nullptr;
+	if (endpoint_size)
+	{
+		size = static_cast<int>(*endpoint_size);
+		size_p = &size;
+	}
+
+	auto h = ::accept(impl->handle, static_cast<sockaddr *>(endpoint), size_p);
+	if (h != invalid_native_socket)
+	{
+		init_handle(h, SOCK_STREAM);
+		if (endpoint_size)
+		{
+			*endpoint_size = size;
+		}
+		return h;
+	}
+
+	return sys_error();
+}
+
+
+result<void> socket::connect (const void *endpoint, size_t endpoint_size) noexcept
+{
+	if (::connect(impl->handle, static_cast<const sockaddr *>(endpoint), static_cast<int>(endpoint_size)) == 0)
+	{
+		return {};
+	}
+	return sys_error();
+}
+
+
+result<void> socket::local_endpoint (void *endpoint, size_t *endpoint_size) const noexcept
+{
+	auto size = static_cast<int>(*endpoint_size);
+	if (::getsockname(impl->handle, static_cast<sockaddr *>(endpoint), &size) == 0)
+	{
+		*endpoint_size = size;
+		return {};
+	}
+
+	// querying unbound socket name returns error WSAEINVAL
+	// align with Posix API that succeeds with family-specific "any"
+	auto e = ::WSAGetLastError();
+	if (e == WSAEINVAL)
+	{
+		if (make_family_specific_any(impl->family, endpoint, &size))
+		{
+			*endpoint_size = size;
+			return {};
+		}
+	}
+
+	return sys_error(e);
+}
+
+
+result<void> socket::remote_endpoint (void *endpoint, size_t *endpoint_size) const noexcept
+{
+	auto size = static_cast<int>(*endpoint_size);
+	if (::getpeername(impl->handle, static_cast<sockaddr *>(endpoint), &size) == 0)
+	{
+		*endpoint_size = size;
+		return {};
+	}
+	return sys_error();
 }
 
 

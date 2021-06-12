@@ -4,39 +4,18 @@
 #include <pal/net/socket>
 #include <pal/net/internet>
 #include <type_traits>
-
-#if __pal_os_linux || __pal_os_macos
-	#include <unistd.h>
-#endif
+#include <random>
 
 namespace pal_test {
 
 
-struct handle_guard
-{
-	pal::net::socket_base::native_handle_type handle;
-
-	handle_guard (pal::net::socket_base::native_handle_type handle) noexcept
-		: handle{handle}
-	{ }
-
-	~handle_guard () noexcept
-	{
-		if (handle != -1)
-		{
-			#if __pal_os_linux || __pal_os_macos
-				(void)::close(handle);
-			#elif __pal_os_windows
-				(void)::closesocket(handle);
-			#endif
-		}
-	}
-};
+using pal::net::__bits::handle_guard;
 
 
 struct udp_v4
 {
 	static constexpr auto protocol_v = pal::net::ip::udp::v4();
+	static constexpr auto loopback_v = pal::net::ip::address_v4::loopback();
 
 	static auto make_socket ()
 	{
@@ -48,6 +27,7 @@ struct udp_v4
 struct udp_v6
 {
 	static constexpr auto protocol_v = pal::net::ip::udp::v6();
+	static constexpr auto loopback_v = pal::net::ip::address_v6::loopback();
 
 	static auto make_socket ()
 	{
@@ -64,6 +44,7 @@ struct udp_v6_only: udp_v6
 struct tcp_v4
 {
 	static constexpr auto protocol_v = pal::net::ip::tcp::v4();
+	static constexpr auto loopback_v = pal::net::ip::address_v4::loopback();
 
 	static auto make_socket ()
 	{
@@ -80,6 +61,7 @@ struct tcp_v4
 struct tcp_v6
 {
 	static constexpr auto protocol_v = pal::net::ip::tcp::v6();
+	static constexpr auto loopback_v = pal::net::ip::address_v6::loopback();
 
 	static auto make_socket ()
 	{
@@ -101,6 +83,7 @@ struct tcp_v6_only: tcp_v6
 struct invalid_protocol
 {
 	using socket = pal::net::basic_socket<invalid_protocol>;
+	using endpoint = int;
 
 	static constexpr int invalid_value = (std::numeric_limits<int>::max)();
 
@@ -151,6 +134,49 @@ constexpr bool is_v6_v = false
 	|| std::is_same_v<T, tcp_v6>
 	|| std::is_same_v<T, tcp_v6_only>
 ;
+
+
+//
+// For random order repeated tests:
+// - do not hardcode port number but try until find next available one
+// - UDP/TCP have separate next_port() ranges
+//
+
+constexpr pal::net::ip::port_type min_port = 1024, max_port = 65535;
+
+inline pal::net::ip::port_type base_port () noexcept
+{
+	std::random_device dev;
+	std::default_random_engine eng(dev());
+	std::uniform_int_distribution<pal::net::ip::port_type> dist(min_port, max_port);
+	return dist(eng);
+}
+
+template <typename Protocol>
+pal::net::ip::port_type next_port (const Protocol &) noexcept
+{
+	static auto port = base_port();
+	if (port < min_port || port > max_port)
+	{
+		port = min_port;
+	}
+	return port++;
+}
+
+template <typename Socket>
+bool bind_next_available_port (Socket &socket, typename Socket::endpoint_type &endpoint) noexcept
+{
+	constexpr size_t max_tries = max_port - min_port;
+	for (auto tries_left = max_tries;  tries_left;  tries_left--)
+	{
+		endpoint.port(next_port(endpoint.protocol()));
+		if (socket.bind(endpoint))
+		{
+			return true;
+		}
+	}
+	return false;
+}
 
 
 } // namespace pal_test

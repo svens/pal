@@ -83,6 +83,8 @@ private:
 	{ }
 
 	friend class basic_endpoint<tcp>;
+	friend class basic_socket<tcp>;
+	friend class basic_socket_acceptor<tcp>;
 };
 
 
