@@ -223,6 +223,8 @@ struct socket
 	result<void> connect (const void *endpoint, size_t endpoint_size) noexcept;
 	result<void> local_endpoint (void *endpoint, size_t *endpoint_size) const noexcept;
 	result<void> remote_endpoint (void *endpoint, size_t *endpoint_size) const noexcept;
+	result<bool> native_non_blocking () const noexcept;
+	result<void> native_non_blocking (bool mode) const noexcept;
 };
 
 

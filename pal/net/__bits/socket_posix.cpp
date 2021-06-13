@@ -2,6 +2,7 @@
 
 #if __pal_os_linux || __pal_os_macos
 
+#include <fcntl.h>
 #include <unistd.h>
 
 
@@ -232,6 +233,39 @@ result<void> socket::remote_endpoint (void *endpoint, size_t *endpoint_size) con
 	{
 		*endpoint_size = size;
 		return {};
+	}
+	return sys_error();
+}
+
+
+result<bool> socket::native_non_blocking () const noexcept
+{
+	auto flags = ::fcntl(impl->handle, F_GETFL, 0);
+	if (flags > -1)
+	{
+		return static_cast<bool>(flags & O_NONBLOCK);
+	}
+	return sys_error();
+}
+
+
+result<void> socket::native_non_blocking (bool mode) const noexcept
+{
+	auto flags = ::fcntl(impl->handle, F_GETFL, 0);
+	if (flags > -1)
+	{
+		if (mode)
+		{
+			flags |= O_NONBLOCK;
+		}
+		else
+		{
+			flags &= ~O_NONBLOCK;
+		}
+		if (::fcntl(impl->handle, F_SETFL, flags) > -1)
+		{
+			return {};
+		}
 	}
 	return sys_error();
 }

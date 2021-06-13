@@ -384,6 +384,23 @@ result<void> socket::remote_endpoint (void *endpoint, size_t *endpoint_size) con
 }
 
 
+result<bool> socket::native_non_blocking () const noexcept
+{
+	return sys_error(WSAEOPNOTSUPP);
+}
+
+
+result<void> socket::native_non_blocking (bool mode) const noexcept
+{
+	unsigned long arg = mode ? 1 : 0;
+	if (::ioctlsocket(impl->handle, FIONBIO, &arg) == 0)
+	{
+		return {};
+	}
+	return sys_error();
+}
+
+
 } // namespace net::__bits
 
 

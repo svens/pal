@@ -175,6 +175,24 @@ public:
 	}
 
 
+	/**
+	 * Get socket non-blocking mode.
+	 */
+	result<bool> native_non_blocking () const noexcept
+	{
+		return socket_.native_non_blocking();
+	}
+
+
+	/**
+	 * Set socket non-blocking \a mode (true - on, false - off)
+	 */
+	result<void> native_non_blocking (bool mode) const noexcept
+	{
+		return socket_.native_non_blocking(mode);
+	}
+
+
 protected:
 
 	__bits::socket socket_{};

@@ -261,6 +261,51 @@ TEMPLATE_TEST_CASE("net/basic_socket", "",
 			CHECK(connect.error() == std::errc::bad_file_descriptor);
 		}
 	}
+
+	SECTION("native_non_blocking")
+	{
+		if constexpr (pal::is_windows_build)
+		{
+			auto set_mode = s.native_non_blocking();
+			REQUIRE_FALSE(set_mode);
+			CHECK(set_mode.error() == std::errc::operation_not_supported);
+
+			REQUIRE(s.native_non_blocking(true));
+		}
+		else
+		{
+			// default off
+			CHECK_FALSE(s.native_non_blocking().value());
+
+			// turn on, check
+			REQUIRE(s.native_non_blocking(true));
+			CHECK(s.native_non_blocking().value());
+
+			// turn off, check
+			REQUIRE(s.native_non_blocking(false));
+			CHECK_FALSE(s.native_non_blocking().value());
+		}
+
+		SECTION("bad file descriptor")
+		{
+			pal_test::handle_guard{s.native_handle()};
+			auto get_mode = s.native_non_blocking();
+			REQUIRE_FALSE(get_mode);
+
+			if constexpr (pal::is_windows_build)
+			{
+				CHECK(get_mode.error() == std::errc::operation_not_supported);
+			}
+			else
+			{
+				CHECK(get_mode.error() == std::errc::bad_file_descriptor);
+			}
+
+			auto set_mode = s.native_non_blocking(false);
+			REQUIRE_FALSE(set_mode);
+			CHECK(set_mode.error() == std::errc::bad_file_descriptor);
+		}
+	}
 }
 
 

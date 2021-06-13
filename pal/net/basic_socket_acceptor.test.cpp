@@ -242,15 +242,13 @@ TEMPLATE_TEST_CASE("net/basic_socket_acceptor", "",
 			CHECK(s2.local_endpoint().value() == endpoint);
 		}
 
-		/* TODO
 		SECTION("no connect")
 		{
 			a.native_non_blocking(true);
-			s2 = a.accept();
-			REQUIRE_FALSE(s2);
-			CHECK(s2.error() == std::errc::operation_would_block);
+			auto accept = a.accept();
+			REQUIRE_FALSE(accept);
+			CHECK(accept.error() == std::errc::operation_would_block);
 		}
-		*/
 
 		SECTION("bad file descriptor")
 		{
@@ -291,15 +289,13 @@ TEMPLATE_TEST_CASE("net/basic_socket_acceptor", "",
 			CHECK(s1.local_endpoint().value() == s2_endpoint);
 		}
 
-		/* TODO
 		SECTION("no connect")
 		{
 			a.native_non_blocking(true);
-			s2 = a.accept();
-			REQUIRE_FALSE(s2);
-			CHECK(s2.error() == std::errc::operation_would_block);
+			auto accept = a.accept(endpoint);
+			REQUIRE_FALSE(accept);
+			CHECK(accept.error() == std::errc::operation_would_block);
 		}
-		*/
 
 		SECTION("bad file descriptor")
 		{
@@ -318,6 +314,51 @@ TEMPLATE_TEST_CASE("net/basic_socket_acceptor", "",
 			auto accept = a.accept(endpoint);
 			REQUIRE_FALSE(accept);
 			CHECK(accept.error() == std::errc::not_enough_memory);
+		}
+	}
+
+	SECTION("native_non_blocking")
+	{
+		if constexpr (pal::is_windows_build)
+		{
+			auto set_mode = a.native_non_blocking();
+			REQUIRE_FALSE(set_mode);
+			CHECK(set_mode.error() == std::errc::operation_not_supported);
+
+			REQUIRE(a.native_non_blocking(true));
+		}
+		else
+		{
+			// default off
+			CHECK_FALSE(a.native_non_blocking().value());
+
+			// turn on, check
+			REQUIRE(a.native_non_blocking(true));
+			CHECK(a.native_non_blocking().value());
+
+			// turn off, check
+			REQUIRE(a.native_non_blocking(false));
+			CHECK_FALSE(a.native_non_blocking().value());
+		}
+
+		SECTION("bad file descriptor")
+		{
+			pal_test::handle_guard{a.native_handle()};
+			auto get_mode = a.native_non_blocking();
+			REQUIRE_FALSE(get_mode);
+
+			if constexpr (pal::is_windows_build)
+			{
+				CHECK(get_mode.error() == std::errc::operation_not_supported);
+			}
+			else
+			{
+				CHECK(get_mode.error() == std::errc::bad_file_descriptor);
+			}
+
+			auto set_mode = a.native_non_blocking(false);
+			REQUIRE_FALSE(set_mode);
+			CHECK(set_mode.error() == std::errc::bad_file_descriptor);
 		}
 	}
 }
