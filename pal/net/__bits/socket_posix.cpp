@@ -3,6 +3,7 @@
 #if __pal_os_linux || __pal_os_macos
 
 #include <fcntl.h>
+#include <sys/ioctl.h>
 #include <unistd.h>
 
 
@@ -209,6 +210,63 @@ result<void> socket::connect (const void *endpoint, size_t endpoint_size) noexce
 	if (::connect(impl->handle, static_cast<const sockaddr *>(endpoint), endpoint_size) == 0)
 	{
 		return {};
+	}
+	return sys_error();
+}
+
+
+result<size_t> socket::receive (message &msg) noexcept
+{
+	auto r = ::recvmsg(impl->handle, &msg, msg.msg_flags | MSG_NOSIGNAL);
+	if (r > -1)
+	{
+		return static_cast<size_t>(r);
+	}
+	else if (errno == EAGAIN)
+	{
+		return sys_error(ETIMEDOUT);
+	}
+	return sys_error();
+}
+
+
+result<size_t> socket::send (const message &msg) noexcept
+{
+	auto r = ::sendmsg(impl->handle, &msg, msg.msg_flags | MSG_NOSIGNAL);
+	if (r > -1)
+	{
+		return static_cast<size_t>(r);
+	}
+	else if (errno == EAGAIN)
+	{
+		return sys_error(ETIMEDOUT);
+	}
+	else if (errno == EDESTADDRREQ)
+	{
+		// unify with Windows for sendmsg with no recipient endpoint
+		// (adjusting Windows for Linux behaviour would be harder,
+		// requiring additional syscall)
+		return sys_error(ENOTCONN);
+	}
+	if constexpr (is_linux_build)
+	{
+		// sendmsg(2) BUGS
+		// "Linux may return EPIPE instead of ENOTCONN"
+		if (errno == EPIPE)
+		{
+			sys_error(ENOTCONN);
+		}
+	}
+	return sys_error();
+}
+
+
+result<size_t> socket::available () const noexcept
+{
+	size_t value{};
+	if (::ioctl(impl->handle, FIONREAD, &value) > -1)
+	{
+		return value;
 	}
 	return sys_error();
 }

@@ -347,6 +347,93 @@ result<void> socket::connect (const void *endpoint, size_t endpoint_size) noexce
 }
 
 
+result<size_t> socket::receive (message &msg) noexcept
+{
+	int result;
+	DWORD received = 0;
+	if (msg.msg_name)
+	{
+		result = ::WSARecvFrom(
+			impl->handle,
+			msg.msg_iov.data(),
+			msg.msg_iovlen,
+			&received,
+			&msg.msg_flags,
+			msg.msg_name,
+			&msg.msg_namelen,
+			nullptr,
+			nullptr
+		);
+	}
+	else
+	{
+		result = ::WSARecv(
+			impl->handle,
+			msg.msg_iov.data(),
+			msg.msg_iovlen,
+			&received,
+			&msg.msg_flags,
+			nullptr,
+			nullptr
+		);
+	}
+	if (result != SOCKET_ERROR)
+	{
+		return received;
+	}
+	return sys_error();
+}
+
+
+result<size_t> socket::send (const message &msg) noexcept
+{
+	int result;
+	DWORD sent = 0;
+	if (msg.msg_name)
+	{
+		result = ::WSASendTo(
+			impl->handle,
+			const_cast<WSABUF *>(msg.msg_iov.data()),
+			msg.msg_iovlen,
+			&sent,
+			msg.msg_flags,
+			msg.msg_name,
+			msg.msg_namelen,
+			nullptr,
+			nullptr
+		);
+	}
+	else
+	{
+		result = ::WSASend(
+			impl->handle,
+			const_cast<WSABUF *>(msg.msg_iov.data()),
+			msg.msg_iovlen,
+			&sent,
+			msg.msg_flags,
+			nullptr,
+			nullptr
+		);
+	}
+	if (result != SOCKET_ERROR)
+	{
+		return sent;
+	}
+	return sys_error();
+}
+
+
+result<size_t> socket::available () const noexcept
+{
+	unsigned long value{};
+	if (::ioctlsocket(impl->handle, FIONREAD, &value) > -1)
+	{
+		return value;
+	}
+	return sys_error();
+}
+
+
 result<void> socket::local_endpoint (void *endpoint, size_t *endpoint_size) const noexcept
 {
 	auto size = static_cast<int>(*endpoint_size);

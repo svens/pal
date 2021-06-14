@@ -306,6 +306,21 @@ TEMPLATE_TEST_CASE("net/basic_socket", "",
 			CHECK(set_mode.error() == std::errc::bad_file_descriptor);
 		}
 	}
+
+	SECTION("available")
+	{
+		auto available = s.available();
+		REQUIRE(available);
+		CHECK(*available == 0);
+
+		SECTION("bad file descriptor")
+		{
+			pal_test::handle_guard{s.native_handle()};
+			available = s.available();
+			REQUIRE_FALSE(available);
+			CHECK(available.error() == std::errc::bad_file_descriptor);
+		}
+	}
 }
 
 

@@ -9,6 +9,7 @@
 #include <pal/net/basic_socket_acceptor>
 #include <pal/net/basic_stream_socket>
 #include <pal/net/ip/basic_endpoint>
+#include <pal/net/socket_option>
 
 
 __pal_begin

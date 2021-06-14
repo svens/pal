@@ -124,6 +124,15 @@ public:
 
 
 	/**
+	 * Return number of bytes available that can be read without blocking.
+	 */
+	result<size_t> available () const noexcept
+	{
+		return socket_.available();
+	}
+
+
+	/**
 	 * Return locally bound endpoint associated with this socket
 	 */
 	result<endpoint_type> local_endpoint () const noexcept
