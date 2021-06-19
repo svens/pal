@@ -153,6 +153,20 @@ bool make_family_specific_any (int family, void *endpoint, int *endpoint_size) n
 }
 
 
+int socket_option_precheck (native_socket handle, int name) noexcept
+{
+	if (handle == invalid_native_socket)
+	{
+		return WSAEBADF;
+	}
+	else if (name == -1)
+	{
+		return WSAENOPROTOOPT;
+	}
+	return 0;
+}
+
+
 } // namespace
 
 
@@ -484,6 +498,42 @@ result<void> socket::native_non_blocking (bool mode) const noexcept
 	{
 		return {};
 	}
+	return sys_error();
+}
+
+
+result<void> socket::get_option (int level, int name, void *data, size_t data_size) const noexcept
+{
+	if (auto e = socket_option_precheck(impl->handle, name))
+	{
+		return sys_error(e);
+	}
+
+	auto p = static_cast<char *>(data);
+	auto size = static_cast<int>(data_size);
+	if (::getsockopt(impl->handle, level, name, p, &size) > -1)
+	{
+		return {};
+	}
+
+	return sys_error();
+}
+
+
+result<void> socket::set_option (int level, int name, const void *data, size_t data_size) noexcept
+{
+	if (auto e = socket_option_precheck(impl->handle, name))
+	{
+		return sys_error(e);
+	}
+
+	auto p = static_cast<const char *>(data);
+	auto size = static_cast<int>(data_size);
+	if (::setsockopt(impl->handle, level, name, p, size) > -1)
+	{
+		return {};
+	}
+
 	return sys_error();
 }
 

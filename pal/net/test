@@ -14,6 +14,8 @@ using pal::net::__bits::handle_guard;
 
 struct udp_v4
 {
+	template <typename T> using with = std::pair<udp_v4, T>;
+
 	static constexpr auto protocol_v = pal::net::ip::udp::v4();
 	static constexpr auto loopback_v = pal::net::ip::address_v4::loopback();
 
@@ -26,6 +28,8 @@ struct udp_v4
 
 struct udp_v6
 {
+	template <typename T> using with = std::pair<udp_v6, T>;
+
 	static constexpr auto protocol_v = pal::net::ip::udp::v6();
 	static constexpr auto loopback_v = pal::net::ip::address_v6::loopback();
 
@@ -36,13 +40,10 @@ struct udp_v6
 };
 
 
-struct udp_v6_only: udp_v6
-{
-};
-
-
 struct tcp_v4
 {
+	template <typename T> using with = std::pair<tcp_v4, T>;
+
 	static constexpr auto protocol_v = pal::net::ip::tcp::v4();
 	static constexpr auto loopback_v = pal::net::ip::address_v4::loopback();
 
@@ -60,6 +61,8 @@ struct tcp_v4
 
 struct tcp_v6
 {
+	template <typename T> using with = std::pair<tcp_v6, T>;
+
 	static constexpr auto protocol_v = pal::net::ip::tcp::v6();
 	static constexpr auto loopback_v = pal::net::ip::address_v6::loopback();
 
@@ -75,9 +78,28 @@ struct tcp_v6
 };
 
 
-struct tcp_v6_only: tcp_v6
+template <typename Protocol>
+struct v6_only: Protocol
 {
+	template <typename T> using with = std::pair<v6_only<Protocol>, T>;
+
+	static auto make_socket ()
+	{
+		auto socket = Protocol::make_socket();
+		if (socket)
+		{
+			auto set_option = socket->set_option(pal::net::ip::v6_only(true));
+			if (!set_option)
+			{
+				socket = pal::unexpected{set_option.error()};
+			}
+		}
+		return socket;
+	}
 };
+
+using udp_v6_only = v6_only<udp_v6>;
+using tcp_v6_only = v6_only<tcp_v6>;
 
 
 struct invalid_protocol

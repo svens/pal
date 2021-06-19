@@ -329,6 +329,27 @@ result<void> socket::native_non_blocking (bool mode) const noexcept
 }
 
 
+result<void> socket::get_option (int level, int name, void *data, size_t data_size) const noexcept
+{
+	socklen_t size = data_size;
+	if (::getsockopt(impl->handle, level, name, data, &size) > -1)
+	{
+		return {};
+	}
+	return sys_error();
+}
+
+
+result<void> socket::set_option (int level, int name, const void *data, size_t data_size) noexcept
+{
+	if (::setsockopt(impl->handle, level, name, data, data_size) > -1)
+	{
+		return {};
+	}
+	return sys_error();
+}
+
+
 } // namespace net::__bits
 
 

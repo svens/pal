@@ -148,12 +148,10 @@ TEMPLATE_TEST_CASE("net/ip/udp", "", udp_v4, udp_v6)
 
 		SECTION("timeout")
 		{
-			/* TODO
 			REQUIRE(receiver.set_option(pal::net::receive_timeout(10ms)));
 			auto recv = receiver.receive(recv_msg);
 			REQUIRE_FALSE(recv);
 			CHECK(recv.error() == std::errc::timed_out);
-			*/
 		}
 
 		SECTION("not connected")

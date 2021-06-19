@@ -232,6 +232,8 @@ struct socket
 	result<void> remote_endpoint (void *endpoint, size_t *endpoint_size) const noexcept;
 	result<bool> native_non_blocking () const noexcept;
 	result<void> native_non_blocking (bool mode) const noexcept;
+	result<void> get_option (int level, int name, void *data, size_t data_size) const noexcept;
+	result<void> set_option (int level, int name, const void *data, size_t data_size) noexcept;
 };
 
 

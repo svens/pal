@@ -207,6 +207,36 @@ public:
 	}
 
 
+	/**
+	 * Get acceptor option
+	 */
+	template <typename GettableSocketOption>
+	result<void> get_option (GettableSocketOption &option) const noexcept
+	{
+		return acceptor_.get_option(
+			option.level(protocol()),
+			option.name(protocol()),
+			option.data(protocol()),
+			option.size(protocol())
+		);
+	}
+
+
+	/**
+	 * Set acceptor option
+	 */
+	template <typename SettableSocketOption>
+	result<void> set_option (const SettableSocketOption &option) noexcept
+	{
+		return acceptor_.set_option(
+			option.level(protocol()),
+			option.name(protocol()),
+			option.data(protocol()),
+			option.size(protocol())
+		);
+	}
+
+
 private:
 
 	__bits::socket acceptor_{};
