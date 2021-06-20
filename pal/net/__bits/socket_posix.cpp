@@ -254,7 +254,7 @@ result<size_t> socket::send (const message &msg) noexcept
 		// "Linux may return EPIPE instead of ENOTCONN"
 		if (errno == EPIPE)
 		{
-			sys_error(ENOTCONN);
+			return sys_error(ENOTCONN);
 		}
 	}
 	return sys_error();

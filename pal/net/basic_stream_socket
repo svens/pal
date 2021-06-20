@@ -22,10 +22,51 @@ namespace net {
 template <typename Protocol>
 class basic_stream_socket: public basic_socket<Protocol>
 {
+	using base = basic_socket<Protocol>;
+
 public:
 
-	/// Socket protocol
 	using typename basic_socket<Protocol>::protocol_type;
+	using typename basic_socket<Protocol>::endpoint_type;
+
+	//
+	// Synchronous API
+	//
+
+	/**
+	 * Read data from socket into \a spans. Returns number of bytes
+	 * received.
+	 */
+	template <typename MutableSpanSequence>
+	result<size_t> receive (const MutableSpanSequence &spans,
+		socket_base::message_flags flags = 0) noexcept
+	{
+		__bits::message message;
+		if (message.set(spans))
+		{
+			message.msg_flags = flags;
+			return base::socket_.receive(message);
+		}
+		return make_unexpected(std::errc::argument_list_too_long);
+	}
+
+
+	/**
+	 * Send data in \a spans using this socket. Returns number of bytes
+	 * sent.
+	 */
+	template <typename ConstSpanSequence>
+	result<size_t> send (const ConstSpanSequence &spans,
+		socket_base::message_flags flags = 0) noexcept
+	{
+		__bits::message message;
+		if (message.set(spans))
+		{
+			message.msg_flags = flags;
+			return base::socket_.send(message);
+		}
+		return make_unexpected(std::errc::argument_list_too_long);
+	}
 
 
 private:

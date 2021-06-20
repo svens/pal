@@ -41,7 +41,7 @@ using namespace pal_test;
 using namespace std::chrono_literals;
 
 
-TEMPLATE_TEST_CASE("net/ip/udp", "", udp_v4, udp_v6)
+TEMPLATE_TEST_CASE("net/ip/udp", "", udp_v4, udp_v6, udp_v6_only)
 {
 	using protocol_t = decltype(TestType::protocol_v);
 	using endpoint_t = typename protocol_t::endpoint;
@@ -146,7 +146,7 @@ TEMPLATE_TEST_CASE("net/ip/udp", "", udp_v4, udp_v6)
 			CHECK(recv.error() == std::errc::argument_list_too_long);
 		}
 
-		SECTION("timeout")
+		SECTION("receive timeout")
 		{
 			REQUIRE(receiver.set_option(pal::net::receive_timeout(10ms)));
 			auto recv = receiver.receive(recv_msg);
