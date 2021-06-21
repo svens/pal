@@ -67,6 +67,17 @@ struct message: ::msghdr
 		}
 		return it == end && static_cast<size_t>(msg_iovlen) <= iov.size();
 	}
+
+	void name (const void *name, size_t name_size) noexcept
+	{
+		msg_name = const_cast<void *>(name);
+		msg_namelen = name_size;
+	}
+
+	void flags (message_flags flags) noexcept
+	{
+		msg_flags = flags;
+	}
 };
 
 constexpr std::chrono::milliseconds to_chrono_ms (const timeval &tv)
@@ -111,6 +122,17 @@ struct message
 			v.len = static_cast<ULONG>(s.size_bytes());
 		}
 		return it == end && static_cast<size_t>(msg_iovlen) <= msg_iov.size();
+	}
+
+	void name (const void *name, size_t name_size) noexcept
+	{
+		msg_name = static_cast<sockaddr *>(const_cast<void *>(name));
+		msg_namelen = static_cast<INT>(name_size);
+	}
+
+	void flags (message_flags flags) noexcept
+	{
+		msg_flags = flags;
 	}
 };
 

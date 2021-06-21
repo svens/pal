@@ -263,10 +263,10 @@ result<size_t> socket::send (const message &msg) noexcept
 
 result<size_t> socket::available () const noexcept
 {
-	size_t value{};
+	int value{};
 	if (::ioctl(impl->handle, FIONREAD, &value) > -1)
 	{
-		return value;
+		return static_cast<size_t>(value);
 	}
 	return sys_error();
 }

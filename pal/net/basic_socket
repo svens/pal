@@ -125,6 +125,7 @@ public:
 
 	/**
 	 * Return number of bytes available that can be read without blocking.
+	 * \note MacOS returns number of bytes plus size of source endpoint(s)
 	 */
 	result<size_t> available () const noexcept
 	{

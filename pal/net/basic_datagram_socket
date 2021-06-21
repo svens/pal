@@ -37,6 +37,50 @@ public:
 	//
 
 	/**
+	 * Read data from socket into \a spans. Source endpoint is stored into
+	 * \a sender. Returns number of bytes received.
+	 */
+	template <typename MutableSpanSequence>
+	result<size_t> receive_from (const MutableSpanSequence &spans,
+		endpoint_type &sender,
+		socket_base::message_flags flags = 0) noexcept
+	{
+		__bits::message message;
+		if (message.set(spans))
+		{
+			message.flags(flags);
+			message.name(sender.data(), sender.capacity());
+			auto r = base::socket_.receive(message);
+			if (r)
+			{
+				sender.resize(message.msg_namelen);
+				return r;
+			}
+			return unexpected{r.error()};
+		}
+		return make_unexpected(std::errc::argument_list_too_long);
+	}
+
+	/**
+	 * Send data from \a spans using this socket to \a recipient. Returns
+	 * number of bytes sent.
+	 */
+	template <typename ConstSpanSequence>
+	result<size_t> send_to (const ConstSpanSequence &spans,
+		const endpoint_type &recipient,
+		socket_base::message_flags flags = 0) noexcept
+	{
+		__bits::message message;
+		if (message.set(spans))
+		{
+			message.flags(flags);
+			message.name(recipient.data(), recipient.size());
+			return base::socket_.send(message);
+		}
+		return make_unexpected(std::errc::argument_list_too_long);
+	}
+
+	/**
 	 * Read data from socket into \a spans. Returns number of bytes
 	 * received.
 	 *

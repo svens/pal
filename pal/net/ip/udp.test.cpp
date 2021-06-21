@@ -87,10 +87,96 @@ TEMPLATE_TEST_CASE("net/ip/udp", "", udp_v4, udp_v6, udp_v6_only)
 
 	// sender
 	auto sender = TestType::make_socket().value();
-	REQUIRE(sender.connect(endpoint));
+
+	SECTION("send_to and receive_from")
+	{
+		SECTION("single")
+		{
+			auto send = sender.send_to(send_msg[0], endpoint);
+			REQUIRE(send);
+			CHECK(*send == send_msg[0].size_bytes());
+
+			endpoint.port(0);
+			auto recv = receiver.receive_from(recv_msg, endpoint);
+			REQUIRE(recv);
+			CHECK(*recv == *send);
+			CHECK(recv_view(*recv) == send_bufs[0]);
+			CHECK(endpoint.port() == sender.local_endpoint().value().port());
+		}
+
+		SECTION("peek")
+		{
+			auto send = sender.send_to(send_msg[0], endpoint);
+			REQUIRE(send);
+			CHECK(*send == send_msg[0].size_bytes());
+
+			auto recv = receiver.receive_from(recv_msg, endpoint, receiver.message_peek);
+			REQUIRE(recv);
+			CHECK(*recv == *send);
+			CHECK(recv_view(*recv) == send_bufs[0]);
+			CHECK(endpoint.port() == sender.local_endpoint().value().port());
+			CHECK(receiver.available().value() > 0);
+
+			recv_buf[0] = '\0';
+			recv = receiver.receive_from(recv_msg, endpoint);
+			REQUIRE(recv);
+			CHECK(*recv == *send);
+			CHECK(recv_view(*recv) == send_bufs[0]);
+			CHECK(endpoint.port() == sender.local_endpoint().value().port());
+			CHECK(receiver.available().value() == 0);
+		}
+
+		SECTION("vector")
+		{
+			auto send = sender.send_to(send_msg, endpoint);
+			REQUIRE(send);
+			CHECK(*send == send_view.size());
+
+			endpoint.port(0);
+			auto recv = receiver.receive_from(recv_msg, endpoint);
+			REQUIRE(recv);
+			CHECK(*recv == *send);
+			CHECK(recv_view(*recv) == send_view);
+			CHECK(endpoint.port() == sender.local_endpoint().value().port());
+		}
+
+		SECTION("argument list too long")
+		{
+			auto send = sender.send_to(send_msg_list_too_long, endpoint);
+			REQUIRE_FALSE(send);
+			CHECK(send.error() == std::errc::argument_list_too_long);
+
+			auto recv = receiver.receive_from(recv_msg_list_too_long, endpoint);
+			REQUIRE_FALSE(recv);
+			CHECK(recv.error() == std::errc::argument_list_too_long);
+		}
+
+		SECTION("receive timeout")
+		{
+			REQUIRE(receiver.set_option(pal::net::receive_timeout(10ms)));
+			auto recv = receiver.receive_from(recv_msg, endpoint);
+			REQUIRE_FALSE(recv);
+			CHECK(recv.error() == std::errc::timed_out);
+		}
+
+		SECTION("bad file descriptor")
+		{
+			pal_test::handle_guard{sender.native_handle()};
+			auto send = sender.send_to(send_msg, endpoint);
+			REQUIRE_FALSE(send);
+			CHECK(send.error() == std::errc::bad_file_descriptor);
+
+			pal_test::handle_guard{receiver.native_handle()};
+			auto recv = receiver.receive_from(recv_msg, endpoint);
+			REQUIRE_FALSE(recv);
+			CHECK(recv.error() == std::errc::bad_file_descriptor);
+		}
+	}
 
 	SECTION("send and receive")
 	{
+		REQUIRE(sender.connect(endpoint));
+
 		SECTION("single")
 		{
 			auto send = sender.send(send_msg[0]);
