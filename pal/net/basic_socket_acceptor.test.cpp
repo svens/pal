@@ -361,6 +361,70 @@ TEMPLATE_TEST_CASE("net/basic_socket_acceptor", "",
 			CHECK(set_mode.error() == std::errc::bad_file_descriptor);
 		}
 	}
+
+	SECTION("reuse address")
+	{
+		pal::net::reuse_address reuse_address{true};
+		REQUIRE(a.get_option(reuse_address));
+		CHECK_FALSE(reuse_address);
+
+		reuse_address = true;
+		REQUIRE(a.set_option(reuse_address));
+
+		REQUIRE(a.get_option(reuse_address));
+		CHECK(reuse_address);
+
+		SECTION("bad file descriptor")
+		{
+			pal_test::handle_guard{a.native_handle()};
+			auto opt = a.get_option(reuse_address);
+			REQUIRE_FALSE(opt);
+			CHECK(opt.error() == std::errc::bad_file_descriptor);
+
+			opt = a.set_option(reuse_address);
+			REQUIRE_FALSE(opt);
+			CHECK(opt.error() == std::errc::bad_file_descriptor);
+		}
+	}
+
+	SECTION("reuse port")
+	{
+		pal::net::reuse_port reuse_port{true};
+
+		if constexpr (pal::is_windows_build)
+		{
+			auto opt = a.get_option(reuse_port);
+			REQUIRE_FALSE(opt);
+			CHECK(opt.error() == std::errc::no_protocol_option);
+
+			opt = a.set_option(reuse_port);
+			REQUIRE_FALSE(opt);
+			CHECK(opt.error() == std::errc::no_protocol_option);
+		}
+		else
+		{
+			REQUIRE(a.get_option(reuse_port));
+			CHECK_FALSE(reuse_port);
+
+			reuse_port = true;
+			REQUIRE(a.set_option(reuse_port));
+
+			REQUIRE(a.get_option(reuse_port));
+			CHECK(reuse_port);
+
+			SECTION("bad file descriptor")
+			{
+				pal_test::handle_guard{a.native_handle()};
+				auto opt = a.get_option(reuse_port);
+				REQUIRE_FALSE(opt);
+				CHECK(opt.error() == std::errc::bad_file_descriptor);
+
+				opt = a.set_option(reuse_port);
+				REQUIRE_FALSE(opt);
+				CHECK(opt.error() == std::errc::bad_file_descriptor);
+			}
+		}
+	}
 }
 
 
