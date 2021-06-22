@@ -10,3 +10,22 @@
 #include <pal/net/ip/socket_option>
 #include <pal/net/ip/tcp>
 #include <pal/net/ip/udp>
+
+
+__pal_begin
+
+
+namespace net::ip {
+
+
+inline result<std::string_view> host_name () noexcept
+{
+	static const result<std::string_view> name = __bits::host_name();
+	return name;
+}
+
+
+} // namespace net::ip
+
+
+__pal_end

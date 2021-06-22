@@ -2,10 +2,13 @@
 
 #include <pal/__bits/lib>
 #include <pal/byte_order>
+#include <pal/result>
 #include <charconv>
+#include <string_view>
 
 #if __pal_os_linux || __pal_os_macos
 	#include <arpa/inet.h>
+	#include <unistd.h>
 #elif __pal_os_windows
 	#include <ws2tcpip.h>
 #endif
@@ -83,6 +86,21 @@ inline char *to_text (const sockaddr_in6 &src, char *first, char *last) noexcept
 inline bool from_text (int family, const char *src, uint8_t *bytes) noexcept
 {
   return ::inet_pton(family, src, bytes) == 1;
+}
+
+
+inline result<std::string_view> host_name () noexcept
+{
+	static char buf[256] = {};
+	if (::gethostname(buf, sizeof(buf) - 1) == 0)
+	{
+		return buf;
+	}
+	#if __pal_os_linux || __pal_os_macos
+		return unexpected<std::error_code>{std::in_place, errno, std::generic_category()};
+	#elif __pal_os_windows
+		return unexpected<std::error_code>{std::in_place, ::WSAGetLastError(), std::system_category()};
+	#endif
 }
 
 
