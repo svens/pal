@@ -273,14 +273,52 @@ auto make_socket_acceptor (const AcceptableProtocol &protocol) noexcept
 	-> result<basic_socket_acceptor<AcceptableProtocol>>
 {
 	basic_socket_acceptor<AcceptableProtocol> acceptor;
-	if (auto open = acceptor.open(protocol))
-	{
-		return acceptor;
-	}
-	else
+	if (auto open = acceptor.open(protocol);  !open)
 	{
 		return unexpected{open.error()};
 	}
+	return acceptor;
+}
+
+
+/**
+ * Create new socket acceptor for \a AcceptableProtocol \a protocol.
+ */
+template <typename AcceptableProtocol>
+auto make_socket_acceptor (const AcceptableProtocol &protocol, const typename AcceptableProtocol::endpoint &endpoint) noexcept
+	-> result<basic_socket_acceptor<AcceptableProtocol>>
+{
+	auto acceptor = make_socket_acceptor(protocol);
+	if (!acceptor)
+	{
+		return unexpected{acceptor.error()};
+	}
+	else if (auto bind = acceptor->bind(endpoint);  !bind)
+	{
+		return unexpected{bind.error()};
+	}
+	else if (auto listen = acceptor->listen();  !listen)
+	{
+		return unexpected{listen.error()};
+	}
+	return acceptor;
+}
+
+
+/**
+ * Create new socket acceptor for \a AcceptableProtocol \a protocol using
+ * existing \a handle.
+ */
+template <typename AcceptableProtocol>
+auto make_socket_acceptor (const AcceptableProtocol &protocol, socket_base::native_handle_type handle) noexcept
+	-> result<basic_socket_acceptor<AcceptableProtocol>>
+{
+	basic_socket_acceptor<AcceptableProtocol> acceptor;
+	if (auto assign = acceptor.assign(protocol, handle);  !assign)
+	{
+		return unexpected{assign.error()};
+	}
+	return acceptor;
 }
 
 

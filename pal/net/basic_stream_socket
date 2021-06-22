@@ -83,14 +83,47 @@ auto make_stream_socket (const Protocol &protocol) noexcept
 	-> result<basic_stream_socket<Protocol>>
 {
 	basic_stream_socket<Protocol> socket;
-	if (auto open = socket.open(protocol))
-	{
-		return socket;
-	}
-	else
+	if (auto open = socket.open(protocol);  !open)
 	{
 		return unexpected{open.error()};
 	}
+	return socket;
+}
+
+
+/**
+ * Create new stream socket of \a protocol and \a bind to \a endpoint.
+ */
+template <typename Protocol>
+auto make_stream_socket (const Protocol &protocol, const typename Protocol::endpoint &endpoint) noexcept
+	-> result<basic_stream_socket<Protocol>>
+{
+	auto socket = make_stream_socket(protocol);
+	if (!socket)
+	{
+		return unexpected{socket.error()};
+	}
+	else if (auto bind = socket->bind(endpoint);  !bind)
+	{
+		return unexpected{bind.error()};
+	}
+	return socket;
+}
+
+
+/**
+ * Create new stream socket of \a protocol from existing \a handle.
+ */
+template <typename Protocol>
+auto make_stream_socket (const Protocol &protocol, socket_base::native_handle_type handle) noexcept
+	-> result<basic_stream_socket<Protocol>>
+{
+	basic_stream_socket<Protocol> socket;
+	if (auto assign = socket.assign(protocol, handle);  !assign)
+	{
+		return unexpected{assign.error()};
+	}
+	return socket;
 }
 
 

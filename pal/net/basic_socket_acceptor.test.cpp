@@ -425,6 +425,60 @@ TEMPLATE_TEST_CASE("net/basic_socket_acceptor", "",
 			}
 		}
 	}
+
+	SECTION("make_socket_acceptor with endpoint")
+	{
+		endpoint_t endpoint{TestType::loopback_v, 0};
+
+		SECTION("success")
+		{
+			// bind with existing acceptor and assume next port is available
+			REQUIRE(pal_test::bind_next_available_port(a, endpoint));
+			endpoint.port(pal_test::next_port(TestType::protocol_v));
+
+			auto acceptor = pal::net::make_socket_acceptor(TestType::protocol_v, endpoint);
+			REQUIRE(acceptor);
+			CHECK(acceptor->local_endpoint().value() == endpoint);
+		}
+
+		SECTION("address in use")
+		{
+			REQUIRE(pal_test::bind_next_available_port(a, endpoint));
+
+			auto acceptor = pal::net::make_socket_acceptor(TestType::protocol_v, endpoint);
+			REQUIRE_FALSE(acceptor);
+			CHECK(acceptor.error() == std::errc::address_in_use);
+		}
+
+		SECTION("not enough memory")
+		{
+			pal_test::bad_alloc_once x;
+			auto acceptor = pal::net::make_socket_acceptor(TestType::protocol_v, endpoint);
+			REQUIRE_FALSE(acceptor);
+			CHECK(acceptor.error() == std::errc::not_enough_memory);
+		}
+	}
+
+	SECTION("make_socket_acceptor with handle")
+	{
+		pal_test::handle_guard guard{a.release()};
+
+		SECTION("success")
+		{
+			auto acceptor = pal::net::make_socket_acceptor(TestType::protocol_v, guard.handle);
+			REQUIRE(acceptor);
+			CHECK(acceptor->native_handle() == guard.handle);
+			guard.release();
+		}
+
+		SECTION("not enough memory")
+		{
+			pal_test::bad_alloc_once x;
+			auto acceptor = pal::net::make_socket_acceptor(TestType::protocol_v, guard.handle);
+			REQUIRE_FALSE(acceptor);
+			CHECK(acceptor.error() == std::errc::not_enough_memory);
+		}
+	}
 }
 
 

@@ -205,6 +205,53 @@ TEMPLATE_TEST_CASE("net/ip/tcp", "", tcp_v4, tcp_v6, tcp_v6_only)
 			CHECK(recv.error() == std::errc::bad_file_descriptor);
 		}
 	}
+
+	SECTION("make_stream_socket with endpoint")
+	{
+		SECTION("success")
+		{
+			endpoint.port(pal_test::next_port(TestType::protocol_v));
+			auto socket = pal::net::make_stream_socket(TestType::protocol_v, endpoint);
+			REQUIRE(socket);
+			CHECK(socket->local_endpoint().value() == endpoint);
+		}
+
+		SECTION("address in use")
+		{
+			auto socket = pal::net::make_stream_socket(TestType::protocol_v, endpoint);
+			REQUIRE_FALSE(socket);
+			CHECK(socket.error() == std::errc::address_in_use);
+		}
+
+		SECTION("not enough memory")
+		{
+			pal_test::bad_alloc_once x;
+			auto socket = pal::net::make_stream_socket(TestType::protocol_v, endpoint);
+			REQUIRE_FALSE(socket);
+			CHECK(socket.error() == std::errc::not_enough_memory);
+		}
+	}
+
+	SECTION("make_stream_socket with handle")
+	{
+		pal_test::handle_guard guard{receiver.release()};
+
+		SECTION("success")
+		{
+			auto socket = pal::net::make_stream_socket(TestType::protocol_v, guard.handle);
+			REQUIRE(socket);
+			CHECK(socket->native_handle() == guard.handle);
+			guard.release();
+		}
+
+		SECTION("not enough memory")
+		{
+			pal_test::bad_alloc_once x;
+			auto socket = pal::net::make_stream_socket(TestType::protocol_v, guard.handle);
+			REQUIRE_FALSE(socket);
+			CHECK(socket.error() == std::errc::not_enough_memory);
+		}
+	}
 }
 
 

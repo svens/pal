@@ -261,6 +261,53 @@ TEMPLATE_TEST_CASE("net/ip/udp", "", udp_v4, udp_v6, udp_v6_only)
 			CHECK(recv.error() == std::errc::bad_file_descriptor);
 		}
 	}
+
+	SECTION("make_datagram_socket with endpoint")
+	{
+		SECTION("success")
+		{
+			REQUIRE(receiver.close());
+			auto socket = pal::net::make_datagram_socket(TestType::protocol_v, endpoint);
+			REQUIRE(socket);
+			CHECK(socket->local_endpoint().value() == endpoint);
+		}
+
+		SECTION("address in use")
+		{
+			auto socket = pal::net::make_datagram_socket(TestType::protocol_v, endpoint);
+			REQUIRE_FALSE(socket);
+			CHECK(socket.error() == std::errc::address_in_use);
+		}
+
+		SECTION("not enough memory")
+		{
+			pal_test::bad_alloc_once x;
+			auto socket = pal::net::make_datagram_socket(TestType::protocol_v, endpoint);
+			REQUIRE_FALSE(socket);
+			CHECK(socket.error() == std::errc::not_enough_memory);
+		}
+	}
+
+	SECTION("make_datagram_socket with handle")
+	{
+		pal_test::handle_guard guard{receiver.release()};
+
+		SECTION("success")
+		{
+			auto socket = pal::net::make_datagram_socket(TestType::protocol_v, guard.handle);
+			REQUIRE(socket);
+			CHECK(socket->native_handle() == guard.handle);
+			guard.release();
+		}
+
+		SECTION("not enough memory")
+		{
+			pal_test::bad_alloc_once x;
+			auto socket = pal::net::make_datagram_socket(TestType::protocol_v, guard.handle);
+			REQUIRE_FALSE(socket);
+			CHECK(socket.error() == std::errc::not_enough_memory);
+		}
+	}
 }
 
 
