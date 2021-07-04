@@ -257,6 +257,21 @@ private:
 		return result;
 	}
 
+	static result<basic_resolver_results> load (const endpoint_type &endpoint) noexcept
+	{
+		basic_resolver_results result;
+		result.list_.reset(new(std::nothrow) __bits::address_info_list);
+		if (!result.list_)
+		{
+			return pal::make_unexpected(std::errc::not_enough_memory);
+		}
+		if (auto r = result.list_->load(endpoint.data(), endpoint.size(), endpoint.protocol().type()))
+		{
+			return make_unexpected(static_cast<resolver_errc>(r));
+		}
+		return result;
+	}
+
 	friend class basic_resolver<InternetProtocol>;
 };
 
@@ -327,6 +342,11 @@ public:
 		resolver_base::flags flags = {}) noexcept
 	{
 		return results_type::load(host, service, flags, &protocol);
+	}
+
+	result<results_type> resolve (const endpoint_type &endpoint) noexcept
+	{
+		return results_type::load(endpoint);
 	}
 };
 

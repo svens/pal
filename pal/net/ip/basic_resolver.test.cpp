@@ -2,9 +2,6 @@
 #include <pal/net/test>
 
 
-#include <iostream>
-
-
 namespace {
 
 
@@ -106,6 +103,42 @@ TEMPLATE_TEST_CASE("net/ip/basic_resolver", "",
 			CHECK(it.host_name() == "127.0.0.1");
 			CHECK(it.service_name() == "7");
 		}
+	}
+
+	SECTION("resolve endpoint")
+	{
+		auto resolve = resolver.resolve({TestType::loopback_v, 7});
+		REQUIRE(resolve);
+		REQUIRE(resolve->size() == 1);
+		auto entry = *resolve->begin();
+		CHECK_FALSE(entry.host_name().empty());
+		CHECK(entry.service_name() == "echo");
+	}
+
+	SECTION("resolve endpoint invalid address")
+	{
+		sockaddr_storage blob{};
+		auto resolve = resolver.resolve(*reinterpret_cast<const endpoint_t *>(&blob));
+		REQUIRE_FALSE(resolve);
+		CHECK(resolve.error().message() != "");
+	}
+
+	SECTION("resolve endpoint unknown port")
+	{
+		auto resolve = resolver.resolve({TestType::loopback_v, 65535});
+		REQUIRE(resolve);
+		REQUIRE(resolve->size() == 1);
+		auto entry = *resolve->begin();
+		CHECK_FALSE(entry.host_name().empty());
+		CHECK(entry.service_name() == "65535");
+	}
+
+	SECTION("resolve endpoint not enough memory")
+	{
+		pal_test::bad_alloc_once x;
+		auto resolve = resolver.resolve({TestType::loopback_v, 7});
+		REQUIRE_FALSE(resolve);
+		CHECK(resolve.error() == std::errc::not_enough_memory);
 	}
 
 	SECTION("resolve numeric host invalid")
