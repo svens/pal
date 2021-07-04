@@ -1,0 +1,347 @@
+#pragma once // -*- C++ -*-
+
+/**
+ * \file pal/net/ip/resolver
+ * Host/service name resolution
+ */
+
+#include <pal/__bits/lib>
+#include <pal/net/ip/__bits/inet>
+#include <pal/result>
+#include <limits>
+#include <memory>
+#include <string_view>
+
+
+__pal_begin
+
+
+namespace net::ip {
+
+
+template <typename InternetProtocol> class basic_resolver_results_iterator;
+template <typename InternetProtocol> class basic_resolver_results;
+template <typename InternetProtocol> class basic_resolver;
+
+
+enum class resolver_errc: int
+{
+	host_not_found = EAI_NONAME,
+	host_not_found_try_again = EAI_AGAIN,
+	service_not_found = EAI_SERVICE,
+};
+
+
+const std::error_category &resolver_category () noexcept;
+
+
+inline std::error_code make_error_code (resolver_errc ec) noexcept
+{
+	return std::error_code{static_cast<int>(ec), resolver_category()};
+}
+
+
+inline unexpected<std::error_code> make_unexpected (resolver_errc ec) noexcept
+{
+	return unexpected{make_error_code(ec)};
+}
+
+
+template <typename InternetProtocol>
+class basic_resolver_entry
+{
+public:
+
+	using protocol_type = InternetProtocol;
+	using endpoint_type = typename InternetProtocol::endpoint;
+
+	basic_resolver_entry () = default;
+	basic_resolver_entry (const basic_resolver_entry &) = default;
+	basic_resolver_entry (basic_resolver_entry &&) = default;
+	basic_resolver_entry &operator= (const basic_resolver_entry &) = default;
+	basic_resolver_entry &operator= (basic_resolver_entry &&) = default;
+	~basic_resolver_entry () = default;
+
+	const endpoint_type &endpoint () const noexcept
+	{
+		return *reinterpret_cast<const endpoint_type *>(current_->ai_addr);
+	}
+
+	operator endpoint_type () const noexcept
+	{
+		return endpoint();
+	}
+
+	std::string_view host_name () const noexcept
+	{
+		return list_->host;
+	}
+
+	std::string_view service_name () const noexcept
+	{
+		return list_->service;
+	}
+
+private:
+
+	std::shared_ptr<__bits::address_info_list> list_{};
+	const ::addrinfo *current_{};
+
+	basic_resolver_entry (std::shared_ptr<__bits::address_info_list> list, const ::addrinfo *current) noexcept
+		: list_{list}
+		, current_{current}
+	{ }
+
+	friend class basic_resolver_results_iterator<InternetProtocol>;
+};
+
+
+template <typename InternetProtocol>
+class basic_resolver_results_iterator
+{
+public:
+
+	basic_resolver_results_iterator () = default;
+	basic_resolver_results_iterator (const basic_resolver_results_iterator &) = default;
+	basic_resolver_results_iterator (basic_resolver_results_iterator &&) = default;
+	basic_resolver_results_iterator &operator= (const basic_resolver_results_iterator &) = default;
+	basic_resolver_results_iterator &operator= (basic_resolver_results_iterator &&) = default;
+	~basic_resolver_results_iterator () = default;
+
+	const basic_resolver_entry<InternetProtocol> &operator* () const noexcept
+	{
+		return entry_;
+	}
+
+	const basic_resolver_entry<InternetProtocol> *operator-> () const noexcept
+	{
+		return &entry_;
+	}
+
+	basic_resolver_results_iterator &operator++ () noexcept
+	{
+		entry_.current_ = current_ = current_->ai_next;
+		return *this;
+	}
+
+	basic_resolver_results_iterator operator++ (int) noexcept
+	{
+		auto tmp = *this;
+		++*this;
+		return tmp;
+	}
+
+	friend bool operator== (const basic_resolver_results_iterator &a,
+		const basic_resolver_results_iterator &b) noexcept
+	{
+		return a.current_ == b.current_;
+	}
+
+	friend bool operator!= (const basic_resolver_results_iterator &a,
+		const basic_resolver_results_iterator &b) noexcept
+	{
+		return !(a == b);
+	}
+
+
+private:
+
+	std::shared_ptr<__bits::address_info_list> list_{};
+	const ::addrinfo *current_{};
+	basic_resolver_entry<InternetProtocol> entry_{};
+
+	basic_resolver_results_iterator (std::shared_ptr<__bits::address_info_list> list) noexcept
+		: list_{list}
+		, current_{list_ ? list_->head.get() : nullptr}
+		, entry_{list_, current_}
+	{ }
+
+	friend class basic_resolver_results<InternetProtocol>;
+};
+
+
+template <typename InternetProtocol>
+class basic_resolver_results
+{
+public:
+
+	using protocol_type = InternetProtocol;
+	using endpoint_type = typename InternetProtocol::endpoint;
+
+	using value_type = basic_resolver_entry<protocol_type>;
+	using const_reference = const value_type &;
+	using reference = value_type &;
+
+	using const_iterator = basic_resolver_results_iterator<protocol_type>;
+	using iterator = const_iterator;
+	using difference_type = ptrdiff_t;
+	using size_type = size_t;
+
+	size_type size () const noexcept
+	{
+		return list_ ? list_->size : 0;
+	}
+
+	constexpr size_type max_size () const noexcept
+	{
+		return (std::numeric_limits<size_type>::max)();
+	}
+
+	bool empty () const noexcept
+	{
+		return size() == 0;
+	}
+
+	const_iterator begin () const noexcept
+	{
+		return {list_};
+	}
+
+	const_iterator end () const noexcept
+	{
+		return {};
+	}
+
+	const_iterator cbegin () const noexcept
+	{
+		return {list_};
+	}
+
+	const_iterator cend () const noexcept
+	{
+		return {};
+	}
+
+	void swap (basic_resolver_results &that) noexcept
+	{
+		std::swap(list_, that.list_);
+	}
+
+private:
+
+	std::shared_ptr<__bits::address_info_list> list_{};
+
+	static result<basic_resolver_results> load (
+		std::string_view host,
+		std::string_view service,
+		int flags,
+		const protocol_type *protocol_hint)
+	{
+		basic_resolver_results result;
+		result.list_.reset(new(std::nothrow) __bits::address_info_list);
+		if (!result.list_)
+		{
+			return pal::make_unexpected(std::errc::not_enough_memory);
+		}
+
+		int family, socktype, protocol;
+		if (protocol_hint)
+		{
+			family = protocol_hint->family();
+			socktype = protocol_hint->type();
+			protocol = protocol_hint->protocol();
+		}
+		else
+		{
+			static constexpr auto hint = endpoint_type{}.protocol();
+			family = AF_UNSPEC;
+			socktype = hint.type();
+			protocol = hint.protocol();
+		}
+
+		if (auto r = result.list_->load(host, service, flags, family, socktype, protocol))
+		{
+			return make_unexpected(static_cast<resolver_errc>(r));
+		}
+
+		return result;
+	}
+
+	friend class basic_resolver<InternetProtocol>;
+};
+
+
+class resolver_base
+{
+public:
+
+	/// \defgroup resolver_flags Resolver flags
+	/// \{
+
+	/// Resolver flags type
+	using flags = int;
+
+	/// Return endpoints intended for locally bound socket endpoints
+	static constexpr flags passive = AI_PASSIVE;
+
+	/// Determine the canonical name of the host
+	static constexpr flags canonical_name = AI_CANONNAME;
+
+	/// Host name is specified as numeric string defining IPv4 or IPv6 address
+	static constexpr flags numeric_host = AI_NUMERICHOST;
+
+	/// Service name is specified as numeric string defining port number
+	static constexpr flags numeric_service = AI_NUMERICSERV;
+
+	/// If the protocol is specified as IPv6 protocol, return IPv4-mapped
+	/// IPv6 addresses if no IPv6 addresses were found
+	static constexpr flags v4_mapped = AI_V4MAPPED;
+
+	/// If used with \a v4_mapped, return all matching IPv6 and IPv4 addresses
+	static constexpr flags all_matching = AI_ALL;
+
+	/// Only return IPv4/IPv6 addresses for which corresponding
+	/// family non-loopback address is configured
+	static constexpr flags address_configured = AI_ADDRCONFIG;
+
+	/// \}
+
+protected:
+
+	resolver_base () = default;
+	~resolver_base () = default;
+};
+
+
+template <typename InternetProtocol>
+class basic_resolver: public resolver_base
+{
+public:
+
+	using protocol_type = InternetProtocol;
+	using endpoint_type = typename InternetProtocol::endpoint;
+	using results_type = basic_resolver_results<InternetProtocol>;
+
+	result<results_type> resolve (
+		std::string_view host,
+		std::string_view service,
+		resolver_base::flags flags = {}) noexcept
+	{
+		return results_type::load(host, service, flags, nullptr);
+	}
+
+	result<results_type> resolve (
+		const protocol_type &protocol,
+		std::string_view host,
+		std::string_view service,
+		resolver_base::flags flags = {}) noexcept
+	{
+		return results_type::load(host, service, flags, &protocol);
+	}
+};
+
+
+} // namespace net::ip
+
+
+__pal_end
+
+
+namespace std {
+
+template <>
+struct is_error_code_enum<pal::net::ip::resolver_errc>
+	: true_type
+{ };
+
+} // namespace std

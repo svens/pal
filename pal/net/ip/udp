@@ -8,6 +8,7 @@
 #include <pal/__bits/lib>
 #include <pal/net/basic_datagram_socket>
 #include <pal/net/ip/basic_endpoint>
+#include <pal/net/ip/basic_resolver>
 
 
 __pal_begin
@@ -25,6 +26,9 @@ public:
 
 	/// UDP socket endpoint
 	using endpoint = basic_endpoint<udp>;
+
+	/// UDP host and service name resolver
+	using resolver = basic_resolver<udp>;
 
 	/// UDP datagram socket
 	using socket = basic_datagram_socket<udp>;

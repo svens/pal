@@ -4,10 +4,12 @@
 #include <pal/byte_order>
 #include <pal/result>
 #include <charconv>
+#include <memory>
 #include <string_view>
 
 #if __pal_os_linux || __pal_os_macos
 	#include <arpa/inet.h>
+	#include <netdb.h>
 	#include <unistd.h>
 #elif __pal_os_windows
 	#include <ws2tcpip.h>
@@ -102,6 +104,56 @@ inline result<std::string_view> host_name () noexcept
 		return unexpected<std::error_code>{std::in_place, ::WSAGetLastError(), std::system_category()};
 	#endif
 }
+
+
+struct address_info_list
+{
+	char host_buf[NI_MAXHOST] = {}, service_buf[NI_MAXSERV] = {};
+	std::string_view host{}, service{};
+	std::unique_ptr<::addrinfo, void(*)(::addrinfo*)> head{nullptr, ::freeaddrinfo};
+	size_t size{};
+
+	int load (std::string_view h, std::string_view s, int flags, int family, int socktype, int protocol) noexcept
+	{
+		if (h.data())
+		{
+			h.copy(host_buf, sizeof(host_buf));
+			host = host_buf;
+		}
+
+		if (s.data())
+		{
+			s.copy(service_buf, sizeof(service_buf));
+			service = service_buf;
+		}
+
+		::addrinfo hints{}, *result{};
+		hints.ai_flags = flags;
+		hints.ai_family = family;
+		hints.ai_socktype = socktype;
+		hints.ai_protocol = protocol;
+
+		auto r = ::getaddrinfo(host.data(), service.data(), &hints, &result);
+		if (r == 0)
+		{
+			head.reset(result);
+			for (/**/;  result;  result = result->ai_next, size++)
+			{
+				if (size == 0 && result->ai_canonname)
+				{
+					host = result->ai_canonname;
+				}
+			}
+		}
+
+		if (r == EAI_NONAME && host.empty())
+		{
+			r = EAI_SERVICE;
+		}
+
+		return r;
+	}
+};
 
 
 } // namespace net::ip::__bits

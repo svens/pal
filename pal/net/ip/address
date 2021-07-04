@@ -96,7 +96,7 @@ public:
 		{
 			return v4();
 		}
-		return make_unexpected(std::errc::address_not_available);
+		return pal::make_unexpected(std::errc::address_not_available);
 	}
 
 	/// Return IPv4 address or failure if this does not contain IPv4 address
@@ -106,7 +106,7 @@ public:
 		{
 			return v6();
 		}
-		return make_unexpected(std::errc::address_not_available);
+		return pal::make_unexpected(std::errc::address_not_available);
 	}
 
 	/// Return true if \a this is unspecified address.
@@ -227,7 +227,7 @@ inline result<address> make_address (const char *text) noexcept
 	{
 		return *v6;
 	}
-	return make_unexpected(std::errc::invalid_argument);
+	return pal::make_unexpected(std::errc::invalid_argument);
 }
 
 /// \copydoc make_address()
@@ -246,7 +246,7 @@ inline result<address> make_address (const std::string_view &text) noexcept
 		c_str[length] = '\0';
 		return make_address(c_str);
 	}
-	return make_unexpected(std::errc::invalid_argument);
+	return pal::make_unexpected(std::errc::invalid_argument);
 }
 
 

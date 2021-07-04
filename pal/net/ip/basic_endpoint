@@ -191,7 +191,7 @@ public:
 		{
 			return {};
 		}
-		return make_unexpected(std::errc::invalid_argument);
+		return pal::make_unexpected(std::errc::invalid_argument);
 	}
 
 	/// \returns address family independent socket address storage size

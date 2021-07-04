@@ -221,7 +221,7 @@ inline result<address_v6> make_address_v6 (const char *text) noexcept
 	{
 		return result;
 	}
-	return make_unexpected(std::errc::invalid_argument);
+	return pal::make_unexpected(std::errc::invalid_argument);
 }
 
 /// \copydoc make_address_v6()
@@ -240,7 +240,7 @@ inline result<address_v6> make_address_v6 (const std::string_view &text) noexcep
 		c_str[length] = '\0';
 		return make_address_v6(c_str);
 	}
-	return make_unexpected(std::errc::invalid_argument);
+	return pal::make_unexpected(std::errc::invalid_argument);
 }
 
 
@@ -260,7 +260,7 @@ inline result<address_v4> make_address_v4 (v4_mapped_t, const address_v6 &a) noe
 		const auto &v6b = a.to_bytes();
 		return address_v4::bytes_type{v6b[12], v6b[13], v6b[14], v6b[15]};
 	}
-	return make_unexpected(std::errc::invalid_argument);
+	return pal::make_unexpected(std::errc::invalid_argument);
 }
 
 

@@ -260,7 +260,7 @@ inline result<address_v4> make_address_v4 (const char *text) noexcept
 	{
 		return result;
 	}
-	return make_unexpected(std::errc::invalid_argument);
+	return pal::make_unexpected(std::errc::invalid_argument);
 }
 
 /// \copydoc make_address_v4()
@@ -279,7 +279,7 @@ inline result<address_v4> make_address_v4 (const std::string_view &text) noexcep
 		c_str[length] = '\0';
 		return make_address_v4(c_str);
 	}
-	return make_unexpected(std::errc::invalid_argument);
+	return pal::make_unexpected(std::errc::invalid_argument);
 }
 
 
