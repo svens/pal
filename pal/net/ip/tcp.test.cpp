@@ -41,7 +41,7 @@ using namespace std::chrono_literals;
 
 TEMPLATE_TEST_CASE("net/ip/tcp", "", tcp_v4, tcp_v6, tcp_v6_only)
 {
-	using protocol_t = decltype(TestType::protocol_v);
+	using protocol_t = std::remove_cvref_t<decltype(TestType::protocol_v)>;
 	using endpoint_t = typename protocol_t::endpoint;
 
 	// send buffers

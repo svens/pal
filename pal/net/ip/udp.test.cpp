@@ -43,7 +43,7 @@ using namespace std::chrono_literals;
 
 TEMPLATE_TEST_CASE("net/ip/udp", "", udp_v4, udp_v6, udp_v6_only)
 {
-	using protocol_t = decltype(TestType::protocol_v);
+	using protocol_t = std::remove_cvref_t<decltype(TestType::protocol_v)>;
 	using endpoint_t = typename protocol_t::endpoint;
 
 	// send buffers

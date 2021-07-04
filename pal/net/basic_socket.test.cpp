@@ -16,7 +16,7 @@ TEMPLATE_TEST_CASE("net/basic_socket", "",
 	udp_v6_only,
 	tcp_v6_only)
 {
-	using protocol_t = decltype(TestType::protocol_v);
+	using protocol_t = std::remove_cvref_t<decltype(TestType::protocol_v)>;
 	using endpoint_t = typename protocol_t::endpoint;
 
 	typename protocol_t::socket s;
