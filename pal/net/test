@@ -1,100 +1,181 @@
 #pragma once // -*- C++ -*-
 
-#include <pal/net/ip/udp>
-#include <pal/net/ip/tcp>
 #include <pal/test>
-#include <random>
+#include <pal/net/socket>
+#include <pal/net/internet>
 #include <type_traits>
-
+#include <random>
 
 namespace pal_test {
 
 
-struct tcp_v4
-{
-	using protocol_type = pal::net::ip::tcp;
-	using address_type = pal::net::ip::address_v4;
-};
-
-
-struct tcp_v6
-{
-	using protocol_type = pal::net::ip::tcp;
-	using address_type = pal::net::ip::address_v6;
-};
+using pal::net::__bits::handle_guard;
 
 
 struct udp_v4
 {
-	using protocol_type = pal::net::ip::udp;
-	using address_type = pal::net::ip::address_v4;
+	template <typename T> using with = std::pair<udp_v4, T>;
+
+	static constexpr auto protocol_v = pal::net::ip::udp::v4();
+	static constexpr auto loopback_v = pal::net::ip::address_v4::loopback();
+
+	static auto make_socket ()
+	{
+		return pal::net::make_datagram_socket(protocol_v);
+	}
 };
 
 
 struct udp_v6
 {
-	using protocol_type = pal::net::ip::udp;
-	using address_type = pal::net::ip::address_v6;
+	template <typename T> using with = std::pair<udp_v6, T>;
+
+	static constexpr auto protocol_v = pal::net::ip::udp::v6();
+	static constexpr auto loopback_v = pal::net::ip::address_v6::loopback();
+
+	static auto make_socket ()
+	{
+		return pal::net::make_datagram_socket(protocol_v);
+	}
 };
 
 
-template <typename TestType>
-using protocol_t = typename TestType::protocol_type;
+struct tcp_v4
+{
+	template <typename T> using with = std::pair<tcp_v4, T>;
 
-template <typename TestType>
-using endpoint_t = typename protocol_t<TestType>::endpoint;
+	static constexpr auto protocol_v = pal::net::ip::tcp::v4();
+	static constexpr auto loopback_v = pal::net::ip::address_v4::loopback();
 
-template <typename TestType>
-using acceptor_t = typename protocol_t<TestType>::acceptor;
+	static auto make_socket ()
+	{
+		return pal::net::make_stream_socket(protocol_v);
+	}
 
-template <typename TestType>
-using socket_t = typename protocol_t<TestType>::socket;
+	static auto make_acceptor ()
+	{
+		return pal::net::make_socket_acceptor(protocol_v);
+	}
+};
 
 
-template <typename TestType>
-constexpr bool is_tcp_v = std::is_same_v<
-	typename TestType::protocol_type,
-	pal::net::ip::tcp
->;
+struct tcp_v6
+{
+	template <typename T> using with = std::pair<tcp_v6, T>;
 
-template <typename TestType>
-constexpr bool is_udp_v = std::is_same_v<
-	typename TestType::protocol_type,
-	pal::net::ip::udp
->;
+	static constexpr auto protocol_v = pal::net::ip::tcp::v6();
+	static constexpr auto loopback_v = pal::net::ip::address_v6::loopback();
 
-template <typename TestType>
-constexpr bool is_v4_v = std::is_same_v<
-	typename TestType::address_type,
-	pal::net::ip::address_v4
->;
+	static auto make_socket ()
+	{
+		return pal::net::make_stream_socket(protocol_v);
+	}
 
-template <typename TestType>
-constexpr bool is_v6_v = std::is_same_v<
-	typename TestType::address_type,
-	pal::net::ip::address_v6
->;
+	static auto make_acceptor ()
+	{
+		return pal::net::make_socket_acceptor(protocol_v);
+	}
+};
 
-template <typename TestType>
-constexpr protocol_t<TestType> protocol_v = is_v4_v<TestType>
-	? protocol_t<TestType>::v4()
-	: protocol_t<TestType>::v6()
+
+template <typename Protocol>
+struct v6_only: Protocol
+{
+	template <typename T> using with = std::pair<v6_only<Protocol>, T>;
+
+	static auto make_socket ()
+	{
+		auto socket = Protocol::make_socket();
+		if (socket)
+		{
+			auto set_option = socket->set_option(pal::net::ip::v6_only(true));
+			if (!set_option)
+			{
+				socket = pal::unexpected{set_option.error()};
+			}
+		}
+		return socket;
+	}
+};
+
+using udp_v6_only = v6_only<udp_v6>;
+using tcp_v6_only = v6_only<tcp_v6>;
+
+
+struct invalid_protocol
+{
+	using socket = pal::net::basic_socket<invalid_protocol>;
+	using endpoint = int;
+
+	static constexpr int invalid_value = (std::numeric_limits<int>::max)();
+
+	constexpr int family () const noexcept
+	{
+		return invalid_value;
+	}
+
+	constexpr int type () const noexcept
+	{
+		return invalid_value;
+	}
+
+	constexpr int protocol () const noexcept
+	{
+		return invalid_value;
+	}
+};
+
+
+template <typename T>
+constexpr bool is_udp_v = false
+	|| std::is_same_v<T, udp_v4>
+	|| std::is_same_v<T, udp_v6>
+	|| std::is_same_v<T, udp_v6_only>
 ;
 
 
-constexpr pal::net::ip::port_type min_port = 1024, max_port = 65535;
+template <typename T>
+constexpr bool is_tcp_v = false
+	|| std::is_same_v<T, tcp_v4>
+	|| std::is_same_v<T, tcp_v6>
+	|| std::is_same_v<T, tcp_v6_only>
+;
 
+
+template <typename T>
+constexpr bool is_v4_v = false
+	|| std::is_same_v<T, udp_v4>
+	|| std::is_same_v<T, tcp_v4>
+;
+
+
+template <typename T>
+constexpr bool is_v6_v = false
+	|| std::is_same_v<T, udp_v6>
+	|| std::is_same_v<T, udp_v6_only>
+	|| std::is_same_v<T, tcp_v6>
+	|| std::is_same_v<T, tcp_v6_only>
+;
+
+
+//
+// For random order repeated tests:
+// - do not hardcode port number but try until find next available one
+// - UDP/TCP have separate next_port() ranges
+//
+
+constexpr pal::net::ip::port_type min_port = 1024, max_port = 65535;
 
 inline pal::net::ip::port_type base_port () noexcept
 {
-	std::random_device rdev;
-	std::default_random_engine eng(rdev());
+	std::random_device dev;
+	std::default_random_engine eng(dev());
 	std::uniform_int_distribution<pal::net::ip::port_type> dist(min_port, max_port);
 	return dist(eng);
 }
 
-
-inline pal::net::ip::port_type next_port () noexcept
+template <typename Protocol>
+pal::net::ip::port_type next_port (const Protocol &) noexcept
 {
 	static auto port = base_port();
 	if (port < min_port || port > max_port)
@@ -104,47 +185,19 @@ inline pal::net::ip::port_type next_port () noexcept
 	return port++;
 }
 
-
-template <typename Protocol>
-inline typename Protocol::endpoint next_endpoint (const Protocol &protocol) noexcept
-{
-	return {protocol, next_port()};
-}
-
-
-template <typename Endpoint>
-Endpoint to_loopback (Endpoint endpoint)
-{
-	if (endpoint.address().is_v4())
-	{
-		endpoint.address(pal::net::ip::address_v4::loopback());
-	}
-	else
-	{
-		endpoint.address(pal::net::ip::address_v6::loopback());
-	}
-	return endpoint;
-}
-
-
-template <typename Bindable>
-typename Bindable::endpoint_type bind_available_port (Bindable &bindable,
-	typename Bindable::endpoint_type &endpoint)
+template <typename Socket>
+bool bind_next_available_port (Socket &socket, typename Socket::endpoint_type &endpoint) noexcept
 {
 	constexpr size_t max_tries = max_port - min_port;
-
-	std::error_code error;
 	for (auto tries_left = max_tries;  tries_left;  tries_left--)
 	{
-		bindable.bind(endpoint, error);
-		if (!error)
+		endpoint.port(next_port(endpoint.protocol()));
+		if (socket.bind(endpoint))
 		{
-			return to_loopback(endpoint);
+			return true;
 		}
-		endpoint.port(next_port());
 	}
-
-	throw std::system_error(error, "bind_available_port");
+	return false;
 }
 
 

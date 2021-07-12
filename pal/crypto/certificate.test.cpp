@@ -810,6 +810,12 @@ TEST_CASE("crypto/certificate/store", "[!mayfail]")
 		CHECK(value == "server.pal.alt.ee");
 	}
 
+	SECTION("load_all(with_fqdn) wildcard matches too much")
+	{
+		auto certs = certificate::load_all(with_fqdn("not.ok.pal.alt.ee"));
+		CHECK(certs.empty());
+	}
+
 	SECTION("load_all(with_fqdn) wildcard not found")
 	{
 		auto certs = certificate::load_all(with_fqdn("fail-pal.alt.ee"));

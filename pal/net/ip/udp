@@ -6,9 +6,9 @@
  */
 
 #include <pal/__bits/lib>
-#include <pal/net/__bits/socket>
 #include <pal/net/basic_datagram_socket>
 #include <pal/net/ip/basic_endpoint>
+#include <pal/net/ip/basic_resolver>
 
 
 __pal_begin
@@ -18,7 +18,7 @@ namespace net::ip {
 
 
 /**
- * Encapsulate types and flags for UDP sockets.
+ * Encapsulate types and constants for UDP sockets.
  */
 class udp
 {
@@ -27,52 +27,39 @@ public:
 	/// UDP socket endpoint
 	using endpoint = basic_endpoint<udp>;
 
+	/// UDP host and service name resolver
+	using resolver = basic_resolver<udp>;
+
 	/// UDP datagram socket
 	using socket = basic_datagram_socket<udp>;
 
-
 	udp () = delete;
 
-
-	/**
-	 * UDP/IPv4 internet protocol.
-	 */
+	/// UDP/IPv4 internet protocol
 	static constexpr udp v4 () noexcept
 	{
 		return udp{AF_INET};
 	}
 
-
-	/**
-	 * UDP/IPv6 internet protocol.
-	 */
+	/// UDP/IPv6 internet protocol
 	static constexpr udp v6 () noexcept
 	{
 		return udp{AF_INET6};
 	}
 
-
-	/**
-	 * Return value suitable passing as domain argument for socket(2)
-	 */
+	/// Return value suitable passing as domain argument for socket(2)
 	constexpr int family () const noexcept
 	{
 		return family_;
 	}
 
-
-	/**
-	 * Return value suitable passing as type argument for socket(2)
-	 */
+	/// Return value suitable passing as type argument for socket(2)
 	constexpr int type () const noexcept
 	{
 		return SOCK_DGRAM;
 	}
 
-
-	/**
-	 * Return value suitable passing as protocol argument for socket(2)
-	 */
+	/// Return value suitable passing as protocol argument for socket(2)
 	constexpr int protocol () const noexcept
 	{
 		return IPPROTO_UDP;
@@ -87,21 +74,19 @@ private:
 		: family_{family}
 	{ }
 
-	template <typename Protocol> friend class basic_endpoint;
+	friend class basic_endpoint<udp>;
+	friend class basic_socket<udp>;
 };
 
 
-/**
- * Return true if \a a == \a b
- */
+/// Return true if \a a == \a b
 constexpr bool operator== (const udp &a, const udp &b) noexcept
 {
 	return a.family() == b.family();
 }
 
-/**
- * Return true if \a a != \a b
- */
+
+/// Return true if \a a != \a b
 constexpr bool operator!= (const udp &a, const udp &b) noexcept
 {
 	return !(a == b);

@@ -6,62 +6,67 @@
 namespace {
 
 
-uint32_t to_host_uint (const char *src)
+// "independent" parser
+uint32_t to_host_uint (const std::string &src)
 {
 	in_addr dest{};
-	REQUIRE(inet_pton(AF_INET, src, &dest) == 1);
-	return pal::ntoh(static_cast<uint32_t>(dest.s_addr));
+	::inet_pton(AF_INET, src.c_str(), &dest);
+	return ntohl(static_cast<uint32_t>(dest.s_addr));
 }
 
 
 TEST_CASE("net/ip/address_v4")
 {
-	using namespace pal::net::ip;
-	using ip4 = address_v4::bytes_type;
+	using A = pal::net::ip::address_v4;
+	using B = A::bytes_type;
 
 	SECTION("constexpr")
 	{
-		constexpr address_v4 a;
-		constexpr address_v4 b{ip4{1,2,3,4}};
-		constexpr address_v4 c{b};
-		constexpr address_v4 d{c.to_uint()};
-		constexpr address_v4 e{d.to_bytes()};
-		constexpr auto f = e.is_unspecified();
-		constexpr auto g = e.is_loopback();
-		constexpr auto h = e.is_multicast();
-		constexpr auto i = e.is_private();
-		constexpr auto j = e.compare(a);
-		constexpr auto k = e.hash();
-		constexpr auto l = address_v4::any();
-		constexpr auto m = address_v4::loopback();
-		constexpr auto n = address_v4::broadcast();
-		pal_test::unused(a, b, c, d, e, f, g, h, i, j, k, l, m, n);
-	}
+		constexpr A a;
+		static_assert(a == A::any());
+		static_assert(a.is_unspecified());
+		static_assert(!a.is_loopback());
+		static_assert(!a.is_private());
 
-	SECTION("well-known addresses")
-	{
-		CHECK(address_v4::any().is_unspecified());
-		CHECK(address_v4::loopback().is_loopback());
-		CHECK_FALSE(address_v4::broadcast().is_multicast());
+		constexpr A b{B{127,0,0,1}};
+		static_assert(b == A::loopback());
+		static_assert(b.is_loopback());
+		static_assert(!b.is_unspecified());
+		static_assert(!b.is_private());
+
+		constexpr A c{b.to_uint()};
+		constexpr A d{b.to_bytes()};
+		static_assert(c == d);
+
+		constexpr A e{b};
+		static_assert(e == b);
+		static_assert(e != a);
+		static_assert(e > a);
+		static_assert(e >= a);
+		static_assert(!(e < a));
+		static_assert(!(e <= a));
+
+		static_assert(A::any().is_unspecified());
+		static_assert(A::loopback().is_loopback());
 	}
 
 	SECTION("ctor")
 	{
-		address_v4 a;
+		A a;
 		CHECK(a.to_uint() == 0);
 	}
 
-	SECTION("ctor(address_v4)")
+	SECTION("copy ctor")
 	{
-		auto a = address_v4::loopback();
-		auto b{a};
-		CHECK(a == b);
+		A a;
+		auto a1 = a;
+		CHECK(a1 == a);
 	}
 
-	SECTION("comparisons")
+	SECTION("compare")
 	{
-		auto a = address_v4::any();
-		auto b = address_v4::broadcast();
+		auto a = A::loopback();
+		auto b = A::broadcast();
 		auto c = a;
 
 		CHECK_FALSE(a == b);
@@ -89,168 +94,134 @@ TEST_CASE("net/ip/address_v4")
 		CHECK(a >= c);
 	}
 
-	using ip4 = address_v4::bytes_type;
-	auto [bytes, c_str, is_unspecified, is_loopback, is_multicast, is_private] = GENERATE(
-		table<ip4, const char *, bool, bool, bool, bool>({
-		{ ip4{0,0,0,0},         "0.0.0.0",         true,  false, false, false },
-		{ ip4{0,1,0,0},         "0.1.0.0",         false, false, false, false },
-		{ ip4{0,0,1,0},         "0.0.1.0",         false, false, false, false },
-		{ ip4{0,0,0,1},         "0.0.0.1",         false, false, false, false },
-		{ ip4{127,0,0,1},       "127.0.0.1",       false, true,  false, false },
-		{ ip4{255,255,255,255}, "255.255.255.255", false, false, false, false },
-		{ ip4{224,1,2,3},       "224.1.2.3",       false, false, true,  false },
-		{ ip4{10,1,2,3},        "10.1.2.3",        false, false, false, true  },
-		{ ip4{172,15,0,1},      "172.15.0.1",      false, false, false, false },
-		{ ip4{172,16,0,1},      "172.16.0.1",      false, false, false, true  },
-		{ ip4{172,20,0,1},      "172.20.0.1",      false, false, false, true  },
-		{ ip4{172,31,255,255},  "172.31.255.255",  false, false, false, true  },
-		{ ip4{172,32,0,1},      "172.32.0.1",      false, false, false, false },
-		{ ip4{192,168,1,2},     "192.168.1.2",     false, false, false, true  },
-		{ ip4{192,169,0,1},     "192.169.0.1",     false, false, false, false },
-	}));
-	CAPTURE(c_str);
+	auto &[view, bytes, is_unspecified, is_loopback, is_private] = GENERATE(
+		table<std::string, B, bool, bool, bool>({
+			{ "0.0.0.0",         B{0,0,0,0},         true,  false, false },
+			{ "0.1.0.0",         B{0,1,0,0},         false, false, false },
+			{ "0.0.1.0",         B{0,0,1,0},         false, false, false },
+			{ "0.0.0.1",         B{0,0,0,1},         false, false, false },
+			{ "127.0.0.1",       B{127,0,0,1},       false, true,  false },
+			{ "255.255.255.255", B{255,255,255,255}, false, false, false },
+			{ "224.1.2.3",       B{224,1,2,3},       false, false, false },
+			{ "10.1.2.3",        B{10,1,2,3},        false, false, true  },
+			{ "172.15.0.1",      B{172,15,0,1},      false, false, false },
+			{ "172.16.0.1",      B{172,16,0,1},      false, false, true  },
+			{ "172.20.0.1",      B{172,20,0,1},      false, false, true  },
+			{ "172.31.255.255",  B{172,31,255,255},  false, false, true  },
+			{ "172.32.0.1",      B{172,32,0,1},      false, false, false },
+			{ "192.168.1.2",     B{192,168,1,2},     false, false, true  },
+			{ "192.169.0.1",     B{192,169,0,1},     false, false, false },
+		})
+	);
+	CAPTURE(view);
 
-	address_v4 address{bytes};
-	auto as_uint = to_host_uint(c_str);
+	A a{bytes};
+	auto as_uint = to_host_uint(view);
 
-	SECTION("ctor(uint_type)")
+	SECTION("ctor(Arg)")
 	{
-		CHECK(address_v4(as_uint) == address);
-	}
-
-	SECTION("to_bytes")
-	{
-		CHECK(address.to_bytes() == bytes);
-	}
-
-	SECTION("to_uint")
-	{
-		CHECK(address.to_uint() == as_uint);
+		A a1{as_uint};
+		CHECK(a1.to_uint() == as_uint);
+		CHECK(a1.to_bytes() == bytes);
+		CHECK(a1 == a);
 	}
 
 	SECTION("properties")
 	{
-		CHECK(address.is_unspecified() == is_unspecified);
-		CHECK(address.is_loopback() == is_loopback);
-		CHECK(address.is_multicast() == is_multicast);
-		CHECK(address.is_private() == is_private);
+		CHECK(a.is_unspecified() == is_unspecified);
+		CHECK(a.is_loopback() == is_loopback);
+		CHECK(a.is_private() == is_private);
 	}
 
 	SECTION("hash")
 	{
-		CHECK(address.hash() != 0);
+		CHECK(a.hash() != 0);
 	}
 
 	SECTION("to_chars")
 	{
 		char buf[INET_ADDRSTRLEN];
-		auto [p, ec] = address.to_chars(buf, buf + sizeof(buf));
-		CHECK(ec == std::errc{});
-		CHECK(std::string(buf, p) == c_str);
+		auto [p, ec] = a.to_chars(buf, buf + sizeof(buf));
+		REQUIRE(ec == std::errc{});
+		CHECK(std::string{buf, p} == view);
 	}
 
 	SECTION("to_chars failure")
 	{
-		const size_t max_size = address.to_string().size(), min_size = 0;
+		const size_t max_size = a.to_string().size(), min_size = 0;
 		auto buf_size = GENERATE_COPY(range(min_size, max_size));
 		std::string buf(buf_size, '\0');
-		auto [p, ec] = address.to_chars(buf.data(), buf.data() + buf.size());
+		auto [p, ec] = a.to_chars(buf.data(), buf.data() + buf.size());
 		CHECK(ec == std::errc::value_too_large);
 		CHECK(p == buf.data() + buf.size());
 	}
 
 	SECTION("to_string")
 	{
-		CHECK(address.to_string() == c_str);
+		CHECK(a.to_string() == view);
 	}
 
-	SECTION("operator<<(std::ostream)")
+	SECTION("ostream")
 	{
 		std::ostringstream oss;
-		oss << address;
-		CHECK(oss.str() == c_str);
+		oss << a;
+		CHECK(oss.str() == view);
 	}
+
+	using pal::net::ip::make_address_v4;
 
 	SECTION("make_address_v4(bytes_type)")
 	{
-		CHECK(address == make_address_v4(bytes));
+		CHECK(a == make_address_v4(bytes));
 	}
 
 	SECTION("make_address_v4(uint_type)")
 	{
-		CHECK(address == make_address_v4(as_uint));
+		CHECK(a == make_address_v4(as_uint));
 	}
 
 	SECTION("make_address_v4(char *)")
 	{
-		std::error_code error;
-		CHECK(address == make_address_v4(c_str, error));
-		CHECK(!error);
-
-		CHECK_NOTHROW(make_address_v4(c_str));
+		auto v = make_address_v4(view.c_str());
+		REQUIRE(v);
+		CHECK(*v == a);
 	}
 
 	SECTION("make_address_v4(char *) failure")
 	{
-		std::error_code error;
-		std::string s = "x";
-		s += c_str;
-		make_address_v4(s.c_str(), error);
-		CHECK(error == std::errc::invalid_argument);
-
-		CHECK_THROWS_AS(
-			make_address_v4(s.c_str()),
-			std::system_error
-		);
+		auto s = view + 'x';
+		auto v = make_address_v4(s.c_str());
+		REQUIRE_FALSE(v);
+		CHECK(v.error() == std::errc::invalid_argument);
 	}
 
 	SECTION("make_address_v4(string)")
 	{
-		std::string as_string = c_str;
-		std::error_code error;
-		CHECK(address == make_address_v4(as_string, error));
-		CHECK(!error);
-
-		CHECK_NOTHROW(make_address_v4(as_string));
+		auto v = make_address_v4(view);
+		REQUIRE(v);
+		CHECK(*v == a);
 	}
 
 	SECTION("make_address_v4(string) failure")
 	{
-		std::error_code error;
-		std::string s = "x";
-		s += c_str;
-		make_address_v4(s, error);
-		CHECK(error == std::errc::invalid_argument);
-
-		CHECK_THROWS_AS(
-			make_address_v4(s),
-			std::system_error
-		);
+		auto v = make_address_v4(view + 'x');
+		REQUIRE_FALSE(v);
+		CHECK(v.error() == std::errc::invalid_argument);
 	}
 
 	SECTION("make_address_v4(string_view)")
 	{
-		std::string_view view{c_str};
-		std::error_code error;
-		CHECK(address == make_address_v4(view, error));
-		CHECK(!error);
-
-		CHECK_NOTHROW(make_address_v4(view));
+		auto v = make_address_v4(std::string_view{view});
+		REQUIRE(v);
+		CHECK(*v == a);
 	}
 
 	SECTION("make_address_v4(string_view) failure")
 	{
-		std::error_code error;
-		std::string s = "x";
-		s += c_str;
-		std::string_view view{s};
-		make_address_v4(view, error);
-		CHECK(error == std::errc::invalid_argument);
-
-		CHECK_THROWS_AS(
-			make_address_v4(view),
-			std::system_error
-		);
+		auto s = view + 'x';
+		auto v = make_address_v4(std::string_view{s});
+		REQUIRE_FALSE(v);
+		CHECK(v.error() == std::errc::invalid_argument);
 	}
 }
 

@@ -2,13 +2,12 @@
 
 /**
  * \file pal/net/basic_socket_acceptor
- * Generic socket base class
+ * Incoming socket connect requests acceptor
  */
 
 #include <pal/__bits/lib>
-#include <pal/net/error>
 #include <pal/net/socket_base>
-#include <chrono>
+#include <pal/assert>
 
 
 __pal_begin
@@ -18,78 +17,48 @@ namespace net {
 
 
 /**
- * Base socket class for basic_datagram_socket<AcceptableProtocol> and
- * basic_stream_socket<AcceptableProtocol> class templates. It provides functionality
- * common to both types of socket.
+ * Incoming socket connect requests listener and acceptor
  */
 template <typename AcceptableProtocol>
 class basic_socket_acceptor: public socket_base
 {
 public:
 
-	/// Socket protocol
+	/// Accepted sockets' protocol type
 	using protocol_type = AcceptableProtocol;
 
-	/// Socket endpoint
-	using endpoint_type = typename protocol_type::endpoint;
+	/// Protocol-specific endpoint type
+	using endpoint_type = typename AcceptableProtocol::endpoint;
 
-	/// Socket type
-	using socket_type = typename protocol_type::socket;
-
-	/// Native socket handle
-	using typename socket_base::native_handle_type;
-
-
-#if !defined(__DOXYGEN__)
-	basic_socket_acceptor () noexcept = default;
-	basic_socket_acceptor (basic_socket_acceptor &&) noexcept = default;
-	basic_socket_acceptor &operator= (basic_socket_acceptor &&) noexcept = default;
-	~basic_socket_acceptor () = default;
-#endif
+	/// Protocol-specific socket type
+	using socket_type = typename AcceptableProtocol::socket;
 
 
 	/**
-	 * Construct new socket, acquiring \a handle. On failure, throw
-	 * std::system_error.
+	 * \returns true if this acceptor was opened by previous call to open()
+	 * or assign().
 	 */
-	basic_socket_acceptor (const protocol_type &protocol, native_handle_type handle)
+	bool is_open () const noexcept
 	{
-		assign(protocol, handle);
+		return acceptor_.is_open();
 	}
 
 
 	/**
-	 * Construct and open new socket using \a protocol. On failure, throw
-	 * std::system_error.
+	 * Returns socket protocol (has valid value only if is_open()).
 	 */
-	basic_socket_acceptor (const protocol_type &protocol)
+	protocol_type protocol () const noexcept
 	{
-		open(protocol);
+		return protocol_type{acceptor_.family()};
 	}
 
 
 	/**
-	 * Construct and open new socket. After construction bind to \a
-	 * endpoint. On failure, throw std::system_error.
-	 */
-	basic_socket_acceptor (const endpoint_type &endpoint, bool reuse_addr = true)
-		: basic_socket_acceptor(endpoint.protocol())
-	{
-		if (reuse_addr)
-		{
-			set_option(reuse_address(true));
-		}
-		bind(endpoint);
-		listen();
-	}
-
-
-	/**
-	 * Return native socket handle
+	 * Return native acceptor handle.
 	 */
 	native_handle_type native_handle () const noexcept
 	{
-		return socket_.handle;
+		return acceptor_.handle();
 	}
 
 
@@ -98,420 +67,259 @@ public:
 	 */
 	native_handle_type release () noexcept
 	{
-		return socket_.reset();
+		return acceptor_.release();
 	}
 
 
 	/**
-	 * Return true if this socket was open by previous call to open() or
-	 * assign()
+	 * Create new acceptor instance of \a protocol. It is undefined
+	 * behaviour to open already opened acceptor.
 	 */
-	bool is_open () const noexcept
+	result<void> open (const protocol_type &protocol) noexcept(assert_noexcept)
 	{
-		return socket_.handle != invalid;
-	}
-
-
-	/**
-	 * Create new socket instance of \a protocol. On failure, set \a
-	 * error.
-	 */
-	void open (const protocol_type &protocol, std::error_code &error) noexcept
-	{
-		if (!is_open())
+		pal_assert(!is_open());
+		if (auto s = acceptor_.open(protocol.family(), protocol.type(), protocol.protocol()))
 		{
-			do_open(protocol, error);
+			acceptor_ = std::move(*s);
+			return {};
 		}
 		else
 		{
-			error = make_error_code(socket_errc::already_open);
+			return unexpected{s.error()};
 		}
 	}
 
 
 	/**
-	 * Create new socket instance of \a protocol. On failure, throw
-	 * std::system_error.
+	 * Set new acceptor \a handle. If this acceptor is already opened, it
+	 * is closed before assignment.
 	 */
-	void open (const protocol_type &protocol)
+	result<void> assign (const protocol_type &protocol, native_handle_type handle) noexcept
 	{
-		open(protocol, throw_on_error("basic_socket_acceptor::open"));
-	}
-
-
-	/**
-	 * Assign previously opened native socket \a handle to this socket
-	 * object. On failure, set \a error
-	 */
-	void assign (const protocol_type &protocol,
-		native_handle_type handle,
-		std::error_code &error) noexcept
-	{
-		if (handle == invalid)
+		if (handle != -1)
 		{
-			error = make_error_code(std::errc::bad_file_descriptor);
+			return acceptor_.assign(
+				protocol.family(),
+				protocol.type(),
+				protocol.protocol(),
+				handle
+			);
 		}
-		else if (!is_open())
+		else if (acceptor_.is_open())
 		{
-			socket_.reset(handle);
-			protocol_ = protocol;
-		}
-		else
-		{
-			error = make_error_code(socket_errc::already_open);
-		}
-	}
-
-
-	/**
-	 * Assign previously opened native socket \a handle to this socket
-	 * object. On failure, throw std::system_error.
-	 */
-	void assign (const protocol_type &protocol, native_handle_type handle)
-	{
-		assign(protocol, handle, throw_on_error("basic_socket_acceptor::assign"));
-	}
-
-
-	/**
-	 * Close socket. On failure, set \a error.
-	 */
-	void close (std::error_code &error) noexcept
-	{
-		if (is_open())
-		{
-			socket_.close(error);
-		}
-		else
-		{
-			error = make_error_code(std::errc::bad_file_descriptor);
-		}
-	}
-
-
-	/**
-	 * Close socket. On failure, throw std::system_error.
-	 */
-	void close ()
-	{
-		close(throw_on_error("basic_socket_acceptor::close"));
-	}
-
-
-	/**
-	 * Bind this socket to specified local \a endpoint. On failure, set \a error
-	 */
-	void bind (const endpoint_type &endpoint, std::error_code &error) noexcept
-	{
-		socket_.bind(endpoint.data(), endpoint.size(), error);
-	}
-
-
-	/**
-	 * Bind this socket to specified local \a endpoint. On failure, throw
-	 * std::system_error
-	 */
-	void bind (const endpoint_type &endpoint)
-	{
-		bind(endpoint, throw_on_error("basic_socket_acceptor::bind"));
-	}
-
-
-	/**
-	 * If \a mode is true, subsequent accept operations are permitted to
-	 * fail with error std::errc::connection_aborted. If \a mode is false,
-	 * subsequent accept operations are internally restarted if syscall
-	 * fails with ECONNABORTED.
-	 */
-	void enable_connection_aborted (bool mode)
-	{
-		socket_.flags.enable_connection_aborted = mode;
-	}
-
-
-	/**
-	 * \returns whether accept operations are permitted to fail with
-	 * std::errc::connection_aborted.
-	 */
-	bool enable_connection_aborted () const noexcept
-	{
-		return socket_.flags.enable_connection_aborted;
-	}
-
-
-	/**
-	 * Mark acceptor as ready to accept connections. \a backlog parameter
-	 * defines the maximum length for the queue of pending connections.
-	 * On failure, set \a error.
-	 */
-	void listen (int backlog, std::error_code &error) noexcept
-	{
-		socket_.listen(backlog, error);
-	}
-
-
-	/**
-	 * Mark acceptor as ready to accept connections. \a backlog parameter
-	 * defines the maximum length for the queue of pending connections.
-	 * On failure, throw std::system_error
-	 */
-	void listen (int backlog = max_listen_connections)
-	{
-		listen(backlog, throw_on_error("basic_socket_acceptor::listen"));
-	}
-
-
-	/**
-	 * Extract socket from the queue of pending connections of the
-	 * acceptor. On failure, set \a error.
-	 */
-	socket_type accept (std::error_code &error) noexcept
-	{
-		auto socket = socket_.accept(nullptr, 0, error);
-		if (!error)
-		{
-			return {protocol_, socket};
+			return acceptor_.close();
 		}
 		return {};
 	}
 
 
 	/**
-	 * Extract socket from the queue of pending connections of the
-	 * acceptor. On failure, throw std::system_error.
+	 * Close acceptor and release associated resources.
+	 * TODO: document pending asynchronous operations
 	 */
-	socket_type accept ()
+	result<void> close () noexcept(assert_noexcept)
 	{
-		return accept(throw_on_error("basic_socket_acceptor::accept"));
+		pal_assert(is_open());
+		return acceptor_.close();
 	}
 
 
 	/**
-	 * Extract socket from the queue of pending connections of the
-	 * acceptor and store newly accepted socket remote address into
-	 * \a endpoint. On failure, set \a error.
+	 * Return locally bound endpoint associated with this socket
 	 */
-	socket_type accept (endpoint_type &endpoint, std::error_code &error) noexcept
-	{
-		auto endpoint_size = endpoint.capacity();
-		auto socket = socket_.accept(endpoint.data(), &endpoint_size, error);
-		if (!error)
-		{
-			endpoint.resize(endpoint_size);
-			return {protocol_, socket};
-		}
-		return {};
-	}
-
-
-	/**
-	 * Extract socket from the queue of pending connections of the
-	 * acceptor and store newly accepted socket remote address into
-	 * \a endpoint. On failure, throw std::system_error
-	 */
-	socket_type accept (endpoint_type &endpoint)
-	{
-		return accept(endpoint, throw_on_error("basic_socket_acceptor::accept"));
-	}
-
-
-
-	/**
-	 * Wait socket to be ready to read or write, or to have error
-	 * conditions pending. On failure, set \a error.
-	 */
-	void wait (wait_type what, std::error_code &error) noexcept
-	{
-		socket_.wait(what, -1, error);
-	}
-
-
-	/**
-	 * Wait socket to be ready to read or write, or to have error
-	 * conditions pending. On failure, throw std::system_error
-	 */
-	void wait (wait_type what)
-	{
-		wait(what, throw_on_error("basic_socket_acceptor::wait"));
-	}
-
-
-	/**
-	 * Wait up to \a timeout socket to be ready to read or write, or to
-	 * have error conditions pending. On failure, set \a error.
-	 */
-	template <typename Rep, typename Period>
-	wait_type wait_for (wait_type what,
-		const std::chrono::duration<Rep, Period> &timeout,
-		std::error_code &error) noexcept
-	{
-		auto msec = std::chrono::duration_cast<std::chrono::milliseconds>(timeout);
-		return socket_.wait(what,
-			static_cast<int>(msec.count()),
-			error
-		);
-	}
-
-
-	/**
-	 * Wait up to \a timeout socket to be ready to read or write, or to
-	 * have error conditions pending. On failure, throw std::system_error
-	 */
-	template <typename Rep, typename Period>
-	wait_type wait_for (wait_type what,
-		const std::chrono::duration<Rep, Period> &timeout)
-	{
-		return wait_for(what, timeout,
-			throw_on_error("basic_socket_acceptor::wait_for")
-		);
-	}
-
-
-	/**
-	 * Determine the locally-bound endpoint associated with the socket. On
-	 * failure, set \a error and returned endpoint value is undefined.
-	 */
-	endpoint_type local_endpoint (std::error_code &error) const noexcept
+	result<endpoint_type> local_endpoint () const noexcept
 	{
 		endpoint_type endpoint;
-		size_t size = endpoint.capacity();
-		socket_.local_endpoint(protocol_.family(), endpoint.data(), &size, error);
-		if (!error)
+		auto size = endpoint.capacity();
+		auto r = acceptor_.local_endpoint(endpoint.data(), &size);
+		if (r)
 		{
-			endpoint.resize(size, error);
+			endpoint.resize(size);
+			return endpoint;
 		}
-		return endpoint;
+		return unexpected{r.error()};
 	}
 
 
 	/**
-	 * Determine the locally-bound endpoint associated with the socket. On
-	 * failure, throw std::system_error.
+	 * Bind this socket to local \a endpoint
 	 */
-	endpoint_type local_endpoint () const
+	result<void> bind (const endpoint_type &endpoint) noexcept
 	{
-		return local_endpoint(throw_on_error("basic_socket_acceptor::local_endpoint"));
+		return acceptor_.bind(endpoint.data(), endpoint.size());
 	}
 
 
 	/**
-	 * Get socket non-blocking mode. This setting is cached ie if it is
-	 * changed externally, library may return incorrect value.
-	 * On failure, set \a error.
+	 * Mark acceptor as ready to accept connections. \a backlog parameter
+	 * sets the maximum length for the queue of pending connection requests.
 	 */
-	bool native_non_blocking (std::error_code &error) noexcept
+	result<void> listen (int backlog = max_listen_connections) noexcept
 	{
-		return socket_.native_non_blocking(error);
+		return acceptor_.listen(backlog);
 	}
 
 
 	/**
-	 * Get socket non-blocking mode. This setting is cached ie if it is
-	 * changed externally, library may return incorrect value.
-	 * On failure, throw std::system_error.
+	 * Extract socket from queue of pending connections of this acceptor.
+	 * If there are no pending connections, blocks until new arrives.
 	 */
-	bool native_non_blocking ()
+	result<socket_type> accept () noexcept
 	{
-		return native_non_blocking(
-			throw_on_error("basic_socket_acceptor::native_non_blocking")
-		);
+		return accept(nullptr, nullptr);
 	}
 
 
 	/**
-	 * Set socket non-blocking \a mode. On failure, set \a error.
+	 * \copydoc accept()
+	 * Store newly accepted connections' remote endpoint into \a endpoint.
 	 */
-	void native_non_blocking (bool mode, std::error_code &error) noexcept
+	result<socket_type> accept (endpoint_type &endpoint) noexcept
 	{
-		socket_.native_non_blocking(mode, error);
-	}
-
-
-	/**
-	 * Set socket non-blocking \a mode. On failure, throw std::system_error.
-	 */
-	void native_non_blocking (bool mode)
-	{
-		native_non_blocking(mode,
-			throw_on_error("basic_socket_acceptor::native_non_blocking")
-		);
-	}
-
-
-	/**
-	 * Get socket \a option. On failure, set \a error.
-	 */
-	template <typename GettableSocketOption>
-	void get_option (GettableSocketOption &option, std::error_code &error) const noexcept
-	{
-		auto size = socket_.get_option(
-			option.level(protocol_),
-			option.name(protocol_),
-			option.data(protocol_),
-			option.size(protocol_),
-			error
-		);
-		if (!error)
+		auto size = endpoint.capacity();
+		if (auto socket = accept(endpoint.data(), &size))
 		{
-			option.resize(protocol_, size, error);
+			(void)endpoint.resize(size);
+			return socket;
+		}
+		else
+		{
+			return unexpected{socket.error()};
 		}
 	}
 
 
 	/**
-	 * Get socket \a option. On failure, throw std::system_error.
+	 * Get socket non-blocking mode.
 	 */
-	template <typename GettableSocketOption>
-	void get_option (GettableSocketOption &option) const
+	result<bool> native_non_blocking () const noexcept
 	{
-		get_option(option, throw_on_error("basic_socket_acceptor::get_option"));
+		return acceptor_.native_non_blocking();
 	}
 
 
 	/**
-	 * Set socket \a option. On failure, set \a error.
+	 * Set socket non-blocking \a mode (true - on, false - off)
 	 */
-	template <typename SettableSocketOption>
-	void set_option (const SettableSocketOption &option, std::error_code &error) noexcept
+	result<void> native_non_blocking (bool mode) const noexcept
 	{
-		socket_.set_option(
-			option.level(protocol_),
-			option.name(protocol_),
-			option.data(protocol_),
-			option.size(protocol_),
-			error
+		return acceptor_.native_non_blocking(mode);
+	}
+
+
+	/**
+	 * Get acceptor option
+	 */
+	template <typename GettableSocketOption>
+	result<void> get_option (GettableSocketOption &option) const noexcept
+	{
+		return acceptor_.get_option(
+			option.level(protocol()),
+			option.name(protocol()),
+			option.data(protocol()),
+			option.size(protocol())
 		);
 	}
 
 
 	/**
-	 * Set socket \a option. On failure, throw std::system_error.
+	 * Set acceptor option
 	 */
 	template <typename SettableSocketOption>
-	void set_option (const SettableSocketOption &option)
+	result<void> set_option (const SettableSocketOption &option) noexcept
 	{
-		set_option(option, throw_on_error("basic_socket_acceptor::set_option"));
+		return acceptor_.set_option(
+			option.level(protocol()),
+			option.name(protocol()),
+			option.data(protocol()),
+			option.size(protocol())
+		);
 	}
 
 
 private:
 
-	__bits::socket socket_{};
-	protocol_type protocol_{endpoint_type{}.protocol()};
+	__bits::socket acceptor_{};
 
-
-	bool do_open (const protocol_type &protocol, std::error_code &error) noexcept
+	result<socket_type> accept (void *endpoint, size_t *endpoint_size) noexcept
 	{
-		socket_ = __bits::socket::open(
-			protocol.family(),
-			protocol.type(),
-			protocol.protocol(),
-			error
-		);
-		protocol_ = protocol;
-		return socket_.handle != invalid;
+		if (auto handle = acceptor_.accept(endpoint, endpoint_size))
+		{
+			__bits::handle_guard guard{*handle};
+			socket_type socket;
+			if (auto assign = socket.assign(protocol(), guard.handle))
+			{
+				guard.release();
+				return socket;
+			}
+			else
+			{
+				return unexpected{assign.error()};
+			}
+		}
+		else
+		{
+			return unexpected{handle.error()};
+		}
 	}
 };
+
+
+/**
+ * Create new socket acceptor for \a AcceptableProtocol \a protocol
+ */
+template <typename AcceptableProtocol>
+auto make_socket_acceptor (const AcceptableProtocol &protocol) noexcept
+	-> result<basic_socket_acceptor<AcceptableProtocol>>
+{
+	basic_socket_acceptor<AcceptableProtocol> acceptor;
+	if (auto open = acceptor.open(protocol);  !open)
+	{
+		return unexpected{open.error()};
+	}
+	return acceptor;
+}
+
+
+/**
+ * Create new socket acceptor for \a AcceptableProtocol \a protocol.
+ */
+template <typename AcceptableProtocol>
+auto make_socket_acceptor (const AcceptableProtocol &protocol, const typename AcceptableProtocol::endpoint &endpoint) noexcept
+	-> result<basic_socket_acceptor<AcceptableProtocol>>
+{
+	auto acceptor = make_socket_acceptor(protocol);
+	if (!acceptor)
+	{
+		return unexpected{acceptor.error()};
+	}
+	else if (auto bind = acceptor->bind(endpoint);  !bind)
+	{
+		return unexpected{bind.error()};
+	}
+	else if (auto listen = acceptor->listen();  !listen)
+	{
+		return unexpected{listen.error()};
+	}
+	return acceptor;
+}
+
+
+/**
+ * Create new socket acceptor for \a AcceptableProtocol \a protocol using
+ * existing \a handle.
+ */
+template <typename AcceptableProtocol>
+auto make_socket_acceptor (const AcceptableProtocol &protocol, socket_base::native_handle_type handle) noexcept
+	-> result<basic_socket_acceptor<AcceptableProtocol>>
+{
+	basic_socket_acceptor<AcceptableProtocol> acceptor;
+	if (auto assign = acceptor.assign(protocol, handle);  !assign)
+	{
+		return unexpected{assign.error()};
+	}
+	return acceptor;
+}
 
 
 } // namespace net

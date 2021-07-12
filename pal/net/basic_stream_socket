@@ -7,7 +7,6 @@
 
 #include <pal/__bits/lib>
 #include <pal/net/basic_socket>
-#include <pal/net/error>
 
 
 __pal_begin
@@ -18,7 +17,7 @@ namespace net {
 
 /**
  * Stream socket that can be used to exchange data with peer over a sequenced,
- * reliable, bidirectional, connection-oriented byte stream.
+ * reliable, bidirectional connection-oriented byte stream.
  */
 template <typename Protocol>
 class basic_stream_socket: public basic_socket<Protocol>
@@ -27,170 +26,105 @@ class basic_stream_socket: public basic_socket<Protocol>
 
 public:
 
-	/// Socket protocol
-	using protocol_type = Protocol;
-
-	/// Socket endpoint
-	using endpoint_type = typename protocol_type::endpoint;
-
-	/// Native socket handle
-	using typename base::native_handle_type;
-
-
-	/**
-	 * Create new unopened socket.
-	 */
-	basic_stream_socket () noexcept = default;
-
-
-	/**
-	 * Create new socket, acquiring native_sockte.
-	 */
-	basic_stream_socket (const protocol_type &protocol, native_handle_type handle)
-		: base(protocol, handle)
-	{ }
-
-
-	/**
-	 * Create new socket and open it.
-	 */
-	basic_stream_socket (const protocol_type &protocol)
-		: base(protocol)
-	{ }
-
-
-	/**
-	 * Construct and open new socket. After construction bind to
-	 * \a endpoint. On failure, throw std::system_error.
-	 */
-	basic_stream_socket (const endpoint_type &endpoint)
-		: base(endpoint)
-	{ }
-
+	using typename basic_socket<Protocol>::protocol_type;
+	using typename basic_socket<Protocol>::endpoint_type;
 
 	//
-	// receive
+	// Synchronous API
 	//
-
 
 	/**
 	 * Read data from socket into \a spans. Returns number of bytes
-	 * received. On failure, set \a error and return value is undefined.
+	 * received.
 	 */
 	template <typename MutableSpanSequence>
-	size_t receive (const MutableSpanSequence &spans,
-		socket_base::message_flags flags,
-		std::error_code &error) noexcept
+	result<size_t> receive (const MutableSpanSequence &spans,
+		socket_base::message_flags flags = 0) noexcept
 	{
-		__bits::message message(spans);
-		if (message.msg_size > 0)
+		__bits::message message;
+		if (message.set(spans))
 		{
-			return base::socket_.receive(message, flags, error);
+			message.msg_flags = flags;
+			return base::socket_.receive(message);
 		}
-		error.clear();
-		return 0;
+		return make_unexpected(std::errc::argument_list_too_long);
 	}
 
 
 	/**
-	 * Read data from socket into \a spans. Returns number of bytes
-	 * received. On failure, throw std::system_error.
-	 */
-	template <typename MutableSpanSequence>
-	size_t receive (const MutableSpanSequence &spans,
-		socket_base::message_flags flags)
-	{
-		return receive(spans, flags,
-			throw_on_error("basic_datagram_socket::receive")
-		);
-	}
-
-
-	/**
-	 * Read data from socket into \a spans. Returns number of bytes
-	 * received. On failure, set \a error and return value is undefined.
-	 */
-	template <typename MutableSpanSequence>
-	size_t receive (const MutableSpanSequence &spans,
-		std::error_code &error) noexcept
-	{
-		return receive(spans, socket_base::message_flags{}, error);
-	}
-
-
-	/**
-	 * Read data from socket into \a spans. Returns number of bytes
-	 * received. On failure, throw std::system_error.
-	 */
-	template <typename MutableSpanSequence>
-	size_t receive (const MutableSpanSequence &spans)
-	{
-		return receive(spans, socket_base::message_flags{});
-	}
-
-
-	//
-	// send
-	//
-
-
-	/**
-	 * Send data from \a spans using this socket. Returns number of
-	 * bytes sent. On failure set \a std::error and return value is
-	 * undefined.
+	 * Send data in \a spans using this socket. Returns number of bytes
+	 * sent.
 	 */
 	template <typename ConstSpanSequence>
-	size_t send (const ConstSpanSequence &spans,
-		socket_base::message_flags flags,
-		std::error_code &error) noexcept
+	result<size_t> send (const ConstSpanSequence &spans,
+		socket_base::message_flags flags = 0) noexcept
 	{
-		__bits::message message(spans);
-		if (message.msg_size > 0)
+		__bits::message message;
+		if (message.set(spans))
 		{
-			return base::socket_.send(message, flags, error);
+			message.msg_flags = flags;
+			return base::socket_.send(message);
 		}
-		error.clear();
-		return 0;
+		return make_unexpected(std::errc::argument_list_too_long);
 	}
 
 
-	/**
-	 * Send data from \a spans using this socket. Returns number of
-	 * bytes sent. On failure throw std::system_error.
-	 */
-	template <typename ConstSpanSequence>
-	size_t send (const ConstSpanSequence &spans,
-		socket_base::message_flags flags)
-	{
-		return send(spans, flags,
-			throw_on_error("basic_datagram_socket::send")
-		);
-	}
+private:
 
-
-	/**
-	 * Send data from \a spans using this socket. Returns number of
-	 * bytes sent. On failure set \a std::error and return value is
-	 * undefined.
-	 */
-	template <typename ConstSpanSequence>
-	size_t send (const ConstSpanSequence &spans,
-		std::error_code &error) noexcept
-	{
-		return send(spans, socket_base::message_flags{}, error);
-	}
-
-
-	/**
-	 * Send data from \a spans using this socket. Returns number of
-	 * bytes sent. On failure throw std::system_error.
-	 */
-	template <typename ConstSpanSequence>
-	size_t send (const ConstSpanSequence &spans)
-	{
-		return send(spans, socket_base::message_flags{});
-	}
+	using basic_socket<Protocol>::basic_socket;
 };
+
+
+/**
+ * Create new stream socket of \a protocol.
+ */
+template <typename Protocol>
+auto make_stream_socket (const Protocol &protocol) noexcept
+	-> result<basic_stream_socket<Protocol>>
+{
+	basic_stream_socket<Protocol> socket;
+	if (auto open = socket.open(protocol);  !open)
+	{
+		return unexpected{open.error()};
+	}
+	return socket;
+}
+
+
+/**
+ * Create new stream socket of \a protocol and \a bind to \a endpoint.
+ */
+template <typename Protocol>
+auto make_stream_socket (const Protocol &protocol, const typename Protocol::endpoint &endpoint) noexcept
+	-> result<basic_stream_socket<Protocol>>
+{
+	auto socket = make_stream_socket(protocol);
+	if (!socket)
+	{
+		return unexpected{socket.error()};
+	}
+	else if (auto bind = socket->bind(endpoint);  !bind)
+	{
+		return unexpected{bind.error()};
+	}
+	return socket;
+}
+
+
+/**
+ * Create new stream socket of \a protocol from existing \a handle.
+ */
+template <typename Protocol>
+auto make_stream_socket (const Protocol &protocol, socket_base::native_handle_type handle) noexcept
+	-> result<basic_stream_socket<Protocol>>
+{
+	basic_stream_socket<Protocol> socket;
+	if (auto assign = socket.assign(protocol, handle);  !assign)
+	{
+		return unexpected{assign.error()};
+	}
+	return socket;
+}
 
 
 } // namespace net

@@ -62,6 +62,10 @@ TEST_CASE("scoped_alloc")
 		{
 			pal_test::bad_alloc_once x;
 			alloc<1> data(2);
+
+			// never reached, just create side-effect to disable
+			// over-eager optimiser
+			CHECK_FALSE(x.fail);
 		};
 		CHECK_THROWS_AS(f(), std::bad_alloc);
 	}

@@ -1,20 +1,21 @@
 #pragma once // -*- C++ -*-
 
 #include <pal/__bits/lib>
+#include <pal/result>
 #include <pal/span>
 #include <array>
-#include <system_error>
-#include <utility>
+#include <chrono>
+#include <memory>
 
 #if __pal_os_linux || __pal_os_macos
-	#include <limits.h>
+	#include <netinet/in.h>
 	#include <netinet/tcp.h>
 	#include <poll.h>
 	#include <sys/socket.h>
+	#include <sys/time.h>
 #elif __pal_os_windows
 	#include <winsock2.h>
 	#include <mswsock.h>
-	#pragma comment(lib, "ws2_32")
 #endif
 
 
@@ -24,7 +25,10 @@ __pal_begin
 namespace net::__bits {
 
 
-const std::error_code &init () noexcept;
+const result<void> &init () noexcept;
+
+
+constexpr int iov_max_length = 4;
 
 
 #if __pal_os_linux || __pal_os_macos //{{{1
@@ -34,111 +38,121 @@ constexpr native_socket invalid_native_socket = -1;
 
 using sa_family = ::sa_family_t;
 using message_flags = int;
+using timeval = ::timeval;
 
-constexpr int iov_max_length =
-	#if defined(IOV_MAX)
-		IOV_MAX
-	#elif defined(UIO_MAXIOV)
-		UIO_MAXIOV
-	#else
-		16
-	#endif
-;
-
-// Note: there are lot of const_cast going on: not nice but actual
-// const-correctness goes on layer above
 struct message: ::msghdr
 {
-	std::array<iovec, iov_max_length> iov{};
-	size_t msg_size{};
+	std::array<::iovec, iov_max_length> iov{};
 
-	template <typename SpanSequence>
-	message (const SpanSequence &spans) noexcept
-		: msghdr()
+	message () noexcept
+		: msghdr{}
 	{
 		msg_iov = iov.data();
+	}
+
+	template <typename SpanSequence>
+	bool set (const SpanSequence &spans) noexcept
+	{
+		msg_iovlen = 0;
 		auto it = span_sequence_begin(spans);
 		const auto end = span_sequence_end(spans);
 		while (it != end && static_cast<size_t>(msg_iovlen) != iov.size())
 		{
-			iov[msg_iovlen].iov_base = const_cast<void *>(
-				static_cast<const void *>(it->data())
+			auto &v = iov[msg_iovlen++];
+			auto &s = *it++;
+			v.iov_base = const_cast<void *>(
+				static_cast<const void *>(s.data())
 			);
-			iov[msg_iovlen].iov_len = it->size();
-			msg_size += it->size();
-			++msg_iovlen;
-			++it;
+			v.iov_len = s.size_bytes();
 		}
+		return it == end && static_cast<size_t>(msg_iovlen) <= iov.size();
 	}
 
-	template <typename SpanSequence>
-	message (const SpanSequence &spans, void *name, size_t namelen) noexcept
-		: message(spans)
+	void name (const void *name, size_t name_size) noexcept
 	{
-		msg_name = name;
-		msg_namelen = namelen;
+		msg_name = const_cast<void *>(name);
+		msg_namelen = name_size;
 	}
 
-	template <typename SpanSequence>
-	message (const SpanSequence &spans, const void *name, size_t namelen) noexcept
-		: message(spans, const_cast<void *>(name), namelen)
-	{ }
+	void flags (message_flags flags) noexcept
+	{
+		msg_flags = flags;
+	}
 };
+
+constexpr std::chrono::milliseconds to_chrono_ms (const timeval &tv)
+{
+	return std::chrono::milliseconds{tv.tv_sec * 1000 + tv.tv_usec / 1000};
+}
+
+constexpr void from_chrono_ms (timeval &tv, const std::chrono::milliseconds &t)
+{
+	tv.tv_sec = t.count() / 1000;
+	tv.tv_usec = (t.count() - tv.tv_sec * 1000) * 1000;
+}
 
 #elif __pal_os_windows //{{{1
 
 using native_socket = SOCKET;
-static constexpr native_socket invalid_native_socket = INVALID_SOCKET;
+constexpr native_socket invalid_native_socket = INVALID_SOCKET;
 
-using socklen_t = int;
 using sa_family = ::ADDRESS_FAMILY;
-using message_flags = DWORD;
+using message_flags = ::DWORD;
+using timeval = ::DWORD;
+
+struct message
+{
+	std::array<::WSABUF, iov_max_length> msg_iov{};
+	DWORD msg_iovlen{};
+	sockaddr *msg_name{};
+	INT msg_namelen{};
+	message_flags msg_flags{};
+
+	template <typename SpanSequence>
+	bool set (const SpanSequence &spans) noexcept
+	{
+		msg_iovlen = 0;
+		auto it = span_sequence_begin(spans);
+		const auto end = span_sequence_end(spans);
+		while (it != end && static_cast<size_t>(msg_iovlen) != msg_iov.size())
+		{
+			auto &v = msg_iov[msg_iovlen++];
+			auto &s = *it++;
+			v.buf = const_cast<CHAR *>(s.data());
+			v.len = static_cast<ULONG>(s.size_bytes());
+		}
+		return it == end && static_cast<size_t>(msg_iovlen) <= msg_iov.size();
+	}
+
+	void name (const void *name, size_t name_size) noexcept
+	{
+		msg_name = static_cast<sockaddr *>(const_cast<void *>(name));
+		msg_namelen = static_cast<INT>(name_size);
+	}
+
+	void flags (message_flags flags) noexcept
+	{
+		msg_flags = flags;
+	}
+};
+
+constexpr std::chrono::milliseconds to_chrono_ms (const timeval &t)
+{
+	return std::chrono::milliseconds{t};
+}
+
+constexpr void from_chrono_ms (timeval &t, const std::chrono::milliseconds &v)
+{
+	t = static_cast<timeval>(v.count());
+}
 
 constexpr auto SHUT_RD = SD_RECEIVE;
 constexpr auto SHUT_WR = SD_SEND;
 constexpr auto SHUT_RDWR = SD_BOTH;
 
-constexpr int iov_max_length = 16;
-
-// Windows WSASendMsg supports only UDP & raw sockets.
-// Using WSASendTo/WSARecvFrom/WSASend/WSARecv instead.
-struct message
-{
-	std::array<WSABUF, iov_max_length> iov{};
-	DWORD iov_len{};
-	size_t msg_size{};
-	sockaddr *msg_name{};
-	INT msg_namelen{};
-
-	template <typename SpanSequence>
-	message (const SpanSequence &spans) noexcept
-	{
-		iov_len = 0;
-		auto it = span_sequence_begin(spans);
-		const auto end = span_sequence_end(spans);
-		while (it != end && iov_len != iov.size())
-		{
-			iov[iov_len].buf = const_cast<CHAR *>(it->data());
-			iov[iov_len].len = static_cast<ULONG>(it->size());
-			msg_size += it->size();
-			++iov_len;
-			++it;
-		}
-	}
-
-	template <typename SpanSequence>
-	message (const SpanSequence &spans, void *name, size_t namelen) noexcept
-		: message(spans)
-	{
-		msg_name = static_cast<sockaddr *>(name);
-		msg_namelen = static_cast<INT>(namelen);
-	}
-
-	template <typename SpanSequence>
-	message (const SpanSequence &spans, const void *name, size_t namelen) noexcept
-		: message(spans, const_cast<void *>(name), namelen)
-	{ }
-};
+extern ::LPFN_CONNECTEX ConnectEx;
+extern ::LPFN_ACCEPTEX AcceptEx;
+extern ::LPFN_GETACCEPTEXSOCKADDRS GetAcceptExSockaddrs;
 
 #endif //}}}1
 
@@ -162,7 +176,7 @@ enum class shutdown_type
 };
 
 
-enum wait_type: int
+enum class wait_type: int
 {
 	read = POLLIN,
 	write = POLLOUT,
@@ -170,172 +184,79 @@ enum wait_type: int
 };
 
 
+result<void> close_handle (native_socket handle) noexcept;
+
+
+struct handle_guard
+{
+	native_socket handle;
+
+	handle_guard (native_socket handle) noexcept
+		: handle{handle}
+	{ }
+
+	~handle_guard () noexcept
+	{
+		if (handle != invalid_native_socket)
+		{
+			(void)close_handle(handle);
+		}
+	}
+
+	native_socket release () noexcept
+	{
+		return std::exchange(handle, invalid_native_socket);
+	}
+};
+
+
 struct socket
 {
-	native_socket handle = invalid_native_socket;
+	struct impl_type;
+	using impl_ptr = std::unique_ptr<impl_type>;
+	impl_ptr impl;
 
-	struct
-	{
-		mutable int native_non_blocking: 2 = -1;
-		unsigned int enable_connection_aborted: 1 = 0;
-	} flags{};
+	socket () noexcept;
+	socket (impl_ptr impl) noexcept;
 
-	socket () = default;
+	socket (socket &&) noexcept;
+	socket &operator= (socket &&) noexcept;
+	~socket () noexcept;
 
 	socket (const socket &) = delete;
 	socket &operator= (const socket &) = delete;
 
-	socket (native_socket handle) noexcept
-		: handle{handle}
-	{ }
-
-	socket (socket &&that) noexcept
-		: handle{std::exchange(that.handle, invalid_native_socket)}
-		, flags{std::exchange(that.flags, {})}
-	{ }
-
-	~socket () noexcept
+	bool is_open () const noexcept
 	{
-		if (handle != invalid_native_socket)
-		{
-			std::error_code ignore_error;
-			close(ignore_error);
-		}
+		return impl.get() != nullptr;
 	}
 
-	socket &operator= (socket &&that) noexcept
-	{
-		auto tmp{std::move(that)};
-		swap(tmp);
-		return *this;
-	}
+	native_socket handle () const noexcept;
+	native_socket release () noexcept;
 
-	native_socket reset (native_socket new_handle = invalid_native_socket) noexcept
-	{
-		flags.native_non_blocking = -1;
-		return std::exchange(handle, new_handle);
-	}
+	int family () const noexcept;
 
-	void swap (socket &that) noexcept
-	{
-		using std::swap;
-		swap(handle, that.handle);
-		swap(flags, that.flags);
-	}
+	static result<socket> open (int family, int type, int protocol) noexcept;
+	result<void> assign (int family, int type, int protocol, native_socket handle) noexcept;
+	result<void> close () noexcept;
 
-	static socket open (
-		int domain,
-		int type,
-		int protocol,
-		std::error_code &error
-	) noexcept;
+	result<void> bind (const void *endpoint, size_t endpoint_size) noexcept;
+	result<void> listen (int backlog) noexcept;
 
-	void close (std::error_code &error) noexcept;
+	result<native_socket> accept (void *endpoint, size_t *endpoint_size) noexcept;
+	result<void> connect (const void *endpoint, size_t endpoint_size) noexcept;
 
-	void bind (
-		const void *endpoint,
-		size_t endpoint_size,
-		std::error_code &error
-	) noexcept;
+	result<size_t> receive (message &msg) noexcept;
+	result<size_t> send (const message &msg) noexcept;
 
-	void listen (
-		int backlog,
-		std::error_code &error
-	) noexcept;
-
-	void connect (
-		const void *endpoint,
-		size_t endpoint_size,
-		std::error_code &error
-	) noexcept;
-
-	native_socket accept (
-		void *endpoint,
-		size_t *endpoint_size,
-		std::error_code &error
-	) noexcept;
-
-	wait_type wait (wait_type what,
-		int timeout_ms,
-		std::error_code &error
-	) noexcept;
-
-	void shutdown (
-		shutdown_type what,
-		std::error_code &error
-	) noexcept;
-
-	void local_endpoint (
-		int family,
-		void *endpoint,
-		size_t *endpoint_size,
-		std::error_code &error
-	) const noexcept;
-
-	void remote_endpoint (
-		void *endpoint,
-		size_t *endpoint_size,
-		std::error_code &error
-	) const noexcept;
-
-	size_t available (std::error_code &error) const noexcept;
-
-	bool native_non_blocking (std::error_code &error) noexcept
-	{
-		if (flags.native_non_blocking == -1)
-		{
-			auto mode = get_native_non_blocking(error);
-			if (!error)
-			{
-				flags.native_non_blocking = mode;
-			}
-		}
-		return flags.native_non_blocking;
-	}
-
-	void native_non_blocking (bool mode, std::error_code &error) noexcept
-	{
-		set_native_non_blocking(mode, error);
-		if (!error)
-		{
-			flags.native_non_blocking = mode;
-		}
-	}
-
-	bool get_native_non_blocking (std::error_code &error) const noexcept;
-	void set_native_non_blocking (bool mode, std::error_code &error) noexcept;
-
-	size_t get_option (
-		int level,
-		int name,
-		void *data,
-		size_t data_size,
-		std::error_code &error
-	) const noexcept;
-
-	void set_option (
-		int level,
-		int name,
-		const void *data,
-		size_t data_size,
-		std::error_code &error
-	) noexcept;
-
-	int receive (
-		message &msg,
-		message_flags flags,
-		std::error_code &error
-	) noexcept;
-
-	int send (
-		const message &msg,
-		message_flags flags,
-		std::error_code &error
-	) noexcept;
+	result<size_t> available () const noexcept;
+	result<void> local_endpoint (void *endpoint, size_t *endpoint_size) const noexcept;
+	result<void> remote_endpoint (void *endpoint, size_t *endpoint_size) const noexcept;
+	result<bool> native_non_blocking () const noexcept;
+	result<void> native_non_blocking (bool mode) const noexcept;
+	result<void> get_option (int level, int name, void *data, size_t data_size) const noexcept;
+	result<void> set_option (int level, int name, const void *data, size_t data_size) noexcept;
 };
-
-
-const char *host_name (std::error_code &error) noexcept;
 
 
 } // namespace net::__bits

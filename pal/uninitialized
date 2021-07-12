@@ -295,7 +295,9 @@ private:
 	storage<value_type> storage_{};
 };
 
+/// \cond
 template <typename T> uninitialized(T) -> uninitialized<T>;
+/// \endcond
 
 
 __pal_end

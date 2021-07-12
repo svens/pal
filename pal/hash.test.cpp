@@ -8,14 +8,13 @@ namespace {
 TEST_CASE("hash")
 {
 	char data[] = "0123";
-	auto span = std::span{data};
-	auto a = pal::fnv_1a_64(span);
+	auto a = pal::fnv_1a_64(data);
 	uint64_t b{};
 
 	SECTION("fnv_1a_64")
 	{
 		data[3]++;
-		b = pal::fnv_1a_64(span);
+		b = pal::fnv_1a_64(data);
 	}
 
 	SECTION("hash_128_to_64")

@@ -6,7 +6,6 @@
 	#include <arpa/inet.h>
 #elif __pal_os_windows
 	#include <winsock2.h>
-	#pragma comment(lib, "ws2_32")
 #endif
 
 #if __pal_os_linux

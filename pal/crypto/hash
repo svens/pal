@@ -61,7 +61,7 @@ public:
 	 */
 	result_type finish () noexcept
 	{
-		result_type result;
+		result_type result{};
 		impl_.finish(result.data(), result.size());
 		return result;
 	}

@@ -8,10 +8,10 @@ namespace {
 TEST_CASE("net/init")
 {
 	auto first = pal::net::init();
-	CHECK_FALSE(first);
+	CHECK(first);
 
 	auto second = pal::net::init();
-	CHECK_FALSE(second);
+	CHECK(second);
 
 	CHECK(first == second);
 }

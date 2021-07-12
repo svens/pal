@@ -2,12 +2,13 @@
 
 /**
  * \file pal/net/internet
- * Conveniency header including all files from sal/net/ip
+ * Convenience header including all internet protocol related headers
  */
 
 #include <pal/net/ip/address>
-#include <pal/net/ip/address_v4>
-#include <pal/net/ip/address_v6>
+#include <pal/net/ip/basic_endpoint>
+#include <pal/net/ip/basic_resolver>
+#include <pal/net/ip/socket_option>
 #include <pal/net/ip/tcp>
 #include <pal/net/ip/udp>
 
@@ -18,25 +19,11 @@ __pal_begin
 namespace net::ip {
 
 
-/**
- * Return standard host name for the current machine, determined as if by
- * POSIX gethostname. On failure, set \a error.
- */
-inline std::string_view host_name (std::error_code &error) noexcept
+/// \returns the standard host name for the current machine
+inline result<std::string_view> host_name () noexcept
 {
-	error.clear();
-	static const std::string_view name = net::__bits::host_name(error);
+	static const result<std::string_view> name = __bits::host_name();
 	return name;
-}
-
-
-/**
- * Return standard host name for the current machine, determined as if by
- * POSIX gethostname. On failure, throw std::system_error.
- */
-inline std::string_view host_name ()
-{
-	return host_name(throw_on_error("error"));
 }
 
 

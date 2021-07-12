@@ -5,204 +5,251 @@
 namespace {
 
 
-using namespace pal_test;
-
-
-template <typename Protocol>
-inline auto socket_pair (const Protocol &protocol)
-	-> std::pair<typename Protocol::socket, typename Protocol::socket>
+TEST_CASE("net/ip/tcp")
 {
-	auto bind_endpoint = next_endpoint(protocol);
-	CAPTURE(bind_endpoint);
+	constexpr auto v4 = pal::net::ip::tcp::v4();
+	constexpr auto v6 = pal::net::ip::tcp::v6();
 
-	typename Protocol::acceptor acceptor(protocol);
-	bind_available_port(acceptor, bind_endpoint);
-	acceptor.listen();
+	SECTION("constexpr")
+	{
+		static_assert(v4.family() == AF_INET);
+		static_assert(v4.type() == SOCK_STREAM);
+		static_assert(v4.protocol() == IPPROTO_TCP);
+		static_assert(v4 == pal::net::ip::tcp::v4());
+		static_assert(v4 != pal::net::ip::tcp::v6());
 
-	typename Protocol::socket a(protocol);
-	a.connect(to_loopback(bind_endpoint));
+		static_assert(v6.family() == AF_INET6);
+		static_assert(v6.type() == SOCK_STREAM);
+		static_assert(v6.protocol() == IPPROTO_TCP);
+		static_assert(v6 == pal::net::ip::tcp::v6());
+		static_assert(v6 != pal::net::ip::tcp::v4());
+	}
 
-	return {std::move(a), acceptor.accept()};
+	SECTION("compare")
+	{
+		CHECK(v4 == v4);
+		CHECK(v4 != v6);
+		CHECK(v6 == v6);
+		CHECK(v6 != v4);
+	}
 }
 
 
-TEMPLATE_TEST_CASE("net/ip/tcp", "", tcp_v4, tcp_v6)
+using namespace pal_test;
+using namespace std::chrono_literals;
+
+
+TEMPLATE_TEST_CASE("net/ip/tcp", "", tcp_v4, tcp_v6, tcp_v6_only)
 {
-	constexpr auto protocol = protocol_v<TestType>;
-	std::error_code error;
+	using protocol_t = std::remove_cvref_t<decltype(TestType::protocol_v)>;
+	using endpoint_t = typename protocol_t::endpoint;
 
-	SECTION("no_delay")
+	// send buffers
+	static constexpr std::string_view send_view = "hello, world";
+	static constexpr std::string_view send_bufs[] = { "hello", ", ", "world" };
+	static constexpr std::array send_msg =
 	{
-		socket_t<TestType> socket(protocol);
-
-		pal::net::ip::tcp::no_delay no_delay;
-		socket.get_option(no_delay, error);
-		CHECK(!error);
-		CHECK(no_delay.value() == false);
-
-		no_delay = true;
-		socket.set_option(no_delay, error);
-		CHECK(!error);
-
-		no_delay = false;
-		socket.get_option(no_delay, error);
-		CHECK(!error);
-		CHECK(no_delay.value() == true);
-	}
-
-	SECTION("not connected")
+		std::span{send_bufs[0]},
+		std::span{send_bufs[1]},
+		std::span{send_bufs[2]},
+	};
+	static constexpr std::array send_msg_list_too_long =
 	{
-		socket_t<TestType> socket(protocol);
-		socket.send(std::span{"test"}, error);
-		CHECK((error == std::errc::not_connected || error == std::errc::broken_pipe));
-	}
+		std::span{send_bufs[0]},
+		std::span{send_bufs[0]},
+		std::span{send_bufs[0]},
+		std::span{send_bufs[0]},
+		std::span{send_bufs[0]},
+	};
 
-	SECTION("send / receive")
+	// receive buffers
+	char recv_buf[1024];
+	std::span<char> recv_msg{recv_buf};
+	auto recv_view = [&](size_t size) -> std::string_view
 	{
-		const std::string_view send_buf[] = { "hello", ", ", "world" };
-		std::array send_msg =
-		{
-			std::span{send_buf[0]},
-			std::span{send_buf[1]},
-			std::span{send_buf[2]},
-		};
-		const auto send_msg_size = pal::span_size_bytes(send_msg);
+		return {recv_buf, size};
+	};
+	static std::array recv_msg_list_too_long =
+	{
+		recv_msg,
+		recv_msg,
+		recv_msg,
+		recv_msg,
+		recv_msg,
+	};
 
-		std::string message;
-		for (const auto &it: send_buf)
-		{
-			message += it;
-		}
+	auto acceptor = TestType::make_acceptor().value();
+	endpoint_t endpoint{TestType::loopback_v, 0};
+	REQUIRE(pal_test::bind_next_available_port(acceptor, endpoint));
+	REQUIRE(acceptor.listen());
 
-		size_t size;
-		char recv_buf[1024];
-		auto recv_msg = std::span{recv_buf};
+	auto receiver = TestType::make_socket().value();
+	REQUIRE(receiver.connect(endpoint));
+	auto sender = acceptor.accept().value();
 
-		pal::net::socket_base::message_flags recv_flags{}, send_flags{};
-
-		auto [a, b] = socket_pair(protocol);
-
-		SECTION("single noexcept")
-		{
-			a.send(send_msg[0], error);
-			REQUIRE(!error);
-
-			size = b.receive(recv_msg, error);
-			REQUIRE(!error);
-
-			CHECK(size == send_buf[0].size());
-			CHECK(std::string(recv_buf, size) == send_buf[0]);
-		}
-
+	SECTION("send and receive")
+	{
 		SECTION("single")
 		{
-			REQUIRE_NOTHROW(a.send(send_msg[0]));
-			REQUIRE_NOTHROW(size = b.receive(recv_msg));
+			auto send = sender.send(send_msg[0]);
+			REQUIRE(send);
+			CHECK(*send == send_msg[0].size_bytes());
 
-			CHECK(size == send_buf[0].size());
-			CHECK(std::string(recv_buf, size) == send_buf[0]);
+			auto recv = receiver.receive(recv_msg);
+			REQUIRE(recv);
+			CHECK(*recv == send_msg[0].size_bytes());
+
+			CHECK(recv_view(*recv) == send_bufs[0]);
 		}
 
-		SECTION("single noexcept with flags")
+		SECTION("peek")
 		{
-			a.send(send_msg[0], send_flags, error);
-			REQUIRE(!error);
+			REQUIRE(sender.send(send_msg[0]));
 
-			// 1st with peek
-			recv_flags = pal::net::socket_base::message_peek;
-			size = b.receive(recv_msg, recv_flags, error);
-			REQUIRE(!error);
+			auto recv = receiver.receive(recv_msg, receiver.message_peek);
+			REQUIRE(recv);
+			CHECK(*recv == send_msg[0].size_bytes());
+			CHECK(recv_view(*recv) == send_bufs[0]);
+			CHECK(receiver.available().value() > 0);
 
-			CHECK(size == send_buf[0].size());
-			CHECK(std::string(recv_buf, size) == send_buf[0]);
-
-			// 2nd with actually draining buffer
-			size = b.receive(recv_msg, error);
-			REQUIRE(!error);
-
-			CHECK(size == send_buf[0].size());
-			CHECK(std::string(recv_buf, size) == send_buf[0]);
+			recv_buf[0] = '\0';
+			recv = receiver.receive(recv_msg);
+			REQUIRE(recv);
+			CHECK(*recv == send_msg[0].size_bytes());
+			CHECK(recv_view(*recv) == send_bufs[0]);
+			CHECK(receiver.available().value() == 0);
 		}
 
-		SECTION("multiple noexcept")
+		SECTION("vector")
 		{
-			a.send(send_msg, error);
-			REQUIRE(!error);
+			auto send = sender.send(send_msg);
+			REQUIRE(send);
+			CHECK(*send == send_view.size());
 
-			size = b.receive(recv_msg, error);
-			REQUIRE(!error);
+			auto recv = receiver.receive(recv_msg);
+			REQUIRE(recv);
+			CHECK(*recv == send_view.size());
 
-			CHECK(size == send_msg_size);
-			CHECK(std::string(recv_buf, size) == message);
+			CHECK(recv_view(*recv) == send_view);
 		}
 
-		SECTION("multiple")
+		SECTION("argument list too long")
 		{
-			REQUIRE_NOTHROW(a.send(send_msg));
-			REQUIRE_NOTHROW(size = b.receive(recv_msg));
+			auto send = sender.send(send_msg_list_too_long);
+			REQUIRE_FALSE(send);
+			CHECK(send.error() == std::errc::argument_list_too_long);
 
-			CHECK(size == send_msg_size);
-			CHECK(std::string(recv_buf, size) == message);
+			auto recv = receiver.receive(recv_msg_list_too_long);
+			REQUIRE_FALSE(recv);
+			CHECK(recv.error() == std::errc::argument_list_too_long);
 		}
 
-		SECTION("multiple noexcept with flags")
+		SECTION("receive timeout")
 		{
-			a.send(send_msg, send_flags, error);
-			REQUIRE(!error);
-
-			// 1st with peek
-			recv_flags = pal::net::socket_base::message_peek;
-			size = b.receive(recv_msg, recv_flags, error);
-			REQUIRE(!error);
-
-			CHECK(size == send_msg_size);
-			CHECK(std::string(recv_buf, size) == message);
-
-			// 2nd with actually draining buffer
-			size = b.receive(recv_msg, error);
-			REQUIRE(!error);
-
-			CHECK(size == send_msg_size);
-			CHECK(std::string(recv_buf, size) == message);
+			REQUIRE(receiver.set_option(pal::net::receive_timeout(10ms)));
+			auto recv = receiver.receive(recv_msg);
+			REQUIRE_FALSE(recv);
+			CHECK(recv.error() == std::errc::timed_out);
 		}
 
-		SECTION("empty")
+		SECTION("send timeout")
 		{
-			std::span<char, 0> buf;
-			CHECK(a.send(buf, error) == 0);
-			CHECK(!error);
+			if constexpr (pal::is_linux_build)
+			{
+				pal::net::receive_buffer_size recv_buf_size{1};
+				REQUIRE(receiver.set_option(recv_buf_size));
+				REQUIRE(receiver.get_option(recv_buf_size));
 
-			CHECK(b.receive(buf, error) == 0);
-			CHECK(!error);
+				pal::net::send_buffer_size send_buf_size{1};
+				REQUIRE(sender.set_option(send_buf_size));
+				REQUIRE(sender.get_option(send_buf_size));
+
+				// two sends fill both side buffers
+				CAPTURE(send_buf_size.value() + recv_buf_size.value());
+				const std::string data(send_buf_size.value() + recv_buf_size.value(), 'X');
+				std::span msg{data};
+				REQUIRE(sender.send(msg));
+				REQUIRE(sender.send(msg));
+
+				// blocks up to send_timeout
+				REQUIRE(sender.set_option(pal::net::send_timeout(10ms)));
+				auto io = sender.send(msg);
+				REQUIRE_FALSE(io);
+				CHECK(io.error() == std::errc::timed_out);
+			}
+			// else: MacOS/Windows ignore specified buffer sizes
 		}
 
-		SECTION("close")
+		SECTION("not connected")
 		{
-			a.send(send_msg);
-			a.close();
-			CHECK(b.receive(recv_msg, error) == send_msg_size);
-			CHECK(b.receive(recv_msg, error) == 0);
+			sender = TestType::make_socket().value();
+			auto io = sender.send(send_msg);
+			REQUIRE_FALSE(io);
+			CHECK(io.error() == std::errc::not_connected);
+
+			io = sender.receive(recv_msg);
+			REQUIRE_FALSE(io);
+			CHECK(io.error() == std::errc::not_connected);
 		}
 
-		SECTION("closed")
+		SECTION("bad file descriptor")
 		{
-			a.close();
-			a.send(send_msg, error);
-			CHECK(error == std::errc::bad_file_descriptor);
+			pal_test::handle_guard{sender.native_handle()};
+			auto send = sender.send(send_msg);
+			REQUIRE_FALSE(send);
+			CHECK(send.error() == std::errc::bad_file_descriptor);
 
-			CHECK_THROWS_AS(
-				a.send(send_msg),
-				std::system_error
-			);
+			pal_test::handle_guard{receiver.native_handle()};
+			auto recv = receiver.receive(recv_msg);
+			REQUIRE_FALSE(recv);
+			CHECK(recv.error() == std::errc::bad_file_descriptor);
+		}
+	}
 
-			b.close();
-			b.receive(recv_msg, error);
-			CHECK(error == std::errc::bad_file_descriptor);
+	SECTION("make_stream_socket with endpoint")
+	{
+		SECTION("success")
+		{
+			endpoint.port(pal_test::next_port(TestType::protocol_v));
+			auto socket = pal::net::make_stream_socket(TestType::protocol_v, endpoint);
+			REQUIRE(socket);
+			CHECK(socket->local_endpoint().value() == endpoint);
+		}
 
-			CHECK_THROWS_AS(
-				b.receive(recv_msg),
-				std::system_error
-			);
+		SECTION("address in use")
+		{
+			auto socket = pal::net::make_stream_socket(TestType::protocol_v, endpoint);
+			REQUIRE_FALSE(socket);
+			CHECK(socket.error() == std::errc::address_in_use);
+		}
+
+		SECTION("not enough memory")
+		{
+			pal_test::bad_alloc_once x;
+			auto socket = pal::net::make_stream_socket(TestType::protocol_v, endpoint);
+			REQUIRE_FALSE(socket);
+			CHECK(socket.error() == std::errc::not_enough_memory);
+		}
+	}
+
+	SECTION("make_stream_socket with handle")
+	{
+		pal_test::handle_guard guard{receiver.release()};
+
+		SECTION("success")
+		{
+			auto socket = pal::net::make_stream_socket(TestType::protocol_v, guard.handle);
+			REQUIRE(socket);
+			CHECK(socket->native_handle() == guard.handle);
+			guard.release();
+		}
+
+		SECTION("not enough memory")
+		{
+			pal_test::bad_alloc_once x;
+			auto socket = pal::net::make_stream_socket(TestType::protocol_v, guard.handle);
+			REQUIRE_FALSE(socket);
+			CHECK(socket.error() == std::errc::not_enough_memory);
 		}
 	}
 }

@@ -7,12 +7,13 @@ namespace {
 
 TEST_CASE("net/ip/host_name")
 {
-	std::error_code error;
-	auto name = pal::net::ip::host_name(error);
-	CHECK(!error);
-	CHECK_FALSE(name.empty());
+	auto n1 = pal::net::ip::host_name();
+	REQUIRE(n1);
 
-	CHECK_NOTHROW(name = pal::net::ip::host_name());
+	auto n2 = pal::net::ip::host_name();
+	REQUIRE(n2);
+
+	CHECK(*n1 == *n2);
 }
 
 

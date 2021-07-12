@@ -1,4 +1,4 @@
-#include <pal/net/basic_socket>
+#include <pal/net/socket_option>
 #include <pal/net/test>
 
 
@@ -6,152 +6,210 @@ namespace {
 
 
 using namespace pal_test;
-using option = pal::net::socket_base;
+using namespace std::chrono_literals;
 
 
-template <typename Protocol, typename Option>
-struct protocol_and_option: Protocol
+TEMPLATE_TEST_CASE("net/socket_option", "",
+	udp_v4,
+	tcp_v4,
+	udp_v6,
+	tcp_v6,
+	udp_v6_only,
+	tcp_v6_only)
 {
-	using option_type = Option;
-};
-
-template <typename Option>
-using tcp_v4_with = protocol_and_option<tcp_v4, Option>;
-
-template <typename Option>
-using tcp_v6_with = protocol_and_option<tcp_v6, Option>;
-
-template <typename Option>
-using udp_v4_with = protocol_and_option<udp_v4, Option>;
-
-template <typename Option>
-using udp_v6_with = protocol_and_option<udp_v6, Option>;
-
-
-TEMPLATE_TEST_CASE("net/socket_option", "", tcp_v4, tcp_v6, udp_v4, udp_v6)
-{
-	constexpr auto protocol = protocol_v<TestType>;
-	std::error_code error;
-
-	SECTION("socket_option<int>")
+	SECTION("int")
 	{
-		using test_option = pal::net::socket_option<int, 100, 200>;
+		using option_type = pal::net::socket_option<int, 100, 200>;
 
-		test_option option(10);
-		CHECK(option.value() == 10);
+		option_type o{10};
+		CHECK(o.value() == 10);
 
-		option = 20;
-		CHECK(option.value() == 20);
+		o = 20;
+		CHECK(o.value() == 20);
 
-		CHECK(option.level(protocol) == 100);
-		CHECK(option.name(protocol) == 200);
+		CHECK(o.level(TestType::protocol_v) == 100);
+		CHECK(o.name(TestType::protocol_v) == 200);
 
-		CHECK(const_cast<test_option &>(option).data(protocol) != nullptr);
-		CHECK(const_cast<const test_option &>(option).data(protocol) != nullptr);
+		CHECK(const_cast<option_type &>(o).data(TestType::protocol_v) != nullptr);
+		CHECK(const_cast<const option_type &>(o).data(TestType::protocol_v) != nullptr);
 
-		auto size = option.size(protocol);
+		auto size = o.size(TestType::protocol_v);
 		CHECK(size == sizeof(int));
 
-		option.resize(protocol, size, error);
-		CHECK(!error);
-		CHECK_NOTHROW(option.resize(protocol, size));
+		auto r = o.resize(TestType::protocol_v, size);
+		CHECK(r);
 
-		option.resize(protocol, size + 1, error);
-		CHECK(error == pal::net::socket_errc::socket_option_length_error);
-		CHECK_THROWS_AS(
-			option.resize(protocol, size + 1),
-			std::length_error
-		);
+		r = o.resize(TestType::protocol_v, size + 1);
+		REQUIRE_FALSE(r);
+		CHECK(r.error() == std::errc::invalid_argument);
 	}
 
-	SECTION("socket_option<bool>")
+	SECTION("bool")
 	{
-		using test_option = pal::net::socket_option<bool, 100, 200>;
+		using option_type = pal::net::socket_option<bool, 100, 200>;
 
-		test_option option(true);
-		CHECK(option.value() == true);
-		CHECK(option);
-		CHECK_FALSE(!option);
+		option_type o{true};
+		CHECK(o.value() == true);
+		CHECK(o);
+		CHECK_FALSE(!o);
 
-		option = false;
-		CHECK(option.value() == false);
-		CHECK_FALSE(option);
-		CHECK(!option);
+		o = false;
+		CHECK(o.value() == false);
+		CHECK_FALSE(o);
+		CHECK(!o);
 
-		CHECK(option.level(protocol) == 100);
-		CHECK(option.name(protocol) == 200);
+		CHECK(o.level(TestType::protocol_v) == 100);
+		CHECK(o.name(TestType::protocol_v) == 200);
 
-		CHECK(const_cast<test_option &>(option).data(protocol) != nullptr);
-		CHECK(const_cast<const test_option &>(option).data(protocol) != nullptr);
+		CHECK(const_cast<option_type &>(o).data(TestType::protocol_v) != nullptr);
+		CHECK(const_cast<const option_type &>(o).data(TestType::protocol_v) != nullptr);
 
-		auto size = option.size(protocol);
+		auto size = o.size(TestType::protocol_v);
 		CHECK(size == sizeof(int));
 
-		option.resize(protocol, size, error);
-		CHECK(!error);
-		CHECK_NOTHROW(option.resize(protocol, size));
+		auto r = o.resize(TestType::protocol_v, size);
+		CHECK(r);
 
-		option.resize(protocol, size + 1, error);
-		CHECK(error == pal::net::socket_errc::socket_option_length_error);
-		CHECK_THROWS_AS(
-			option.resize(protocol, size + 1),
-			std::length_error
-		);
+		r = o.resize(TestType::protocol_v, size + 1);
+		REQUIRE_FALSE(r);
+		CHECK(r.error() == std::errc::invalid_argument);
+	}
+
+	SECTION("linger")
+	{
+		pal::net::linger o{true, 1s};
+		CHECK(o.enabled());
+		CHECK(o.timeout() == 1s);
+
+		o.enabled(false);
+		CHECK_FALSE(o.enabled());
+		CHECK(o.timeout() == 1s);
+
+		o.timeout(5s);
+		CHECK_FALSE(o.enabled());
+		CHECK(o.timeout() == 5s);
+
+		CHECK(o.level(TestType::protocol_v) == SOL_SOCKET);
+		CHECK(o.name(TestType::protocol_v) == SO_LINGER);
+
+		CHECK(const_cast<pal::net::linger &>(o).data(TestType::protocol_v) != nullptr);
+		CHECK(const_cast<const pal::net::linger &>(o).data(TestType::protocol_v) != nullptr);
+
+		auto size = o.size(TestType::protocol_v);
+		CHECK(size == sizeof(::linger));
+
+		auto r = o.resize(TestType::protocol_v, size);
+		CHECK(r);
+
+		r = o.resize(TestType::protocol_v, size + 1);
+		REQUIRE_FALSE(r);
+		CHECK(r.error() == std::errc::invalid_argument);
+	}
+
+	SECTION("receive_timeout")
+	{
+		pal::net::receive_timeout o{1s};
+		CHECK(o.timeout() == 1s);
+
+		o.timeout(5s);
+		CHECK(o.timeout() == 5s);
+
+		CHECK(o.level(TestType::protocol_v) == SOL_SOCKET);
+		CHECK(o.name(TestType::protocol_v) == SO_RCVTIMEO);
+
+		CHECK(const_cast<pal::net::receive_timeout &>(o).data(TestType::protocol_v) != nullptr);
+		CHECK(const_cast<const pal::net::receive_timeout &>(o).data(TestType::protocol_v) != nullptr);
+
+		auto size = o.size(TestType::protocol_v);
+		CHECK(size == sizeof(pal::net::__bits::timeval));
+
+		auto r = o.resize(TestType::protocol_v, size);
+		CHECK(r);
+
+		r = o.resize(TestType::protocol_v, size + 1);
+		REQUIRE_FALSE(r);
+		CHECK(r.error() == std::errc::invalid_argument);
+	}
+
+	SECTION("send_timeout")
+	{
+		pal::net::send_timeout o{1s};
+		CHECK(o.timeout() == 1s);
+
+		o.timeout(5s);
+		CHECK(o.timeout() == 5s);
+
+		CHECK(o.level(TestType::protocol_v) == SOL_SOCKET);
+		CHECK(o.name(TestType::protocol_v) == SO_SNDTIMEO);
+
+		CHECK(const_cast<pal::net::send_timeout &>(o).data(TestType::protocol_v) != nullptr);
+		CHECK(const_cast<const pal::net::send_timeout &>(o).data(TestType::protocol_v) != nullptr);
+
+		auto size = o.size(TestType::protocol_v);
+		CHECK(size == sizeof(pal::net::__bits::timeval));
+
+		auto r = o.resize(TestType::protocol_v, size);
+		CHECK(r);
+
+		r = o.resize(TestType::protocol_v, size + 1);
+		REQUIRE_FALSE(r);
+		CHECK(r.error() == std::errc::invalid_argument);
 	}
 }
 
 
-template <typename TestType, typename Option>
-std::error_code expected_os_error (const Option &) noexcept
+using namespace pal::net;
+
+
+template <typename Protocol, typename Option>
+std::error_code expected_os_error () noexcept
 {
 	if constexpr (pal::is_linux_build)
 	{
-		if constexpr (std::is_same_v<Option, option::debug>)
+		if constexpr (std::is_same_v<Option, debug>)
 		{
 			return std::make_error_code(std::errc::permission_denied);
 		}
-		else if constexpr (std::is_same_v<Option, option::send_low_watermark>)
+		else if constexpr (std::is_same_v<Option, send_low_watermark>)
 		{
 			return std::make_error_code(std::errc::no_protocol_option);
 		}
 	}
 	else if constexpr (pal::is_macos_build)
 	{
-		// no specializations
-		// MacOS itself swallows unknown option errors
+		// no special cases for MacOS
 	}
 	else if constexpr (pal::is_windows_build)
 	{
 		#if !__pal_os_windows
-			// not used, just to silence compilers
 			constexpr int WSAENOPROTOOPT = ENOPROTOOPT;
 			constexpr int WSAEINVAL = EINVAL;
 		#endif
 
-		if (is_udp_v<TestType>)
+		if (pal_test::is_udp_v<Protocol>)
 		{
 			if constexpr (
-				std::is_same_v<Option, option::keepalive> ||
-				std::is_same_v<Option, option::linger> ||
-				std::is_same_v<Option, option::out_of_band_inline> ||
-				std::is_same_v<Option, option::reuse_port>)
+				std::is_same_v<Option, keepalive> ||
+				std::is_same_v<Option, pal::net::linger> ||
+				std::is_same_v<Option, out_of_band_inline> ||
+				std::is_same_v<Option, reuse_port>)
 			{
 				return {WSAENOPROTOOPT, std::system_category()};
 			}
 			else if constexpr (
-				std::is_same_v<Option, option::receive_low_watermark> ||
-				std::is_same_v<Option, option::send_low_watermark>)
+				std::is_same_v<Option, receive_low_watermark> ||
+				std::is_same_v<Option, send_low_watermark>)
 			{
 				return {WSAEINVAL, std::system_category()};
 			}
 		}
-		else if (is_tcp_v<TestType>)
+		else if (pal_test::is_tcp_v<Protocol>)
 		{
 			if constexpr (
-				std::is_same_v<Option, option::broadcast> ||
-				std::is_same_v<Option, option::receive_low_watermark> ||
-				std::is_same_v<Option, option::reuse_port> ||
-				std::is_same_v<Option, option::send_low_watermark>)
+				std::is_same_v<Option, broadcast> ||
+				std::is_same_v<Option, receive_low_watermark> ||
+				std::is_same_v<Option, reuse_port> ||
+				std::is_same_v<Option, send_low_watermark>)
 			{
 				return {WSAENOPROTOOPT, std::system_category()};
 			}
@@ -163,234 +221,237 @@ std::error_code expected_os_error (const Option &) noexcept
 
 TEMPLATE_PRODUCT_TEST_CASE("net/socket_option", "",
 	(
-		tcp_v4_with,
-		tcp_v6_with,
-		udp_v4_with,
-		udp_v6_with
+		udp_v4::with,
+		tcp_v4::with,
+		udp_v6::with,
+		tcp_v6::with,
+		udp_v6_only::with,
+		tcp_v6_only::with
 	),
 	(
-		option::broadcast,
-		option::debug,
-		option::do_not_route,
-		option::keepalive,
-		option::out_of_band_inline,
-		option::reuse_address,
-		option::reuse_port
+		broadcast,
+		debug,
+		do_not_route,
+		keepalive,
+		out_of_band_inline,
+		reuse_address,
+		reuse_port
 	)
 )
 {
-	constexpr auto protocol = protocol_v<TestType>;
-	using option_type = typename TestType::option_type;
+	using protocol_t = typename TestType::first_type;
+	auto socket = protocol_t::make_socket();
+	REQUIRE(socket);
 
-	socket_t<TestType> socket(protocol);
-	REQUIRE(socket.is_open());
+	using option_t = typename TestType::second_type;
+	option_t option{true};
+	auto set_option = socket->set_option(option);
 
-	option_type option{true};
-	std::error_code error, expected_error = expected_os_error<TestType>(option);
-
-	socket.set_option(option, error);
-	CHECK(error == expected_error);
-	if (!error)
+	const auto expected_error = expected_os_error<protocol_t, option_t>();
+	if (expected_error)
 	{
-		CHECK_NOTHROW(socket.set_option(option));
-
+		REQUIRE_FALSE(set_option);
+		CHECK(set_option.error() == expected_error);
+	}
+	else
+	{
+		REQUIRE(set_option);
 		option = false;
-		socket.get_option(option, error);
-		CHECK(!error);
-		CHECK(option.value() == true);
-		CHECK_NOTHROW(socket.get_option(option));
-	}
-	else
-	{
-		CHECK_THROWS_AS(
-			socket.set_option(option),
-			std::system_error
-		);
+		REQUIRE(socket->get_option(option));
+		CHECK(option.value());
 	}
 
-	SECTION("closed")
+	SECTION("bad file descriptor")
 	{
-		socket.close();
+		pal_test::handle_guard{socket->native_handle()};
 
-		socket.get_option(option, error);
-		CHECK(error == std::errc::bad_file_descriptor);
-		CHECK_THROWS_AS(
-			socket.get_option(option),
-			std::system_error
-		);
+		set_option = socket->set_option(option);
+		REQUIRE_FALSE(set_option);
 
-		socket.set_option(option, error);
-		CHECK(error == std::errc::bad_file_descriptor);
-		CHECK_THROWS_AS(
-			socket.set_option(option),
-			std::system_error
-		);
-	}
-}
+		auto get_option = socket->get_option(option);
+		REQUIRE_FALSE(get_option);
 
-
-TEMPLATE_PRODUCT_TEST_CASE("net/socket_option", "",
-	(
-		tcp_v4_with,
-		tcp_v6_with,
-		udp_v4_with,
-		udp_v6_with
-	),
-	(
-		option::receive_buffer_size,
-		option::receive_low_watermark,
-		option::send_buffer_size,
-		option::send_low_watermark
-	)
-)
-{
-	constexpr auto protocol = protocol_v<TestType>;
-	using option_type = typename TestType::option_type;
-
-	socket_t<TestType> socket(protocol);
-	REQUIRE(socket.is_open());
-
-	int value = 4096;
-	option_type option{value};
-	std::error_code error, expected_error = expected_os_error<TestType>(option);
-
-	socket.set_option(option, error);
-	CHECK(error == expected_error);
-	if (!error)
-	{
-		CHECK_NOTHROW(socket.set_option(option));
-
-		option = value/2;
-		socket.get_option(option, error);
-		CHECK(!error);
-
-		if constexpr (
-			pal::is_linux_build &&
-			!std::is_same_v<option_type, option::receive_low_watermark>)
+		if constexpr (pal::is_windows_build)
 		{
-			value *= 2;
+			if (expected_error)
+			{
+				// Windows has different order checking for
+				// invalid handle vs unsupported option
+				// here we settle set_option() just to return error
+			}
+			else
+			{
+				CHECK(set_option.error() == std::errc::bad_file_descriptor);
+				CHECK(get_option.error() == std::errc::bad_file_descriptor);
+			}
 		}
-		CHECK(option.value() == value);
-
-		CHECK_NOTHROW(socket.get_option(option));
-	}
-	else
-	{
-		CHECK_THROWS_AS(
-			socket.set_option(option),
-			std::system_error
-		);
-	}
-
-	SECTION("closed")
-	{
-		socket.close();
-
-		socket.get_option(option, error);
-		CHECK(error == std::errc::bad_file_descriptor);
-		CHECK_THROWS_AS(
-			socket.get_option(option),
-			std::system_error
-		);
-
-		socket.set_option(option, error);
-		CHECK(error == std::errc::bad_file_descriptor);
-		CHECK_THROWS_AS(
-			socket.set_option(option),
-			std::system_error
-		);
+		else
+		{
+			CHECK(set_option.error() == std::errc::bad_file_descriptor);
+			CHECK(get_option.error() == std::errc::bad_file_descriptor);
+		}
 	}
 }
 
 
 TEMPLATE_PRODUCT_TEST_CASE("net/socket_option", "",
 	(
-		tcp_v4_with,
-		tcp_v6_with,
-		udp_v4_with,
-		udp_v6_with
+		udp_v4::with,
+		tcp_v4::with,
+		udp_v6::with,
+		tcp_v6::with,
+		udp_v6_only::with,
+		tcp_v6_only::with
 	),
 	(
-		option::linger
+		receive_buffer_size,
+		receive_low_watermark,
+		send_buffer_size,
+		send_low_watermark
 	)
 )
 {
-	using namespace std::chrono_literals;
+	using protocol_t = typename TestType::first_type;
+	auto socket = protocol_t::make_socket();
+	REQUIRE(socket);
 
-	constexpr auto protocol = protocol_v<TestType>;
-	using option_type = typename TestType::option_type;
+	using option_t = typename TestType::second_type;
+	int value = 4096;
+	option_t option{value};
+	auto set_option = socket->set_option(option);
 
-	std::error_code error;
-
-	SECTION("methods")
+	const auto expected_error = expected_os_error<protocol_t, option_t>();
+	if (expected_error)
 	{
-		option_type linger;
-		CHECK(linger.enabled() == false);
-		CHECK(linger.timeout() == 0s);
+		REQUIRE_FALSE(set_option);
+		CHECK(set_option.error() == expected_error);
+	}
+	else
+	{
+		REQUIRE(set_option);
+		option = value / 2;
+		REQUIRE(socket->get_option(option));
 
-		CHECK(linger.level(protocol) == SOL_SOCKET);
-		CHECK(linger.name(protocol) == SO_LINGER);
-		CHECK(static_cast<option_type &>(linger).data(protocol) != nullptr);
-		CHECK(static_cast<const option_type &>(linger).data(protocol) != nullptr);
-		CHECK(linger.size(protocol) == sizeof(::linger));
-
-		auto size = linger.size(protocol);
-
-		linger.resize(protocol, size, error);
-		CHECK(!error);
-
-		CHECK_NOTHROW(linger.resize(protocol, size));
-
-		linger.resize(protocol, size * 2, error);
-		CHECK(error == pal::net::socket_errc::socket_option_length_error);
-
-		CHECK_THROWS_AS(
-			linger.resize(protocol, size * 2),
-			std::length_error
-		);
-
-		linger.enabled(true);
-		linger.timeout(5s);
-		CHECK(linger.enabled() == true);
-		CHECK(linger.timeout() == 5s);
+		if constexpr (pal::is_linux_build)
+		{
+			CHECK(option.value() >= value);
+		}
+		else
+		{
+			CHECK(option.value() == value);
+		}
 	}
 
-	socket_t<TestType> socket(protocol);
-	REQUIRE(socket.is_open());
-
-	option_type linger{true, 5s};
-	socket.set_option(linger, error);
-	CHECK(error == expected_os_error<TestType>(linger));
-	if (!error)
+	SECTION("bad file descriptor")
 	{
-		CHECK_NOTHROW(socket.set_option(linger));
+		pal_test::handle_guard{socket->native_handle()};
 
-		linger.timeout(linger.timeout() * 2);
-		socket.get_option(linger, error);
-		CHECK(!error);
-		CHECK(linger.timeout() == 5s);
-		CHECK(linger.enabled() == true);
+		set_option = socket->set_option(option);
+		REQUIRE_FALSE(set_option);
+		CHECK(set_option.error() == std::errc::bad_file_descriptor);
 
-		CHECK_NOTHROW(socket.get_option(linger));
+		auto get_option = socket->get_option(option);
+		REQUIRE_FALSE(get_option);
+		CHECK(get_option.error() == std::errc::bad_file_descriptor);
+	}
+}
+
+
+using linger = pal::net::linger;
+
+
+TEMPLATE_PRODUCT_TEST_CASE("net/socket_option", "",
+	(
+		udp_v4::with,
+		tcp_v4::with,
+		udp_v6::with,
+		tcp_v6::with,
+		udp_v6_only::with,
+		tcp_v6_only::with
+	),
+	(
+		linger
+	)
+)
+{
+	using protocol_t = typename TestType::first_type;
+	auto socket = protocol_t::make_socket();
+	REQUIRE(socket);
+
+	using option_t = typename TestType::second_type;
+	option_t option{true, 3s};
+	auto set_option = socket->set_option(option);
+
+	const auto expected_error = expected_os_error<protocol_t, option_t>();
+	if (expected_error)
+	{
+		REQUIRE_FALSE(set_option);
+		CHECK(set_option.error() == expected_error);
+	}
+	else
+	{
+		REQUIRE(set_option);
+		option.enabled(false);
+		option.timeout(1s);
+		REQUIRE(socket->get_option(option));
+		CHECK(option.enabled() == true);
+		CHECK(option.timeout() == 3s);
 	}
 
-	SECTION("closed")
+	SECTION("bad file descriptor")
 	{
-		socket.close();
+		pal_test::handle_guard{socket->native_handle()};
 
-		socket.get_option(linger, error);
-		CHECK(error == std::errc::bad_file_descriptor);
-		CHECK_THROWS_AS(
-			socket.get_option(linger),
-			std::system_error
-		);
+		set_option = socket->set_option(option);
+		REQUIRE_FALSE(set_option);
+		CHECK(set_option.error() == std::errc::bad_file_descriptor);
 
-		socket.set_option(linger, error);
-		CHECK(error == std::errc::bad_file_descriptor);
-		CHECK_THROWS_AS(
-			socket.set_option(linger),
-			std::system_error
-		);
+		auto get_option = socket->get_option(option);
+		REQUIRE_FALSE(get_option);
+		CHECK(get_option.error() == std::errc::bad_file_descriptor);
+	}
+}
+
+
+TEMPLATE_PRODUCT_TEST_CASE("net/socket_option", "",
+	(
+		udp_v4::with,
+		tcp_v4::with,
+		udp_v6::with,
+		tcp_v6::with,
+		udp_v6_only::with,
+		tcp_v6_only::with
+	),
+	(
+		receive_timeout,
+		send_timeout
+	)
+)
+{
+	using protocol_t = typename TestType::first_type;
+	auto socket = protocol_t::make_socket();
+	REQUIRE(socket);
+
+	using option_t = typename TestType::second_type;
+	option_t option{1s};
+	auto set_option = socket->set_option(option);
+	REQUIRE(set_option);
+
+	option.timeout(2s);
+	REQUIRE(socket->get_option(option));
+	CHECK(option.timeout() == 1s);
+
+	SECTION("bad file descriptor")
+	{
+		pal_test::handle_guard{socket->native_handle()};
+
+		set_option = socket->set_option(option);
+		REQUIRE_FALSE(set_option);
+		CHECK(set_option.error() == std::errc::bad_file_descriptor);
+
+		auto get_option = socket->get_option(option);
+		REQUIRE_FALSE(get_option);
+		CHECK(get_option.error() == std::errc::bad_file_descriptor);
 	}
 }
 
