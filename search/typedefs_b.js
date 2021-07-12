@@ -1,0 +1,5 @@
+var searchData=
+[
+  ['port_5ftype_632',['port_type',['../basic__endpoint.html#a990079866f636ccf1d7ce050018cd7c4',1,'pal::net::ip']]],
+  ['protocol_5ftype_633',['protocol_type',['../classpal_1_1net_1_1basic__socket.html#a060b9d9623611aea33622dd96650825e',1,'pal::net::basic_socket::protocol_type()'],['../classpal_1_1net_1_1basic__socket__acceptor.html#a0310a88cb53a6c902115b9ab93ec26db',1,'pal::net::basic_socket_acceptor::protocol_type()'],['../classpal_1_1net_1_1ip_1_1basic__endpoint.html#aa6f13b25588a62b23b71924833733cb2',1,'pal::net::ip::basic_endpoint::protocol_type()'],['../classpal_1_1net_1_1ip_1_1basic__resolver__entry.html#a746985676673349076cf692aabaf9425',1,'pal::net::ip::basic_resolver_entry::protocol_type()'],['../classpal_1_1net_1_1ip_1_1basic__resolver__results.html#a3fe914bed8a66fd878db66585df8be46',1,'pal::net::ip::basic_resolver_results::protocol_type()'],['../classpal_1_1net_1_1ip_1_1basic__resolver.html#a4de5ff3ad5418ceb508d38c286ba0cf3',1,'pal::net::ip::basic_resolver::protocol_type()']]]
+];

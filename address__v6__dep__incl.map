@@ -1,0 +1,8 @@
+<map id="pal/net/ip/address_v6" name="pal/net/ip/address_v6">
+<area shape="rect" id="node1" title=" " alt="" coords="5,5,167,32"/>
+<area shape="rect" id="node2" href="$address.html" title=" " alt="" coords="17,80,155,107"/>
+<area shape="rect" id="node3" href="$internet.html" title=" " alt="" coords="55,304,178,331"/>
+<area shape="rect" id="node4" href="$basic__endpoint.html" title=" " alt="" coords="64,155,249,181"/>
+<area shape="rect" id="node5" href="$tcp.html" title=" " alt="" coords="109,229,215,256"/>
+<area shape="rect" id="node6" href="$udp.html" title=" " alt="" coords="240,229,351,256"/>
+</map>

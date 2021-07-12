@@ -1,0 +1,7 @@
+<map id="pal::net::socket_base" name="pal::net::socket_base">
+<area shape="rect" id="node1" title="Common socket types and constants." alt="" coords="5,78,164,105"/>
+<area shape="rect" id="node2" href="$classpal_1_1net_1_1basic__socket.html" title="Base for basic_datagram_socket&lt;Protocol&gt; and basic_stream_socket&lt;Protocol&gt; classes." alt="" coords="251,37,413,79"/>
+<area shape="rect" id="node5" href="$classpal_1_1net_1_1basic__socket__acceptor.html" title="Incoming socket connect requests listener and acceptor." alt="" coords="212,103,452,144"/>
+<area shape="rect" id="node3" href="$classpal_1_1net_1_1basic__datagram__socket.html" title="Datagram socket that can be used to send and receive discrete messages of fixed maximum length." alt="" coords="500,5,683,47"/>
+<area shape="rect" id="node4" href="$classpal_1_1net_1_1basic__stream__socket.html" title="Stream socket that can be used to exchange data with peer over a sequenced, reliable,..." alt="" coords="508,71,675,112"/>
+</map>

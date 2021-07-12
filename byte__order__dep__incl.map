@@ -1,0 +1,7 @@
+<map id="pal/byte_order" name="pal/byte_order">
+<area shape="rect" id="node1" title=" " alt="" coords="40,5,156,32"/>
+<area shape="rect" id="node2" href="$basic__endpoint.html" title=" " alt="" coords="5,80,191,107"/>
+<area shape="rect" id="node3" href="$internet.html" title=" " alt="" coords="37,229,159,256"/>
+<area shape="rect" id="node4" href="$tcp.html" title=" " alt="" coords="45,155,151,181"/>
+<area shape="rect" id="node5" href="$udp.html" title=" " alt="" coords="176,155,287,181"/>
+</map>

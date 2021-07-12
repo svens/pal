@@ -1,0 +1,5 @@
+<map id="pal::net::basic_stream_socket&lt; Protocol &gt;" name="pal::net::basic_stream_socket&lt; Protocol &gt;">
+<area shape="rect" id="node1" title="Stream socket that can be used to exchange data with peer over a sequenced, reliable,..." alt="" coords="5,169,172,211"/>
+<area shape="rect" id="node2" href="$classpal_1_1net_1_1basic__socket.html" title="Base for basic_datagram_socket&lt;Protocol&gt; and basic_stream_socket&lt;Protocol&gt; classes." alt="" coords="7,80,170,121"/>
+<area shape="rect" id="node3" href="$classpal_1_1net_1_1socket__base.html" title="Common socket types and constants." alt="" coords="9,5,168,32"/>
+</map>

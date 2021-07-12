@@ -1,0 +1,5 @@
+<map id="pal::net::ip::address" name="pal::net::ip::address">
+<area shape="rect" id="node1" title="Version independent representation of IP address." alt="" coords="115,95,266,121"/>
+<area shape="rect" id="node2" href="$classpal_1_1net_1_1ip_1_1address__v4.html" title="IPv4 address." alt="" coords="5,5,179,32"/>
+<area shape="rect" id="node3" href="$classpal_1_1net_1_1ip_1_1address__v6.html" title="IPv6 address." alt="" coords="203,5,376,32"/>
+</map>

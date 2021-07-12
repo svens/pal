@@ -1,0 +1,7 @@
+<map id="pal/net/ip/address" name="pal/net/ip/address">
+<area shape="rect" id="node1" title=" " alt="" coords="5,5,144,32"/>
+<area shape="rect" id="node2" href="$internet.html" title=" " alt="" coords="44,229,167,256"/>
+<area shape="rect" id="node3" href="$basic__endpoint.html" title=" " alt="" coords="53,80,238,107"/>
+<area shape="rect" id="node4" href="$tcp.html" title=" " alt="" coords="97,155,204,181"/>
+<area shape="rect" id="node5" href="$udp.html" title=" " alt="" coords="229,155,339,181"/>
+</map>

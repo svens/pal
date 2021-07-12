@@ -1,0 +1,9 @@
+<map id="pal/net/basic_socket" name="pal/net/basic_socket">
+<area shape="rect" id="node1" title=" " alt="" coords="118,5,273,32"/>
+<area shape="rect" id="node2" href="$basic__datagram__socket.html" title=" " alt="" coords="13,80,188,121"/>
+<area shape="rect" id="node6" href="$basic__stream__socket.html" title=" " alt="" coords="212,80,371,121"/>
+<area shape="rect" id="node3" href="$udp.html" title=" " alt="" coords="5,169,116,196"/>
+<area shape="rect" id="node5" href="$socket.html" title=" " alt="" coords="140,169,253,196"/>
+<area shape="rect" id="node4" href="$internet.html" title=" " alt="" coords="134,244,257,271"/>
+<area shape="rect" id="node7" href="$tcp.html" title=" " alt="" coords="278,169,385,196"/>
+</map>

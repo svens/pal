@@ -1,0 +1,5 @@
+<map id="pal::net::linger" name="pal::net::linger">
+<area shape="rect" id="node1" title="Controls behaviour when a socket is closed and unsent data is present." alt="" coords="35,199,151,225"/>
+<area shape="rect" id="node2" href="$structpal_1_1net_1_1socket__option.html" title=" " alt="" coords="5,95,180,151"/>
+<area shape="rect" id="node3" href="$structpal_1_1net_1_1socket__option__storage.html" title=" " alt="" coords="8,5,177,47"/>
+</map>

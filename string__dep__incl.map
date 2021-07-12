@@ -1,0 +1,11 @@
+<map id="pal/string" name="pal/string">
+<area shape="rect" id="node1" title=" " alt="" coords="225,6,307,33"/>
+<area shape="rect" id="node2" href="$certificate.html" title=" " alt="" coords="5,81,161,107"/>
+<area shape="rect" id="node3" href="$address__v4.html" title=" " alt="" coords="185,81,347,107"/>
+<area shape="rect" id="node9" href="$address__v6.html" title=" " alt="" coords="304,155,465,182"/>
+<area shape="rect" id="node4" href="$address.html" title=" " alt="" coords="255,230,394,257"/>
+<area shape="rect" id="node5" href="$internet.html" title=" " alt="" coords="294,454,417,481"/>
+<area shape="rect" id="node6" href="$basic__endpoint.html" title=" " alt="" coords="303,305,488,331"/>
+<area shape="rect" id="node7" href="$tcp.html" title=" " alt="" coords="347,379,454,406"/>
+<area shape="rect" id="node8" href="$udp.html" title=" " alt="" coords="479,379,589,406"/>
+</map>

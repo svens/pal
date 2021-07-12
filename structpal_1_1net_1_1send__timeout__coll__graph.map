@@ -1,0 +1,5 @@
+<map id="pal::net::send_timeout" name="pal::net::send_timeout">
+<area shape="rect" id="node1" title="Timeout for blocking send calls if there is no room to copy outgoing data." alt="" coords="23,199,191,225"/>
+<area shape="rect" id="node2" title=" " alt="" coords="8,95,207,151"/>
+<area shape="rect" id="node3" title=" " alt="" coords="5,5,209,47"/>
+</map>

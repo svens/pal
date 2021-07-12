@@ -1,0 +1,7 @@
+<map id="Graphical Class Hierarchy" name="Graphical Class Hierarchy">
+<area shape="rect" id="node1" title=" " alt="" coords="5,53,209,94"/>
+<area shape="rect" id="node2" title=" " alt="" coords="257,5,456,61"/>
+<area shape="rect" id="node4" title=" " alt="" coords="257,85,456,141"/>
+<area shape="rect" id="node3" href="$structpal_1_1net_1_1receive__timeout.html" title="Timeout for blocking receive calls if there is no incoming data." alt="" coords="504,20,689,47"/>
+<area shape="rect" id="node5" href="$structpal_1_1net_1_1send__timeout.html" title="Timeout for blocking send calls if there is no room to copy outgoing data." alt="" coords="513,100,681,127"/>
+</map>

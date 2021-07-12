@@ -1,0 +1,6 @@
+<map id="pal/net/ip/basic_resolver" name="pal/net/ip/basic_resolver">
+<area shape="rect" id="node1" title=" " alt="" coords="5,5,187,32"/>
+<area shape="rect" id="node2" href="$internet.html" title=" " alt="" coords="35,155,157,181"/>
+<area shape="rect" id="node3" href="$tcp.html" title=" " alt="" coords="43,80,149,107"/>
+<area shape="rect" id="node4" href="$udp.html" title=" " alt="" coords="174,80,285,107"/>
+</map>
