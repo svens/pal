@@ -1,5 +1,6 @@
 #include <pal/intrusive_queue>
 #include <pal/test>
+#include <array>
 
 
 namespace {
@@ -11,6 +12,12 @@ TEST_CASE("intrusive_queue")
 	{
 		pal::intrusive_queue_hook<foo> hook{};
 		using queue = pal::intrusive_queue<&foo::hook>;
+
+		constexpr bool operator< (const foo &that) const noexcept
+		{
+			// insert_sorted: for tests ordering by location in memory
+			return this < &that;
+		}
 	};
 
 	foo::queue queue{};
@@ -214,6 +221,44 @@ TEST_CASE("intrusive_queue")
 				std::logic_error
 			);
 		}
+	}
+
+
+	SECTION("insert_sorted")
+	{
+		std::array<foo, 3> f;
+		static_assert(f[0] < f[1]);
+		static_assert(f[1] < f[2]);
+
+		SECTION("head")
+		{
+			queue.insert_sorted(&f[2]);
+			queue.insert_sorted(&f[1]);
+			queue.insert_sorted(&f[0]);
+		}
+
+		SECTION("tail")
+		{
+			queue.insert_sorted(&f[0]);
+			queue.insert_sorted(&f[1]);
+			queue.insert_sorted(&f[2]);
+		}
+
+		SECTION("mixed")
+		{
+			queue.insert_sorted(&f[1]);
+			queue.insert_sorted(&f[2]);
+			queue.insert_sorted(&f[0]);
+		}
+
+		REQUIRE_FALSE(queue.empty());
+		CHECK(queue.try_pop() == &f[0]);
+
+		REQUIRE_FALSE(queue.empty());
+		CHECK(queue.try_pop() == &f[1]);
+
+		REQUIRE_FALSE(queue.empty());
+		CHECK(queue.try_pop() == &f[2]);
 	}
 
 
