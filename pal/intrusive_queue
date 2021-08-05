@@ -142,7 +142,8 @@ public:
 	template <typename Cmp = std::less<value_type>>
 	void insert_sorted (not_null<value_type *> node, Cmp cmp = Cmp{}) noexcept
 	{
-		if (auto it = head_->*Next;  it && !cmp(*node, *it))
+		auto it = head_->*Next;
+		if (it && !cmp(*node, *it))
 		{
 			while (it->*Next && cmp(*(it->*Next), *node))
 			{
@@ -155,10 +156,11 @@ public:
 		{
 			node->*Next = it;
 			head_->*Next = node;
-			if (head_ == tail_)
-			{
-				tail_ = node;
-			}
+			it = head_;
+		}
+		if (tail_ == it)
+		{
+			tail_ = node;
 		}
 	}
 

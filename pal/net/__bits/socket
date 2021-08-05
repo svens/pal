@@ -259,6 +259,23 @@ struct socket
 };
 
 
+struct io_service
+{
+	io_service (std::error_code &error) noexcept
+	{
+		error.clear();
+	}
+
+	template <typename Clock, typename Duration, typename Queue>
+	bool poll_until (const std::chrono::time_point<Clock, Duration> &deadline, Queue &queue)
+	{
+		(void)deadline;
+		(void)queue;
+		return false;
+	}
+};
+
+
 } // namespace net::__bits
 
 

@@ -226,7 +226,7 @@ TEST_CASE("intrusive_queue")
 
 	SECTION("insert_sorted")
 	{
-		std::array<foo, 3> f;
+		std::array<foo, 4> f;
 		static_assert(f[0] < f[1]);
 		static_assert(f[1] < f[2]);
 
@@ -251,6 +251,8 @@ TEST_CASE("intrusive_queue")
 			queue.insert_sorted(&f[0]);
 		}
 
+		queue.push(&f[3]);
+
 		REQUIRE_FALSE(queue.empty());
 		CHECK(queue.try_pop() == &f[0]);
 
@@ -259,6 +261,9 @@ TEST_CASE("intrusive_queue")
 
 		REQUIRE_FALSE(queue.empty());
 		CHECK(queue.try_pop() == &f[2]);
+
+		REQUIRE_FALSE(queue.empty());
+		CHECK(queue.try_pop() == &f[3]);
 	}
 
 
