@@ -1021,6 +1021,7 @@ std::deque<certificate> certificate::load_pkcs12 (
 		auto chain = (::CFArrayRef)::CFDictionaryGetValue(data, kSecImportItemCertChain);
 
 		auto chain_length = ::CFArrayGetCount(chain);
+		printf("*** LIB: chain_length=%zu\n", chain_length);
 		for (auto i = 0U;  i != chain_length;  ++i)
 		{
 			result.push_back(
@@ -1045,6 +1046,10 @@ std::deque<certificate> certificate::load_pkcs12 (
 			);
 			*key = std::move(pkey);
 		}
+	}
+	else
+	{
+		printf("*** LIB: SecPKCS12Import=%d\n", status);
 	}
 	return result;
 }
