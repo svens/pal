@@ -5,8 +5,7 @@
 namespace {
 
 
-TEST_CASE("net/async/service",
-	pal::is_windows_build ? "[!mayfail]" : "")
+TEST_CASE("net/async/service", "[!mayfail]")
 {
 	using namespace std::chrono_literals;
 
