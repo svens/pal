@@ -217,7 +217,7 @@ public:
 
 private:
 
-	char sentry_[sizeof(value_type)];
+	char sentry_[sizeof(value_type)] = {};
 	value_type * const head_ = reinterpret_cast<value_type *>(&sentry_);
 	value_type *tail_ = head_;
 };
