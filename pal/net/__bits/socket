@@ -1,5 +1,8 @@
 #pragma once // -*- C++ -*-
 
+// TODO: remove
+#include <thread>
+
 #include <pal/__bits/lib>
 #include <pal/result>
 #include <pal/span>
@@ -271,6 +274,7 @@ struct service
 	{
 		(void)poll_duration;
 		(void)queue;
+		std::this_thread::sleep_for(poll_duration);
 	}
 };
 
