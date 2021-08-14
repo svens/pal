@@ -1,0 +1,202 @@
+#pragma once // -*- C++ -*-
+
+/**
+ * \file pal/net/async/service
+ * Asynchronous request completion service
+ */
+
+
+#include <pal/net/__bits/socket>
+#include <pal/net/async/request>
+
+
+__pal_begin
+
+
+namespace net::async {
+
+
+/**
+ * Asynchronous request completion service.
+ *
+ * Internally it is wrapper around OS-specific networking poller. Each socket
+ * interested in using asynchronous API must be registered with single
+ * service using call make_async(). After call to this method, application
+ * can use socket's asynchronous API. Whenever asynchronous request(s) are
+ * completed, service will notify application layer using provided callback
+ * when run() or one of it's variants is invoked.
+ *
+ * \todo Document current time point updating strategy
+ * \todo Document deferred posting
+ */
+template <typename CompletionHandler>
+class service
+{
+public:
+
+	/**
+	 * Clock type used in polling and deferred posting methods.
+	 */
+	using clock_type = std::chrono::steady_clock;
+
+
+	/**
+	 * Return current time point.
+	 */
+	const clock_type::time_point &now () const noexcept
+	{
+		return now_;
+	}
+
+
+	/**
+	 * Post \a request to completion queue. Next call to run() (or
+	 * similar polling methods) will pass this \a request to completion
+	 * handler.
+	 */
+	void post (not_null<request *> request) noexcept
+	{
+		completed_.push(request);
+	}
+
+
+	/**
+	 * Post \a request to completion queue at specified \a post_time.
+	 * \note TODO describe reasons for deferring even further
+	 * \see post()
+	 */
+	void post_at (const clock_type::time_point &post_time, not_null<request *> request) noexcept
+	{
+		request->service_.post_time = post_time;
+		delayed_.insert_sorted(request,
+			[](const auto &r1, const auto &r2)
+			{
+				return r1.service_.post_time < r2.service_.post_time;
+			}
+		);
+	}
+
+
+	/**
+	 * Post \a request to completion queue after specified \a post_wait.
+	 * \see post(), post_at()
+	 */
+	void post_after (const clock_type::duration &post_wait, not_null<request *> request) noexcept
+	{
+		post_at(now_ + post_wait, request);
+	}
+
+
+	/**
+	 * Gather completed I/O requests and invoke application provided
+	 * \a CompletionHandler. If there are no completed requests available,
+	 * suspend calling thread up to \a poll_duration until there are any
+	 * completions available.
+	 */
+	void run_for (clock_type::duration poll_duration) noexcept;
+
+
+	/**
+	 * \copybrief run_for()
+	 * This method returns immediately if there are no already completed
+	 * pending requests.
+	 */
+	void run_once () noexcept
+	{
+		run_for(clock_type::duration::zero());
+	}
+
+
+	/**
+	 * \copybrief run_for()
+	 * This method blocks until there is any completed request available.
+	 */
+	void run () noexcept
+	{
+		run_for((clock_type::duration::max)());
+	}
+
+
+	/**
+	 * Associate \a socket with this service and enable it's
+	 * asynchronous API.
+	 */
+	template <typename Socket>
+	result<void> make_async (Socket &socket) noexcept
+	{
+		(void)socket;
+		return {};
+	}
+
+
+private:
+
+	__bits::service impl_;
+	CompletionHandler handler_;
+	completion_queue completed_{}, delayed_{};
+	clock_type::time_point now_{clock_type::now()};
+
+	service (CompletionHandler handler, std::error_code &error) noexcept
+		: impl_{error}
+		, handler_{handler}
+	{ }
+
+	template <typename H>
+	friend result<service<H>> make_service (H) noexcept;
+};
+
+
+template <typename CompletionHandler>
+void service<CompletionHandler>::run_for (clock_type::duration poll_duration) noexcept
+{
+	now_ = clock_type::now();
+	if (auto r = delayed_.head())
+	{
+		if (r->service_.post_time < now_)
+		{
+			poll_duration = clock_type::duration::zero();
+		}
+		else if (auto delay = r->service_.post_time - now_;  delay < poll_duration)
+		{
+			poll_duration = delay;
+		}
+	}
+
+	impl_.poll_for(poll_duration, completed_);
+
+	now_ = clock_type::now();
+	for (auto r = delayed_.head();  r && r->service_.post_time <= now_;  r = delayed_.head())
+	{
+		completed_.push(delayed_.try_pop());
+	}
+
+	if (!completed_.empty())
+	{
+		handler_(std::move(completed_));
+	}
+}
+
+
+/**
+ * Create new asynchronous I/O service with asynchronous request completion
+ * \a handler.
+ */
+template <typename CompletionHandler>
+auto make_service (CompletionHandler handler) noexcept
+	-> result<service<CompletionHandler>>
+{
+	std::error_code error;
+	service<CompletionHandler> service{handler, error};
+	if (!error)
+	{
+		return service;
+	}
+	return unexpected{error};
+
+}
+
+
+} // namespace net::async
+
+
+__pal_end

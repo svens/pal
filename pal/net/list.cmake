@@ -23,6 +23,10 @@ list(APPEND pal_sources
     pal/net/ip/socket_option
     pal/net/ip/tcp
     pal/net/ip/udp
+
+    # async
+    pal/net/async/request
+    pal/net/async/service
 )
 
 list(APPEND pal_test_sources
@@ -43,4 +47,8 @@ list(APPEND pal_test_sources
     pal/net/ip/host_name.test.cpp
     pal/net/ip/tcp.test.cpp
     pal/net/ip/udp.test.cpp
+
+    # async
+    pal/net/async/request.test.cpp
+    pal/net/async/service.test.cpp
 )

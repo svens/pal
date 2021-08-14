@@ -259,19 +259,18 @@ struct socket
 };
 
 
-struct io_service
+struct service
 {
-	io_service (std::error_code &error) noexcept
+	service (std::error_code &error) noexcept
 	{
 		error.clear();
 	}
 
-	template <typename Clock, typename Duration, typename Queue>
-	bool poll_until (const std::chrono::time_point<Clock, Duration> &deadline, Queue &queue)
+	template <typename Rep, typename Period, typename Queue>
+	void poll_for (const std::chrono::duration<Rep, Period> &poll_duration, Queue &queue)
 	{
-		(void)deadline;
+		(void)poll_duration;
 		(void)queue;
-		return false;
 	}
 };
 
