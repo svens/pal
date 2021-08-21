@@ -2,9 +2,16 @@
 
 #if __pal_os_linux || __pal_os_macos
 
+#include <pal/net/async/request>
 #include <fcntl.h>
 #include <sys/ioctl.h>
 #include <unistd.h>
+
+#if __pal_os_linux
+	#include <sys/epoll.h>
+#elif __pal_os_macos
+	#include <sys/event.h>
+#endif
 
 
 __pal_begin
@@ -69,6 +76,19 @@ struct socket::impl_type
 	native_socket handle = invalid_native_socket;
 	int family{};
 
+	__bits::service::impl_type *service{};
+
+	~impl_type () noexcept
+	{
+		handle_guard{handle};
+	}
+};
+
+
+struct service::impl_type
+{
+	int handle = -1;
+
 	~impl_type () noexcept
 	{
 		handle_guard{handle};
@@ -79,6 +99,11 @@ struct socket::impl_type
 socket::socket (socket &&) noexcept = default;
 socket &socket::operator= (socket &&) noexcept = default;
 socket::~socket () noexcept = default;
+
+
+service::service (service &&) noexcept = default;
+service &service::operator= (service &&) noexcept = default;
+service::~service () noexcept = default;
 
 
 socket::socket () noexcept
@@ -347,6 +372,92 @@ result<void> socket::set_option (int level, int name, const void *data, size_t d
 		return {};
 	}
 	return sys_error();
+}
+
+
+bool socket::has_async () const noexcept
+{
+	return impl->service != nullptr;
+}
+
+
+service::service (std::error_code &error) noexcept
+	: impl{new(std::nothrow) impl_type}
+{
+	if (!impl)
+	{
+		error = std::make_error_code(std::errc::not_enough_memory);
+		return;
+	}
+
+	#if __pal_os_linux
+	{
+		impl->handle = epoll_create1(0);
+	}
+	#elif __pal_os_macos
+	{
+		impl->handle = kqueue();
+	}
+	#endif
+
+	if (impl->handle == -1)
+	{
+		error.assign(errno, std::generic_category());
+	}
+}
+
+
+result<void> service::add (__bits::socket &socket) noexcept
+{
+	socket.impl->service = impl.get();
+	return {};
+}
+
+
+void service::poll_for (const std::chrono::milliseconds &poll_duration, void *queue_p) noexcept
+{
+	auto &queue = *reinterpret_cast<net::async::completion_queue *>(queue_p);
+
+	constexpr size_t max_events = 256;
+
+	#if __pal_os_linux
+	{
+		int timeout = -1;
+		if (poll_duration != poll_duration.max())
+		{
+			timeout = poll_duration.count();
+		}
+
+		::epoll_event events[max_events];
+		auto event_count = ::epoll_wait(impl->handle,
+			&events[0], max_events,
+			timeout
+		);
+		(void)event_count;
+		(void)queue;
+	}
+	#elif __pal_os_macos
+	{
+		::timespec timeout, *timeout_p = nullptr;
+		if (poll_duration != poll_duration.max())
+		{
+			auto sec = std::chrono::duration_cast<std::chrono::seconds>(poll_duration);
+			auto nsec = std::chrono::duration_cast<std::chrono::nanoseconds>(poll_duration - sec);
+			timeout.tv_sec = sec.count();
+			timeout.tv_nsec = nsec.count();
+			timeout_p = &timeout;
+		}
+
+		struct ::kevent events[max_events];
+		auto event_count = ::kevent(impl->handle,
+			nullptr, 0,
+			&events[0], max_events,
+			timeout_p
+		);
+		(void)event_count;
+		(void)queue;
+	}
+	#endif
 }
 
 

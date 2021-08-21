@@ -9,6 +9,14 @@ TEST_CASE("net/async/service", "[!mayfail]")
 {
 	using namespace std::chrono_literals;
 
+	SECTION("make_service not enough memory")
+	{
+		pal_test::bad_alloc_once x;
+		auto make_service = pal::net::async::make_service([](auto){});
+		REQUIRE_FALSE(make_service);
+		CHECK(make_service.error() == std::errc::not_enough_memory);
+	}
+
 	pal::net::async::request request, *request_ptr = nullptr;
 	auto service = pal::net::async::make_service(
 		[&](auto &&queue)

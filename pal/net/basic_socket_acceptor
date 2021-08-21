@@ -7,6 +7,7 @@
 
 #include <pal/__bits/lib>
 #include <pal/net/socket_base>
+#include <pal/net/async/service>
 #include <pal/assert>
 
 
@@ -237,6 +238,15 @@ public:
 	}
 
 
+	/**
+	 * TODO
+	 */
+	bool has_async () const noexcept
+	{
+		return acceptor_.has_async();
+	}
+
+
 private:
 
 	__bits::socket acceptor_{};
@@ -262,6 +272,14 @@ private:
 			return unexpected{handle.error()};
 		}
 	}
+
+	result<void> to_async (__bits::service &service) noexcept
+	{
+		return service.add(acceptor_);
+	}
+
+	template <typename>
+	friend class async::service;
 };
 
 

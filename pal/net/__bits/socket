@@ -1,8 +1,5 @@
 #pragma once // -*- C++ -*-
 
-// TODO: remove
-#include <thread>
-
 #include <pal/__bits/lib>
 #include <pal/result>
 #include <pal/span>
@@ -259,23 +256,26 @@ struct socket
 	result<void> native_non_blocking (bool mode) const noexcept;
 	result<void> get_option (int level, int name, void *data, size_t data_size) const noexcept;
 	result<void> set_option (int level, int name, const void *data, size_t data_size) noexcept;
+
+	bool has_async () const noexcept;
 };
 
 
 struct service
 {
-	service (std::error_code &error) noexcept
-	{
-		error.clear();
-	}
+	struct impl_type;
+	std::unique_ptr<impl_type> impl;
 
-	template <typename Rep, typename Period, typename Queue>
-	void poll_for (const std::chrono::duration<Rep, Period> &poll_duration, Queue &queue)
-	{
-		(void)poll_duration;
-		(void)queue;
-		std::this_thread::sleep_for(poll_duration);
-	}
+	service (std::error_code &error) noexcept;
+	service (service &&) noexcept;
+	service &operator= (service &&) noexcept;
+	~service () noexcept;
+
+	service (const service &) = delete;
+	service &operator= (const service &) = delete;
+
+	result<void> add (__bits::socket &socket) noexcept;
+	void poll_for (const std::chrono::milliseconds &poll_duration, void *queue) noexcept;
 };
 
 

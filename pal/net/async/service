@@ -8,6 +8,7 @@
 
 #include <pal/net/__bits/socket>
 #include <pal/net/async/request>
+#include <pal/assert>
 
 
 __pal_begin
@@ -118,14 +119,13 @@ public:
 
 
 	/**
-	 * Associate \a socket with this service and enable it's
-	 * asynchronous API.
+	 * TODO
 	 */
 	template <typename Socket>
-	result<void> make_async (Socket &socket) noexcept
+	result<void> make_async (Socket &socket) noexcept(assert_noexcept)
 	{
-		(void)socket;
-		return {};
+		pal_assert(!socket.has_async());
+		return socket.to_async(impl_);
 	}
 
 
@@ -162,7 +162,10 @@ void service<CompletionHandler>::run_for (clock_type::duration poll_duration) no
 		}
 	}
 
-	impl_.poll_for(poll_duration, completed_);
+	impl_.poll_for(
+		std::chrono::duration_cast<std::chrono::milliseconds>(poll_duration),
+		&completed_
+	);
 
 	now_ = clock_type::now();
 	for (auto r = delayed_.head();  r && r->service_.post_time <= now_;  r = delayed_.head())

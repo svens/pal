@@ -3,6 +3,7 @@
 
 #if __pal_os_windows
 
+#include <pal/net/async/request>
 #include <algorithm>
 #include <ws2tcpip.h>
 
@@ -192,6 +193,8 @@ struct socket::impl_type
 	native_socket handle = invalid_native_socket;
 	int family;
 
+	__bits::service::impl_type *service{};
+
 	~impl_type () noexcept
 	{
 		handle_guard{handle};
@@ -199,9 +202,28 @@ struct socket::impl_type
 };
 
 
+struct service::impl_type
+{
+	HANDLE handle = INVALID_HANDLE_VALUE;
+
+	~impl_type () noexcept
+	{
+		if (handle != INVALID_HANDLE_VALUE)
+		{
+			(void)::CloseHandle(handle);
+		}
+	}
+};
+
+
 socket::socket (socket &&) noexcept = default;
 socket &socket::operator= (socket &&) noexcept = default;
 socket::~socket () noexcept = default;
+
+
+service::service (service &&) noexcept = default;
+service &service::operator= (service &&) noexcept = default;
+service::~service () noexcept = default;
 
 
 socket::socket () noexcept
@@ -535,6 +557,66 @@ result<void> socket::set_option (int level, int name, const void *data, size_t d
 	}
 
 	return sys_error();
+}
+
+
+bool socket::has_async () const noexcept
+{
+	return impl->service != nullptr;
+}
+
+
+service::service (std::error_code &error) noexcept
+	: impl{new(std::nothrow) impl_type}
+{
+	if (impl)
+	{
+		impl->handle = ::CreateIoCompletionPort(INVALID_HANDLE_VALUE, 0, 0, 1);
+		if (impl->handle == INVALID_HANDLE_VALUE)
+		{
+			error.assign(::GetLastError(), std::system_category());
+		}
+	}
+	else
+	{
+		error = std::make_error_code(std::errc::not_enough_memory);
+	}
+}
+
+
+result<void> service::add (__bits::socket &socket) noexcept
+{
+	socket.impl->service = impl.get();
+	return {};
+}
+
+
+void service::poll_for (const std::chrono::milliseconds &poll_duration, void *queue_p) noexcept
+{
+	auto &queue = *reinterpret_cast<net::async::completion_queue *>(queue_p);
+
+	DWORD timeout = static_cast<DWORD>(poll_duration.count());
+	if (poll_duration == (poll_duration.max)())
+	{
+		timeout = INFINITE;
+	}
+
+	constexpr ULONG max_events = 256;
+	::OVERLAPPED_ENTRY events[max_events];
+	ULONG events_count{};
+
+	auto succeeded = ::GetQueuedCompletionStatusEx(
+		impl->handle,
+		events, max_events,
+		&events_count,
+		timeout,
+		false
+	);
+
+	if (succeeded)
+	{
+		(void)queue;
+	}
 }
 
 

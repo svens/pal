@@ -479,6 +479,27 @@ TEMPLATE_TEST_CASE("net/basic_socket_acceptor", "",
 			CHECK(acceptor.error() == std::errc::not_enough_memory);
 		}
 	}
+
+	SECTION("make_async")
+	{
+		auto make_service = pal::net::async::make_service([](auto &&){});
+		REQUIRE(make_service);
+		auto service = std::move(*make_service);
+
+		REQUIRE_FALSE(a.has_async());
+		CHECK(service.make_async(a));
+		CHECK(a.has_async());
+
+		SECTION("multiple times")
+		{
+			if constexpr (!pal::assert_noexcept)
+			{
+				REQUIRE_THROWS_AS(service.make_async(a), std::logic_error);
+			}
+			// else: no direct effect but results of following
+			// async requests are undefined
+		}
+	}
 }
 
 
