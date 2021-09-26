@@ -321,27 +321,6 @@ TEMPLATE_TEST_CASE("net/basic_socket", "",
 			CHECK(available.error() == std::errc::bad_file_descriptor);
 		}
 	}
-
-	SECTION("make_async")
-	{
-		auto make_service = pal::net::async::make_service([](auto &&){});
-		REQUIRE(make_service);
-		auto service = std::move(*make_service);
-
-		REQUIRE_FALSE(s.has_async());
-		CHECK(service.make_async(s));
-		CHECK(s.has_async());
-
-		SECTION("multiple times")
-		{
-			if constexpr (!pal::assert_noexcept)
-			{
-				REQUIRE_THROWS_AS(service.make_async(s), std::logic_error);
-			}
-			// else: no direct effect but results of following
-			// async requests are undefined
-		}
-	}
 }
 
 

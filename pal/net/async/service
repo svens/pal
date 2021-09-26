@@ -29,6 +29,7 @@ namespace net::async {
  *
  * \todo Document current time point updating strategy
  * \todo Document deferred posting
+ * \todo Document exception safety
  */
 template <typename CompletionHandler>
 class service
@@ -57,7 +58,9 @@ public:
 	 */
 	void post (not_null<request *> request) noexcept
 	{
-		completed_.push(request);
+		request->error.clear();
+		request->impl_.post_time = {};
+		pending_.insert_sorted(request, [](auto,auto){ return true; });
 	}
 
 
@@ -68,11 +71,12 @@ public:
 	 */
 	void post_at (const clock_type::time_point &post_time, not_null<request *> request) noexcept
 	{
-		request->service_.post_time = post_time;
-		delayed_.insert_sorted(request,
+		request->error.clear();
+		request->impl_.post_time = post_time;
+		pending_.insert_sorted(request,
 			[](const auto &r1, const auto &r2)
 			{
-				return r1.service_.post_time < r2.service_.post_time;
+				return r1.impl_.post_time < r2.impl_.post_time;
 			}
 		);
 	}
@@ -93,6 +97,8 @@ public:
 	 * \a CompletionHandler. If there are no completed requests available,
 	 * suspend calling thread up to \a poll_duration until there are any
 	 * completions available.
+	 *
+	 * \todo document exceptions only from callback
 	 */
 	void run_for (clock_type::duration poll_duration) noexcept;
 
@@ -132,14 +138,24 @@ public:
 private:
 
 	__bits::service impl_;
-	CompletionHandler handler_;
-	completion_queue completed_{}, delayed_{};
+	CompletionHandler completed_;
+	request_queue pending_{};
 	clock_type::time_point now_{clock_type::now()};
 
 	service (CompletionHandler handler, std::error_code &error) noexcept
 		: impl_{error}
-		, handler_{handler}
+		, completed_{handler}
 	{ }
+
+	static void process (void *listener, request *request) noexcept
+	{
+		reinterpret_cast<service *>(listener)->completed_(request);
+	}
+
+	static constexpr auto to_msec (const clock_type::duration &d) noexcept
+	{
+		return std::chrono::duration_cast<std::chrono::milliseconds>(d);
+	}
 
 	template <typename H>
 	friend result<service<H>> make_service (H) noexcept;
@@ -150,32 +166,28 @@ template <typename CompletionHandler>
 void service<CompletionHandler>::run_for (clock_type::duration poll_duration) noexcept
 {
 	now_ = clock_type::now();
-	if (auto r = delayed_.head())
+	if (auto r = pending_.head())
 	{
-		if (r->service_.post_time < now_)
+		if (r->impl_.post_time < now_)
 		{
 			poll_duration = clock_type::duration::zero();
 		}
-		else if (auto delay = r->service_.post_time - now_;  delay < poll_duration)
+		else if (auto delay = r->impl_.post_time - now_;  delay < poll_duration)
 		{
 			poll_duration = delay;
 		}
 	}
 
-	impl_.poll_for(
-		std::chrono::duration_cast<std::chrono::milliseconds>(poll_duration),
-		&completed_
-	);
+	impl_.poll_for(to_msec(poll_duration), &service::process, this);
 
 	now_ = clock_type::now();
-	for (auto r = delayed_.head();  r && r->service_.post_time <= now_;  r = delayed_.head())
+	while (auto *r = pending_.head())
 	{
-		completed_.push(delayed_.try_pop());
-	}
-
-	if (!completed_.empty())
-	{
-		handler_(std::move(completed_));
+		if (r->impl_.post_time > now_)
+		{
+			break;
+		}
+		completed_(pending_.pop());
 	}
 }
 

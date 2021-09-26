@@ -7,6 +7,8 @@
 
 #include <pal/__bits/lib>
 #include <pal/net/basic_socket>
+#include <pal/net/async/request>
+#include <pal/not_null>
 
 
 __pal_begin
@@ -45,8 +47,9 @@ public:
 		endpoint_type &sender,
 		socket_base::message_flags flags = 0) noexcept
 	{
-		__bits::message message;
-		if (message.set(spans))
+		std::error_code error;
+		__bits::message message{};
+		if (message.set(spans, error))
 		{
 			message.flags(flags);
 			message.name(sender.data(), sender.capacity());
@@ -58,7 +61,7 @@ public:
 			}
 			return unexpected{r.error()};
 		}
-		return make_unexpected(std::errc::argument_list_too_long);
+		return unexpected{error};
 	}
 
 	/**
@@ -70,14 +73,15 @@ public:
 		const endpoint_type &recipient,
 		socket_base::message_flags flags = 0) noexcept
 	{
-		__bits::message message;
-		if (message.set(spans))
+		std::error_code error;
+		__bits::message message{};
+		if (message.set(spans, error))
 		{
 			message.flags(flags);
 			message.name(recipient.data(), recipient.size());
 			return base::socket_.send(message);
 		}
-		return make_unexpected(std::errc::argument_list_too_long);
+		return unexpected{error};
 	}
 
 	/**
@@ -92,15 +96,15 @@ public:
 	result<size_t> receive (const MutableSpanSequence &spans,
 		socket_base::message_flags flags = 0) noexcept
 	{
-		__bits::message message;
-		if (message.set(spans))
+		std::error_code error;
+		__bits::message message{};
+		if (message.set(spans, error))
 		{
-			message.msg_flags = flags;
+			message.flags(flags);
 			return base::socket_.receive(message);
 		}
-		return make_unexpected(std::errc::argument_list_too_long);
+		return unexpected{error};
 	}
-
 
 	/**
 	 * Send data in \a spans using this socket. It can be used only in
@@ -110,13 +114,93 @@ public:
 	result<size_t> send (const ConstSpanSequence &spans,
 		socket_base::message_flags flags = 0) noexcept
 	{
-		__bits::message message;
-		if (message.set(spans))
+		std::error_code error;
+		__bits::message message{};
+		if (message.set(spans, error))
 		{
-			message.msg_flags = flags;
+			message.flags(flags);
 			return base::socket_.send(message);
 		}
-		return make_unexpected(std::errc::argument_list_too_long);
+		return unexpected{error};
+	}
+
+
+	//
+	// Asynchronous API
+	//
+
+	/**
+	 * Start asynchronous datagram receive request.
+	 * \see receive_from()
+	 */
+	template <typename MutableSpanSequence>
+	void async_receive_from (not_null<async::request *> request,
+		const MutableSpanSequence &spans,
+		endpoint_type &sender,
+		socket_base::message_flags flags = 0) noexcept
+	{
+		auto &message = request->impl_.message;
+		if (message.set(spans, request->error))
+		{
+			message.flags(flags);
+			message.name(sender.data(), sender.capacity());
+		}
+		base::socket_.start(request->emplace<async::receive_from>());
+	}
+
+	/**
+	 * Start asynchronous datagram send request.
+	 * \see send_to()
+	 */
+	template <typename ConstSpanSequence>
+	void async_send_to (not_null<async::request *> request,
+		const ConstSpanSequence &spans,
+		const endpoint_type &recipient,
+		socket_base::message_flags flags = 0) noexcept
+	{
+		auto &message = request->impl_.message;
+		if (message.set(spans, request->error))
+		{
+			message.flags(flags);
+			message.name(recipient.data(), recipient.size());
+		}
+		base::socket_.start(request->emplace<async::send_to>());
+	}
+
+	/**
+	 * Start asynchronous datagram receive request.
+	 * \see receive()
+	 */
+	template <typename MutableSpanSequence>
+	void async_receive (not_null<async::request *> request,
+		const MutableSpanSequence &spans,
+		socket_base::message_flags flags = 0) noexcept
+	{
+		auto &message = request->impl_.message;
+		if (message.set(spans, request->error))
+		{
+			message.flags(flags);
+			message.name(nullptr, 0);
+		}
+		base::socket_.start(request->emplace<async::receive>());
+	}
+
+	/**
+	 * Start asynchronous datagram send request.
+	 * \see send_to()
+	 */
+	template <typename ConstSpanSequence>
+	void async_send (not_null<async::request *> request,
+		const ConstSpanSequence &spans,
+		socket_base::message_flags flags = 0) noexcept
+	{
+		auto &message = request->impl_.message;
+		if (message.set(spans, request->error))
+		{
+			message.flags(flags);
+			message.name(nullptr, 0);
+		}
+		base::socket_.start(request->emplace<async::send>());
 	}
 
 

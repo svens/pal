@@ -167,10 +167,12 @@ private:
 	} impl_{};
 
 	template <typename> friend class service;
-	friend struct net::__bits::socket::impl_type;
 	template <typename> friend class net::basic_datagram_socket;
 	template <typename> friend class net::basic_stream_socket;
 	template <typename> friend class net::basic_socket_acceptor;
+
+	friend struct net::__bits::socket;
+	friend struct net::__bits::socket::impl_type;
 };
 
 

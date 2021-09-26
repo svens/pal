@@ -7,12 +7,6 @@
 #include <sys/ioctl.h>
 #include <unistd.h>
 
-#if __pal_os_linux
-	#include <sys/epoll.h>
-#elif __pal_os_macos
-	#include <sys/event.h>
-#endif
-
 
 __pal_begin
 
@@ -33,6 +27,8 @@ namespace {
 	constexpr int SO_NOSIGPIPE = -1;
 #endif
 
+constexpr message_flags internal_flags = MSG_DONTWAIT | MSG_NOSIGNAL;
+
 void init_handle (native_socket handle) noexcept
 {
 	if constexpr (is_macos_build)
@@ -50,6 +46,11 @@ void init_handle (native_socket handle) noexcept
 unexpected<std::error_code> sys_error (int e = errno) noexcept
 {
 	return unexpected<std::error_code>{std::in_place, e, std::generic_category()};
+}
+
+bool is_blocking_error (int error = errno) noexcept
+{
+	return error == EAGAIN || error == EWOULDBLOCK;
 }
 
 } // namespace
@@ -71,28 +72,125 @@ result<void> close_handle (native_socket handle) noexcept
 }
 
 
-struct socket::impl_type
+struct service::impl_type
 {
-	native_socket handle = invalid_native_socket;
-	int family{};
-
-	__bits::service::impl_type *service{};
+	int handle = -1;
+	async::request_queue completed{};
 
 	~impl_type () noexcept
 	{
 		handle_guard{handle};
+	}
+
+	void notify (completion_fn process, void *listener) noexcept
+	{
+		auto requests = std::move(completed);
+		while (auto *request = requests.try_pop())
+		{
+			process(listener, request);
+		}
 	}
 };
 
 
-struct service::impl_type
+struct socket::impl_type
 {
-	int handle = -1;
+	native_socket handle = invalid_native_socket;
+	bool is_acceptor{};
+	int family{};
+
+	__bits::service::impl_type *service{};
+	async::request_queue pending_receive{}, pending_send{};
+
+	void receive_one (async::request *request, size_t &bytes_transferred, message_flags &flags) noexcept;
+	void send_one (async::request *request, size_t &bytes_transferred) noexcept;
+
+	void receive_many (service::completion_fn process, void *listener) noexcept;
+	void send_many (service::completion_fn process, void *listener) noexcept;
+	void accept_many (service::completion_fn process, void *listener) noexcept;
+
+	bool try_now (async::request_queue &queue, async::request *request) noexcept
+	{
+		if (request->error)
+		{
+			service->completed.push(request);
+			return false;
+		}
+
+		request->impl_.message.msg_flags |= internal_flags;
+		if (!queue.empty())
+		{
+			queue.push(request);
+			return false;
+		}
+
+		return true;
+	}
 
 	~impl_type () noexcept
 	{
 		handle_guard{handle};
+		if (service)
+		{
+			cancel(EBADF);
+		}
 	}
+
+	void cancel (async::request_queue &queue, int error) noexcept
+	{
+		while (auto *request = queue.try_pop())
+		{
+			request->error.assign(error, std::generic_category());
+			service->completed.push(request);
+		}
+	}
+
+	void cancel (int error) noexcept
+	{
+		cancel(pending_receive, error);
+		cancel(pending_send, error);
+	}
+
+	void cancel (async::request_queue &queue, service::completion_fn process, void *listener, int error) noexcept
+	{
+		while (auto *request = queue.try_pop())
+		{
+			request->error.assign(error, std::generic_category());
+			process(listener, request);
+		}
+	}
+
+	void cancel (service::completion_fn process, void *listener, int error) noexcept
+	{
+		cancel(pending_receive, process, listener, error);
+		cancel(pending_send, process, listener, error);
+	}
+
+	int pending_error () const noexcept
+	{
+		int error{};
+		socklen_t error_size = sizeof(error);
+		if (::getsockopt(handle, SOL_SOCKET, SO_ERROR, &error, &error_size) == -1)
+		{
+			error = errno;
+		}
+		return error;
+	}
+
+	#if __pal_os_linux
+
+		static constexpr size_t max_mmsg = 64;
+
+		::mmsghdr *make_mmsg (async::request *src, ::mmsghdr *it, ::mmsghdr *end) noexcept
+		{
+			for (/**/;  src && it != end;  ++it, src = src->next)
+			{
+				it->msg_hdr = src->impl_.message;
+			}
+			return it;
+		}
+
+	#endif
 };
 
 
@@ -116,7 +214,7 @@ socket::socket (impl_ptr impl) noexcept
 { }
 
 
-result<socket> socket::open (int family, int type, int protocol) noexcept
+result<socket> socket::open (bool is_acceptor, int family, int type, int protocol) noexcept
 {
 	auto errc = std::errc::not_enough_memory;
 	if (auto impl = impl_ptr{new(std::nothrow) impl_type})
@@ -124,6 +222,7 @@ result<socket> socket::open (int family, int type, int protocol) noexcept
 		impl->handle = ::socket(family, type, protocol);
 		if (impl->handle != invalid_native_socket)
 		{
+			impl->is_acceptor = is_acceptor;
 			impl->family = family;
 			init_handle(impl->handle);
 			return impl;
@@ -151,15 +250,17 @@ result<socket> socket::open (int family, int type, int protocol) noexcept
 }
 
 
-result<void> socket::assign (int family, int, int, native_socket handle) noexcept
+result<void> socket::assign (bool is_acceptor, int family, int, int, native_socket handle) noexcept
 {
 	if (impl)
 	{
+		impl->is_acceptor = is_acceptor;
 		impl->family = family;
 		return close_handle(std::exchange(impl->handle, handle));
 	}
 	else if ((impl = impl_ptr{new(std::nothrow) impl_type}))
 	{
+		impl->is_acceptor = is_acceptor;
 		impl->family = family;
 		impl->handle = handle;
 		return {};
@@ -247,8 +348,9 @@ result<size_t> socket::receive (message &msg) noexcept
 	{
 		return static_cast<size_t>(r);
 	}
-	else if (errno == EAGAIN)
+	else if (is_blocking_error(errno))
 	{
+		// unify with Windows
 		return sys_error(ETIMEDOUT);
 	}
 	return sys_error();
@@ -262,8 +364,9 @@ result<size_t> socket::send (const message &msg) noexcept
 	{
 		return static_cast<size_t>(r);
 	}
-	else if (errno == EAGAIN)
+	else if (is_blocking_error(errno))
 	{
+		// unify with Windows
 		return sys_error(ETIMEDOUT);
 	}
 	else if (errno == EDESTADDRREQ)
@@ -381,83 +484,43 @@ bool socket::has_async () const noexcept
 }
 
 
-service::service (std::error_code &error) noexcept
-	: impl{new(std::nothrow) impl_type}
+void socket::start (async::receive_from &receive_from) noexcept
 {
-	if (!impl)
+	auto *request = owner_of(receive_from);
+	if (impl->try_now(impl->pending_receive, request))
 	{
-		error = std::make_error_code(std::errc::not_enough_memory);
-		return;
-	}
-
-	#if __pal_os_linux
-	{
-		impl->handle = epoll_create1(0);
-	}
-	#elif __pal_os_macos
-	{
-		impl->handle = kqueue();
-	}
-	#endif
-
-	if (impl->handle == -1)
-	{
-		error.assign(errno, std::generic_category());
+		impl->receive_one(request, receive_from.bytes_transferred, receive_from.flags);
 	}
 }
 
 
-result<void> service::add (__bits::socket &socket) noexcept
+void socket::start (async::receive &receive) noexcept
 {
-	socket.impl->service = impl.get();
-	return {};
+	auto *request = owner_of(receive);
+	if (impl->try_now(impl->pending_receive, request))
+	{
+		impl->receive_one(request, receive.bytes_transferred, receive.flags);
+	}
 }
 
 
-void service::poll_for (const std::chrono::milliseconds &poll_duration, void *queue_p) noexcept
+void socket::start (async::send_to &send_to) noexcept
 {
-	auto &queue = *reinterpret_cast<net::async::completion_queue *>(queue_p);
-
-	constexpr size_t max_events = 256;
-
-	#if __pal_os_linux
+	auto *request = owner_of(send_to);
+	if (impl->try_now(impl->pending_send, request))
 	{
-		int timeout = -1;
-		if (poll_duration != poll_duration.max())
-		{
-			timeout = poll_duration.count();
-		}
-
-		::epoll_event events[max_events];
-		auto event_count = ::epoll_wait(impl->handle,
-			&events[0], max_events,
-			timeout
-		);
-		(void)event_count;
-		(void)queue;
+		impl->send_one(request, send_to.bytes_transferred);
 	}
-	#elif __pal_os_macos
+}
+
+
+void socket::start (async::send &send) noexcept
+{
+	auto *request = owner_of(send);
+	if (impl->try_now(impl->pending_send, request))
 	{
-		::timespec timeout, *timeout_p = nullptr;
-		if (poll_duration != poll_duration.max())
-		{
-			auto sec = std::chrono::duration_cast<std::chrono::seconds>(poll_duration);
-			auto nsec = std::chrono::duration_cast<std::chrono::nanoseconds>(poll_duration - sec);
-			timeout.tv_sec = sec.count();
-			timeout.tv_nsec = nsec.count();
-			timeout_p = &timeout;
-		}
-
-		struct ::kevent events[max_events];
-		auto event_count = ::kevent(impl->handle,
-			nullptr, 0,
-			&events[0], max_events,
-			timeout_p
-		);
-		(void)event_count;
-		(void)queue;
+		impl->send_one(request, send.bytes_transferred);
 	}
-	#endif
 }
 
 
@@ -468,3 +531,10 @@ __pal_end
 
 
 #endif // __pal_os_linux || __pal_os_macos
+
+
+#if __pal_os_linux
+	#include "socket_epoll.ipp"
+#elif __pal_os_macos
+	#include "socket_kqueue.ipp"
+#endif

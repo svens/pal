@@ -188,23 +188,10 @@ result<void> close_handle (native_socket handle) noexcept
 }
 
 
-struct socket::impl_type
-{
-	native_socket handle = invalid_native_socket;
-	int family;
-
-	__bits::service::impl_type *service{};
-
-	~impl_type () noexcept
-	{
-		handle_guard{handle};
-	}
-};
-
-
 struct service::impl_type
 {
 	HANDLE handle = INVALID_HANDLE_VALUE;
+	async::request_queue completed{};
 
 	~impl_type () noexcept
 	{
@@ -212,6 +199,30 @@ struct service::impl_type
 		{
 			(void)::CloseHandle(handle);
 		}
+	}
+
+	void notify (completion_fn process, void *listener) noexcept
+	{
+		auto requests = std::move(completed);
+		while (auto *request = requests.try_pop())
+		{
+			process(listener, request);
+		}
+	}
+};
+
+
+struct socket::impl_type
+{
+	native_socket handle = invalid_native_socket;
+	bool is_acceptor{};
+	int family;
+
+	__bits::service::impl_type *service{};
+
+	~impl_type () noexcept
+	{
+		handle_guard{handle};
 	}
 };
 
@@ -236,7 +247,7 @@ socket::socket (impl_ptr impl) noexcept
 { }
 
 
-result<socket> socket::open (int family, int type, int protocol) noexcept
+result<socket> socket::open (bool is_acceptor, int family, int type, int protocol) noexcept
 {
 	auto e = ERROR_NOT_ENOUGH_MEMORY;
 	if (auto impl = impl_ptr{new(std::nothrow) impl_type})
@@ -244,6 +255,7 @@ result<socket> socket::open (int family, int type, int protocol) noexcept
 		impl->handle = ::WSASocketW(family, type, protocol, nullptr, 0, WSA_FLAG_OVERLAPPED);
 		if (impl->handle != invalid_native_socket)
 		{
+			impl->is_acceptor = is_acceptor;
 			impl->family = family;
 			init_handle(impl->handle, type);
 			return impl;
@@ -261,15 +273,17 @@ result<socket> socket::open (int family, int type, int protocol) noexcept
 }
 
 
-result<void> socket::assign (int family, int, int, native_socket handle) noexcept
+result<void> socket::assign (bool is_acceptor, int family, int, int, native_socket handle) noexcept
 {
 	if (impl)
 	{
+		impl->is_acceptor = is_acceptor;
 		impl->family = family;
 		return close_handle(std::exchange(impl->handle, handle));
 	}
 	else if ((impl = impl_ptr{new(std::nothrow) impl_type}))
 	{
+		impl->is_acceptor = is_acceptor;
 		impl->family = family;
 		impl->handle = handle;
 		return {};
@@ -560,70 +574,13 @@ result<void> socket::set_option (int level, int name, const void *data, size_t d
 }
 
 
-bool socket::has_async () const noexcept
-{
-	return impl->service != nullptr;
-}
-
-
-service::service (std::error_code &error) noexcept
-	: impl{new(std::nothrow) impl_type}
-{
-	if (impl)
-	{
-		impl->handle = ::CreateIoCompletionPort(INVALID_HANDLE_VALUE, 0, 0, 1);
-		if (impl->handle == INVALID_HANDLE_VALUE)
-		{
-			error.assign(::GetLastError(), std::system_category());
-		}
-	}
-	else
-	{
-		error = std::make_error_code(std::errc::not_enough_memory);
-	}
-}
-
-
-result<void> service::add (__bits::socket &socket) noexcept
-{
-	socket.impl->service = impl.get();
-	return {};
-}
-
-
-void service::poll_for (const std::chrono::milliseconds &poll_duration, void *queue_p) noexcept
-{
-	auto &queue = *reinterpret_cast<net::async::completion_queue *>(queue_p);
-
-	DWORD timeout = static_cast<DWORD>(poll_duration.count());
-	if (poll_duration == (poll_duration.max)())
-	{
-		timeout = INFINITE;
-	}
-
-	constexpr ULONG max_events = 256;
-	::OVERLAPPED_ENTRY events[max_events];
-	ULONG events_count{};
-
-	auto succeeded = ::GetQueuedCompletionStatusEx(
-		impl->handle,
-		events, max_events,
-		&events_count,
-		timeout,
-		false
-	);
-
-	if (succeeded)
-	{
-		(void)queue;
-	}
-}
-
-
 } // namespace net::__bits
 
 
 __pal_end
+
+
+#include "socket_iocp.ipp"
 
 
 #endif // __pal_os_windows

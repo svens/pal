@@ -16,6 +16,12 @@ __pal_begin
 namespace net {
 
 
+// fwd decl
+template <typename Protocol> class basic_datagram_socket;
+template <typename Protocol> class basic_stream_socket;
+template <typename Protocol> class basic_socket_acceptor;
+
+
 /**
  * Initialize socket library. There is no need to call it explicitly as it is
  * also invoked internlly by static initialization. Only exception is when
@@ -72,11 +78,16 @@ public:
 	static constexpr message_flags message_out_of_band = MSG_OOB;
 	/// Wait until socket has pending error condition
 	static constexpr message_flags message_do_not_route = MSG_DONTROUTE;
+	/// Received message was truncated because receive buffer was too small
+	static constexpr message_flags message_truncated = MSG_TRUNC;
 	/// \}
 
 
 	/// Limit on length of queue of pending incoming connections
 	static constexpr int max_listen_connections = SOMAXCONN;
+
+	/// Maximum number of spans for vectored I/O
+	static constexpr size_t iov_max_size = __bits::iov_max_size;
 
 
 protected:

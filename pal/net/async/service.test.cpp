@@ -5,6 +5,10 @@
 namespace {
 
 
+//
+// Because OS poller may return early/late, this test is flaky
+//
+
 TEST_CASE("net/async/service", "[!mayfail]")
 {
 	using namespace std::chrono_literals;
@@ -19,10 +23,9 @@ TEST_CASE("net/async/service", "[!mayfail]")
 
 	pal::net::async::request request, *request_ptr = nullptr;
 	auto service = pal::net::async::make_service(
-		[&](auto &&queue)
+		[&request_ptr](auto *request)
 		{
-			request_ptr = queue.try_pop();
-			REQUIRE(queue.empty());
+			request_ptr = request;
 		}
 	).value();
 
