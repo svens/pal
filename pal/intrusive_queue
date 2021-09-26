@@ -184,6 +184,22 @@ public:
 
 
 	/**
+	 * Pop node from head of queue. This method should be called in
+	 * cooperation with head() or empty(). If queue is empty, behaviour is
+	 * undefined.
+	 */
+	value_type *pop () noexcept
+	{
+		auto it = std::exchange(head_->*Next, head_->*Next->*Next);
+		if (head_->*Next == nullptr)
+		{
+			tail_ = head_;
+		}
+		return it;
+	}
+
+
+	/**
 	 * Return head of queue without removing it. If empty, return nullptr.
 	 */
 	value_type *head () const noexcept
