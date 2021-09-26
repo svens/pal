@@ -46,40 +46,6 @@ TEMPLATE_TEST_CASE("net/ip/udp", "", udp_v4, udp_v6, udp_v6_only)
 	using protocol_t = std::remove_cvref_t<decltype(TestType::protocol_v)>;
 	using endpoint_t = typename protocol_t::endpoint;
 
-	// send buffers
-	static constexpr std::string_view send_view = "hello, world";
-	static constexpr std::string_view send_bufs[] = { "hello", ", ", "world" };
-	static constexpr std::array send_msg =
-	{
-		std::span{send_bufs[0]},
-		std::span{send_bufs[1]},
-		std::span{send_bufs[2]},
-	};
-	static constexpr std::array send_msg_list_too_long =
-	{
-		std::span{send_bufs[0]},
-		std::span{send_bufs[0]},
-		std::span{send_bufs[0]},
-		std::span{send_bufs[0]},
-		std::span{send_bufs[0]},
-	};
-
-	// receive buffers
-	char recv_buf[1024];
-	std::span<char> recv_msg{recv_buf};
-	auto recv_view = [&](size_t size) -> std::string_view
-	{
-		return {recv_buf, size};
-	};
-	static std::array recv_msg_list_too_long =
-	{
-		recv_msg,
-		recv_msg,
-		recv_msg,
-		recv_msg,
-		recv_msg,
-	};
-
 	// receiver
 	auto receiver = TestType::make_socket().value();
 	endpoint_t endpoint{TestType::loopback_v, 0};
