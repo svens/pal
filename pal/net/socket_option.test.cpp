@@ -219,7 +219,7 @@ std::error_code expected_os_error () noexcept
 }
 
 
-TEMPLATE_PRODUCT_TEST_CASE("net/socket_option", "",
+TEMPLATE_PRODUCT_TEST_CASE("net/socket_option", "[!nonportable]",
 	(
 		udp_v4::with,
 		tcp_v4::with,

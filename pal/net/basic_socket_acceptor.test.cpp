@@ -8,7 +8,7 @@ namespace {
 using namespace pal_test;
 
 
-TEMPLATE_TEST_CASE("net/basic_socket_acceptor", "",
+TEMPLATE_TEST_CASE("net/basic_socket_acceptor", "[!nonportable]",
 	tcp_v4,
 	tcp_v6,
 	tcp_v6_only)
