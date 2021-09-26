@@ -131,59 +131,54 @@ public:
 	using request_variant::request_variant;
 	using request_variant::operator=;
 
-
-	/**
-	 * Get result after asynchronous operation completion. On success,
-	 * error is cleared.
-	 */
-	const std::error_code &error () const noexcept
-	{
-		return error_;
-	}
-
-
-private:
-
-	std::error_code error_{};
-
-	// active member depends on request ownership:
-	// - OS: overlapped_ (Windows)
-	// - library: pending_ (Linux/MacOS)
-	// - application: completed_ or none
 	union
 	{
-		intrusive_queue_hook<request> completed_{}, pending_;
+		/**
+		 * Pointer to next request if it is in queue. This member is
+		 * available for application use only when request is not in
+		 * progress. When request is started, this member should not
+		 * be modified by application layer.
+		 */
+		intrusive_queue_hook<request> next{};
+
 		#if __pal_os_windows
+			/// \internal
 			::WSAOVERLAPPED overlapped_;
 		#endif
 	};
 
+	/**
+	 * Result after asynchronous operation completion. On success,
+	 * error is cleared.
+	 */
+	std::error_code error{};
+
+
+private:
+
 	// in-progress request data
 	union
 	{
-		bool init{};
-		__bits::message message;
+		__bits::message message{};
 		std::chrono::steady_clock::time_point post_time;
 		#if __pal_os_windows
 			char accept[sizeof(::sockaddr_in6) + 16];
 		#endif
-	} service_{};
-
-	using pending_queue = intrusive_queue<&request::pending_>;
+	} impl_{};
 
 	template <typename> friend class service;
-
-public:
-
-	/**
-	 * Ordered queue of completed requests.
-	 */
-	using completion_queue = intrusive_queue<&request::completed_>;
+	friend struct net::__bits::socket::impl_type;
+	template <typename> friend class net::basic_datagram_socket;
+	template <typename> friend class net::basic_stream_socket;
+	template <typename> friend class net::basic_socket_acceptor;
 };
 
 
-/// \copydoc pal::net::async::request::completion_queue
-using completion_queue = request::completion_queue;
+/**
+ * Request queue
+ * \see request::next
+ */
+using request_queue = intrusive_queue<&request::next>;
 
 
 } // namespace net::async

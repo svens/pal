@@ -24,8 +24,8 @@ void fnv_1a_64 (benchmark::State &state)
 	state.SetBytesProcessed(state.iterations() * size);
 }
 BENCHMARK(fnv_1a_64)
-  ->RangeMultiplier(2)->Range(4, 2<<8)
-  ->Complexity()
+	->RangeMultiplier(2)->Range(4, 2<<8)
+	->Complexity()
 ;
 
 

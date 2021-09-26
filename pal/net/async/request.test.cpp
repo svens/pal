@@ -37,7 +37,7 @@ TEMPLATE_TEST_CASE("net/async/request", "",
 {
 	pal::net::async::request request;
 
-	CHECK_FALSE(request.error());
+	CHECK_FALSE(request.error);
 	CHECK(std::get_if<TestType>(&request) == nullptr);
 	CHECK(std::get_if<pal::net::async::no_request>(&request) != nullptr);
 
