@@ -94,7 +94,7 @@ void socket::impl_type::send_many (service::completion_fn process, void *listene
 		auto *first = &messages[0];
 		auto *last = make_mmsg(pending_send.head(), first, &messages[max_mmsg]);
 		last = first + ::sendmmsg(handle, first, last - first, internal_flags);
-		for (/**/;  first < last;  ++last)
+		for (/**/;  first < last;  ++first)
 		{
 			auto *request = pending_send.pop();
 			if (auto *send_to = std::get_if<async::send_to>(request))
