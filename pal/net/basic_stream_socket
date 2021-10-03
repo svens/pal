@@ -7,6 +7,8 @@
 
 #include <pal/__bits/lib>
 #include <pal/net/basic_socket>
+#include <pal/net/async/request>
+#include <pal/not_null>
 
 
 __pal_begin
@@ -51,7 +53,6 @@ public:
 		return unexpected{error};
 	}
 
-
 	/**
 	 * Send data in \a spans using this socket. Returns number of bytes
 	 * sent.
@@ -68,6 +69,44 @@ public:
 			return base::socket_.send(message);
 		}
 		return unexpected{error};
+	}
+
+	//
+	// Asynchronous API
+	//
+
+	/**
+	 * Start asynchronous stream receive request.
+	 * \see receive()
+	 */
+	template <typename MutableSpanSequence>
+	void async_receive (not_null<async::request *> request,
+		const MutableSpanSequence &spans,
+		socket_base::message_flags flags = 0) noexcept
+	{
+		auto &message = request->impl_.message;
+		if (message.set(spans, request->error))
+		{
+			message.flags(flags);
+		}
+		base::socket_.start(request->emplace<async::receive>());
+	}
+
+	/**
+	 * Start asynchronous stream send request.
+	 * \see send()
+	 */
+	template <typename ConstSpanSequence>
+	void async_send (not_null<async::request *> request,
+		const ConstSpanSequence &spans,
+		socket_base::message_flags flags = 0) noexcept
+	{
+		auto &message = request->impl_.message;
+		if (message.set(spans, request->error))
+		{
+			message.flags(flags);
+		}
+		base::socket_.start(request->emplace<async::send>());
 	}
 
 

@@ -94,7 +94,7 @@ lib lib::instance{};
 
 inline unexpected<std::error_code> sys_error (int e = ::WSAGetLastError()) noexcept
 {
-	if (e == WSAENOTSOCK)
+	if (e == WSAENOTSOCK || e == WSA_INVALID_HANDLE)
 	{
 		// unify with POSIX
 		e = WSAEBADF;

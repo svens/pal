@@ -185,7 +185,7 @@ void service::poll_for (
 	for (auto *event = events;  event != events + event_count;  ++event)
 	{
 		auto &socket = *static_cast<socket::impl_type *>(event->data.ptr);
-		if (event->events & (EPOLLERR | EPOLLHUP))
+		if (event->events & EPOLLERR)
 		{
 			socket.cancel(process, listener, socket.pending_error());
 		}
@@ -205,6 +205,10 @@ void service::poll_for (
 			if (event->events & EPOLLOUT)
 			{
 				socket.send_many(process, listener);
+			}
+			if (event->events & (EPOLLRDHUP | EPOLLHUP))
+			{
+				socket.cancel(process, listener, 0);
 			}
 		}
 	}
