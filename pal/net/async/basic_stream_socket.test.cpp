@@ -28,8 +28,8 @@ TEMPLATE_TEST_CASE("net/async/basic_stream_socket", "[!nonportable]",
 
 	auto socket = pal_try(TestType::make_socket());
 	REQUIRE_FALSE(socket.has_async());
-	CHECK(service.make_async(socket));
-	CHECK(socket.has_async());
+	REQUIRE(service.make_async(socket));
+	REQUIRE(socket.has_async());
 
 	constexpr size_t small_size = send_view.size() / 2;
 	constexpr auto run_duration = 1s;

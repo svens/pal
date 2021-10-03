@@ -15,17 +15,15 @@ TEMPLATE_TEST_CASE("net/async/basic_socket_acceptor", "", tcp_v4, tcp_v6, tcp_v6
 	using protocol_t = std::remove_cvref_t<decltype(TestType::protocol_v)>;
 	using endpoint_t = typename protocol_t::endpoint;
 
-	auto make_service = pal::net::async::make_service([](auto &&){});
-	REQUIRE(make_service);
-	auto service = std::move(*make_service);
+	auto service = pal_try(pal::net::async::make_service([](auto &&){}));
 
-	auto acceptor = TestType::make_acceptor().value();
+	auto acceptor = pal_try(TestType::make_acceptor());
 	endpoint_t endpoint{TestType::loopback_v, 0};
 	REQUIRE(pal_test::bind_next_available_port(acceptor, endpoint));
 
 	REQUIRE_FALSE(acceptor.has_async());
-	CHECK(service.make_async(acceptor));
-	CHECK(acceptor.has_async());
+	REQUIRE(service.make_async(acceptor));
+	REQUIRE(acceptor.has_async());
 
 	SECTION("make_async: multiple times")
 	{
