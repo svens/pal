@@ -28,6 +28,7 @@ struct receive_from;
 struct receive;
 struct send_to;
 struct send;
+struct connect;
 } // namespace net::async
 
 
@@ -293,6 +294,7 @@ struct socket
 	void start (async::receive &receive) noexcept;
 	void start (async::send_to &send_to) noexcept;
 	void start (async::send &send) noexcept;
+	void start (async::connect &connect) noexcept;
 };
 
 

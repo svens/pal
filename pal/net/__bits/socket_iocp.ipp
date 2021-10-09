@@ -57,6 +57,66 @@ bool post_check (async::request *request, service::impl_type *service, int resul
 	return false;
 }
 
+bool is_loopback_v4 (const ::sockaddr *name) noexcept
+{
+	auto *bytes = reinterpret_cast<const uint8_t *>(
+		&reinterpret_cast<const ::sockaddr_in *>(name)->sin_addr.s_addr
+	);
+	return (bytes[0] & 0xff) == 0x7f;
+}
+
+bool is_loopback_v6 (const ::sockaddr *name) noexcept
+{
+	static constexpr uint8_t loopback_bytes[] = IN6ADDR_LOOPBACK_INIT;
+	auto *bytes = reinterpret_cast<const uint8_t *>(
+		&reinterpret_cast<const ::sockaddr_in6 *>(name)->sin6_addr
+	);
+	return bytes == loopback_bytes;
+}
+
+bool try_bind (socket::impl_type &socket, const message &message) noexcept
+{
+	::sockaddr_storage bind_address{};
+
+	switch (bind_address.ss_family = message.msg_name->sa_family)
+	{
+		case AF_INET:
+		{
+			auto &local = *reinterpret_cast<::sockaddr_in *>(&bind_address);
+			if (is_loopback_v4(message.msg_name))
+			{
+				local.sin_addr.s_addr = htonl(INADDR_LOOPBACK);
+			}
+			else
+			{
+				local.sin_addr.s_addr = htonl(INADDR_ANY);
+			}
+		}
+		break;
+
+		case AF_INET6:
+		{
+			auto &local = *reinterpret_cast<::sockaddr_in6 *>(&bind_address);
+			if (is_loopback_v6(message.msg_name))
+			{
+				local.sin6_addr = IN6ADDR_LOOPBACK_INIT;
+			}
+			else
+			{
+				local.sin6_addr = IN6ADDR_ANY_INIT;
+			}
+		}
+		break;
+	}
+
+	auto r = ::bind(socket.handle,
+		reinterpret_cast<const ::sockaddr *>(&bind_address),
+		message.msg_namelen
+	);
+
+	return r != -1;
+}
+
 } // namespace
 
 
@@ -173,6 +233,75 @@ void socket::start (async::send &send) noexcept
 	{
 		send.bytes_transferred = bytes_transferred;
 	}
+}
+
+
+void socket::start (async::connect &connect) noexcept
+{
+	auto *request = owner_of(connect);
+	request->overlapped_ = {};
+
+	// ConnectEx() requires socket to be bound, Posix connect() does not
+	//
+	// Align behaviour with Posix: if 1st ConnectEx() fails with
+	// WSAEINVAL, bind and retry
+
+retry:
+	DWORD bytes_transferred{};
+	int result = (*ConnectEx)(
+		impl->handle,
+		request->impl_.message.msg_name,
+		request->impl_.message.msg_namelen,
+		nullptr,
+		0,
+		&bytes_transferred,
+		&request->overlapped_
+	);
+
+	if (result == FALSE)
+	{
+		result = ::WSAGetLastError();
+		if (result == ERROR_IO_PENDING)
+		{
+			return;
+		}
+		else if (result == WSAEINVAL && try_bind(*impl, request->impl_.message))
+		{
+			goto retry;
+		}
+		else if (result == WSAENOTSOCK)
+		{
+			result = WSAEBADF;
+		}
+	}
+	else
+	{
+		result = ::setsockopt(
+			impl->handle,
+			SOL_SOCKET,
+			SO_UPDATE_CONNECT_CONTEXT,
+			nullptr,
+			0
+		);
+		if (result == 0)
+		{
+			connect.bytes_transferred = bytes_transferred;
+		}
+		else
+		{
+			result = ::WSAGetLastError();
+		}
+	}
+
+	if (result == 0)
+	{
+		request->error.clear();
+	}
+	else
+	{
+		request->error.assign(result, std::system_category());
+	}
+	impl->service->completed.push(request);
 }
 
 
@@ -301,6 +430,27 @@ void service::poll_for (
 		else if (auto *send = std::get_if<async::send>(request))
 		{
 			send->bytes_transferred = bytes_transferred;
+		}
+		else if (auto *connect = std::get_if<async::connect>(request))
+		{
+			result = ::setsockopt(
+				socket.handle,
+				SOL_SOCKET,
+				SO_UPDATE_CONNECT_CONTEXT,
+				nullptr,
+				0
+			);
+			if (result == 0)
+			{
+				// unlike other requests, async_connect() does
+				// not clear error in advance
+				connect->bytes_transferred = bytes_transferred;
+				request->error.clear();
+			}
+			else
+			{
+				request->error.assign(::WSAGetLastError(), std::system_category());
+			}
 		}
 		process(listener, request);
 	}

@@ -57,7 +57,7 @@ TEMPLATE_TEST_CASE("net/async/basic_datagram_socket", "", udp_v4, udp_v6, udp_v6
 		REQUIRE(completed.empty());
 
 		service.run_for(run_duration);
-		REQUIRE(completed.at(0) == &request);
+		CHECK(completed.at(0) == &request);
 		REQUIRE_FALSE(request.error);
 
 		auto *receive_from = std::get_if<pal::net::async::receive_from>(&request);
@@ -78,7 +78,7 @@ TEMPLATE_TEST_CASE("net/async/basic_datagram_socket", "", udp_v4, udp_v6, udp_v6
 		CHECK(sent == send_msg[0].size_bytes());
 
 		service.run_for(run_duration);
-		REQUIRE(completed.at(0) == &request);
+		CHECK(completed.at(0) == &request);
 		REQUIRE_FALSE(request.error);
 
 		auto *receive_from = std::get_if<pal::net::async::receive_from>(&request);
@@ -99,7 +99,7 @@ TEMPLATE_TEST_CASE("net/async/basic_datagram_socket", "", udp_v4, udp_v6, udp_v6
 		REQUIRE(completed.empty());
 
 		service.run_for(run_duration);
-		REQUIRE(completed.at(0) == &request);
+		CHECK(completed.at(0) == &request);
 		REQUIRE_FALSE(request.error);
 
 		auto *receive_from = std::get_if<pal::net::async::receive_from>(&request);
@@ -120,7 +120,7 @@ TEMPLATE_TEST_CASE("net/async/basic_datagram_socket", "", udp_v4, udp_v6, udp_v6
 		CHECK(sent == send_view.size());
 
 		service.run_for(run_duration);
-		REQUIRE(completed.at(0) == &request);
+		CHECK(completed.at(0) == &request);
 		REQUIRE_FALSE(request.error);
 
 		auto *receive_from = std::get_if<pal::net::async::receive_from>(&request);
@@ -141,7 +141,7 @@ TEMPLATE_TEST_CASE("net/async/basic_datagram_socket", "", udp_v4, udp_v6, udp_v6
 		REQUIRE(completed.empty());
 
 		service.run_for(run_duration);
-		REQUIRE(completed.at(0) == &request);
+		CHECK(completed.at(0) == &request);
 		REQUIRE_FALSE(request.error);
 
 		auto *receive_from = std::get_if<pal::net::async::receive_from>(&request);
@@ -162,7 +162,7 @@ TEMPLATE_TEST_CASE("net/async/basic_datagram_socket", "", udp_v4, udp_v6, udp_v6
 		CHECK(sent == send_view.size());
 
 		service.run_for(run_duration);
-		REQUIRE(completed.at(0) == &request);
+		CHECK(completed.at(0) == &request);
 		REQUIRE_FALSE(request.error);
 
 		auto *receive_from = std::get_if<pal::net::async::receive_from>(&request);
@@ -180,7 +180,7 @@ TEMPLATE_TEST_CASE("net/async/basic_datagram_socket", "", udp_v4, udp_v6, udp_v6
 		REQUIRE(completed.empty());
 
 		service.run_for(run_duration);
-		REQUIRE(completed.at(0) == &request);
+		CHECK(completed.at(0) == &request);
 		REQUIRE(request.error == std::errc::argument_list_too_long);
 		CHECK(std::holds_alternative<pal::net::async::receive_from>(request));
 	}
@@ -210,7 +210,7 @@ TEMPLATE_TEST_CASE("net/async/basic_datagram_socket", "", udp_v4, udp_v6, udp_v6
 
 		REQUIRE(socket.close());
 		service.run_for(run_duration);
-		REQUIRE(completed.at(1) == &r2);
+		CHECK(completed.at(1) == &r2);
 		CHECK(r2.error == std::errc::bad_file_descriptor);
 		CHECK(std::holds_alternative<pal::net::async::receive_from>(r2));
 	}
@@ -223,7 +223,7 @@ TEMPLATE_TEST_CASE("net/async/basic_datagram_socket", "", udp_v4, udp_v6, udp_v6
 		REQUIRE(completed.empty());
 
 		service.run_for(run_duration);
-		REQUIRE(completed.at(0) == &request);
+		CHECK(completed.at(0) == &request);
 		REQUIRE(request.error == std::errc::bad_file_descriptor);
 		CHECK(std::holds_alternative<pal::net::async::receive_from>(request));
 	}
@@ -236,7 +236,7 @@ TEMPLATE_TEST_CASE("net/async/basic_datagram_socket", "", udp_v4, udp_v6, udp_v6
 		REQUIRE(socket.close());
 
 		service.run_for(run_duration);
-		REQUIRE(completed.at(0) == &request);
+		CHECK(completed.at(0) == &request);
 		REQUIRE(request.error == std::errc::bad_file_descriptor);
 		CHECK(std::holds_alternative<pal::net::async::receive_from>(request));
 	}
@@ -250,7 +250,7 @@ TEMPLATE_TEST_CASE("net/async/basic_datagram_socket", "", udp_v4, udp_v6, udp_v6
 		REQUIRE(completed.empty());
 
 		service.run_for(run_duration);
-		REQUIRE(completed.at(0) == &request);
+		CHECK(completed.at(0) == &request);
 		REQUIRE_FALSE(request.error);
 
 		auto *receive = std::get_if<pal::net::async::receive>(&request);
@@ -269,7 +269,7 @@ TEMPLATE_TEST_CASE("net/async/basic_datagram_socket", "", udp_v4, udp_v6, udp_v6
 		CHECK(sent == send_msg[0].size_bytes());
 
 		service.run_for(run_duration);
-		REQUIRE(completed.at(0) == &request);
+		CHECK(completed.at(0) == &request);
 		REQUIRE_FALSE(request.error);
 
 		auto *receive = std::get_if<pal::net::async::receive>(&request);
@@ -288,7 +288,7 @@ TEMPLATE_TEST_CASE("net/async/basic_datagram_socket", "", udp_v4, udp_v6, udp_v6
 		REQUIRE(completed.empty());
 
 		service.run_for(run_duration);
-		REQUIRE(completed.at(0) == &request);
+		CHECK(completed.at(0) == &request);
 		REQUIRE_FALSE(request.error);
 
 		auto *receive = std::get_if<pal::net::async::receive>(&request);
@@ -307,7 +307,7 @@ TEMPLATE_TEST_CASE("net/async/basic_datagram_socket", "", udp_v4, udp_v6, udp_v6
 		CHECK(sent == send_view.size());
 
 		service.run_for(run_duration);
-		REQUIRE(completed.at(0) == &request);
+		CHECK(completed.at(0) == &request);
 		REQUIRE_FALSE(request.error);
 
 		auto *receive = std::get_if<pal::net::async::receive>(&request);
@@ -326,7 +326,7 @@ TEMPLATE_TEST_CASE("net/async/basic_datagram_socket", "", udp_v4, udp_v6, udp_v6
 		REQUIRE(completed.empty());
 
 		service.run_for(run_duration);
-		REQUIRE(completed.at(0) == &request);
+		CHECK(completed.at(0) == &request);
 		REQUIRE_FALSE(request.error);
 
 		auto *receive = std::get_if<pal::net::async::receive>(&request);
@@ -345,7 +345,7 @@ TEMPLATE_TEST_CASE("net/async/basic_datagram_socket", "", udp_v4, udp_v6, udp_v6
 		CHECK(sent == send_view.size());
 
 		service.run_for(run_duration);
-		REQUIRE(completed.at(0) == &request);
+		CHECK(completed.at(0) == &request);
 		REQUIRE_FALSE(request.error);
 
 		auto *receive = std::get_if<pal::net::async::receive>(&request);
@@ -361,7 +361,7 @@ TEMPLATE_TEST_CASE("net/async/basic_datagram_socket", "", udp_v4, udp_v6, udp_v6
 		REQUIRE(completed.empty());
 
 		service.run_for(run_duration);
-		REQUIRE(completed.at(0) == &request);
+		CHECK(completed.at(0) == &request);
 		REQUIRE(request.error == std::errc::argument_list_too_long);
 		CHECK(std::holds_alternative<pal::net::async::receive>(request));
 	}
@@ -378,7 +378,7 @@ TEMPLATE_TEST_CASE("net/async/basic_datagram_socket", "", udp_v4, udp_v6, udp_v6
 		CHECK(sent == send_view.size());
 
 		service.run_for(run_duration);
-		REQUIRE(completed.at(0) == &request);
+		CHECK(completed.at(0) == &request);
 		REQUIRE_FALSE(request.error);
 
 		auto *receive = std::get_if<pal::net::async::receive>(&request);
@@ -389,7 +389,7 @@ TEMPLATE_TEST_CASE("net/async/basic_datagram_socket", "", udp_v4, udp_v6, udp_v6
 
 		REQUIRE(socket.close());
 		service.run_for(run_duration);
-		REQUIRE(completed.at(1) == &r2);
+		CHECK(completed.at(1) == &r2);
 		CHECK(r2.error == std::errc::bad_file_descriptor);
 		CHECK(std::holds_alternative<pal::net::async::receive>(r2));
 	}
@@ -402,7 +402,7 @@ TEMPLATE_TEST_CASE("net/async/basic_datagram_socket", "", udp_v4, udp_v6, udp_v6
 		REQUIRE(completed.empty());
 
 		service.run_for(run_duration);
-		REQUIRE(completed.at(0) == &request);
+		CHECK(completed.at(0) == &request);
 		REQUIRE(request.error == std::errc::bad_file_descriptor);
 		CHECK(std::holds_alternative<pal::net::async::receive>(request));
 	}
@@ -415,7 +415,7 @@ TEMPLATE_TEST_CASE("net/async/basic_datagram_socket", "", udp_v4, udp_v6, udp_v6
 		REQUIRE(socket.close());
 
 		service.run_for(run_duration);
-		REQUIRE(completed.at(0) == &request);
+		CHECK(completed.at(0) == &request);
 		REQUIRE(request.error == std::errc::bad_file_descriptor);
 		CHECK(std::holds_alternative<pal::net::async::receive>(request));
 	}
@@ -430,7 +430,7 @@ TEMPLATE_TEST_CASE("net/async/basic_datagram_socket", "", udp_v4, udp_v6, udp_v6
 		CHECK(peer_endpoint == endpoint);
 
 		service.run_for(run_duration);
-		REQUIRE(completed.at(0) == &request);
+		CHECK(completed.at(0) == &request);
 		REQUIRE_FALSE(request.error);
 
 		auto *send_to = std::get_if<pal::net::async::send_to>(&request);
@@ -449,7 +449,7 @@ TEMPLATE_TEST_CASE("net/async/basic_datagram_socket", "", udp_v4, udp_v6, udp_v6
 		CHECK(peer_endpoint == endpoint);
 
 		service.run_for(run_duration);
-		REQUIRE(completed.at(0) == &request);
+		CHECK(completed.at(0) == &request);
 		REQUIRE_FALSE(request.error);
 
 		auto *send_to = std::get_if<pal::net::async::send_to>(&request);
@@ -466,7 +466,7 @@ TEMPLATE_TEST_CASE("net/async/basic_datagram_socket", "", udp_v4, udp_v6, udp_v6
 		REQUIRE(completed.empty());
 
 		service.run_for(run_duration);
-		REQUIRE(completed.at(0) == &request);
+		CHECK(completed.at(0) == &request);
 		REQUIRE(request.error == std::errc::bad_file_descriptor);
 		CHECK(std::holds_alternative<pal::net::async::send_to>(request));
 	}
@@ -477,7 +477,7 @@ TEMPLATE_TEST_CASE("net/async/basic_datagram_socket", "", udp_v4, udp_v6, udp_v6
 		REQUIRE(completed.empty());
 
 		service.run_for(run_duration);
-		REQUIRE(completed.at(0) == &request);
+		CHECK(completed.at(0) == &request);
 		REQUIRE(request.error == std::errc::argument_list_too_long);
 		CHECK(std::holds_alternative<pal::net::async::send_to>(request));
 	}
@@ -493,7 +493,7 @@ TEMPLATE_TEST_CASE("net/async/basic_datagram_socket", "", udp_v4, udp_v6, udp_v6
 		CHECK(peer_endpoint == endpoint);
 
 		service.run_for(run_duration);
-		REQUIRE(completed.at(0) == &request);
+		CHECK(completed.at(0) == &request);
 		REQUIRE_FALSE(request.error);
 
 		auto *send = std::get_if<pal::net::async::send>(&request);
@@ -513,7 +513,7 @@ TEMPLATE_TEST_CASE("net/async/basic_datagram_socket", "", udp_v4, udp_v6, udp_v6
 		CHECK(peer_endpoint == endpoint);
 
 		service.run_for(run_duration);
-		REQUIRE(completed.at(0) == &request);
+		CHECK(completed.at(0) == &request);
 		REQUIRE_FALSE(request.error);
 
 		auto *send = std::get_if<pal::net::async::send>(&request);
@@ -532,7 +532,7 @@ TEMPLATE_TEST_CASE("net/async/basic_datagram_socket", "", udp_v4, udp_v6, udp_v6
 		REQUIRE(completed.empty());
 
 		service.run_for(run_duration);
-		REQUIRE(completed.at(0) == &request);
+		CHECK(completed.at(0) == &request);
 		REQUIRE(request.error == std::errc::bad_file_descriptor);
 		CHECK(std::holds_alternative<pal::net::async::send>(request));
 	}
@@ -544,7 +544,7 @@ TEMPLATE_TEST_CASE("net/async/basic_datagram_socket", "", udp_v4, udp_v6, udp_v6
 		REQUIRE(completed.empty());
 
 		service.run_for(run_duration);
-		REQUIRE(completed.at(0) == &request);
+		CHECK(completed.at(0) == &request);
 		REQUIRE(request.error == std::errc::argument_list_too_long);
 		CHECK(std::holds_alternative<pal::net::async::send>(request));
 	}
@@ -555,7 +555,7 @@ TEMPLATE_TEST_CASE("net/async/basic_datagram_socket", "", udp_v4, udp_v6, udp_v6
 		REQUIRE(completed.empty());
 
 		service.run_for(run_duration);
-		REQUIRE(completed.at(0) == &request);
+		CHECK(completed.at(0) == &request);
 		REQUIRE(request.error == std::errc::not_connected);
 		CHECK(std::holds_alternative<pal::net::async::send>(request));
 	}

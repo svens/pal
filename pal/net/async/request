@@ -75,7 +75,10 @@ struct receive
  * Result of Socket::async_connect() request
  */
 struct connect
-{ };
+{
+	/// Number of bytes sent
+	size_t bytes_transferred = 0;
+};
 
 
 /**

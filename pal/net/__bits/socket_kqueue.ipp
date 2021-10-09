@@ -18,17 +18,19 @@ inline bool await (int queue, uintptr_t handle, int16_t filter, uint16_t flags, 
 	return ::kevent(queue, &change, 1, nullptr, 0, nullptr) > -1;
 }
 
-inline bool await_read (int queue, uintptr_t handle, void *udata) noexcept
-{
-	return await(queue, handle, EVFILT_READ, EV_ADD | EV_CLEAR, udata);
-}
-
-inline bool await_write (int queue, uintptr_t handle, void *udata) noexcept
-{
-	return await(queue, handle, EVFILT_WRITE, EV_ADD | EV_CLEAR, udata);
-}
-
 } // namespace
+
+
+bool socket::impl_type::await_read () noexcept
+{
+	return await(service->handle, handle, EVFILT_READ, EV_ADD | EV_CLEAR, this);
+}
+
+
+bool socket::impl_type::await_write () noexcept
+{
+	return await(service->handle, handle, EVFILT_WRITE, EV_ADD | EV_CLEAR, this);
+}
 
 
 void socket::impl_type::receive_one (async::request *request,
@@ -41,7 +43,7 @@ void socket::impl_type::receive_one (async::request *request,
 		bytes_transferred = r;
 		flags = request->impl_.message.msg_flags & ~internal_flags;
 	}
-	else if (is_blocking_error(errno) && await_read(service->handle, handle, this))
+	else if (is_blocking_error(errno) && await_read())
 	{
 		pending_receive.push(request);
 		return;
@@ -61,7 +63,7 @@ void socket::impl_type::send_one (async::request *request, size_t &bytes_transfe
 	{
 		bytes_transferred = r;
 	}
-	else if (is_blocking_error(errno) && await_write(service->handle, handle, this))
+	else if (is_blocking_error(errno) && await_write())
 	{
 		pending_send.push(request);
 		return;
@@ -101,7 +103,7 @@ void socket::impl_type::receive_many (service::completion_fn process, void *list
 		}
 		else
 		{
-			if (!is_blocking_error(errno) || !await_read(service->handle, handle, this))
+			if (!is_blocking_error(errno) || !await_read())
 			{
 				it->error.assign(errno, std::generic_category());
 				process(listener, pending_receive.pop());
@@ -114,11 +116,17 @@ void socket::impl_type::receive_many (service::completion_fn process, void *list
 
 void socket::impl_type::send_many (service::completion_fn process, void *listener) noexcept
 {
+	// pending_send may contain async_connect request
+	//
+	// By checking msg_iovlen *before* sendmsg we can skip syscall but not
+	// going to do it: for specific socket lifecycle this is one-time
+	// event but with filtering we'd pay price during each request.
+
 	// TODO: sendmsg_x
 	while (auto *it = pending_send.head())
 	{
 		auto r = ::sendmsg(handle, &it->impl_.message, it->impl_.message.msg_flags);
-		if (r > -1)
+		if (r > -1 || it->impl_.message.msg_iovlen == 0)
 		{
 			if (auto *send_to = std::get_if<async::send_to>(it))
 			{
@@ -128,14 +136,20 @@ void socket::impl_type::send_many (service::completion_fn process, void *listene
 			{
 				send->bytes_transferred = r;
 			}
-			process(listener, pending_receive.pop());
+			else if (std::holds_alternative<async::connect>(*it))
+			{
+				// unlike other requests, async_connect does
+				// not clear error in advance
+				it->error.clear();
+			}
+			process(listener, pending_send.pop());
 		}
 		else
 		{
-			if (!is_blocking_error(errno) || !await_write(service->handle, handle, this))
+			if (!is_blocking_error(errno) || !await_write())
 			{
 				it->error.assign(errno, std::generic_category());
-				process(listener, pending_receive.pop());
+				process(listener, pending_send.pop());
 			}
 			break;
 		}
@@ -171,6 +185,11 @@ service::service (std::error_code &error) noexcept
 result<void> service::add (__bits::socket &socket) noexcept
 {
 	socket.impl->service = impl.get();
+	auto flags = ::fcntl(socket.impl->handle, F_GETFL, 0);
+	if (flags == -1 || ::fcntl(socket.impl->handle, F_SETFL, flags | O_NONBLOCK) == -1)
+	{
+		return sys_error();
+	}
 	return {};
 }
 

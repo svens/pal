@@ -190,6 +190,21 @@ struct socket::impl_type
 			return it;
 		}
 
+		constexpr bool await_read () noexcept
+		{
+			return true;
+		}
+
+		constexpr bool await_write () noexcept
+		{
+			return true;
+		}
+
+	#elif __pal_os_macos
+
+		bool await_read () noexcept;
+		bool await_write () noexcept;
+
 	#endif
 };
 
@@ -520,6 +535,34 @@ void socket::start (async::send &send) noexcept
 	if (impl->try_now(impl->pending_send, request))
 	{
 		impl->send_one(request, send.bytes_transferred);
+	}
+}
+
+
+void socket::start (async::connect &connect) noexcept
+{
+	auto *request = owner_of(connect);
+	request->impl_.message.msg_iovlen = 0;
+
+	auto r = ::connect(impl->handle,
+		static_cast<const sockaddr *>(request->impl_.message.msg_name),
+		request->impl_.message.msg_namelen
+	);
+
+	if (r > -1)
+	{
+		request->error.clear();
+		impl->service->completed.push(request);
+	}
+	else if (errno == EINPROGRESS && impl->await_write())
+	{
+		// error is cleared or set during completion
+		impl->pending_send.push(request);
+	}
+	else
+	{
+		request->error.assign(errno, std::generic_category());
+		impl->service->completed.push(request);
 	}
 }
 

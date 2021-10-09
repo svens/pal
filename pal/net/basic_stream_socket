@@ -76,6 +76,17 @@ public:
 	//
 
 	/**
+	 * Start asynchronous stream connect request.
+	 * \see connect()
+	 */
+	void async_connect (not_null<async::request *> request,
+		const endpoint_type &endpoint) noexcept
+	{
+		request->impl_.message.name(endpoint.data(), endpoint.size());
+		base::socket_.start(request->emplace<async::connect>());
+	}
+
+	/**
 	 * Start asynchronous stream receive request.
 	 * \see receive()
 	 */

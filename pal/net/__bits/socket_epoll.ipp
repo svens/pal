@@ -88,6 +88,12 @@ void socket::impl_type::receive_many (service::completion_fn process, void *list
 
 void socket::impl_type::send_many (service::completion_fn process, void *listener) noexcept
 {
+	// pending_send may contain async_connect request
+	//
+	// By checking msg_iovlen *before* sendmmsg we can skip syscall but not
+	// going to do it: for specific socket lifecycle this is one-time
+	// event but with filtering we'd pay price during each request.
+
 	::mmsghdr messages[max_mmsg];
 	while (!pending_send.empty())
 	{
@@ -104,6 +110,12 @@ void socket::impl_type::send_many (service::completion_fn process, void *listene
 			else if (auto *send = std::get_if<async::send>(request))
 			{
 				send->bytes_transferred = first->msg_len;
+			}
+			else if (std::holds_alternative<async::connect>(*request))
+			{
+				// unlike other requests, async_connect does
+				// not clear error in advance
+				request->error.clear();
 			}
 			process(listener, request);
 		}
@@ -145,15 +157,21 @@ result<void> service::add (__bits::socket &socket) noexcept
 {
 	socket.impl->service = impl.get();
 
+	auto flags = ::fcntl(socket.impl->handle, F_GETFL, 0);
+	if (flags == -1 || ::fcntl(socket.impl->handle, F_SETFL, flags | O_NONBLOCK) == -1)
+	{
+		return sys_error();
+	}
+
 	::epoll_event ev;
 	ev.data.ptr = socket.impl.get();
 	ev.events = EPOLLET | EPOLLIN | EPOLLOUT;
-	if (::epoll_ctl(impl->handle, EPOLL_CTL_ADD, socket.impl->handle, &ev) > -1)
+	if (::epoll_ctl(impl->handle, EPOLL_CTL_ADD, socket.impl->handle, &ev) == -1)
 	{
-		return {};
+		return sys_error();
 	}
 
-	return sys_error();
+	return {};
 }
 
 
@@ -191,6 +209,10 @@ void service::poll_for (
 		}
 		else
 		{
+			if (event->events & EPOLLOUT)
+			{
+				socket.send_many(process, listener);
+			}
 			if (event->events & EPOLLIN)
 			{
 				if (socket.is_acceptor)
@@ -201,10 +223,6 @@ void service::poll_for (
 				{
 					socket.receive_many(process, listener);
 				}
-			}
-			if (event->events & EPOLLOUT)
-			{
-				socket.send_many(process, listener);
 			}
 			if (event->events & (EPOLLRDHUP | EPOLLHUP))
 			{
