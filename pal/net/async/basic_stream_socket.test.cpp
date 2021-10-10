@@ -494,6 +494,141 @@ TEMPLATE_TEST_CASE("net/async/basic_stream_socket", "[!nonportable]",
 		CHECK(pal_try(socket.local_endpoint()) == peer_endpoint);
 	}
 
+	SECTION("async_connect: immediately") //{{{1
+	{
+		auto acceptor = make_acceptor();
+		pal_try(service.make_async(socket));
+		pal_try(socket.native_non_blocking(false));
+
+		socket.async_connect(&request, accept_endpoint);
+		REQUIRE(completed.empty());
+
+		service.run_for(run_duration);
+		CHECK(completed.at(0) == &request);
+		REQUIRE_FALSE(request.error);
+		auto *connect = std::get_if<pal::net::async::connect>(&request);
+		REQUIRE(connect != nullptr);
+		CHECK(connect->bytes_transferred == 0);
+
+		auto peer = pal_try(acceptor.accept(peer_endpoint));
+		CHECK(pal_try(socket.local_endpoint()) == peer_endpoint);
+	}
+
+	SECTION("async_connect: send single") //{{{1
+	{
+		auto acceptor = make_acceptor();
+		pal_try(service.make_async(socket));
+
+		socket.async_connect(&request, accept_endpoint, send_msg[0]);
+		REQUIRE(completed.empty());
+
+		service.run_for(run_duration);
+		CHECK(completed.at(0) == &request);
+		REQUIRE_FALSE(request.error);
+		auto *connect = std::get_if<pal::net::async::connect>(&request);
+		REQUIRE(connect != nullptr);
+		CHECK(connect->bytes_transferred == send_msg[0].size());
+
+		auto peer = pal_try(acceptor.accept(peer_endpoint));
+		CHECK(pal_try(socket.local_endpoint()) == peer_endpoint);
+
+		auto received = pal_try(peer.receive(recv_msg));
+		REQUIRE(received == send_msg[0].size());
+		CHECK(recv_view(received) == send_bufs[0]);
+	}
+
+	SECTION("async_connect: send single immediately") //{{{1
+	{
+		auto acceptor = make_acceptor();
+		pal_try(service.make_async(socket));
+		pal_try(socket.native_non_blocking(false));
+
+		socket.async_connect(&request, accept_endpoint, send_msg[0]);
+		REQUIRE(completed.empty());
+
+		service.run_for(run_duration);
+		CHECK(completed.at(0) == &request);
+		REQUIRE_FALSE(request.error);
+		auto *connect = std::get_if<pal::net::async::connect>(&request);
+		REQUIRE(connect != nullptr);
+		CHECK(connect->bytes_transferred == send_msg[0].size());
+
+		auto peer = pal_try(acceptor.accept(peer_endpoint));
+		CHECK(pal_try(socket.local_endpoint()) == peer_endpoint);
+
+		auto received = pal_try(peer.receive(recv_msg));
+		REQUIRE(received == send_msg[0].size());
+		CHECK(recv_view(received) == send_bufs[0]);
+	}
+
+	if constexpr (pal::is_windows_build)
+	{
+		// Windows does not support vectored I/O combined with ConnectEx
+	}
+	else
+	{
+		SECTION("async_connect: send vector")
+		{
+			auto acceptor = make_acceptor();
+			pal_try(service.make_async(socket));
+
+			socket.async_connect(&request, accept_endpoint, send_msg);
+			REQUIRE(completed.empty());
+
+			service.run_for(run_duration);
+			CHECK(completed.at(0) == &request);
+			REQUIRE_FALSE(request.error);
+			auto *connect = std::get_if<pal::net::async::connect>(&request);
+			REQUIRE(connect != nullptr);
+			CHECK(connect->bytes_transferred == send_view.size());
+
+			auto peer = pal_try(acceptor.accept(peer_endpoint));
+			CHECK(pal_try(socket.local_endpoint()) == peer_endpoint);
+
+			auto received = pal_try(peer.receive(recv_msg));
+			REQUIRE(received == send_view.size());
+			CHECK(recv_view(received) == send_view);
+		}
+
+		SECTION("async_connect: send vector immediately")
+		{
+			auto acceptor = make_acceptor();
+			pal_try(service.make_async(socket));
+			pal_try(socket.native_non_blocking(false));
+
+			socket.async_connect(&request, accept_endpoint, send_msg);
+			REQUIRE(completed.empty());
+
+			service.run_for(run_duration);
+			CHECK(completed.at(0) == &request);
+			REQUIRE_FALSE(request.error);
+			auto *connect = std::get_if<pal::net::async::connect>(&request);
+			REQUIRE(connect != nullptr);
+			CHECK(connect->bytes_transferred == send_view.size());
+
+			auto peer = pal_try(acceptor.accept(peer_endpoint));
+			CHECK(pal_try(socket.local_endpoint()) == peer_endpoint);
+
+			auto received = pal_try(peer.receive(recv_msg));
+			REQUIRE(received == send_view.size());
+			CHECK(recv_view(received) == send_view);
+		}
+	}
+
+	SECTION("async_connect: send argument list too long") //{{{1
+	{
+		auto acceptor = make_acceptor();
+		pal_try(service.make_async(socket));
+
+		socket.async_connect(&request, accept_endpoint, send_msg_list_too_long);
+		REQUIRE(completed.empty());
+
+		service.run_for(run_duration);
+		CHECK(completed.at(0) == &request);
+		REQUIRE(request.error == std::errc::argument_list_too_long);
+		CHECK(std::holds_alternative<pal::net::async::connect>(request));
+	}
+
 	SECTION("async_connect + async_send") //{{{1
 	{
 		auto acceptor = make_acceptor();

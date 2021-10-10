@@ -90,9 +90,9 @@ void socket::impl_type::send_many (service::completion_fn process, void *listene
 {
 	// pending_send may contain async_connect request
 	//
-	// By checking msg_iovlen *before* sendmmsg we can skip syscall but not
-	// going to do it: for specific socket lifecycle this is one-time
-	// event but with filtering we'd pay price during each request.
+	// Because we support async_connect() with immediate data send on
+	// connection completion, we pass it do sendmmsg().
+	// msg_iovlen==0 does not seem to cause any issues
 
 	::mmsghdr messages[max_mmsg];
 	while (!pending_send.empty())
@@ -111,11 +111,9 @@ void socket::impl_type::send_many (service::completion_fn process, void *listene
 			{
 				send->bytes_transferred = first->msg_len;
 			}
-			else if (std::holds_alternative<async::connect>(*request))
+			else if (auto *connect = std::get_if<async::connect>(request))
 			{
-				// unlike other requests, async_connect does
-				// not clear error in advance
-				request->error.clear();
+				connect->bytes_transferred = first->msg_len;
 			}
 			process(listener, request);
 		}

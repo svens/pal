@@ -436,9 +436,8 @@ TEMPLATE_TEST_CASE("net/basic_socket_acceptor", "[!nonportable]",
 			REQUIRE(pal_test::bind_next_available_port(a, endpoint));
 			endpoint.port(pal_test::next_port(TestType::protocol_v));
 
-			auto acceptor = pal::net::make_socket_acceptor(TestType::protocol_v, endpoint);
-			REQUIRE(acceptor);
-			CHECK(acceptor->local_endpoint().value() == endpoint);
+			auto acceptor = pal_try(pal::net::make_socket_acceptor(TestType::protocol_v, endpoint));
+			CHECK(acceptor.local_endpoint().value() == endpoint);
 		}
 
 		SECTION("address in use")
@@ -465,9 +464,8 @@ TEMPLATE_TEST_CASE("net/basic_socket_acceptor", "[!nonportable]",
 
 		SECTION("success")
 		{
-			auto acceptor = pal::net::make_socket_acceptor(TestType::protocol_v, guard.handle);
-			REQUIRE(acceptor);
-			CHECK(acceptor->native_handle() == guard.handle);
+			auto acceptor = pal_try(pal::net::make_socket_acceptor(TestType::protocol_v, guard.handle));
+			CHECK(acceptor.native_handle() == guard.handle);
 			guard.release();
 		}
 

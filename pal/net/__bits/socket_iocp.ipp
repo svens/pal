@@ -239,7 +239,24 @@ void socket::start (async::send &send) noexcept
 void socket::start (async::connect &connect) noexcept
 {
 	auto *request = owner_of(connect);
-	request->overlapped_ = {};
+	if (!pre_check(request, impl->service))
+	{
+		return;
+	}
+
+	PVOID send_buffer = nullptr;
+	DWORD send_buffer_size = 0;
+	if (request->impl_.message.msg_iovlen == 1)
+	{
+		send_buffer = request->impl_.message.msg_iov[0].buf;
+		send_buffer_size = request->impl_.message.msg_iov[0].len;
+	}
+	else if (request->impl_.message.msg_iovlen > 1)
+	{
+		request->error = std::make_error_code(std::errc::argument_list_too_long);
+		impl->service->completed.push(request);
+		return;
+	}
 
 	// ConnectEx() requires socket to be bound, Posix connect() does not
 	//
@@ -252,8 +269,8 @@ retry:
 		impl->handle,
 		request->impl_.message.msg_name,
 		request->impl_.message.msg_namelen,
-		nullptr,
-		0,
+		send_buffer,
+		send_buffer_size,
 		&bytes_transferred,
 		&request->overlapped_
 	);
@@ -442,10 +459,7 @@ void service::poll_for (
 			);
 			if (result == 0)
 			{
-				// unlike other requests, async_connect() does
-				// not clear error in advance
 				connect->bytes_transferred = bytes_transferred;
-				request->error.clear();
 			}
 			else
 			{

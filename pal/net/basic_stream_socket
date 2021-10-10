@@ -82,7 +82,33 @@ public:
 	void async_connect (not_null<async::request *> request,
 		const endpoint_type &endpoint) noexcept
 	{
-		request->impl_.message.name(endpoint.data(), endpoint.size());
+		auto &message = request->impl_.message;
+		if (message.reset(request->error))
+		{
+			message.name(endpoint.data(), endpoint.size());
+			message.flags(0);
+		}
+		base::socket_.start(request->emplace<async::connect>());
+	}
+
+	/**
+	 * Start asynchronous stream connect request. If successfully
+	 * connected, immediately send data in \a spans.
+	 *
+	 * \note Linux/MacOS support vectored send, Windows can send only
+	 * single buffer.
+	 */
+	template <typename ConstSpanSequence>
+	void async_connect (not_null<async::request *> request,
+		const endpoint_type &endpoint,
+		const ConstSpanSequence &spans) noexcept
+	{
+		auto &message = request->impl_.message;
+		if (message.set(spans, request->error))
+		{
+			message.name(endpoint.data(), endpoint.size());
+			message.flags(0);
+		}
 		base::socket_.start(request->emplace<async::connect>());
 	}
 

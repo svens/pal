@@ -81,6 +81,13 @@ struct message: ::msghdr
 		}
 	}
 
+	bool reset (std::error_code &error) noexcept
+	{
+		msg_iovlen = 0;
+		error.clear();
+		return true;
+	}
+
 	void name (const void *name, size_t name_size) noexcept
 	{
 		msg_name = const_cast<void *>(name);
@@ -145,6 +152,13 @@ struct message
 			error = std::make_error_code(std::errc::argument_list_too_long);
 			return false;
 		}
+	}
+
+	bool reset (std::error_code &error) noexcept
+	{
+		msg_iovlen = 0;
+		error.clear();
+		return true;
 	}
 
 	void name (const void *name, size_t name_size) noexcept

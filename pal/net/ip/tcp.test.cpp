@@ -177,9 +177,8 @@ TEMPLATE_TEST_CASE("net/ip/tcp", "[!nonportable]", tcp_v4, tcp_v6, tcp_v6_only)
 		SECTION("success")
 		{
 			endpoint.port(pal_test::next_port(TestType::protocol_v));
-			auto socket = pal::net::make_stream_socket(TestType::protocol_v, endpoint);
-			REQUIRE(socket);
-			CHECK(socket->local_endpoint().value() == endpoint);
+			auto socket = pal_try(pal::net::make_stream_socket(TestType::protocol_v, endpoint));
+			CHECK(socket.local_endpoint().value() == endpoint);
 		}
 
 		SECTION("address in use")
@@ -204,9 +203,8 @@ TEMPLATE_TEST_CASE("net/ip/tcp", "[!nonportable]", tcp_v4, tcp_v6, tcp_v6_only)
 
 		SECTION("success")
 		{
-			auto socket = pal::net::make_stream_socket(TestType::protocol_v, guard.handle);
-			REQUIRE(socket);
-			CHECK(socket->native_handle() == guard.handle);
+			auto socket = pal_try(pal::net::make_stream_socket(TestType::protocol_v, guard.handle));
+			CHECK(socket.native_handle() == guard.handle);
 			guard.release();
 		}
 
