@@ -7,53 +7,6 @@ __pal_begin
 namespace net::__bits {
 
 
-void socket::impl_type::receive_one (async::request *request,
-	size_t &bytes_transferred,
-	message_flags &flags) noexcept
-{
-	auto r = ::recvmsg(handle, &request->impl_.message, request->impl_.message.msg_flags);
-	if (r > -1)
-	{
-		bytes_transferred = r;
-		flags = request->impl_.message.msg_flags;
-	}
-	else if (is_blocking_error(errno))
-	{
-		pending_receive.push(request);
-		return;
-	}
-	else
-	{
-		request->error.assign(errno, std::generic_category());
-	}
-	service->completed.push(request);
-}
-
-
-void socket::impl_type::send_one (async::request *request, size_t &bytes_transferred) noexcept
-{
-	auto r = ::sendmsg(handle, &request->impl_.message, request->impl_.message.msg_flags);
-	if (r > -1)
-	{
-		bytes_transferred = r;
-	}
-	else if (is_blocking_error(errno))
-	{
-		pending_send.push(request);
-		return;
-	}
-	else if (errno == EDESTADDRREQ || errno == EPIPE)
-	{
-		request->error.assign(ENOTCONN, std::generic_category());
-	}
-	else
-	{
-		request->error.assign(errno, std::generic_category());
-	}
-	service->completed.push(request);
-}
-
-
 void socket::impl_type::receive_many (service::completion_fn process, void *listener) noexcept
 {
 	::mmsghdr messages[max_mmsg];

@@ -33,53 +33,6 @@ bool socket::impl_type::await_write () noexcept
 }
 
 
-void socket::impl_type::receive_one (async::request *request,
-	size_t &bytes_transferred,
-	message_flags &flags) noexcept
-{
-	auto r = ::recvmsg(handle, &request->impl_.message, request->impl_.message.msg_flags);
-	if (r > -1)
-	{
-		bytes_transferred = r;
-		flags = request->impl_.message.msg_flags & ~internal_flags;
-	}
-	else if (is_blocking_error(errno) && await_read())
-	{
-		pending_receive.push(request);
-		return;
-	}
-	else
-	{
-		request->error.assign(errno, std::generic_category());
-	}
-	service->completed.push(request);
-}
-
-
-void socket::impl_type::send_one (async::request *request, size_t &bytes_transferred) noexcept
-{
-	auto r = ::sendmsg(handle, &request->impl_.message, request->impl_.message.msg_flags);
-	if (r > -1)
-	{
-		bytes_transferred = r;
-	}
-	else if (is_blocking_error(errno) && await_write())
-	{
-		pending_send.push(request);
-		return;
-	}
-	else if (errno == EDESTADDRREQ)
-	{
-		request->error.assign(ENOTCONN, std::generic_category());
-	}
-	else
-	{
-		request->error.assign(errno, std::generic_category());
-	}
-	service->completed.push(request);
-}
-
-
 void socket::impl_type::receive_many (service::completion_fn process, void *listener) noexcept
 {
 	// TODO: recvmsg_x
