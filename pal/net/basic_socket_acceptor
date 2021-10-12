@@ -7,6 +7,7 @@
 
 #include <pal/__bits/lib>
 #include <pal/net/socket_base>
+#include <pal/net/async/request>
 #include <pal/assert>
 
 
@@ -242,6 +243,10 @@ public:
 		);
 	}
 
+	//
+	// Asynchronous API
+	//
+
 
 	/**
 	 * TODO
@@ -249,6 +254,32 @@ public:
 	bool has_async () const noexcept
 	{
 		return acceptor_.has_async();
+	}
+
+
+	/**
+	 */
+	void async_accept (not_null<async::request *> request) noexcept
+	{
+		auto &message = request->impl_.message;
+		if (message.reset(request->error))
+		{
+			message.name(nullptr, 0);
+		}
+		acceptor_.start(request->emplace<async::accept>());
+	}
+
+
+	/**
+	 */
+	void async_accept (not_null<async::request *> request, endpoint_type &peer) noexcept
+	{
+		auto &message = request->impl_.message;
+		if (message.reset(request->error))
+		{
+			message.name(peer.data(), peer.capacity());
+		}
+		acceptor_.start(request->emplace<async::accept>());
 	}
 
 

@@ -33,7 +33,7 @@ bool socket::impl_type::await_write () noexcept
 }
 
 
-void socket::impl_type::receive_many (service::completion_fn process, void *listener) noexcept
+void socket::impl_type::receive_many (service::notify_fn notify, void *listener) noexcept
 {
 	// TODO: recvmsg_x
 	while (auto *it = pending_receive.head())
@@ -52,14 +52,14 @@ void socket::impl_type::receive_many (service::completion_fn process, void *list
 				receive->bytes_transferred = r;
 				receive->flags = it->impl_.message.msg_flags;
 			}
-			process(listener, pending_receive.pop());
+			notify(listener, pending_receive.pop());
 		}
 		else
 		{
 			if (!is_blocking_error(errno) || !await_read())
 			{
 				it->error.assign(errno, std::generic_category());
-				process(listener, pending_receive.pop());
+				notify(listener, pending_receive.pop());
 			}
 			break;
 		}
@@ -67,7 +67,7 @@ void socket::impl_type::receive_many (service::completion_fn process, void *list
 }
 
 
-void socket::impl_type::send_many (service::completion_fn process, void *listener) noexcept
+void socket::impl_type::send_many (service::notify_fn notify, void *listener) noexcept
 {
 	// pending_send may contain async_connect request
 	//
@@ -93,7 +93,7 @@ void socket::impl_type::send_many (service::completion_fn process, void *listene
 			{
 				connect->bytes_transferred = r;
 			}
-			process(listener, pending_send.pop());
+			notify(listener, pending_send.pop());
 		}
 		else if (errno == EMSGSIZE && it->impl_.message.msg_iovlen == 0)
 		{
@@ -101,25 +101,18 @@ void socket::impl_type::send_many (service::completion_fn process, void *listene
 			{
 				connect->bytes_transferred = 0;
 			}
-			process(listener, pending_send.pop());
+			notify(listener, pending_send.pop());
 		}
 		else
 		{
 			if (!is_blocking_error(errno) || !await_write())
 			{
 				it->error.assign(errno, std::generic_category());
-				process(listener, pending_send.pop());
+				notify(listener, pending_send.pop());
 			}
 			break;
 		}
 	}
-}
-
-
-void socket::impl_type::accept_many (service::completion_fn process, void *listener) noexcept
-{
-	(void)process;
-	(void)listener;
 }
 
 
@@ -155,7 +148,7 @@ result<void> service::add (__bits::socket &socket) noexcept
 
 void service::poll_for (
 	const std::chrono::milliseconds &poll_duration,
-	completion_fn process,
+	notify_fn notify,
 	void *listener) noexcept
 {
 	::timespec timeout, *timeout_p = nullptr;
@@ -174,7 +167,7 @@ void service::poll_for (
 	}
 
 	// completions since last poll
-	impl->notify(process, listener);
+	impl->notify(notify, listener);
 
 	struct ::kevent events[max_poll_events];
 	auto event_count = ::kevent(impl->handle,
@@ -195,21 +188,21 @@ void service::poll_for (
 		{
 			if (socket.is_acceptor)
 			{
-				socket.accept_many(process, listener);
+				socket.accept_many(notify, listener);
 			}
 			else
 			{
-				socket.receive_many(process, listener);
+				socket.receive_many(notify, listener);
 			}
 		}
 		else if (event->filter == EVFILT_WRITE)
 		{
-			socket.send_many(process, listener);
+			socket.send_many(notify, listener);
 		}
 	}
 
 	// completions since this poll
-	impl->notify(process, listener);
+	impl->notify(notify, listener);
 }
 
 

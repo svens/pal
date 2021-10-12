@@ -86,7 +86,33 @@ struct connect
  */
 struct accept
 {
-	// TODO
+public:
+
+	/**
+	 * Accepted native socket handle.
+	 */
+	socket_base::native_handle_type native_handle () noexcept
+	{
+		return guard_.handle;
+	}
+
+	/**
+	 * Accepted native socket handle.
+	 *
+	 * \note Handle is moved. It is caller's responsibility to wrap it
+	 * into higher level socket or close it
+	 */
+	socket_base::native_handle_type release () noexcept
+	{
+		return guard_.release();
+	}
+
+private:
+
+	__bits::handle_guard guard_{__bits::invalid_native_socket};
+
+	friend struct net::__bits::socket;
+	friend struct net::__bits::socket::impl_type;
 };
 
 
@@ -164,9 +190,6 @@ private:
 	{
 		__bits::message message{};
 		std::chrono::steady_clock::time_point post_time;
-		#if __pal_os_windows
-			char accept[sizeof(::sockaddr_in6) + 16];
-		#endif
 	} impl_{};
 
 	template <typename> friend class service;

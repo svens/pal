@@ -7,7 +7,7 @@ __pal_begin
 namespace net::__bits {
 
 
-void socket::impl_type::receive_many (service::completion_fn process, void *listener) noexcept
+void socket::impl_type::receive_many (service::notify_fn notify, void *listener) noexcept
 {
 	::mmsghdr messages[max_mmsg];
 	while (!pending_receive.empty())
@@ -28,7 +28,7 @@ void socket::impl_type::receive_many (service::completion_fn process, void *list
 				receive->bytes_transferred = first->msg_len;
 				receive->flags = first->msg_hdr.msg_flags;
 			}
-			process(listener, request);
+			notify(listener, request);
 		}
 
 		if (first != last)
@@ -39,7 +39,7 @@ void socket::impl_type::receive_many (service::completion_fn process, void *list
 }
 
 
-void socket::impl_type::send_many (service::completion_fn process, void *listener) noexcept
+void socket::impl_type::send_many (service::notify_fn notify, void *listener) noexcept
 {
 	// pending_send may contain async_connect request
 	//
@@ -68,7 +68,7 @@ void socket::impl_type::send_many (service::completion_fn process, void *listene
 			{
 				connect->bytes_transferred = first->msg_len;
 			}
-			process(listener, request);
+			notify(listener, request);
 		}
 
 		if (first != last)
@@ -76,13 +76,6 @@ void socket::impl_type::send_many (service::completion_fn process, void *listene
 			break;
 		}
 	}
-}
-
-
-void socket::impl_type::accept_many (service::completion_fn process, void *listener) noexcept
-{
-	(void)process;
-	(void)listener;
 }
 
 
@@ -128,7 +121,7 @@ result<void> service::add (__bits::socket &socket) noexcept
 
 void service::poll_for (
 	const std::chrono::milliseconds &poll_duration,
-	completion_fn process,
+	notify_fn notify,
 	void *listener) noexcept
 {
 	int timeout = -1;
@@ -142,7 +135,7 @@ void service::poll_for (
 	}
 
 	// completions since last poll
-	impl->notify(process, listener);
+	impl->notify(notify, listener);
 
 	::epoll_event events[max_poll_events];
 	auto event_count = ::epoll_wait(impl->handle, &events[0], max_poll_events, timeout);
@@ -156,34 +149,34 @@ void service::poll_for (
 		auto &socket = *static_cast<socket::impl_type *>(event->data.ptr);
 		if (event->events & EPOLLERR)
 		{
-			socket.cancel(process, listener, socket.pending_error());
+			socket.cancel(notify, listener, socket.pending_error());
 		}
 		else
 		{
 			if (event->events & EPOLLOUT)
 			{
-				socket.send_many(process, listener);
+				socket.send_many(notify, listener);
 			}
 			if (event->events & EPOLLIN)
 			{
 				if (socket.is_acceptor)
 				{
-					socket.accept_many(process, listener);
+					socket.accept_many(notify, listener);
 				}
 				else
 				{
-					socket.receive_many(process, listener);
+					socket.receive_many(notify, listener);
 				}
 			}
 			if (event->events & (EPOLLRDHUP | EPOLLHUP))
 			{
-				socket.cancel(process, listener, 0);
+				socket.cancel(notify, listener, 0);
 			}
 		}
 	}
 
 	// completions since this poll
-	impl->notify(process, listener);
+	impl->notify(notify, listener);
 }
 
 

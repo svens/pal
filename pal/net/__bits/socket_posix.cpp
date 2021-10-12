@@ -82,12 +82,12 @@ struct service::impl_type
 		handle_guard{handle};
 	}
 
-	void notify (completion_fn process, void *listener) noexcept
+	void notify (notify_fn notify, void *listener) noexcept
 	{
 		auto requests = std::move(completed);
 		while (auto *request = requests.try_pop())
 		{
-			process(listener, request);
+			notify(listener, request);
 		}
 	}
 };
@@ -105,9 +105,9 @@ struct socket::impl_type
 	void receive_one (async::request *request, size_t &bytes_transferred, message_flags &flags) noexcept;
 	void send_one (async::request *request, size_t &bytes_transferred) noexcept;
 
-	void receive_many (service::completion_fn process, void *listener) noexcept;
-	void send_many (service::completion_fn process, void *listener) noexcept;
-	void accept_many (service::completion_fn process, void *listener) noexcept;
+	void receive_many (service::notify_fn notify, void *listener) noexcept;
+	void send_many (service::notify_fn notify, void *listener) noexcept;
+	void accept_many (service::notify_fn notify, void *listener) noexcept;
 
 	bool try_now (async::request_queue &queue, async::request *request) noexcept
 	{
@@ -151,19 +151,19 @@ struct socket::impl_type
 		cancel(pending_send, error);
 	}
 
-	void cancel (async::request_queue &queue, service::completion_fn process, void *listener, int error) noexcept
+	void cancel (async::request_queue &queue, service::notify_fn notify, void *listener, int error) noexcept
 	{
 		while (auto *request = queue.try_pop())
 		{
 			request->error.assign(error, std::generic_category());
-			process(listener, request);
+			notify(listener, request);
 		}
 	}
 
-	void cancel (service::completion_fn process, void *listener, int error) noexcept
+	void cancel (service::notify_fn notify, void *listener, int error) noexcept
 	{
-		cancel(pending_receive, process, listener, error);
-		cancel(pending_send, process, listener, error);
+		cancel(pending_receive, notify, listener, error);
+		cancel(pending_send, notify, listener, error);
 	}
 
 	int pending_error () const noexcept
@@ -548,7 +548,6 @@ void socket::start (async::connect &connect) noexcept
 			static_cast<const sockaddr *>(request->impl_.message.msg_name),
 			request->impl_.message.msg_namelen
 		);
-
 		if (r > -1)
 		{
 			if (request->impl_.message.msg_iovlen > 0)
@@ -568,6 +567,58 @@ void socket::start (async::connect &connect) noexcept
 		{
 			request->error.assign(errno, std::generic_category());
 			impl->service->completed.push(request);
+		}
+	}
+}
+
+
+void socket::start (async::accept &accept) noexcept
+{
+	auto *request = owner_of(accept);
+	if (impl->try_now(impl->pending_receive, request))
+	{
+		accept.guard_.handle = ::accept(impl->handle,
+			static_cast<sockaddr *>(request->impl_.message.msg_name),
+			&request->impl_.message.msg_namelen
+		);
+		if (accept.guard_.handle > -1)
+		{
+			impl->service->completed.push(request);
+		}
+		else if (is_blocking_error(errno) && impl->await_read())
+		{
+			impl->pending_receive.push(request);
+		}
+		else
+		{
+			request->error.assign(errno, std::generic_category());
+			impl->service->completed.push(request);
+		}
+	}
+}
+
+
+void socket::impl_type::accept_many (service::notify_fn notify, void *listener) noexcept
+{
+	while (auto *it = pending_receive.head())
+	{
+		auto r = ::accept(handle,
+			static_cast<sockaddr *>(it->impl_.message.msg_name),
+			&it->impl_.message.msg_namelen
+		);
+		if (r > -1)
+		{
+			std::get_if<async::accept>(it)->guard_.handle = r;
+			notify(listener, pending_receive.pop());
+		}
+		else
+		{
+			if (!is_blocking_error(errno) || !await_read())
+			{
+				it->error.assign(errno, std::generic_category());
+				notify(listener, pending_receive.pop());
+			}
+			break;
 		}
 	}
 }

@@ -61,15 +61,11 @@ TEMPLATE_TEST_CASE("net/async/basic_stream_socket", "[!nonportable]",
 
 	SECTION("make_async: bad file descriptor") //{{{1
 	{
-		if constexpr (!pal::is_macos_build)
-		{
-			auto s = pal_try(TestType::make_socket());
-			handle_guard{s.native_handle()};
-			auto make_async = service.make_async(s);
-			REQUIRE_FALSE(make_async);
-			CHECK(make_async.error() == std::errc::bad_file_descriptor);
-		}
-		// else: registering socket with async service can't fail
+		auto s = pal_try(TestType::make_socket());
+		handle_guard{s.native_handle()};
+		auto make_async = service.make_async(s);
+		REQUIRE_FALSE(make_async);
+		CHECK(make_async.error() == std::errc::bad_file_descriptor);
 	}
 
 	SECTION("send / async_receive: single") //{{{1

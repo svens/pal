@@ -98,14 +98,14 @@ TEMPLATE_TEST_CASE("net/basic_socket", "[!nonportable]",
 
 	SECTION("assign invalid")
 	{
-		REQUIRE(s.assign(TestType::protocol_v, pal::net::__bits::invalid_native_socket));
+		REQUIRE(s.assign(TestType::protocol_v, pal::net::socket_base::invalid_native_handle));
 		REQUIRE_FALSE(s.is_open());
 	}
 
 	SECTION("assign invalid to closed")
 	{
 		REQUIRE(s.close());
-		REQUIRE(s.assign(TestType::protocol_v, pal::net::__bits::invalid_native_socket));
+		REQUIRE(s.assign(TestType::protocol_v, pal::net::socket_base::invalid_native_handle));
 		REQUIRE_FALSE(s.is_open());
 	}
 

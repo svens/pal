@@ -15,6 +15,7 @@
 	#include <sys/time.h>
 #elif __pal_os_windows
 	#include <winsock2.h>
+	#include <ws2ipdef.h>
 	#include <mswsock.h>
 #endif
 
@@ -29,6 +30,7 @@ struct receive;
 struct send_to;
 struct send;
 struct connect;
+struct accept;
 } // namespace net::async
 
 
@@ -122,11 +124,19 @@ using timeval = ::DWORD;
 
 struct message
 {
-	std::array<::WSABUF, iov_max_size> msg_iov{};
-	DWORD msg_iovlen{};
 	sockaddr *msg_name{};
 	INT msg_namelen{};
 	message_flags msg_flags{};
+	DWORD msg_iovlen{};
+
+	// struct packing for Windows:
+	// - vectored I/O uses msg_iov
+	// - async AcceptEx / GetAcceptExSockaddrs use accept[]
+	union
+	{
+		std::array<::WSABUF, iov_max_size> msg_iov{};
+		char accept[sizeof(::sockaddr_in6) + 16];
+	};
 
 	template <typename SpanSequence>
 	bool set (const SpanSequence &spans, std::error_code &error) noexcept
@@ -309,6 +319,7 @@ struct socket
 	void start (async::send_to &send_to) noexcept;
 	void start (async::send &send) noexcept;
 	void start (async::connect &connect) noexcept;
+	void start (async::accept &accept) noexcept;
 };
 
 
@@ -329,11 +340,11 @@ struct service
 
 	result<void> add (__bits::socket &socket) noexcept;
 
-	using completion_fn = void(*)(void *listener, async::request *request) noexcept;
+	using notify_fn = void(*)(void *listener, async::request *request) noexcept;
 
 	void poll_for (
 		const std::chrono::milliseconds &duration,
-		completion_fn process,
+		notify_fn notify,
 		void *listener
 	) noexcept;
 };

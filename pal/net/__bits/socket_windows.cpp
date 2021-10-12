@@ -201,12 +201,12 @@ struct service::impl_type
 		}
 	}
 
-	void notify (completion_fn process, void *listener) noexcept
+	void notify (notify_fn notify, void *listener) noexcept
 	{
 		auto requests = std::move(completed);
 		while (auto *request = requests.try_pop())
 		{
-			process(listener, request);
+			notify(listener, request);
 		}
 	}
 };
@@ -224,6 +224,9 @@ struct socket::impl_type
 	{
 		handle_guard{handle};
 	}
+
+	int complete (async::connect &connect, async::request *request) noexcept;
+	int complete (async::accept &accept, async::request *request) noexcept;
 };
 
 

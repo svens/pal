@@ -117,6 +117,23 @@ bool try_bind (socket::impl_type &socket, const message &message) noexcept
 	return r != -1;
 }
 
+native_socket make_socket (int family) noexcept
+{
+	auto handle = ::WSASocketW(
+		family,
+		SOCK_STREAM,
+		IPPROTO_TCP,
+		nullptr,
+		0,
+		WSA_FLAG_OVERLAPPED
+	);
+	if (handle != invalid_native_socket)
+	{
+		init_handle(handle, SOCK_STREAM);
+	}
+	return handle;
+}
+
 } // namespace
 
 
@@ -293,21 +310,74 @@ retry:
 	}
 	else
 	{
-		result = ::setsockopt(
-			impl->handle,
-			SOL_SOCKET,
-			SO_UPDATE_CONNECT_CONTEXT,
-			nullptr,
-			0
-		);
-		if (result == 0)
+		result = impl->complete(connect, request);
+	}
+
+	if (result == 0)
+	{
+		connect.bytes_transferred = bytes_transferred;
+		request->error.clear();
+	}
+	else
+	{
+		request->error.assign(result, std::system_category());
+	}
+	impl->service->completed.push(request);
+}
+
+
+int socket::impl_type::complete (async::connect &, async::request *) noexcept
+{
+	if (::setsockopt(handle, SOL_SOCKET, SO_UPDATE_CONNECT_CONTEXT, nullptr, 0) == 0)
+	{
+		return 0;
+	}
+	return ::WSAGetLastError();
+}
+
+
+void socket::start (async::accept &accept) noexcept
+{
+	auto *request = owner_of(accept);
+	if (!pre_check(request, impl->service))
+	{
+		return;
+	}
+
+	accept.guard_.handle = make_socket(impl->family);
+	if (accept.guard_.handle == invalid_native_socket)
+	{
+		request->error.assign(::WSAGetLastError(), std::system_category());
+		impl->service->completed.push(request);
+		return;
+	}
+
+	int result = (*AcceptEx)(
+		impl->handle,
+		accept.guard_.handle,
+		request->impl_.message.accept,
+		0,
+		0,
+		sizeof(request->impl_.message.accept),
+		nullptr,
+		&request->overlapped_
+	);
+
+	if (result == FALSE)
+	{
+		result = ::WSAGetLastError();
+		if (result == ERROR_IO_PENDING)
 		{
-			connect.bytes_transferred = bytes_transferred;
+			return;
 		}
-		else
+		else if (result == WSAENOTSOCK)
 		{
-			result = ::WSAGetLastError();
+			result = WSAEBADF;
 		}
+	}
+	else
+	{
+		result = impl->complete(accept, request);
 	}
 
 	if (result == 0)
@@ -319,6 +389,45 @@ retry:
 		request->error.assign(result, std::system_category());
 	}
 	impl->service->completed.push(request);
+}
+
+
+int socket::impl_type::complete (async::accept &accept, async::request *request) noexcept
+{
+	auto &message = request->impl_.message;
+	if (message.msg_name)
+	{
+		::sockaddr *sockaddr_ptr;
+		(*GetAcceptExSockaddrs)(
+			message.accept,
+			0,
+			0,
+			sizeof(message.accept),
+			nullptr,
+			nullptr,
+			&sockaddr_ptr,
+			&message.msg_namelen
+		);
+		std::copy_n(
+			reinterpret_cast<const uint8_t *>(sockaddr_ptr),
+			message.msg_namelen,
+			reinterpret_cast<uint8_t *>(message.msg_name)
+		);
+	}
+
+	auto result = ::setsockopt(
+		accept.guard_.handle,
+		SOL_SOCKET,
+		SO_UPDATE_ACCEPT_CONTEXT,
+		reinterpret_cast<const char *>(&handle),
+		sizeof(handle)
+	);
+	if (result != 0)
+	{
+		return ::WSAGetLastError();
+	}
+
+	return 0;
 }
 
 
@@ -360,7 +469,7 @@ result<void> service::add (__bits::socket &socket) noexcept
 
 void service::poll_for (
 	const std::chrono::milliseconds &poll_duration,
-	completion_fn process,
+	notify_fn notify,
 	void *listener) noexcept
 {
 	DWORD timeout = INFINITE, bytes_transferred, flags;
@@ -374,7 +483,7 @@ void service::poll_for (
 	}
 
 	// completions since last poll
-	impl->notify(process, listener);
+	impl->notify(notify, listener);
 
 	::OVERLAPPED_ENTRY events[max_poll_events];
 	ULONG event_count{};
@@ -450,27 +559,27 @@ void service::poll_for (
 		}
 		else if (auto *connect = std::get_if<async::connect>(request))
 		{
-			result = ::setsockopt(
-				socket.handle,
-				SOL_SOCKET,
-				SO_UPDATE_CONNECT_CONTEXT,
-				nullptr,
-				0
-			);
-			if (result == 0)
+			if (result = socket.complete(*connect, request); result == 0)
 			{
 				connect->bytes_transferred = bytes_transferred;
 			}
 			else
 			{
-				request->error.assign(::WSAGetLastError(), std::system_category());
+				request->error.assign(result, std::system_category());
 			}
 		}
-		process(listener, request);
+		else if (auto *accept = std::get_if<async::accept>(request))
+		{
+			if (result = socket.complete(*accept, request);  result != 0)
+			{
+				request->error.assign(result, std::system_category());
+			}
+		}
+		notify(listener, request);
 	}
 
 	// completions since this poll
-	impl->notify(process, listener);
+	impl->notify(notify, listener);
 }
 
 

@@ -11,7 +11,8 @@ using namespace pal_test;
 using namespace std::chrono_literals;
 
 
-TEMPLATE_TEST_CASE("net/async/basic_datagram_socket", "", udp_v4, udp_v6, udp_v6_only)
+TEMPLATE_TEST_CASE("net/async/basic_datagram_socket", "[!nonportable]",
+	udp_v4, udp_v6, udp_v6_only)
 {
 	using protocol_t = std::remove_cvref_t<decltype(TestType::protocol_v)>;
 	using endpoint_t = typename protocol_t::endpoint;

@@ -44,6 +44,9 @@ public:
 	/// Native socket handle type
 	using native_handle_type = __bits::native_socket;
 
+	/// Invalid native socket handle
+	static constexpr native_handle_type invalid_native_handle = __bits::invalid_native_socket;
+
 
 	/// \{
 	/// Socket shutdown types
