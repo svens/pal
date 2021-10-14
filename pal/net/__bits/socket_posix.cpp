@@ -50,7 +50,14 @@ unexpected<std::error_code> sys_error (int e = errno) noexcept
 
 bool is_blocking_error (int error = errno) noexcept
 {
-	return error == EAGAIN || error == EWOULDBLOCK;
+	if constexpr (EAGAIN != EWOULDBLOCK)
+	{
+		return error == EAGAIN || error == EWOULDBLOCK;
+	}
+	else
+	{
+		return error == EWOULDBLOCK;
+	}
 }
 
 } // namespace
