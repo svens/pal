@@ -470,7 +470,7 @@ result<void> service::add (__bits::socket &socket) noexcept
 void service::poll_for (
 	const std::chrono::milliseconds &poll_duration,
 	notify_fn notify,
-	void *listener) noexcept
+	void *handler) noexcept
 {
 	DWORD timeout = INFINITE, bytes_transferred, flags;
 	if (!impl->completed.empty() || poll_duration == poll_duration.zero())
@@ -483,7 +483,7 @@ void service::poll_for (
 	}
 
 	// completions since last poll
-	impl->notify(notify, listener);
+	impl->notify(notify, handler);
 
 	::OVERLAPPED_ENTRY events[max_poll_events];
 	ULONG event_count{};
@@ -575,11 +575,11 @@ void service::poll_for (
 				request->error.assign(result, std::system_category());
 			}
 		}
-		notify(listener, request);
+		notify(handler, request);
 	}
 
 	// completions since this poll
-	impl->notify(notify, listener);
+	impl->notify(notify, handler);
 }
 
 

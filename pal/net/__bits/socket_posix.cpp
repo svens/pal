@@ -89,12 +89,12 @@ struct service::impl_type
 		handle_guard{handle};
 	}
 
-	void notify (notify_fn notify, void *listener) noexcept
+	void notify (notify_fn notify, void *handler) noexcept
 	{
 		auto requests = std::move(completed);
 		while (auto *request = requests.try_pop())
 		{
-			notify(listener, request);
+			notify(handler, request);
 		}
 	}
 };
@@ -112,9 +112,9 @@ struct socket::impl_type
 	void receive_one (async::request *request, size_t &bytes_transferred, message_flags &flags) noexcept;
 	void send_one (async::request *request, size_t &bytes_transferred) noexcept;
 
-	void receive_many (service::notify_fn notify, void *listener) noexcept;
-	void send_many (service::notify_fn notify, void *listener) noexcept;
-	void accept_many (service::notify_fn notify, void *listener) noexcept;
+	void receive_many (service::notify_fn notify, void *handler) noexcept;
+	void send_many (service::notify_fn notify, void *handler) noexcept;
+	void accept_many (service::notify_fn notify, void *handler) noexcept;
 
 	bool try_now (async::request_queue &queue, async::request *request) noexcept
 	{
@@ -158,19 +158,19 @@ struct socket::impl_type
 		cancel(pending_send, error);
 	}
 
-	void cancel (async::request_queue &queue, service::notify_fn notify, void *listener, int error) noexcept
+	void cancel (async::request_queue &queue, service::notify_fn notify, void *handler, int error) noexcept
 	{
 		while (auto *request = queue.try_pop())
 		{
 			request->error.assign(error, std::generic_category());
-			notify(listener, request);
+			notify(handler, request);
 		}
 	}
 
-	void cancel (service::notify_fn notify, void *listener, int error) noexcept
+	void cancel (service::notify_fn notify, void *handler, int error) noexcept
 	{
-		cancel(pending_receive, notify, listener, error);
-		cancel(pending_send, notify, listener, error);
+		cancel(pending_receive, notify, handler, error);
+		cancel(pending_send, notify, handler, error);
 	}
 
 	int pending_error () const noexcept
@@ -605,7 +605,7 @@ void socket::start (async::accept &accept) noexcept
 }
 
 
-void socket::impl_type::accept_many (service::notify_fn notify, void *listener) noexcept
+void socket::impl_type::accept_many (service::notify_fn notify, void *handler) noexcept
 {
 	while (auto *it = pending_receive.head())
 	{
@@ -616,14 +616,14 @@ void socket::impl_type::accept_many (service::notify_fn notify, void *listener) 
 		if (r > -1)
 		{
 			std::get_if<async::accept>(it)->guard_.handle = r;
-			notify(listener, pending_receive.pop());
+			notify(handler, pending_receive.pop());
 		}
 		else
 		{
 			if (!is_blocking_error(errno) || !await_read())
 			{
 				it->error.assign(errno, std::generic_category());
-				notify(listener, pending_receive.pop());
+				notify(handler, pending_receive.pop());
 			}
 			break;
 		}

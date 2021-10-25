@@ -19,12 +19,11 @@ TEMPLATE_TEST_CASE("net/async/basic_datagram_socket", "[!nonportable]",
 
 	pal::net::async::request request{};
 	std::deque<pal::net::async::request *> completed{};
-	auto service = pal_try(pal::net::async::make_service(
-		[&completed](auto *request)
-		{
-			completed.push_back(request);
-		}
-	));
+	auto add_completed = [&completed](auto *request)
+	{
+		completed.push_back(request);
+	};
+	auto service = pal_try(pal::net::async::make_service());
 
 	auto socket = pal_try(TestType::make_socket());
 	endpoint_t endpoint{TestType::loopback_v, 0};
@@ -57,7 +56,7 @@ TEMPLATE_TEST_CASE("net/async/basic_datagram_socket", "[!nonportable]",
 		socket.async_receive_from(&request, recv_msg, endpoint);
 		REQUIRE(completed.empty());
 
-		service.run_for(run_duration);
+		service.run_for(run_duration, add_completed);
 		CHECK(completed.at(0) == &request);
 		REQUIRE_FALSE(request.error);
 
@@ -78,7 +77,7 @@ TEMPLATE_TEST_CASE("net/async/basic_datagram_socket", "[!nonportable]",
 		auto sent = pal_try(peer.send_to(send_msg[0], endpoint));
 		CHECK(sent == send_msg[0].size_bytes());
 
-		service.run_for(run_duration);
+		service.run_for(run_duration, add_completed);
 		CHECK(completed.at(0) == &request);
 		REQUIRE_FALSE(request.error);
 
@@ -99,7 +98,7 @@ TEMPLATE_TEST_CASE("net/async/basic_datagram_socket", "[!nonportable]",
 		socket.async_receive_from(&request, recv_msg, endpoint);
 		REQUIRE(completed.empty());
 
-		service.run_for(run_duration);
+		service.run_for(run_duration, add_completed);
 		CHECK(completed.at(0) == &request);
 		REQUIRE_FALSE(request.error);
 
@@ -120,7 +119,7 @@ TEMPLATE_TEST_CASE("net/async/basic_datagram_socket", "[!nonportable]",
 		auto sent = pal_try(peer.send_to(send_msg, endpoint));
 		CHECK(sent == send_view.size());
 
-		service.run_for(run_duration);
+		service.run_for(run_duration, add_completed);
 		CHECK(completed.at(0) == &request);
 		REQUIRE_FALSE(request.error);
 
@@ -141,7 +140,7 @@ TEMPLATE_TEST_CASE("net/async/basic_datagram_socket", "[!nonportable]",
 		socket.async_receive_from(&request, std::span{recv_buf, small_size}, endpoint);
 		REQUIRE(completed.empty());
 
-		service.run_for(run_duration);
+		service.run_for(run_duration, add_completed);
 		CHECK(completed.at(0) == &request);
 		REQUIRE_FALSE(request.error);
 
@@ -162,7 +161,7 @@ TEMPLATE_TEST_CASE("net/async/basic_datagram_socket", "[!nonportable]",
 		auto sent = pal_try(peer.send_to(std::span{send_view}, endpoint));
 		CHECK(sent == send_view.size());
 
-		service.run_for(run_duration);
+		service.run_for(run_duration, add_completed);
 		CHECK(completed.at(0) == &request);
 		REQUIRE_FALSE(request.error);
 
@@ -180,7 +179,7 @@ TEMPLATE_TEST_CASE("net/async/basic_datagram_socket", "[!nonportable]",
 		socket.async_receive_from(&request, recv_msg_list_too_long, endpoint);
 		REQUIRE(completed.empty());
 
-		service.run_for(run_duration);
+		service.run_for(run_duration, add_completed);
 		CHECK(completed.at(0) == &request);
 		REQUIRE(request.error == std::errc::argument_list_too_long);
 		CHECK(std::holds_alternative<pal::net::async::receive_from>(request));
@@ -198,7 +197,7 @@ TEMPLATE_TEST_CASE("net/async/basic_datagram_socket", "[!nonportable]",
 		auto sent = pal_try(peer.send_to(std::span{send_view}, endpoint));
 		CHECK(sent == send_view.size());
 
-		service.run_for(run_duration);
+		service.run_for(run_duration, add_completed);
 		REQUIRE(completed.size() == 1);
 		REQUIRE(completed[0] == &request);
 		REQUIRE_FALSE(request.error);
@@ -210,7 +209,7 @@ TEMPLATE_TEST_CASE("net/async/basic_datagram_socket", "[!nonportable]",
 		CHECK(recv_view(receive_from->bytes_transferred) == send_view);
 
 		REQUIRE(socket.close());
-		service.run_for(run_duration);
+		service.run_for(run_duration, add_completed);
 		CHECK(completed.at(1) == &r2);
 		CHECK(r2.error == std::errc::bad_file_descriptor);
 		CHECK(std::holds_alternative<pal::net::async::receive_from>(r2));
@@ -223,7 +222,7 @@ TEMPLATE_TEST_CASE("net/async/basic_datagram_socket", "[!nonportable]",
 		socket.async_receive_from(&request, recv_msg, endpoint);
 		REQUIRE(completed.empty());
 
-		service.run_for(run_duration);
+		service.run_for(run_duration, add_completed);
 		CHECK(completed.at(0) == &request);
 		REQUIRE(request.error == std::errc::bad_file_descriptor);
 		CHECK(std::holds_alternative<pal::net::async::receive_from>(request));
@@ -236,7 +235,7 @@ TEMPLATE_TEST_CASE("net/async/basic_datagram_socket", "[!nonportable]",
 
 		REQUIRE(socket.close());
 
-		service.run_for(run_duration);
+		service.run_for(run_duration, add_completed);
 		CHECK(completed.at(0) == &request);
 		REQUIRE(request.error == std::errc::bad_file_descriptor);
 		CHECK(std::holds_alternative<pal::net::async::receive_from>(request));
@@ -250,7 +249,7 @@ TEMPLATE_TEST_CASE("net/async/basic_datagram_socket", "[!nonportable]",
 		socket.async_receive(&request, recv_msg);
 		REQUIRE(completed.empty());
 
-		service.run_for(run_duration);
+		service.run_for(run_duration, add_completed);
 		CHECK(completed.at(0) == &request);
 		REQUIRE_FALSE(request.error);
 
@@ -269,7 +268,7 @@ TEMPLATE_TEST_CASE("net/async/basic_datagram_socket", "[!nonportable]",
 		auto sent = pal_try(peer.send_to(send_msg[0], endpoint));
 		CHECK(sent == send_msg[0].size_bytes());
 
-		service.run_for(run_duration);
+		service.run_for(run_duration, add_completed);
 		CHECK(completed.at(0) == &request);
 		REQUIRE_FALSE(request.error);
 
@@ -288,7 +287,7 @@ TEMPLATE_TEST_CASE("net/async/basic_datagram_socket", "[!nonportable]",
 		socket.async_receive(&request, recv_msg);
 		REQUIRE(completed.empty());
 
-		service.run_for(run_duration);
+		service.run_for(run_duration, add_completed);
 		CHECK(completed.at(0) == &request);
 		REQUIRE_FALSE(request.error);
 
@@ -307,7 +306,7 @@ TEMPLATE_TEST_CASE("net/async/basic_datagram_socket", "[!nonportable]",
 		auto sent = pal_try(peer.send_to(send_msg, endpoint));
 		CHECK(sent == send_view.size());
 
-		service.run_for(run_duration);
+		service.run_for(run_duration, add_completed);
 		CHECK(completed.at(0) == &request);
 		REQUIRE_FALSE(request.error);
 
@@ -326,7 +325,7 @@ TEMPLATE_TEST_CASE("net/async/basic_datagram_socket", "[!nonportable]",
 		socket.async_receive(&request, std::span{recv_buf, small_size});
 		REQUIRE(completed.empty());
 
-		service.run_for(run_duration);
+		service.run_for(run_duration, add_completed);
 		CHECK(completed.at(0) == &request);
 		REQUIRE_FALSE(request.error);
 
@@ -345,7 +344,7 @@ TEMPLATE_TEST_CASE("net/async/basic_datagram_socket", "[!nonportable]",
 		auto sent = pal_try(peer.send_to(std::span{send_view}, endpoint));
 		CHECK(sent == send_view.size());
 
-		service.run_for(run_duration);
+		service.run_for(run_duration, add_completed);
 		CHECK(completed.at(0) == &request);
 		REQUIRE_FALSE(request.error);
 
@@ -361,7 +360,7 @@ TEMPLATE_TEST_CASE("net/async/basic_datagram_socket", "[!nonportable]",
 		socket.async_receive(&request, recv_msg_list_too_long);
 		REQUIRE(completed.empty());
 
-		service.run_for(run_duration);
+		service.run_for(run_duration, add_completed);
 		CHECK(completed.at(0) == &request);
 		REQUIRE(request.error == std::errc::argument_list_too_long);
 		CHECK(std::holds_alternative<pal::net::async::receive>(request));
@@ -378,7 +377,7 @@ TEMPLATE_TEST_CASE("net/async/basic_datagram_socket", "[!nonportable]",
 		auto sent = peer.send_to(std::span{send_view}, endpoint);
 		CHECK(sent == send_view.size());
 
-		service.run_for(run_duration);
+		service.run_for(run_duration, add_completed);
 		CHECK(completed.at(0) == &request);
 		REQUIRE_FALSE(request.error);
 
@@ -389,7 +388,7 @@ TEMPLATE_TEST_CASE("net/async/basic_datagram_socket", "[!nonportable]",
 		CHECK(recv_view(receive->bytes_transferred) == send_view);
 
 		REQUIRE(socket.close());
-		service.run_for(run_duration);
+		service.run_for(run_duration, add_completed);
 		CHECK(completed.at(1) == &r2);
 		CHECK(r2.error == std::errc::bad_file_descriptor);
 		CHECK(std::holds_alternative<pal::net::async::receive>(r2));
@@ -402,7 +401,7 @@ TEMPLATE_TEST_CASE("net/async/basic_datagram_socket", "[!nonportable]",
 		socket.async_receive(&request, recv_msg);
 		REQUIRE(completed.empty());
 
-		service.run_for(run_duration);
+		service.run_for(run_duration, add_completed);
 		CHECK(completed.at(0) == &request);
 		REQUIRE(request.error == std::errc::bad_file_descriptor);
 		CHECK(std::holds_alternative<pal::net::async::receive>(request));
@@ -415,7 +414,7 @@ TEMPLATE_TEST_CASE("net/async/basic_datagram_socket", "[!nonportable]",
 
 		REQUIRE(socket.close());
 
-		service.run_for(run_duration);
+		service.run_for(run_duration, add_completed);
 		CHECK(completed.at(0) == &request);
 		REQUIRE(request.error == std::errc::bad_file_descriptor);
 		CHECK(std::holds_alternative<pal::net::async::receive>(request));
@@ -430,7 +429,7 @@ TEMPLATE_TEST_CASE("net/async/basic_datagram_socket", "[!nonportable]",
 		CHECK(received == send_msg[0].size_bytes());
 		CHECK(peer_endpoint == endpoint);
 
-		service.run_for(run_duration);
+		service.run_for(run_duration, add_completed);
 		CHECK(completed.at(0) == &request);
 		REQUIRE_FALSE(request.error);
 
@@ -449,7 +448,7 @@ TEMPLATE_TEST_CASE("net/async/basic_datagram_socket", "[!nonportable]",
 		CHECK(received == send_view.size());
 		CHECK(peer_endpoint == endpoint);
 
-		service.run_for(run_duration);
+		service.run_for(run_duration, add_completed);
 		CHECK(completed.at(0) == &request);
 		REQUIRE_FALSE(request.error);
 
@@ -466,7 +465,7 @@ TEMPLATE_TEST_CASE("net/async/basic_datagram_socket", "[!nonportable]",
 		socket.async_send_to(&request, send_msg, peer_endpoint);
 		REQUIRE(completed.empty());
 
-		service.run_for(run_duration);
+		service.run_for(run_duration, add_completed);
 		CHECK(completed.at(0) == &request);
 		REQUIRE(request.error == std::errc::bad_file_descriptor);
 		CHECK(std::holds_alternative<pal::net::async::send_to>(request));
@@ -477,7 +476,7 @@ TEMPLATE_TEST_CASE("net/async/basic_datagram_socket", "[!nonportable]",
 		socket.async_send_to(&request, send_msg_list_too_long, peer_endpoint);
 		REQUIRE(completed.empty());
 
-		service.run_for(run_duration);
+		service.run_for(run_duration, add_completed);
 		CHECK(completed.at(0) == &request);
 		REQUIRE(request.error == std::errc::argument_list_too_long);
 		CHECK(std::holds_alternative<pal::net::async::send_to>(request));
@@ -493,7 +492,7 @@ TEMPLATE_TEST_CASE("net/async/basic_datagram_socket", "[!nonportable]",
 		CHECK(received == send_msg[0].size_bytes());
 		CHECK(peer_endpoint == endpoint);
 
-		service.run_for(run_duration);
+		service.run_for(run_duration, add_completed);
 		CHECK(completed.at(0) == &request);
 		REQUIRE_FALSE(request.error);
 
@@ -513,7 +512,7 @@ TEMPLATE_TEST_CASE("net/async/basic_datagram_socket", "[!nonportable]",
 		CHECK(received == send_view.size());
 		CHECK(peer_endpoint == endpoint);
 
-		service.run_for(run_duration);
+		service.run_for(run_duration, add_completed);
 		CHECK(completed.at(0) == &request);
 		REQUIRE_FALSE(request.error);
 
@@ -532,7 +531,7 @@ TEMPLATE_TEST_CASE("net/async/basic_datagram_socket", "[!nonportable]",
 		socket.async_send(&request, send_msg);
 		REQUIRE(completed.empty());
 
-		service.run_for(run_duration);
+		service.run_for(run_duration, add_completed);
 		CHECK(completed.at(0) == &request);
 		REQUIRE(request.error == std::errc::bad_file_descriptor);
 		CHECK(std::holds_alternative<pal::net::async::send>(request));
@@ -544,7 +543,7 @@ TEMPLATE_TEST_CASE("net/async/basic_datagram_socket", "[!nonportable]",
 		socket.async_send(&request, send_msg_list_too_long);
 		REQUIRE(completed.empty());
 
-		service.run_for(run_duration);
+		service.run_for(run_duration, add_completed);
 		CHECK(completed.at(0) == &request);
 		REQUIRE(request.error == std::errc::argument_list_too_long);
 		CHECK(std::holds_alternative<pal::net::async::send>(request));
@@ -555,7 +554,7 @@ TEMPLATE_TEST_CASE("net/async/basic_datagram_socket", "[!nonportable]",
 		socket.async_send(&request, send_msg);
 		REQUIRE(completed.empty());
 
-		service.run_for(run_duration);
+		service.run_for(run_duration, add_completed);
 		CHECK(completed.at(0) == &request);
 		REQUIRE(request.error == std::errc::not_connected);
 		CHECK(std::holds_alternative<pal::net::async::send>(request));
@@ -589,7 +588,7 @@ TEMPLATE_TEST_CASE("net/async/basic_datagram_socket", "[!nonportable]",
 		size_t call_count = 0;
 		enum { receive_from, receive, send_to, send, stop } new_request = stop;
 
-		auto svc = pal::net::async::make_service([&](auto *request)
+		auto handler = [&](auto *request)
 		{
 			auto i = call_count++;
 			REQUIRE(i < requests.size());
@@ -628,7 +627,8 @@ TEMPLATE_TEST_CASE("net/async/basic_datagram_socket", "[!nonportable]",
 			}
 
 			REQUIRE(--call_depth == 0);
-		}).value();
+		};
+		auto svc = pal_try(pal::net::async::make_service());
 
 		REQUIRE(svc.make_async(peer));
 		REQUIRE(peer.has_async());
@@ -642,11 +642,11 @@ TEMPLATE_TEST_CASE("net/async/basic_datagram_socket", "[!nonportable]",
 			new_request = receive_from;
 			peer.async_receive_from(&requests[0], recv_msg, endpoint);
 
-			svc.run_for(run_duration);
+			svc.run_for(run_duration, handler);
 			CHECK(call_count == 2);
 
 			new_request = stop;
-			svc.run_for(run_duration);
+			svc.run_for(run_duration, handler);
 			CHECK(call_count == 3);
 		}
 
@@ -659,11 +659,11 @@ TEMPLATE_TEST_CASE("net/async/basic_datagram_socket", "[!nonportable]",
 			new_request = receive;
 			peer.async_receive(&requests[0], recv_msg);
 
-			svc.run_for(run_duration);
+			svc.run_for(run_duration, handler);
 			CHECK(call_count == 2);
 
 			new_request = stop;
-			svc.run_for(run_duration);
+			svc.run_for(run_duration, handler);
 			CHECK(call_count == 3);
 		}
 
@@ -672,11 +672,11 @@ TEMPLATE_TEST_CASE("net/async/basic_datagram_socket", "[!nonportable]",
 			new_request = send_to;
 			peer.async_send_to(&requests[0], send_msg[0], endpoint);
 
-			svc.run_for(run_duration);
+			svc.run_for(run_duration, handler);
 			CHECK(call_count == 2);
 
 			new_request = stop;
-			svc.run_for(run_duration);
+			svc.run_for(run_duration, handler);
 			CHECK(call_count == 3);
 		}
 
@@ -685,11 +685,11 @@ TEMPLATE_TEST_CASE("net/async/basic_datagram_socket", "[!nonportable]",
 			new_request = send;
 			peer.async_send(&requests[0], send_msg[0]);
 
-			svc.run_for(run_duration);
+			svc.run_for(run_duration, handler);
 			CHECK(call_count == 2);
 
 			new_request = stop;
-			svc.run_for(run_duration);
+			svc.run_for(run_duration, handler);
 			CHECK(call_count == 3);
 		}
 	}

@@ -192,7 +192,7 @@ private:
 		std::chrono::steady_clock::time_point post_time;
 	} impl_{};
 
-	template <typename> friend class service;
+	friend class service;
 	template <typename> friend class net::basic_datagram_socket;
 	template <typename> friend class net::basic_stream_socket;
 	template <typename> friend class net::basic_socket_acceptor;

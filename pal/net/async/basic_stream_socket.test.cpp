@@ -20,12 +20,11 @@ TEMPLATE_TEST_CASE("net/async/basic_stream_socket", "[!nonportable]",
 
 	pal::net::async::request request{};
 	std::deque<pal::net::async::request *> completed{};
-	auto service = pal_try(pal::net::async::make_service(
-		[&completed](auto *request)
-		{
-			completed.push_back(request);
-		}
-	));
+	auto add_completed = [&completed](auto *request)
+	{
+		completed.push_back(request);
+	};
+	auto service = pal_try(pal::net::async::make_service());
 
 	auto socket = pal_try(TestType::make_socket());
 	REQUIRE_FALSE(socket.has_async());
@@ -78,7 +77,7 @@ TEMPLATE_TEST_CASE("net/async/basic_stream_socket", "[!nonportable]",
 
 		socket.async_receive(&request, recv_msg);
 
-		service.run_for(run_duration);
+		service.run_for(run_duration, add_completed);
 		CHECK(completed.at(0) == &request);
 		REQUIRE_FALSE(request.error);
 
@@ -100,7 +99,7 @@ TEMPLATE_TEST_CASE("net/async/basic_stream_socket", "[!nonportable]",
 		auto sent = pal_try(peer.send(send_msg[0]));
 		CHECK(sent == send_msg[0].size_bytes());
 
-		service.run_for(run_duration);
+		service.run_for(run_duration, add_completed);
 		CHECK(completed.at(0) == &request);
 		REQUIRE_FALSE(request.error);
 
@@ -122,7 +121,7 @@ TEMPLATE_TEST_CASE("net/async/basic_stream_socket", "[!nonportable]",
 		socket.async_receive(&request, recv_msg);
 		REQUIRE(completed.empty());
 
-		service.run_for(run_duration);
+		service.run_for(run_duration, add_completed);
 		CHECK(completed.at(0) == &request);
 		REQUIRE_FALSE(request.error);
 
@@ -144,7 +143,7 @@ TEMPLATE_TEST_CASE("net/async/basic_stream_socket", "[!nonportable]",
 		auto sent = pal_try(peer.send(send_msg));
 		CHECK(sent == send_view.size());
 
-		service.run_for(run_duration);
+		service.run_for(run_duration, add_completed);
 		CHECK(completed.at(0) == &request);
 		REQUIRE_FALSE(request.error);
 
@@ -165,7 +164,7 @@ TEMPLATE_TEST_CASE("net/async/basic_stream_socket", "[!nonportable]",
 
 		socket.async_receive(&request, std::span{recv_buf, small_size});
 
-		service.run_for(run_duration);
+		service.run_for(run_duration, add_completed);
 		CHECK(completed.at(0) == &request);
 		REQUIRE_FALSE(request.error);
 
@@ -187,7 +186,7 @@ TEMPLATE_TEST_CASE("net/async/basic_stream_socket", "[!nonportable]",
 		auto sent = pal_try(peer.send(std::span{send_view}));
 		CHECK(sent == send_view.size());
 
-		service.run_for(run_duration);
+		service.run_for(run_duration, add_completed);
 		CHECK(completed.at(0) == &request);
 		REQUIRE_FALSE(request.error);
 
@@ -206,7 +205,7 @@ TEMPLATE_TEST_CASE("net/async/basic_stream_socket", "[!nonportable]",
 		socket.async_receive(&request, recv_msg_list_too_long);
 		REQUIRE(completed.empty());
 
-		service.run_for(run_duration);
+		service.run_for(run_duration, add_completed);
 		CHECK(completed.at(0) == &request);
 		REQUIRE(request.error == std::errc::argument_list_too_long);
 		CHECK(std::holds_alternative<pal::net::async::receive>(request));
@@ -225,7 +224,7 @@ TEMPLATE_TEST_CASE("net/async/basic_stream_socket", "[!nonportable]",
 		auto sent = pal_try(peer.send(std::span{send_view}));
 		CHECK(sent == send_view.size());
 
-		service.run_for(run_duration);
+		service.run_for(run_duration, add_completed);
 		REQUIRE(completed.size() == 1);
 		REQUIRE(completed[0] == &request);
 		REQUIRE_FALSE(request.error);
@@ -237,7 +236,7 @@ TEMPLATE_TEST_CASE("net/async/basic_stream_socket", "[!nonportable]",
 		CHECK(recv_view(receive->bytes_transferred) == send_view);
 
 		pal_try(socket.close());
-		service.run_for(run_duration);
+		service.run_for(run_duration, add_completed);
 		REQUIRE(completed.size() == 2);
 		REQUIRE(completed[1] == &r2);
 		CHECK(r2.error == std::errc::bad_file_descriptor);
@@ -252,7 +251,7 @@ TEMPLATE_TEST_CASE("net/async/basic_stream_socket", "[!nonportable]",
 		socket.async_receive(&request, recv_msg);
 		REQUIRE(completed.empty());
 
-		service.run_for(run_duration);
+		service.run_for(run_duration, add_completed);
 		CHECK(completed.at(0) == &request);
 		REQUIRE(request.error == std::errc::bad_file_descriptor);
 		CHECK(std::holds_alternative<pal::net::async::receive>(request));
@@ -268,7 +267,7 @@ TEMPLATE_TEST_CASE("net/async/basic_stream_socket", "[!nonportable]",
 
 		pal_try(socket.close());
 
-		service.run_for(run_duration);
+		service.run_for(run_duration, add_completed);
 		CHECK(completed.at(0) == &request);
 		REQUIRE(request.error == std::errc::bad_file_descriptor);
 		CHECK(std::holds_alternative<pal::net::async::receive>(request));
@@ -281,7 +280,7 @@ TEMPLATE_TEST_CASE("net/async/basic_stream_socket", "[!nonportable]",
 		socket.async_receive(&request, recv_msg);
 		REQUIRE(completed.empty());
 
-		service.run_for(run_duration);
+		service.run_for(run_duration, add_completed);
 		CHECK(completed.at(0) == &request);
 		REQUIRE(request.error == std::errc::not_connected);
 		CHECK(std::holds_alternative<pal::net::async::receive>(request));
@@ -302,7 +301,7 @@ TEMPLATE_TEST_CASE("net/async/basic_stream_socket", "[!nonportable]",
 
 		pal_try(peer.close());
 
-		service.run_for(run_duration);
+		service.run_for(run_duration, add_completed);
 		REQUIRE(completed.size() == 2);
 		REQUIRE(completed[0] == &request);
 		REQUIRE(completed[1] == &r2);
@@ -325,7 +324,7 @@ TEMPLATE_TEST_CASE("net/async/basic_stream_socket", "[!nonportable]",
 
 		socket.async_receive(&request, recv_msg);
 
-		service.run_for(run_duration);
+		service.run_for(run_duration, add_completed);
 		CHECK(completed.at(0) == &request);
 
 		auto *receive = std::get_if<pal::net::async::receive>(&request);
@@ -342,7 +341,7 @@ TEMPLATE_TEST_CASE("net/async/basic_stream_socket", "[!nonportable]",
 		auto received = peer.receive(recv_msg);
 		REQUIRE(received == send_msg[0].size_bytes());
 
-		service.run_for(run_duration);
+		service.run_for(run_duration, add_completed);
 		CHECK(completed.at(0) == &request);
 		REQUIRE_FALSE(request.error);
 
@@ -361,7 +360,7 @@ TEMPLATE_TEST_CASE("net/async/basic_stream_socket", "[!nonportable]",
 		auto received = peer.receive(recv_msg);
 		REQUIRE(received == send_view.size());
 
-		service.run_for(run_duration);
+		service.run_for(run_duration, add_completed);
 		CHECK(completed.at(0) == &request);
 		REQUIRE_FALSE(request.error);
 
@@ -401,21 +400,21 @@ TEMPLATE_TEST_CASE("net/async/basic_stream_socket", "[!nonportable]",
 
 			// trigger poller that should not progress due filled buffers
 			// on both side
-			service.run_once();
+			service.run_once(add_completed);
 			CHECK(completed.size() == 2);
 
 			// drain receiver side
 			peer.receive(msg);
 
 			// let sender push 1 enqueued request, 1 remains pending
-			service.run_for(500ms);
+			service.run_for(500ms, add_completed);
 			CHECK(completed.size() == 3);
 
 			// drain receiver again
 			peer.receive(msg);
 
 			// push last pending request
-			service.run_for(500ms);
+			service.run_for(500ms, add_completed);
 
 			// make sure all requests are completed
 			REQUIRE(completed.size() == requests.size());
@@ -438,7 +437,7 @@ TEMPLATE_TEST_CASE("net/async/basic_stream_socket", "[!nonportable]",
 		handle_guard{socket.native_handle()};
 		socket.async_send(&request, send_msg);
 
-		service.run_for(run_duration);
+		service.run_for(run_duration, add_completed);
 		CHECK(completed.at(0) == &request);
 		REQUIRE(request.error == std::errc::bad_file_descriptor);
 		CHECK(std::holds_alternative<pal::net::async::send>(request));
@@ -452,7 +451,7 @@ TEMPLATE_TEST_CASE("net/async/basic_stream_socket", "[!nonportable]",
 		socket.async_send(&request, send_msg_list_too_long);
 		REQUIRE(completed.empty());
 
-		service.run_for(run_duration);
+		service.run_for(run_duration, add_completed);
 		CHECK(completed.at(0) == &request);
 		REQUIRE(request.error == std::errc::argument_list_too_long);
 		CHECK(std::holds_alternative<pal::net::async::send>(request));
@@ -465,7 +464,7 @@ TEMPLATE_TEST_CASE("net/async/basic_stream_socket", "[!nonportable]",
 		socket.async_send(&request, send_msg);
 		REQUIRE(completed.empty());
 
-		service.run_for(run_duration);
+		service.run_for(run_duration, add_completed);
 		CHECK(completed.at(0) == &request);
 		REQUIRE(request.error == std::errc::not_connected);
 		CHECK(std::holds_alternative<pal::net::async::send>(request));
@@ -479,7 +478,7 @@ TEMPLATE_TEST_CASE("net/async/basic_stream_socket", "[!nonportable]",
 		socket.async_connect(&request, accept_endpoint);
 		REQUIRE(completed.empty());
 
-		service.run_for(run_duration);
+		service.run_for(run_duration, add_completed);
 		CHECK(completed.at(0) == &request);
 		REQUIRE_FALSE(request.error);
 		auto *connect = std::get_if<pal::net::async::connect>(&request);
@@ -499,7 +498,7 @@ TEMPLATE_TEST_CASE("net/async/basic_stream_socket", "[!nonportable]",
 		socket.async_connect(&request, accept_endpoint);
 		REQUIRE(completed.empty());
 
-		service.run_for(run_duration);
+		service.run_for(run_duration, add_completed);
 		CHECK(completed.at(0) == &request);
 		REQUIRE_FALSE(request.error);
 		auto *connect = std::get_if<pal::net::async::connect>(&request);
@@ -518,7 +517,7 @@ TEMPLATE_TEST_CASE("net/async/basic_stream_socket", "[!nonportable]",
 		socket.async_connect(&request, accept_endpoint, send_msg[0]);
 		REQUIRE(completed.empty());
 
-		service.run_for(run_duration);
+		service.run_for(run_duration, add_completed);
 		CHECK(completed.at(0) == &request);
 		REQUIRE_FALSE(request.error);
 		auto *connect = std::get_if<pal::net::async::connect>(&request);
@@ -542,7 +541,7 @@ TEMPLATE_TEST_CASE("net/async/basic_stream_socket", "[!nonportable]",
 		socket.async_connect(&request, accept_endpoint, send_msg[0]);
 		REQUIRE(completed.empty());
 
-		service.run_for(run_duration);
+		service.run_for(run_duration, add_completed);
 		CHECK(completed.at(0) == &request);
 		REQUIRE_FALSE(request.error);
 		auto *connect = std::get_if<pal::net::async::connect>(&request);
@@ -571,7 +570,7 @@ TEMPLATE_TEST_CASE("net/async/basic_stream_socket", "[!nonportable]",
 			socket.async_connect(&request, accept_endpoint, send_msg);
 			REQUIRE(completed.empty());
 
-			service.run_for(run_duration);
+			service.run_for(run_duration, add_completed);
 			CHECK(completed.at(0) == &request);
 			REQUIRE_FALSE(request.error);
 			auto *connect = std::get_if<pal::net::async::connect>(&request);
@@ -595,7 +594,7 @@ TEMPLATE_TEST_CASE("net/async/basic_stream_socket", "[!nonportable]",
 			socket.async_connect(&request, accept_endpoint, send_msg);
 			REQUIRE(completed.empty());
 
-			service.run_for(run_duration);
+			service.run_for(run_duration, add_completed);
 			CHECK(completed.at(0) == &request);
 			REQUIRE_FALSE(request.error);
 			auto *connect = std::get_if<pal::net::async::connect>(&request);
@@ -619,7 +618,7 @@ TEMPLATE_TEST_CASE("net/async/basic_stream_socket", "[!nonportable]",
 		socket.async_connect(&request, accept_endpoint, send_msg_list_too_long);
 		REQUIRE(completed.empty());
 
-		service.run_for(run_duration);
+		service.run_for(run_duration, add_completed);
 		CHECK(completed.at(0) == &request);
 		REQUIRE(request.error == std::errc::argument_list_too_long);
 		CHECK(std::holds_alternative<pal::net::async::connect>(request));
@@ -635,7 +634,7 @@ TEMPLATE_TEST_CASE("net/async/basic_stream_socket", "[!nonportable]",
 		socket.async_send(&send_request, send_msg);
 		REQUIRE(completed.empty());
 
-		service.run_for(run_duration);
+		service.run_for(run_duration, add_completed);
 		if constexpr (pal::is_windows_build)
 		{
 			// Windows can reorder completed requests for this case
@@ -690,7 +689,7 @@ TEMPLATE_TEST_CASE("net/async/basic_stream_socket", "[!nonportable]",
 			std::this_thread::sleep_for(1ms);
 		}
 
-		service.run_for(run_duration);
+		service.run_for(run_duration, add_completed);
 		CHECK(completed.at(0) == &connect_request);
 		CHECK(completed.at(1) == &receive_request);
 
@@ -712,7 +711,7 @@ TEMPLATE_TEST_CASE("net/async/basic_stream_socket", "[!nonportable]",
 		socket.async_connect(&request, accept_endpoint);
 		CHECK(completed.empty());
 
-		service.run_for(run_duration);
+		service.run_for(run_duration, add_completed);
 		CHECK(completed.at(0) == &request);
 		CHECK(request.error != std::errc{});
 		CHECK(std::holds_alternative<pal::net::async::connect>(request));
@@ -727,7 +726,7 @@ TEMPLATE_TEST_CASE("net/async/basic_stream_socket", "[!nonportable]",
 		socket.async_send(&send_request, send_msg);
 		CHECK(completed.empty());
 
-		service.run_for(run_duration);
+		service.run_for(run_duration, add_completed);
 		CHECK(completed.at(0) == &connect_request);
 		CHECK(completed.at(1) == &send_request);
 
@@ -746,7 +745,7 @@ TEMPLATE_TEST_CASE("net/async/basic_stream_socket", "[!nonportable]",
 		socket.async_connect(&request, accept_endpoint);
 		CHECK(completed.empty());
 
-		service.run_for(run_duration);
+		service.run_for(run_duration, add_completed);
 		CHECK(completed.at(0) == &request);
 		CHECK(request.error == std::errc::bad_file_descriptor);
 		CHECK(std::holds_alternative<pal::net::async::connect>(request));

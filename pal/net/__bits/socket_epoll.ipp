@@ -7,7 +7,7 @@ __pal_begin
 namespace net::__bits {
 
 
-void socket::impl_type::receive_many (service::notify_fn notify, void *listener) noexcept
+void socket::impl_type::receive_many (service::notify_fn notify, void *handler) noexcept
 {
 	::mmsghdr messages[max_mmsg];
 	while (!pending_receive.empty())
@@ -28,7 +28,7 @@ void socket::impl_type::receive_many (service::notify_fn notify, void *listener)
 				receive->bytes_transferred = first->msg_len;
 				receive->flags = first->msg_hdr.msg_flags;
 			}
-			notify(listener, request);
+			notify(handler, request);
 		}
 
 		if (first != last)
@@ -39,7 +39,7 @@ void socket::impl_type::receive_many (service::notify_fn notify, void *listener)
 }
 
 
-void socket::impl_type::send_many (service::notify_fn notify, void *listener) noexcept
+void socket::impl_type::send_many (service::notify_fn notify, void *handler) noexcept
 {
 	// pending_send may contain async_connect request
 	//
@@ -68,7 +68,7 @@ void socket::impl_type::send_many (service::notify_fn notify, void *listener) no
 			{
 				connect->bytes_transferred = first->msg_len;
 			}
-			notify(listener, request);
+			notify(handler, request);
 		}
 
 		if (first != last)
@@ -122,7 +122,7 @@ result<void> service::add (__bits::socket &socket) noexcept
 void service::poll_for (
 	const std::chrono::milliseconds &poll_duration,
 	notify_fn notify,
-	void *listener) noexcept
+	void *handler) noexcept
 {
 	int timeout = -1;
 	if (!impl->completed.empty() || poll_duration == poll_duration.zero())
@@ -135,7 +135,7 @@ void service::poll_for (
 	}
 
 	// completions since last poll
-	impl->notify(notify, listener);
+	impl->notify(notify, handler);
 
 	::epoll_event events[max_poll_events];
 	auto event_count = ::epoll_wait(impl->handle, &events[0], max_poll_events, timeout);
@@ -149,34 +149,34 @@ void service::poll_for (
 		auto &socket = *static_cast<socket::impl_type *>(event->data.ptr);
 		if (event->events & EPOLLERR)
 		{
-			socket.cancel(notify, listener, socket.pending_error());
+			socket.cancel(notify, handler, socket.pending_error());
 		}
 		else
 		{
 			if (event->events & EPOLLOUT)
 			{
-				socket.send_many(notify, listener);
+				socket.send_many(notify, handler);
 			}
 			if (event->events & EPOLLIN)
 			{
 				if (socket.is_acceptor)
 				{
-					socket.accept_many(notify, listener);
+					socket.accept_many(notify, handler);
 				}
 				else
 				{
-					socket.receive_many(notify, listener);
+					socket.receive_many(notify, handler);
 				}
 			}
 			if (event->events & (EPOLLRDHUP | EPOLLHUP))
 			{
-				socket.cancel(notify, listener, 0);
+				socket.cancel(notify, handler, 0);
 			}
 		}
 	}
 
 	// completions since this poll
-	impl->notify(notify, listener);
+	impl->notify(notify, handler);
 }
 
 

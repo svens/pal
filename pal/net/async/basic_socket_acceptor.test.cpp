@@ -19,12 +19,11 @@ TEMPLATE_TEST_CASE("net/async/basic_socket_acceptor", "[!nonportable]",
 
 	pal::net::async::request request{};
 	std::deque<pal::net::async::request *> completed{};
-	auto service = pal_try(pal::net::async::make_service(
-		[&completed](auto *request)
-		{
-			completed.push_back(request);
-		}
-	));
+	auto add_completed = [&completed](auto *request)
+	{
+		completed.push_back(request);
+	};
+	auto service = pal_try(pal::net::async::make_service());
 
 	auto acceptor = pal_try(TestType::make_acceptor());
 	REQUIRE_FALSE(acceptor.has_async());
@@ -63,7 +62,7 @@ TEMPLATE_TEST_CASE("net/async/basic_socket_acceptor", "[!nonportable]",
 		auto peer = pal_try(TestType::make_socket());
 		pal_try(peer.connect(accept_endpoint));
 
-		service.run_for(run_duration);
+		service.run_for(run_duration, add_completed);
 		CHECK(completed.at(0) == &request);
 		REQUIRE_FALSE(request.error);
 
@@ -83,7 +82,7 @@ TEMPLATE_TEST_CASE("net/async/basic_socket_acceptor", "[!nonportable]",
 		acceptor.async_accept(&request);
 		REQUIRE(completed.empty());
 
-		service.run_for(run_duration);
+		service.run_for(run_duration, add_completed);
 		CHECK(completed.at(0) == &request);
 		REQUIRE_FALSE(request.error);
 
@@ -104,7 +103,7 @@ TEMPLATE_TEST_CASE("net/async/basic_socket_acceptor", "[!nonportable]",
 		auto peer = pal_try(TestType::make_socket());
 		pal_try(peer.connect(accept_endpoint));
 
-		service.run_for(run_duration);
+		service.run_for(run_duration, add_completed);
 		CHECK(completed.at(0) == &request);
 		REQUIRE_FALSE(request.error);
 
@@ -126,7 +125,7 @@ TEMPLATE_TEST_CASE("net/async/basic_socket_acceptor", "[!nonportable]",
 		acceptor.async_accept(&request, endpoint);
 		REQUIRE(completed.empty());
 
-		service.run_for(run_duration);
+		service.run_for(run_duration, add_completed);
 		CHECK(completed.at(0) == &request);
 		REQUIRE_FALSE(request.error);
 
@@ -149,7 +148,7 @@ TEMPLATE_TEST_CASE("net/async/basic_socket_acceptor", "[!nonportable]",
 		auto s2 = pal_try(TestType::make_socket());
 		pal_try(s2.connect(accept_endpoint));
 
-		service.run_for(run_duration);
+		service.run_for(run_duration, add_completed);
 		CHECK(completed.at(0) == &request);
 		REQUIRE_FALSE(request.error);
 
@@ -174,7 +173,7 @@ TEMPLATE_TEST_CASE("net/async/basic_socket_acceptor", "[!nonportable]",
 		acceptor.async_accept(&request);
 		REQUIRE(completed.empty());
 
-		service.run_for(run_duration);
+		service.run_for(run_duration, add_completed);
 		CHECK(completed.at(0) == &request);
 		REQUIRE_FALSE(request.error);
 
@@ -199,7 +198,7 @@ TEMPLATE_TEST_CASE("net/async/basic_socket_acceptor", "[!nonportable]",
 		auto peer = pal_try(TestType::make_socket());
 		pal_try(peer.connect(accept_endpoint));
 
-		service.run_for(run_duration);
+		service.run_for(run_duration, add_completed);
 		REQUIRE(completed.size() == 1);
 		if constexpr (pal::is_windows_build)
 		{
@@ -218,7 +217,7 @@ TEMPLATE_TEST_CASE("net/async/basic_socket_acceptor", "[!nonportable]",
 
 		acceptor.close();
 
-		service.run_once();
+		service.run_once(add_completed);
 		REQUIRE(completed.size() == 2);
 		CHECK(completed.at(1) == fail);
 		CHECK(fail->error == std::errc::bad_file_descriptor);
@@ -238,7 +237,7 @@ TEMPLATE_TEST_CASE("net/async/basic_socket_acceptor", "[!nonportable]",
 		acceptor.async_accept(&r2);
 		REQUIRE(completed.empty());
 
-		service.run_for(run_duration);
+		service.run_for(run_duration, add_completed);
 		REQUIRE(completed.size() == 1);
 		CHECK(completed.at(0) == &r1);
 		REQUIRE_FALSE(r1.error);
@@ -249,7 +248,7 @@ TEMPLATE_TEST_CASE("net/async/basic_socket_acceptor", "[!nonportable]",
 
 		acceptor.close();
 
-		service.run_once();
+		service.run_once(add_completed);
 		REQUIRE(completed.size() == 2);
 		CHECK(completed.at(1) == &r2);
 		CHECK(r2.error == std::errc::bad_file_descriptor);
@@ -263,7 +262,7 @@ TEMPLATE_TEST_CASE("net/async/basic_socket_acceptor", "[!nonportable]",
 		acceptor.async_accept(&request);
 		REQUIRE(completed.empty());
 
-		service.run_for(run_duration);
+		service.run_for(run_duration, add_completed);
 		CHECK(completed.at(0) == &request);
 		CHECK(request.error == std::errc::invalid_argument);
 		CHECK(std::holds_alternative<pal::net::async::accept>(request));
@@ -279,7 +278,7 @@ TEMPLATE_TEST_CASE("net/async/basic_socket_acceptor", "[!nonportable]",
 
 		pal_try(acceptor.close());
 
-		service.run_for(run_duration);
+		service.run_for(run_duration, add_completed);
 		CHECK(completed.at(0) == &request);
 		CHECK(request.error == std::errc::bad_file_descriptor);
 		CHECK(std::holds_alternative<pal::net::async::accept>(request));
@@ -298,7 +297,7 @@ TEMPLATE_TEST_CASE("net/async/basic_socket_acceptor", "[!nonportable]",
 		acceptor.async_accept(&request);
 		REQUIRE(completed.empty());
 
-		service.run_for(run_duration);
+		service.run_for(run_duration, add_completed);
 		CHECK(completed.at(0) == &request);
 		CHECK(request.error == std::errc::bad_file_descriptor);
 		CHECK(std::holds_alternative<pal::net::async::accept>(request));

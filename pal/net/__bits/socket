@@ -340,12 +340,12 @@ struct service
 
 	result<void> add (__bits::socket &socket) noexcept;
 
-	using notify_fn = void(*)(void *listener, async::request *request) noexcept;
+	using notify_fn = void(*)(void *handler, async::request *request) noexcept;
 
 	void poll_for (
 		const std::chrono::milliseconds &duration,
 		notify_fn notify,
-		void *listener
+		void *handler
 	) noexcept;
 };
 

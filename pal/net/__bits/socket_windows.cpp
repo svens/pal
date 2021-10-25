@@ -201,12 +201,12 @@ struct service::impl_type
 		}
 	}
 
-	void notify (notify_fn notify, void *listener) noexcept
+	void notify (notify_fn notify, void *handler) noexcept
 	{
 		auto requests = std::move(completed);
 		while (auto *request = requests.try_pop())
 		{
-			notify(listener, request);
+			notify(handler, request);
 		}
 	}
 };

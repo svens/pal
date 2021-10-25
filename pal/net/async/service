@@ -31,7 +31,6 @@ namespace net::async {
  * \todo Document deferred posting
  * \todo Document exception safety
  */
-template <typename CompletionHandler>
 class service
 {
 public:
@@ -100,7 +99,8 @@ public:
 	 *
 	 * \todo document exceptions only from callback
 	 */
-	void run_for (clock_type::duration poll_duration) noexcept;
+	template <typename CompletionHandler>
+	void run_for (clock_type::duration poll_duration, CompletionHandler handler) noexcept;
 
 
 	/**
@@ -108,9 +108,10 @@ public:
 	 * This method returns immediately if there are no already completed
 	 * pending requests.
 	 */
-	void run_once () noexcept
+	template <typename CompletionHandler>
+	void run_once (CompletionHandler handler) noexcept
 	{
-		run_for(clock_type::duration::zero());
+		run_for(clock_type::duration::zero(), handler);
 	}
 
 
@@ -118,9 +119,10 @@ public:
 	 * \copybrief run_for()
 	 * This method blocks until there is any completed request available.
 	 */
-	void run () noexcept
+	template <typename CompletionHandler>
+	void run (CompletionHandler handler) noexcept
 	{
-		run_for((clock_type::duration::max)());
+		run_for((clock_type::duration::max)(), handler);
 	}
 
 
@@ -138,18 +140,17 @@ public:
 private:
 
 	__bits::service impl_;
-	CompletionHandler completed_;
 	request_queue pending_{};
 	clock_type::time_point now_{clock_type::now()};
 
-	service (CompletionHandler handler, std::error_code &error) noexcept
+	service (std::error_code &error) noexcept
 		: impl_{error}
-		, completed_{handler}
 	{ }
 
-	static void process (void *listener, request *request) noexcept
+	template <typename CompletionHandler>
+	static void notify (void *handler, request *request) noexcept
 	{
-		reinterpret_cast<service *>(listener)->completed_(request);
+		(*reinterpret_cast<CompletionHandler *>(handler))(request);
 	}
 
 	static constexpr auto to_msec (const clock_type::duration &d) noexcept
@@ -157,13 +158,12 @@ private:
 		return std::chrono::duration_cast<std::chrono::milliseconds>(d);
 	}
 
-	template <typename H>
-	friend result<service<H>> make_service (H) noexcept;
+	friend result<service> make_service () noexcept;
 };
 
 
 template <typename CompletionHandler>
-void service<CompletionHandler>::run_for (clock_type::duration poll_duration) noexcept
+void service::run_for (clock_type::duration poll_duration, CompletionHandler handler) noexcept
 {
 	now_ = clock_type::now();
 	if (auto r = pending_.head())
@@ -178,7 +178,7 @@ void service<CompletionHandler>::run_for (clock_type::duration poll_duration) no
 		}
 	}
 
-	impl_.poll_for(to_msec(poll_duration), &service::process, this);
+	impl_.poll_for(to_msec(poll_duration), &notify<CompletionHandler>, &handler);
 
 	now_ = clock_type::now();
 	while (auto *r = pending_.head())
@@ -187,7 +187,7 @@ void service<CompletionHandler>::run_for (clock_type::duration poll_duration) no
 		{
 			break;
 		}
-		completed_(pending_.pop());
+		handler(pending_.pop());
 	}
 }
 
@@ -196,15 +196,13 @@ void service<CompletionHandler>::run_for (clock_type::duration poll_duration) no
  * Create new asynchronous I/O service with asynchronous request completion
  * \a handler.
  */
-template <typename CompletionHandler>
-auto make_service (CompletionHandler handler) noexcept
-	-> result<service<CompletionHandler>>
+inline result<service> make_service () noexcept
 {
 	std::error_code error;
-	service<CompletionHandler> service{handler, error};
+	service svc{error};
 	if (!error)
 	{
-		return service;
+		return svc;
 	}
 	return unexpected{error};
 

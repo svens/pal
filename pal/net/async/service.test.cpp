@@ -16,23 +16,29 @@ TEST_CASE("net/async/service", "[!mayfail]")
 	SECTION("make_service not enough memory")
 	{
 		pal_test::bad_alloc_once x;
-		auto make_service = pal::net::async::make_service([](auto){});
+		auto make_service = pal::net::async::make_service();
 		REQUIRE_FALSE(make_service);
 		CHECK(make_service.error() == std::errc::not_enough_memory);
 	}
 
 	pal::net::async::request request, *request_ptr = nullptr;
-	auto service = pal::net::async::make_service(
-		[&request_ptr](auto *request)
-		{
-			request_ptr = request;
-		}
-	).value();
+	auto process = [&request_ptr](auto *request)
+	{
+		request_ptr = request;
+	};
+	auto service = pal_try(pal::net::async::make_service());
+
+	SECTION("assign")
+	{
+		// meaningless test, just to increase coverage
+		auto s = pal_try(pal::net::async::make_service());
+		s = std::move(service);
+	}
 
 	SECTION("post")
 	{
 		service.post(&request);
-		service.run_once();
+		service.run_once(process);
 		CHECK(request_ptr == &request);
 	}
 
@@ -45,28 +51,28 @@ TEST_CASE("net/async/service", "[!mayfail]")
 		SECTION("run_once: post immediately")
 		{
 			service.post_after(0ms, &request);
-			service.run_once();
+			service.run_once(process);
 			CHECK(request_ptr == &request);
 		}
 
 		SECTION("run_once: no post")
 		{
 			service.post_after(100ms, &request);
-			service.run_once();
+			service.run_once(process);
 			CHECK(request_ptr == nullptr);
 		}
 
 		SECTION("run_for: post immediately")
 		{
 			service.post_after(0ms, &request);
-			service.run_for(100ms);
+			service.run_for(100ms, process);
 			CHECK(request_ptr == &request);
 		}
 
 		SECTION("run_for: post before")
 		{
 			service.post_after(100ms, &request);
-			service.run_for(200ms);
+			service.run_for(200ms, process);
 			CHECK(request_ptr == &request);
 			expected_runtime = 100ms;
 		}
@@ -74,7 +80,7 @@ TEST_CASE("net/async/service", "[!mayfail]")
 		SECTION("run_for: post at")
 		{
 			service.post_after(100ms, &request);
-			service.run_for(100ms);
+			service.run_for(100ms, process);
 			CHECK(request_ptr == &request);
 			expected_runtime = 100ms;
 		}
@@ -82,9 +88,9 @@ TEST_CASE("net/async/service", "[!mayfail]")
 		SECTION("run_for: post after")
 		{
 			service.post_after(200ms, &request);
-			service.run_for(100ms);
+			service.run_for(100ms, process);
 			CHECK(request_ptr == nullptr);
-			service.run_for(100ms);
+			service.run_for(100ms, process);
 			CHECK(request_ptr == &request);
 			expected_runtime = 200ms;
 		}
@@ -92,14 +98,14 @@ TEST_CASE("net/async/service", "[!mayfail]")
 		SECTION("run: post immediately")
 		{
 			service.post_after(0ms, &request);
-			service.run();
+			service.run(process);
 			CHECK(request_ptr == &request);
 		}
 
 		SECTION("run: post at")
 		{
 			service.post_after(100ms, &request);
-			service.run();
+			service.run(process);
 			CHECK(request_ptr == &request);
 			expected_runtime = 100ms;
 		}
@@ -111,13 +117,13 @@ TEST_CASE("net/async/service", "[!mayfail]")
 			service.post_after(20ms, &requests[1]);
 			service.post_after(70ms, &requests[2]);
 
-			service.run_for(100ms);
+			service.run_for(100ms, process);
 			CHECK(request_ptr == &requests[1]);
 
-			service.run_for(100ms);
+			service.run_for(100ms, process);
 			CHECK(request_ptr == &requests[0]);
 
-			service.run_for(100ms);
+			service.run_for(100ms, process);
 			CHECK(request_ptr == &requests[2]);
 
 			expected_runtime = 70ms;

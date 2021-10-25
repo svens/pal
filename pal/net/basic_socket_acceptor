@@ -17,9 +17,7 @@ __pal_begin
 namespace net {
 
 
-namespace async {
-template <typename> class service;
-}
+namespace async { class service; }
 
 
 /**
@@ -314,7 +312,6 @@ private:
 		return service.add(acceptor_);
 	}
 
-	template <typename>
 	friend class async::service;
 };
 
