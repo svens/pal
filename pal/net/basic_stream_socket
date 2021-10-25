@@ -7,6 +7,8 @@
 
 #include <pal/__bits/lib>
 #include <pal/net/basic_socket>
+#include <pal/net/async/request>
+#include <pal/not_null>
 
 
 __pal_begin
@@ -41,15 +43,15 @@ public:
 	result<size_t> receive (const MutableSpanSequence &spans,
 		socket_base::message_flags flags = 0) noexcept
 	{
-		__bits::message message;
-		if (message.set(spans))
+		std::error_code error;
+		__bits::message message{};
+		if (message.set(spans, error))
 		{
-			message.msg_flags = flags;
+			message.flags(flags);
 			return base::socket_.receive(message);
 		}
-		return make_unexpected(std::errc::argument_list_too_long);
+		return unexpected{error};
 	}
-
 
 	/**
 	 * Send data in \a spans using this socket. Returns number of bytes
@@ -59,13 +61,93 @@ public:
 	result<size_t> send (const ConstSpanSequence &spans,
 		socket_base::message_flags flags = 0) noexcept
 	{
-		__bits::message message;
-		if (message.set(spans))
+		std::error_code error;
+		__bits::message message{};
+		if (message.set(spans, error))
 		{
-			message.msg_flags = flags;
+			message.flags(flags);
 			return base::socket_.send(message);
 		}
-		return make_unexpected(std::errc::argument_list_too_long);
+		return unexpected{error};
+	}
+
+	//
+	// Asynchronous API
+	//
+
+	/**
+	 * Start asynchronous stream connect request.
+	 * \see connect()
+	 */
+	void async_connect (not_null<async::request *> request,
+		const endpoint_type &endpoint) noexcept(assert_noexcept)
+	{
+		pal_assert(this->has_async());
+		auto &message = request->impl_.message;
+		if (message.reset(request->error))
+		{
+			message.name(endpoint.data(), endpoint.size());
+			message.flags(0);
+		}
+		base::socket_.start(request->emplace<async::connect>());
+	}
+
+	/**
+	 * Start asynchronous stream connect request. If successfully
+	 * connected, immediately send data in \a spans.
+	 *
+	 * \note Linux/MacOS support vectored send, Windows can send only
+	 * single buffer.
+	 */
+	template <typename ConstSpanSequence>
+	void async_connect (not_null<async::request *> request,
+		const endpoint_type &endpoint,
+		const ConstSpanSequence &spans) noexcept(assert_noexcept)
+	{
+		pal_assert(this->has_async());
+		auto &message = request->impl_.message;
+		if (message.set(spans, request->error))
+		{
+			message.name(endpoint.data(), endpoint.size());
+			message.flags(0);
+		}
+		base::socket_.start(request->emplace<async::connect>());
+	}
+
+	/**
+	 * Start asynchronous stream receive request.
+	 * \see receive()
+	 */
+	template <typename MutableSpanSequence>
+	void async_receive (not_null<async::request *> request,
+		const MutableSpanSequence &spans,
+		socket_base::message_flags flags = 0) noexcept(assert_noexcept)
+	{
+		pal_assert(this->has_async());
+		auto &message = request->impl_.message;
+		if (message.set(spans, request->error))
+		{
+			message.flags(flags);
+		}
+		base::socket_.start(request->emplace<async::receive>());
+	}
+
+	/**
+	 * Start asynchronous stream send request.
+	 * \see send()
+	 */
+	template <typename ConstSpanSequence>
+	void async_send (not_null<async::request *> request,
+		const ConstSpanSequence &spans,
+		socket_base::message_flags flags = 0) noexcept(assert_noexcept)
+	{
+		pal_assert(this->has_async());
+		auto &message = request->impl_.message;
+		if (message.set(spans, request->error))
+		{
+			message.flags(flags);
+		}
+		base::socket_.start(request->emplace<async::send>());
 	}
 
 

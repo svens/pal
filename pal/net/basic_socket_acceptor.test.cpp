@@ -8,7 +8,7 @@ namespace {
 using namespace pal_test;
 
 
-TEMPLATE_TEST_CASE("net/basic_socket_acceptor", "",
+TEMPLATE_TEST_CASE("net/basic_socket_acceptor", "[!nonportable]",
 	tcp_v4,
 	tcp_v6,
 	tcp_v6_only)
@@ -95,14 +95,14 @@ TEMPLATE_TEST_CASE("net/basic_socket_acceptor", "",
 
 	SECTION("assign invalid")
 	{
-		REQUIRE(a.assign(TestType::protocol_v, pal::net::__bits::invalid_native_socket));
+		REQUIRE(a.assign(TestType::protocol_v, pal::net::socket_base::invalid_native_handle));
 		REQUIRE_FALSE(a.is_open());
 	}
 
 	SECTION("assign invalid to closed")
 	{
 		REQUIRE(a.close());
-		REQUIRE(a.assign(TestType::protocol_v, pal::net::__bits::invalid_native_socket));
+		REQUIRE(a.assign(TestType::protocol_v, pal::net::socket_base::invalid_native_handle));
 		REQUIRE_FALSE(a.is_open());
 	}
 
@@ -436,9 +436,8 @@ TEMPLATE_TEST_CASE("net/basic_socket_acceptor", "",
 			REQUIRE(pal_test::bind_next_available_port(a, endpoint));
 			endpoint.port(pal_test::next_port(TestType::protocol_v));
 
-			auto acceptor = pal::net::make_socket_acceptor(TestType::protocol_v, endpoint);
-			REQUIRE(acceptor);
-			CHECK(acceptor->local_endpoint().value() == endpoint);
+			auto acceptor = pal_try(pal::net::make_socket_acceptor(TestType::protocol_v, endpoint));
+			CHECK(acceptor.local_endpoint().value() == endpoint);
 		}
 
 		SECTION("address in use")
@@ -465,9 +464,8 @@ TEMPLATE_TEST_CASE("net/basic_socket_acceptor", "",
 
 		SECTION("success")
 		{
-			auto acceptor = pal::net::make_socket_acceptor(TestType::protocol_v, guard.handle);
-			REQUIRE(acceptor);
-			CHECK(acceptor->native_handle() == guard.handle);
+			auto acceptor = pal_try(pal::net::make_socket_acceptor(TestType::protocol_v, guard.handle));
+			CHECK(acceptor.native_handle() == guard.handle);
 			guard.release();
 		}
 

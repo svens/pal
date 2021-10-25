@@ -8,7 +8,7 @@ namespace {
 using namespace pal_test;
 
 
-TEMPLATE_TEST_CASE("net/basic_socket", "",
+TEMPLATE_TEST_CASE("net/basic_socket", "[!nonportable]",
 	udp_v4,
 	tcp_v4,
 	udp_v6,
@@ -98,14 +98,14 @@ TEMPLATE_TEST_CASE("net/basic_socket", "",
 
 	SECTION("assign invalid")
 	{
-		REQUIRE(s.assign(TestType::protocol_v, pal::net::__bits::invalid_native_socket));
+		REQUIRE(s.assign(TestType::protocol_v, pal::net::socket_base::invalid_native_handle));
 		REQUIRE_FALSE(s.is_open());
 	}
 
 	SECTION("assign invalid to closed")
 	{
 		REQUIRE(s.close());
-		REQUIRE(s.assign(TestType::protocol_v, pal::net::__bits::invalid_native_socket));
+		REQUIRE(s.assign(TestType::protocol_v, pal::net::socket_base::invalid_native_handle));
 		REQUIRE_FALSE(s.is_open());
 	}
 

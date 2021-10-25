@@ -7,6 +7,7 @@
 
 #include <pal/__bits/lib>
 #include <pal/not_null>
+#include <functional>
 
 
 __pal_begin
@@ -135,20 +136,66 @@ public:
 
 
 	/**
+	 * Inserts new \a node before existing queue element for which
+	 * comparison function \a cmp(*node, *element) returns true.
+	 */
+	template <typename Cmp = std::less<value_type>>
+	void insert_sorted (not_null<value_type *> node, Cmp cmp = Cmp{}) noexcept
+	{
+		auto it = head_->*Next;
+		if (it && !cmp(*node, *it))
+		{
+			while (it->*Next && cmp(*(it->*Next), *node))
+			{
+				it = it->*Next;
+			}
+			node->*Next = it->*Next;
+			it->*Next = node;
+		}
+		else
+		{
+			node->*Next = it;
+			head_->*Next = node;
+			it = head_;
+		}
+		if (tail_ == it)
+		{
+			tail_ = node;
+		}
+	}
+
+
+	/**
 	 * Pop next node from head of queue. If empty, return nullptr.
 	 */
 	value_type *try_pop () noexcept
 	{
-		if (auto node = head_->*Next)
+		if (auto it = head_->*Next)
 		{
-			head_->*Next = node->*Next;
+			head_->*Next = it->*Next;
 			if (head_->*Next == nullptr)
 			{
 				tail_ = head_;
 			}
-			return node;
+			return it;
 		}
 		return nullptr;
+	}
+
+
+	/**
+	 * Pop node from head of queue. This method should be called in
+	 * cooperation with head() or empty(). If queue is empty, behaviour is
+	 * undefined.
+	 */
+	value_type *pop () noexcept
+	{
+		auto it = std::exchange(head_->*Next, head_->*Next->*Next);
+		if (head_->*Next == nullptr)
+		{
+			tail_ = head_;
+		}
+		return it;
 	}
 
 
@@ -166,7 +213,7 @@ public:
 	 */
 	bool empty () const noexcept
 	{
-		return tail_ == reinterpret_cast<const value_type *>(&sentry_);
+		return tail_ == head_;
 	}
 
 
@@ -176,9 +223,9 @@ public:
 	template <typename UnaryFunction>
 	constexpr UnaryFunction for_each (UnaryFunction f) const
 	{
-		for (auto node = head_->*Next;  node;  node = node->*Next)
+		for (auto it = head_->*Next;  it;  it = it->*Next)
 		{
-			f(*node);
+			f(*it);
 		}
 		return f;
 	}
@@ -186,7 +233,7 @@ public:
 
 private:
 
-	char sentry_[sizeof(value_type)];
+	char sentry_[sizeof(value_type)] = {};
 	value_type * const head_ = reinterpret_cast<value_type *>(&sentry_);
 	value_type *tail_ = head_;
 };

@@ -3,6 +3,7 @@
 
 #if __pal_os_windows
 
+#include <pal/net/async/request>
 #include <algorithm>
 #include <ws2tcpip.h>
 
@@ -93,7 +94,7 @@ lib lib::instance{};
 
 inline unexpected<std::error_code> sys_error (int e = ::WSAGetLastError()) noexcept
 {
-	if (e == WSAENOTSOCK)
+	if (e == WSAENOTSOCK || e == WSA_INVALID_HANDLE)
 	{
 		// unify with POSIX
 		e = WSAEBADF;
@@ -187,21 +188,56 @@ result<void> close_handle (native_socket handle) noexcept
 }
 
 
+struct service::impl_type
+{
+	HANDLE handle = INVALID_HANDLE_VALUE;
+	async::request_queue completed{};
+
+	~impl_type () noexcept
+	{
+		if (handle != INVALID_HANDLE_VALUE)
+		{
+			(void)::CloseHandle(handle);
+		}
+	}
+
+	void notify (notify_fn notify, void *handler) noexcept
+	{
+		auto requests = std::move(completed);
+		while (auto *request = requests.try_pop())
+		{
+			notify(handler, request);
+		}
+	}
+};
+
+
 struct socket::impl_type
 {
 	native_socket handle = invalid_native_socket;
+	bool is_acceptor{};
 	int family;
+
+	__bits::service::impl_type *service{};
 
 	~impl_type () noexcept
 	{
 		handle_guard{handle};
 	}
+
+	int complete (async::connect &connect, async::request *request) noexcept;
+	int complete (async::accept &accept, async::request *request) noexcept;
 };
 
 
 socket::socket (socket &&) noexcept = default;
 socket &socket::operator= (socket &&) noexcept = default;
 socket::~socket () noexcept = default;
+
+
+service::service (service &&) noexcept = default;
+service &service::operator= (service &&) noexcept = default;
+service::~service () noexcept = default;
 
 
 socket::socket () noexcept
@@ -214,7 +250,7 @@ socket::socket (impl_ptr impl) noexcept
 { }
 
 
-result<socket> socket::open (int family, int type, int protocol) noexcept
+result<socket> socket::open (bool is_acceptor, int family, int type, int protocol) noexcept
 {
 	auto e = ERROR_NOT_ENOUGH_MEMORY;
 	if (auto impl = impl_ptr{new(std::nothrow) impl_type})
@@ -222,6 +258,7 @@ result<socket> socket::open (int family, int type, int protocol) noexcept
 		impl->handle = ::WSASocketW(family, type, protocol, nullptr, 0, WSA_FLAG_OVERLAPPED);
 		if (impl->handle != invalid_native_socket)
 		{
+			impl->is_acceptor = is_acceptor;
 			impl->family = family;
 			init_handle(impl->handle, type);
 			return impl;
@@ -239,15 +276,17 @@ result<socket> socket::open (int family, int type, int protocol) noexcept
 }
 
 
-result<void> socket::assign (int family, int, int, native_socket handle) noexcept
+result<void> socket::assign (bool is_acceptor, int family, int, int, native_socket handle) noexcept
 {
 	if (impl)
 	{
+		impl->is_acceptor = is_acceptor;
 		impl->family = family;
 		return close_handle(std::exchange(impl->handle, handle));
 	}
 	else if ((impl = impl_ptr{new(std::nothrow) impl_type}))
 	{
+		impl->is_acceptor = is_acceptor;
 		impl->family = family;
 		impl->handle = handle;
 		return {};
@@ -542,6 +581,9 @@ result<void> socket::set_option (int level, int name, const void *data, size_t d
 
 
 __pal_end
+
+
+#include "socket_iocp.ipp"
 
 
 #endif // __pal_os_windows

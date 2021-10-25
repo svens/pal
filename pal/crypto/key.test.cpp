@@ -36,9 +36,9 @@ auto &keys ()
 
 constexpr const char *tags =
 #if __pal_os_macos
-	"[.]"
+	"[.][!nonportable]"
 #else
-	""
+	"[!nonportable]"
 #endif
 ;
 

@@ -1,0 +1,269 @@
+#pragma once // -*- C++ -*-
+
+/**
+ * \file pal/net/async/request
+ * Generic asynchronous request
+ */
+
+
+#include <pal/__bits/lib>
+#include <pal/intrusive_queue>
+#include <pal/net/socket_base>
+
+#if __pal_os_windows
+	#include <ws2ipdef.h>
+#endif
+
+
+__pal_begin
+
+
+namespace net::async {
+
+
+/// Type denoting generic request is holding no specific request
+using no_request = std::monostate;
+
+
+/**
+ * Result of Socket::async_send_to() request
+ */
+struct send_to
+{
+	/// Number of bytes sent
+	size_t bytes_transferred = 0;
+};
+
+
+/**
+ * Result of Socket::async_receive_from() request
+ */
+struct receive_from
+{
+	/// Number of bytes received
+	size_t bytes_transferred = 0;
+
+	/// Flags for received message
+	socket_base::message_flags flags = {};
+};
+
+
+/**
+ * Result of Socket::async_send() request
+ */
+struct send
+{
+	/// Number of bytes sent
+	size_t bytes_transferred = 0;
+};
+
+
+/**
+ * Result of Socket::async_receive() request
+ */
+struct receive
+{
+	/// Number of bytes sent
+	size_t bytes_transferred = 0;
+
+	/// Flags for received message
+	socket_base::message_flags flags = {};
+};
+
+
+/**
+ * Result of Socket::async_connect() request
+ */
+struct connect
+{
+	/// Number of bytes sent
+	size_t bytes_transferred = 0;
+};
+
+
+/**
+ * Result of Acceptor::async_accept() request
+ */
+struct accept
+{
+public:
+
+	/**
+	 * Accepted native socket handle.
+	 */
+	socket_base::native_handle_type native_handle () noexcept
+	{
+		return guard_.handle;
+	}
+
+	/**
+	 * Accepted native socket handle.
+	 *
+	 * \note Handle is moved. It is caller's responsibility to wrap it
+	 * into higher level socket or close it
+	 */
+	socket_base::native_handle_type release () noexcept
+	{
+		return guard_.release();
+	}
+
+private:
+
+	__bits::handle_guard guard_{__bits::invalid_native_socket};
+
+	friend struct net::__bits::socket;
+	friend struct net::__bits::socket::impl_type;
+};
+
+
+/**
+ * General purpose message for application layer that can post messages
+ * directly to async::io_service completion list.
+ */
+struct message
+{
+	/// Opaque storage for application usage.
+	char data[(std::max)({
+		sizeof(send_to),
+		sizeof(receive_from),
+		sizeof(send),
+		sizeof(receive),
+		sizeof(connect),
+		sizeof(accept),
+	})];
+};
+
+
+/**
+ * Base class for generic asynchronous request
+ */
+using request_variant = std::variant<
+	no_request,
+	message,
+	send_to,
+	receive_from,
+	send,
+	receive,
+	connect,
+	accept
+>;
+
+
+/**
+ * Generic asynchronous request capable holding specific asynchronous requests
+ * data structure and result after completion.
+ */
+class request: public request_variant
+{
+public:
+
+	using request_variant::request_variant;
+	using request_variant::operator=;
+
+	union
+	{
+		/**
+		 * Pointer to next request if it is in queue. This member is
+		 * available for application use only when request is not in
+		 * progress. When request is started, this member should not
+		 * be modified by application layer.
+		 */
+		intrusive_queue_hook<request> next{};
+
+		#if __pal_os_windows
+			/// \internal
+			::WSAOVERLAPPED overlapped_;
+		#endif
+	};
+
+	/**
+	 * Result after asynchronous operation completion. On success,
+	 * error is cleared.
+	 */
+	std::error_code error{};
+
+
+private:
+
+	union
+	{
+		__bits::message message{};
+		std::chrono::steady_clock::time_point post_time;
+	} impl_{};
+
+	friend class service;
+	template <typename> friend class net::basic_datagram_socket;
+	template <typename> friend class net::basic_stream_socket;
+	template <typename> friend class net::basic_socket_acceptor;
+
+	friend struct net::__bits::socket;
+	friend struct net::__bits::socket::impl_type;
+};
+
+
+/**
+ * Request queue
+ * \see request::next
+ */
+using request_queue = intrusive_queue<&request::next>;
+
+
+} // namespace net::async
+
+
+__pal_end
+
+
+#if __cpp_lib_variant < 202102L
+
+//
+// Here be dragons
+//
+// https://github.com/cplusplus/papers/issues/873
+// std::variant proposal had oversight for std::visit for types *inherited*
+// from std::variant (as opposed *being* std::variant)
+//
+// TODO: drop once fixed in supported STL implementations:
+// - MS STL: ok (except variant_size/variant_alternative)
+// - Apple libc++: ok
+// - GNU libstdc++: not ok
+//
+
+namespace std {
+
+template <>
+struct variant_size<pal::net::async::request>
+	: variant_size<pal::net::async::request_variant>
+{ };
+
+template <size_t _1>
+struct variant_alternative<_1, pal::net::async::request>
+	: variant_alternative<_1, pal::net::async::request_variant>
+{ };
+
+#if __GNUC__ >= 9 || (__clang_major__ >= 9 && !__apple_build_version__)
+
+// Extra ugly, specialization into g++ internals :(
+//
+// In general, variant_size & variant_alternative specializations should be
+// sufficient but libstdc++ has lookup-table based std::visit()
+// implementation that needs this
+namespace __detail::__variant {
+
+template <typename _1>
+struct _Extra_visit_slot_needed<_1, pal::net::async::request>
+	: _Extra_visit_slot_needed<_1, pal::net::async::request_variant>
+{ };
+
+template <typename _1>
+struct _Extra_visit_slot_needed<_1, pal::net::async::request &>
+	: _Extra_visit_slot_needed<_1, pal::net::async::request_variant &>
+{ };
+
+} // namespace __detail::__variant
+
+#endif // __GNUC__ >= 9 || (__clang_major__ >= 9 && !__apple_build_version__)
+
+} // namespace std
+
+#endif // __cpp_lib_variant < 202102L

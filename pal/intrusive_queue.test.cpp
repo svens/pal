@@ -1,5 +1,6 @@
 #include <pal/intrusive_queue>
 #include <pal/test>
+#include <array>
 
 
 namespace {
@@ -11,6 +12,12 @@ TEST_CASE("intrusive_queue")
 	{
 		pal::intrusive_queue_hook<foo> hook{};
 		using queue = pal::intrusive_queue<&foo::hook>;
+
+		constexpr bool operator< (const foo &that) const noexcept
+		{
+			// insert_sorted: for tests ordering by location in memory
+			return this < &that;
+		}
 	};
 
 	foo::queue queue{};
@@ -141,17 +148,37 @@ TEST_CASE("intrusive_queue")
 	}
 
 
-	SECTION("single_push_pop")
+	SECTION("push/try_pop: single")
 	{
 		foo f;
 		queue.push(&f);
-		REQUIRE_FALSE(queue.empty());
-		CHECK(queue.head() == &f);
 		CHECK(queue.try_pop() == &f);
 	}
 
 
-	SECTION("multiple_push_pop")
+	SECTION("push/pop: single")
+	{
+		foo f;
+		queue.push(&f);
+		REQUIRE_FALSE(queue.empty());
+		CHECK(queue.pop() == &f);
+	}
+
+
+	SECTION("push/try_pop: multiple")
+	{
+		foo f1, f2, f3;
+		queue.push(&f1);
+		queue.push(&f2);
+		queue.push(&f3);
+
+		CHECK(queue.try_pop() == &f1);
+		CHECK(queue.try_pop() == &f2);
+		CHECK(queue.try_pop() == &f3);
+	}
+
+
+	SECTION("push/pop: multiple")
 	{
 		foo f1, f2, f3;
 		queue.push(&f1);
@@ -159,20 +186,41 @@ TEST_CASE("intrusive_queue")
 		queue.push(&f3);
 
 		REQUIRE_FALSE(queue.empty());
-		CHECK(queue.head() == &f1);
-		CHECK(queue.try_pop() == &f1);
+		CHECK(queue.pop() == &f1);
 
 		REQUIRE_FALSE(queue.empty());
-		CHECK(queue.head() == &f2);
-		CHECK(queue.try_pop() == &f2);
+		CHECK(queue.pop() == &f2);
 
 		REQUIRE_FALSE(queue.empty());
-		CHECK(queue.head() == &f3);
-		CHECK(queue.try_pop() == &f3);
+		CHECK(queue.pop() == &f3);
 	}
 
 
-	SECTION("interleaved_push_pop")
+	SECTION("push/try_pop: interleaved")
+	{
+		foo f1, f2, f3;
+		queue.push(&f1);
+		queue.push(&f2);
+
+		// pop 1
+		CHECK(queue.try_pop() == &f1);
+
+		// push 3
+		queue.push(&f3);
+
+		// pop 2, push 2
+		CHECK(queue.try_pop() == &f2);
+		queue.push(&f2);
+
+		// pop 3
+		CHECK(queue.try_pop() == &f3);
+
+		// pop 2
+		CHECK(queue.try_pop() == &f2);
+	}
+
+
+	SECTION("push/pop: interleaved")
 	{
 		foo f1, f2, f3;
 		queue.push(&f1);
@@ -180,27 +228,23 @@ TEST_CASE("intrusive_queue")
 
 		// pop 1
 		REQUIRE_FALSE(queue.empty());
-		CHECK(queue.head() == &f1);
-		CHECK(queue.try_pop() == &f1);
+		CHECK(queue.pop() == &f1);
 
 		// push 3
 		queue.push(&f3);
 
 		// pop 2, push 2
 		REQUIRE_FALSE(queue.empty());
-		CHECK(queue.head() == &f2);
-		CHECK(queue.try_pop() == &f2);
+		CHECK(queue.pop() == &f2);
 		queue.push(&f2);
 
 		// pop 3
 		REQUIRE_FALSE(queue.empty());
-		CHECK(queue.head() == &f3);
-		CHECK(queue.try_pop() == &f3);
+		CHECK(queue.pop() == &f3);
 
 		// pop 2
 		REQUIRE_FALSE(queue.empty());
-		CHECK(queue.head() == &f2);
-		CHECK(queue.try_pop() == &f2);
+		CHECK(queue.pop() == &f2);
 	}
 
 
@@ -217,14 +261,46 @@ TEST_CASE("intrusive_queue")
 	}
 
 
-	SECTION("for_each empty")
+	SECTION("insert_sorted")
 	{
-		bool invoked = false;
-		queue.for_each([&invoked](foo &)
+		std::array<foo, 4> f;
+		static_assert(f[0] < f[1]);
+		static_assert(f[1] < f[2]);
+
+		SECTION("head")
 		{
-			invoked = true;
-		});
-		CHECK_FALSE(invoked);
+			queue.insert_sorted(&f[2]);
+			queue.insert_sorted(&f[1]);
+			queue.insert_sorted(&f[0]);
+		}
+
+		SECTION("tail")
+		{
+			queue.insert_sorted(&f[0]);
+			queue.insert_sorted(&f[1]);
+			queue.insert_sorted(&f[2]);
+		}
+
+		SECTION("mixed")
+		{
+			queue.insert_sorted(&f[1]);
+			queue.insert_sorted(&f[2]);
+			queue.insert_sorted(&f[0]);
+		}
+
+		queue.push(&f[3]);
+
+		REQUIRE_FALSE(queue.empty());
+		CHECK(queue.try_pop() == &f[0]);
+
+		REQUIRE_FALSE(queue.empty());
+		CHECK(queue.try_pop() == &f[1]);
+
+		REQUIRE_FALSE(queue.empty());
+		CHECK(queue.try_pop() == &f[2]);
+
+		REQUIRE_FALSE(queue.empty());
+		CHECK(queue.try_pop() == &f[3]);
 	}
 
 
@@ -251,6 +327,17 @@ TEST_CASE("intrusive_queue")
 
 		CHECK(queue.try_pop() == &f1);
 		CHECK(queue.try_pop() == &f2);
+	}
+
+
+	SECTION("for_each: empty")
+	{
+		bool invoked = false;
+		queue.for_each([&invoked](foo &)
+		{
+			invoked = true;
+		});
+		CHECK_FALSE(invoked);
 	}
 
 

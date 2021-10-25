@@ -201,4 +201,45 @@ bool bind_next_available_port (Socket &socket, typename Socket::endpoint_type &e
 }
 
 
+//
+// I/O tests shared data and buffers
+//
+
+inline constexpr std::string_view send_view = "hello, world";
+inline constexpr std::string_view send_bufs[] = { "hello", ", ", "world" };
+inline constexpr std::array send_msg =
+{
+	std::span{send_bufs[0]},
+	std::span{send_bufs[1]},
+	std::span{send_bufs[2]},
+};
+inline constexpr std::array send_msg_list_too_long =
+{
+	std::span{send_bufs[0]},
+	std::span{send_bufs[0]},
+	std::span{send_bufs[0]},
+	std::span{send_bufs[0]},
+	std::span{send_bufs[0]},
+};
+static_assert(send_msg_list_too_long.size() > pal::net::socket_base::iov_max_size);
+
+inline char recv_buf[1024];
+inline std::span<char> recv_msg{recv_buf};
+inline std::array recv_msg_list_too_long =
+{
+	recv_msg,
+	recv_msg,
+	recv_msg,
+	recv_msg,
+	recv_msg,
+};
+static_assert(recv_msg_list_too_long.size() > pal::net::socket_base::iov_max_size);
+
+
+inline std::string_view recv_view (size_t size) noexcept
+{
+	return {recv_buf, size};
+}
+
+
 } // namespace pal_test

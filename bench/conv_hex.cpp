@@ -43,8 +43,8 @@ void conv_to_hex (benchmark::State &state)
 	state.SetBytesProcessed(state.iterations() * size);
 }
 BENCHMARK(conv_to_hex)
-  ->RangeMultiplier(2)->Range(8, 2<<8)
-  ->Complexity()
+	->RangeMultiplier(2)->Range(8, 2<<8)
+	->Complexity()
 ;
 
 
@@ -89,8 +89,8 @@ void conv_from_hex (benchmark::State &state)
 	state.SetBytesProcessed(state.iterations() * size);
 }
 BENCHMARK(conv_from_hex)
-  ->RangeMultiplier(2)->Range(8, 2<<8)
-  ->Complexity()
+	->RangeMultiplier(2)->Range(8, 2<<8)
+	->Complexity()
 ;
 
 

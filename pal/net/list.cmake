@@ -1,6 +1,9 @@
 list(APPEND pal_sources
     # socket
     pal/net/__bits/socket
+    pal/net/__bits/socket_epoll.ipp
+    pal/net/__bits/socket_iocp.ipp
+    pal/net/__bits/socket_kqueue.ipp
     pal/net/__bits/socket_posix.cpp
     pal/net/__bits/socket_windows.cpp
     pal/net/basic_datagram_socket
@@ -23,6 +26,10 @@ list(APPEND pal_sources
     pal/net/ip/socket_option
     pal/net/ip/tcp
     pal/net/ip/udp
+
+    # async
+    pal/net/async/request
+    pal/net/async/service
 )
 
 list(APPEND pal_test_sources
@@ -43,4 +50,13 @@ list(APPEND pal_test_sources
     pal/net/ip/host_name.test.cpp
     pal/net/ip/tcp.test.cpp
     pal/net/ip/udp.test.cpp
+
+    # async
+    pal/net/async/request.test.cpp
+    pal/net/async/service.test.cpp
+
+    # async/socket
+    pal/net/async/basic_datagram_socket.test.cpp
+    pal/net/async/basic_socket_acceptor.test.cpp
+    pal/net/async/basic_stream_socket.test.cpp
 )

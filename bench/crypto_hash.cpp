@@ -33,24 +33,24 @@ void crypto_hash (benchmark::State &state)
 	state.SetBytesProcessed(state.iterations() * size);
 }
 BENCHMARK_TEMPLATE(crypto_hash, md5)
-  ->RangeMultiplier(2)->Range(32, 2<<8)
-  ->Complexity()
+	->RangeMultiplier(2)->Range(32, 2<<8)
+	->Complexity()
 ;
 BENCHMARK_TEMPLATE(crypto_hash, sha1)
-  ->RangeMultiplier(2)->Range(32, 2<<8)
-  ->Complexity()
+	->RangeMultiplier(2)->Range(32, 2<<8)
+	->Complexity()
 ;
 BENCHMARK_TEMPLATE(crypto_hash, sha256)
-  ->RangeMultiplier(2)->Range(32, 2<<8)
-  ->Complexity()
+	->RangeMultiplier(2)->Range(32, 2<<8)
+	->Complexity()
 ;
 BENCHMARK_TEMPLATE(crypto_hash, sha384)
-  ->RangeMultiplier(2)->Range(32, 2<<8)
-  ->Complexity()
+	->RangeMultiplier(2)->Range(32, 2<<8)
+	->Complexity()
 ;
 BENCHMARK_TEMPLATE(crypto_hash, sha512)
-  ->RangeMultiplier(2)->Range(32, 2<<8)
-  ->Complexity()
+	->RangeMultiplier(2)->Range(32, 2<<8)
+	->Complexity()
 ;
 
 
@@ -73,24 +73,24 @@ void crypto_hash_one_shot (benchmark::State &state)
 	state.SetBytesProcessed(state.iterations() * size);
 }
 BENCHMARK_TEMPLATE(crypto_hash_one_shot, md5)
-  ->RangeMultiplier(2)->Range(32, 2<<8)
-  ->Complexity()
+	->RangeMultiplier(2)->Range(32, 2<<8)
+	->Complexity()
 ;
 BENCHMARK_TEMPLATE(crypto_hash_one_shot, sha1)
-  ->RangeMultiplier(2)->Range(32, 2<<8)
-  ->Complexity()
+	->RangeMultiplier(2)->Range(32, 2<<8)
+	->Complexity()
 ;
 BENCHMARK_TEMPLATE(crypto_hash_one_shot, sha256)
-  ->RangeMultiplier(2)->Range(32, 2<<8)
-  ->Complexity()
+	->RangeMultiplier(2)->Range(32, 2<<8)
+	->Complexity()
 ;
 BENCHMARK_TEMPLATE(crypto_hash_one_shot, sha384)
-  ->RangeMultiplier(2)->Range(32, 2<<8)
-  ->Complexity()
+	->RangeMultiplier(2)->Range(32, 2<<8)
+	->Complexity()
 ;
 BENCHMARK_TEMPLATE(crypto_hash_one_shot, sha512)
-  ->RangeMultiplier(2)->Range(32, 2<<8)
-  ->Complexity()
+	->RangeMultiplier(2)->Range(32, 2<<8)
+	->Complexity()
 ;
 
 

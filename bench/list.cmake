@@ -7,4 +7,5 @@ list(APPEND pal_bench_sources
     bench/expected.cpp
     bench/hash.cpp
     bench/invoke.cpp
+    bench/request_handler.cpp
 )

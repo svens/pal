@@ -29,7 +29,7 @@ inline certificate::time_type far_future () noexcept
 }
 
 
-TEST_CASE("crypto/certificate")
+TEST_CASE("crypto/certificate", "[!nonportable]")
 {
 	const certificate null{};
 	std::error_code error;

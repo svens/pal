@@ -6,7 +6,7 @@
 namespace {
 
 
-TEST_CASE("crypto/error")
+TEST_CASE("crypto/error", "[!nonportable]")
 {
 	#define __pal_crypto_errc_value(Code, Message) pal::crypto::errc::Code,
 

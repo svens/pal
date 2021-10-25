@@ -2,6 +2,7 @@
 
 #if __pal_os_linux || __pal_os_macos
 
+#include <pal/net/async/request>
 #include <fcntl.h>
 #include <sys/ioctl.h>
 #include <unistd.h>
@@ -26,6 +27,8 @@ namespace {
 	constexpr int SO_NOSIGPIPE = -1;
 #endif
 
+constexpr message_flags internal_flags = MSG_DONTWAIT | MSG_NOSIGNAL;
+
 void init_handle (native_socket handle) noexcept
 {
 	if constexpr (is_macos_build)
@@ -43,6 +46,18 @@ void init_handle (native_socket handle) noexcept
 unexpected<std::error_code> sys_error (int e = errno) noexcept
 {
 	return unexpected<std::error_code>{std::in_place, e, std::generic_category()};
+}
+
+bool is_blocking_error (int error = errno) noexcept
+{
+	if constexpr (EAGAIN != EWOULDBLOCK)
+	{
+		return error == EAGAIN || error == EWOULDBLOCK;
+	}
+	else
+	{
+		return error == EWOULDBLOCK;
+	}
 }
 
 } // namespace
@@ -64,21 +79,151 @@ result<void> close_handle (native_socket handle) noexcept
 }
 
 
-struct socket::impl_type
+struct service::impl_type
 {
-	native_socket handle = invalid_native_socket;
-	int family{};
+	int handle = -1;
+	async::request_queue completed{};
 
 	~impl_type () noexcept
 	{
 		handle_guard{handle};
 	}
+
+	void notify (notify_fn notify, void *handler) noexcept
+	{
+		auto requests = std::move(completed);
+		while (auto *request = requests.try_pop())
+		{
+			notify(handler, request);
+		}
+	}
+};
+
+
+struct socket::impl_type
+{
+	native_socket handle = invalid_native_socket;
+	bool is_acceptor{};
+	int family{};
+
+	__bits::service::impl_type *service{};
+	async::request_queue pending_receive{}, pending_send{};
+
+	void receive_one (async::request *request, size_t &bytes_transferred, message_flags &flags) noexcept;
+	void send_one (async::request *request, size_t &bytes_transferred) noexcept;
+
+	void receive_many (service::notify_fn notify, void *handler) noexcept;
+	void send_many (service::notify_fn notify, void *handler) noexcept;
+	void accept_many (service::notify_fn notify, void *handler) noexcept;
+
+	bool try_now (async::request_queue &queue, async::request *request) noexcept
+	{
+		if (request->error)
+		{
+			service->completed.push(request);
+			return false;
+		}
+
+		request->impl_.message.msg_flags |= internal_flags;
+		if (!queue.empty())
+		{
+			queue.push(request);
+			return false;
+		}
+
+		return true;
+	}
+
+	~impl_type () noexcept
+	{
+		handle_guard{handle};
+		if (service)
+		{
+			cancel(EBADF);
+		}
+	}
+
+	void cancel (async::request_queue &queue, int error) noexcept
+	{
+		while (auto *request = queue.try_pop())
+		{
+			request->error.assign(error, std::generic_category());
+			service->completed.push(request);
+		}
+	}
+
+	void cancel (int error) noexcept
+	{
+		cancel(pending_receive, error);
+		cancel(pending_send, error);
+	}
+
+	void cancel (async::request_queue &queue, service::notify_fn notify, void *handler, int error) noexcept
+	{
+		while (auto *request = queue.try_pop())
+		{
+			request->error.assign(error, std::generic_category());
+			notify(handler, request);
+		}
+	}
+
+	void cancel (service::notify_fn notify, void *handler, int error) noexcept
+	{
+		cancel(pending_receive, notify, handler, error);
+		cancel(pending_send, notify, handler, error);
+	}
+
+	int pending_error () const noexcept
+	{
+		int error{};
+		socklen_t error_size = sizeof(error);
+		if (::getsockopt(handle, SOL_SOCKET, SO_ERROR, &error, &error_size) == -1)
+		{
+			error = errno;
+		}
+		return error;
+	}
+
+	#if __pal_os_linux
+
+		static constexpr size_t max_mmsg = 64;
+
+		::mmsghdr *make_mmsg (async::request *src, ::mmsghdr *it, ::mmsghdr *end) noexcept
+		{
+			for (/**/;  src && it != end;  ++it, src = src->next)
+			{
+				it->msg_hdr = src->impl_.message;
+			}
+			return it;
+		}
+
+		constexpr bool await_read () noexcept
+		{
+			return true;
+		}
+
+		constexpr bool await_write () noexcept
+		{
+			return true;
+		}
+
+	#elif __pal_os_macos
+
+		bool await_read () noexcept;
+		bool await_write () noexcept;
+
+	#endif
 };
 
 
 socket::socket (socket &&) noexcept = default;
 socket &socket::operator= (socket &&) noexcept = default;
 socket::~socket () noexcept = default;
+
+
+service::service (service &&) noexcept = default;
+service &service::operator= (service &&) noexcept = default;
+service::~service () noexcept = default;
 
 
 socket::socket () noexcept
@@ -91,7 +236,7 @@ socket::socket (impl_ptr impl) noexcept
 { }
 
 
-result<socket> socket::open (int family, int type, int protocol) noexcept
+result<socket> socket::open (bool is_acceptor, int family, int type, int protocol) noexcept
 {
 	auto errc = std::errc::not_enough_memory;
 	if (auto impl = impl_ptr{new(std::nothrow) impl_type})
@@ -99,6 +244,7 @@ result<socket> socket::open (int family, int type, int protocol) noexcept
 		impl->handle = ::socket(family, type, protocol);
 		if (impl->handle != invalid_native_socket)
 		{
+			impl->is_acceptor = is_acceptor;
 			impl->family = family;
 			init_handle(impl->handle);
 			return impl;
@@ -126,15 +272,17 @@ result<socket> socket::open (int family, int type, int protocol) noexcept
 }
 
 
-result<void> socket::assign (int family, int, int, native_socket handle) noexcept
+result<void> socket::assign (bool is_acceptor, int family, int, int, native_socket handle) noexcept
 {
 	if (impl)
 	{
+		impl->is_acceptor = is_acceptor;
 		impl->family = family;
 		return close_handle(std::exchange(impl->handle, handle));
 	}
 	else if ((impl = impl_ptr{new(std::nothrow) impl_type}))
 	{
+		impl->is_acceptor = is_acceptor;
 		impl->family = family;
 		impl->handle = handle;
 		return {};
@@ -222,8 +370,9 @@ result<size_t> socket::receive (message &msg) noexcept
 	{
 		return static_cast<size_t>(r);
 	}
-	else if (errno == EAGAIN)
+	else if (is_blocking_error(errno))
 	{
+		// unify with Windows
 		return sys_error(ETIMEDOUT);
 	}
 	return sys_error();
@@ -237,8 +386,9 @@ result<size_t> socket::send (const message &msg) noexcept
 	{
 		return static_cast<size_t>(r);
 	}
-	else if (errno == EAGAIN)
+	else if (is_blocking_error(errno))
 	{
+		// unify with Windows
 		return sys_error(ETIMEDOUT);
 	}
 	else if (errno == EDESTADDRREQ)
@@ -350,6 +500,184 @@ result<void> socket::set_option (int level, int name, const void *data, size_t d
 }
 
 
+bool socket::has_async () const noexcept
+{
+	return impl->service != nullptr;
+}
+
+
+void socket::start (async::receive_from &receive_from) noexcept
+{
+	auto *request = owner_of(receive_from);
+	if (impl->try_now(impl->pending_receive, request))
+	{
+		impl->receive_one(request, receive_from.bytes_transferred, receive_from.flags);
+	}
+}
+
+
+void socket::start (async::receive &receive) noexcept
+{
+	auto *request = owner_of(receive);
+	if (impl->try_now(impl->pending_receive, request))
+	{
+		impl->receive_one(request, receive.bytes_transferred, receive.flags);
+	}
+}
+
+
+void socket::start (async::send_to &send_to) noexcept
+{
+	auto *request = owner_of(send_to);
+	if (impl->try_now(impl->pending_send, request))
+	{
+		impl->send_one(request, send_to.bytes_transferred);
+	}
+}
+
+
+void socket::start (async::send &send) noexcept
+{
+	auto *request = owner_of(send);
+	if (impl->try_now(impl->pending_send, request))
+	{
+		impl->send_one(request, send.bytes_transferred);
+	}
+}
+
+
+void socket::start (async::connect &connect) noexcept
+{
+	auto *request = owner_of(connect);
+	if (impl->try_now(impl->pending_send, request))
+	{
+		auto r = ::connect(impl->handle,
+			static_cast<const sockaddr *>(request->impl_.message.msg_name),
+			request->impl_.message.msg_namelen
+		);
+		if (r > -1)
+		{
+			if (request->impl_.message.msg_iovlen > 0)
+			{
+				impl->send_one(request, connect.bytes_transferred);
+			}
+			else
+			{
+				impl->service->completed.push(request);
+			}
+		}
+		else if (errno == EINPROGRESS && impl->await_write())
+		{
+			impl->pending_send.push(request);
+		}
+		else
+		{
+			request->error.assign(errno, std::generic_category());
+			impl->service->completed.push(request);
+		}
+	}
+}
+
+
+void socket::start (async::accept &accept) noexcept
+{
+	auto *request = owner_of(accept);
+	if (impl->try_now(impl->pending_receive, request))
+	{
+		accept.guard_.handle = ::accept(impl->handle,
+			static_cast<sockaddr *>(request->impl_.message.msg_name),
+			&request->impl_.message.msg_namelen
+		);
+		if (accept.guard_.handle > -1)
+		{
+			impl->service->completed.push(request);
+		}
+		else if (is_blocking_error(errno) && impl->await_read())
+		{
+			impl->pending_receive.push(request);
+		}
+		else
+		{
+			request->error.assign(errno, std::generic_category());
+			impl->service->completed.push(request);
+		}
+	}
+}
+
+
+void socket::impl_type::accept_many (service::notify_fn notify, void *handler) noexcept
+{
+	while (auto *it = pending_receive.head())
+	{
+		auto r = ::accept(handle,
+			static_cast<sockaddr *>(it->impl_.message.msg_name),
+			&it->impl_.message.msg_namelen
+		);
+		if (r > -1)
+		{
+			std::get_if<async::accept>(it)->guard_.handle = r;
+			notify(handler, pending_receive.pop());
+		}
+		else
+		{
+			if (!is_blocking_error(errno) || !await_read())
+			{
+				it->error.assign(errno, std::generic_category());
+				notify(handler, pending_receive.pop());
+			}
+			break;
+		}
+	}
+}
+
+
+void socket::impl_type::receive_one (async::request *request,
+	size_t &bytes_transferred,
+	message_flags &flags) noexcept
+{
+	auto r = ::recvmsg(handle, &request->impl_.message, request->impl_.message.msg_flags);
+	if (r > -1)
+	{
+		bytes_transferred = r;
+		flags = request->impl_.message.msg_flags & ~internal_flags;
+	}
+	else if (is_blocking_error(errno) && await_read())
+	{
+		pending_receive.push(request);
+		return;
+	}
+	else
+	{
+		request->error.assign(errno, std::generic_category());
+	}
+	service->completed.push(request);
+}
+
+
+void socket::impl_type::send_one (async::request *request, size_t &bytes_transferred) noexcept
+{
+	auto r = ::sendmsg(handle, &request->impl_.message, request->impl_.message.msg_flags);
+	if (r > -1)
+	{
+		bytes_transferred = r;
+	}
+	else if (is_blocking_error(errno) && await_write())
+	{
+		pending_send.push(request);
+		return;
+	}
+	else if (errno == EDESTADDRREQ || errno == EPIPE)
+	{
+		request->error.assign(ENOTCONN, std::generic_category());
+	}
+	else
+	{
+		request->error.assign(errno, std::generic_category());
+	}
+	service->completed.push(request);
+}
+
+
 } // namespace net::__bits
 
 
@@ -357,3 +685,10 @@ __pal_end
 
 
 #endif // __pal_os_linux || __pal_os_macos
+
+
+#if __pal_os_linux
+	#include "socket_epoll.ipp"
+#elif __pal_os_macos
+	#include "socket_kqueue.ipp"
+#endif
