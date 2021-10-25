@@ -58,6 +58,36 @@ TEMPLATE_TEST_CASE("net/async/basic_stream_socket", "[!nonportable]",
 		}
 	}
 
+	SECTION("not async") //{{{1
+	{
+		if constexpr (!pal::assert_noexcept)
+		{
+			SECTION("async_connect")
+			{
+				CHECK_THROWS_AS(
+					socket.async_connect(&request, accept_endpoint),
+					std::logic_error
+				);
+			}
+
+			SECTION("async_receive")
+			{
+				CHECK_THROWS_AS(
+					socket.async_receive(&request, recv_msg),
+					std::logic_error
+				);
+			}
+
+			SECTION("async_send")
+			{
+				CHECK_THROWS_AS(
+					socket.async_send(&request, send_msg),
+					std::logic_error
+				);
+			}
+		}
+	}
+
 	SECTION("make_async: bad file descriptor") //{{{1
 	{
 		auto s = pal_try(TestType::make_socket());

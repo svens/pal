@@ -118,7 +118,9 @@ public:
 
 	/**
 	 * Close socket and release associated resources.
-	 * TODO: document pending asynchronous operations
+	 *
+	 * If this socket has pending asyncronous requests in progress, these
+	 * will be canceled with std::errc::bad_file_descriptor
 	 */
 	result<void> close () noexcept(assert_noexcept)
 	{
@@ -238,7 +240,8 @@ public:
 
 
 	/**
-	 * TODO
+	 * Returns true if \a this socket has been associated with any
+	 * asynchronous service i.e. asynchronous API is enabled.
 	 */
 	bool has_async () const noexcept
 	{

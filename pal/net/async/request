@@ -185,7 +185,6 @@ public:
 
 private:
 
-	// in-progress request data
 	union
 	{
 		__bits::message message{};

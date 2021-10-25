@@ -48,6 +48,44 @@ TEMPLATE_TEST_CASE("net/async/basic_datagram_socket", "[!nonportable]",
 		}
 	}
 
+	SECTION("not async") //{{{1
+	{
+		if constexpr (!pal::assert_noexcept)
+		{
+			SECTION("async_receive_from")
+			{
+				CHECK_THROWS_AS(
+					peer.async_receive_from(&request, recv_msg, endpoint),
+					std::logic_error
+				);
+			}
+
+			SECTION("async_receive")
+			{
+				CHECK_THROWS_AS(
+					peer.async_receive(&request, recv_msg),
+					std::logic_error
+				);
+			}
+
+			SECTION("async_send_to")
+			{
+				CHECK_THROWS_AS(
+					peer.async_send_to(&request, send_msg, endpoint),
+					std::logic_error
+				);
+			}
+
+			SECTION("async_send")
+			{
+				CHECK_THROWS_AS(
+					peer.async_send(&request, send_msg),
+					std::logic_error
+				);
+			}
+		}
+	}
+
 	SECTION("send / async_receive_from: single") //{{{1
 	{
 		auto sent = pal_try(peer.send_to(send_msg[0], endpoint));
@@ -558,140 +596,6 @@ TEMPLATE_TEST_CASE("net/async/basic_datagram_socket", "[!nonportable]",
 		CHECK(completed.at(0) == &request);
 		REQUIRE(request.error == std::errc::not_connected);
 		CHECK(std::holds_alternative<pal::net::async::send>(request));
-	}
-
-	//}}}1
-
-	SECTION("no recursion") //{{{1
-	{
-		// just for case if some test alread grabbed peer
-		REQUIRE_FALSE(peer.has_async());
-
-		// Library/OS may complete asynchronous request immediately
-		// and notify application. In this test we check that if that
-		// happens and application immediately starts another request
-		// in callback, this ping-ponging does not get into recursive
-		// loop
-		//
-		// In following tests, there are two poll syscalls:
-		// 1) after 1st, application layer should receive two
-		//    callbacks: one for request started in main, second for
-		//    request started in callback itself
-		// 2) in second callback, test starts another request but we
-		//    should not receive callback yet, it would mean we are in
-		//    loop
-		// 3) instead, in main, we invoke 2nd poll that would deliver
-		//    us this callback now
-
-		std::array<pal::net::async::request, 3> requests;
-		int call_depth = 0;
-		size_t call_count = 0;
-		enum { receive_from, receive, send_to, send, stop } new_request = stop;
-
-		auto handler = [&](auto *request)
-		{
-			auto i = call_count++;
-			REQUIRE(i < requests.size());
-			REQUIRE(request == &requests[i]);
-			REQUIRE(++call_depth == 1);
-
-			if (new_request == receive_from)
-			{
-				peer.async_receive_from(
-					&requests[call_count],
-					recv_msg,
-					endpoint
-				);
-			}
-			else if (new_request == receive)
-			{
-				peer.async_receive(
-					&requests[call_count],
-					recv_msg
-				);
-			}
-			else if (new_request == send_to)
-			{
-				peer.async_send_to(
-					&requests[call_count],
-					send_msg[call_count],
-					endpoint
-				);
-			}
-			else if (new_request == send)
-			{
-				peer.async_send(
-					&requests[call_count],
-					send_msg[call_count]
-				);
-			}
-
-			REQUIRE(--call_depth == 0);
-		};
-		auto svc = pal_try(pal::net::async::make_service());
-
-		REQUIRE(svc.make_async(peer));
-		REQUIRE(peer.has_async());
-
-		SECTION("async_receive_from")
-		{
-			socket.send_to(send_msg[0], peer_endpoint);
-			socket.send_to(send_msg[1], peer_endpoint);
-			socket.send_to(send_msg[2], peer_endpoint);
-
-			new_request = receive_from;
-			peer.async_receive_from(&requests[0], recv_msg, endpoint);
-
-			svc.run_for(run_duration, handler);
-			CHECK(call_count == 2);
-
-			new_request = stop;
-			svc.run_for(run_duration, handler);
-			CHECK(call_count == 3);
-		}
-
-		SECTION("async_receive")
-		{
-			socket.send_to(send_msg[0], peer_endpoint);
-			socket.send_to(send_msg[1], peer_endpoint);
-			socket.send_to(send_msg[2], peer_endpoint);
-
-			new_request = receive;
-			peer.async_receive(&requests[0], recv_msg);
-
-			svc.run_for(run_duration, handler);
-			CHECK(call_count == 2);
-
-			new_request = stop;
-			svc.run_for(run_duration, handler);
-			CHECK(call_count == 3);
-		}
-
-		SECTION("async_send_to")
-		{
-			new_request = send_to;
-			peer.async_send_to(&requests[0], send_msg[0], endpoint);
-
-			svc.run_for(run_duration, handler);
-			CHECK(call_count == 2);
-
-			new_request = stop;
-			svc.run_for(run_duration, handler);
-			CHECK(call_count == 3);
-		}
-
-		SECTION("async_send")
-		{
-			new_request = send;
-			peer.async_send(&requests[0], send_msg[0]);
-
-			svc.run_for(run_duration, handler);
-			CHECK(call_count == 2);
-
-			new_request = stop;
-			svc.run_for(run_duration, handler);
-			CHECK(call_count == 3);
-		}
 	}
 
 	//}}}1

@@ -43,6 +43,28 @@ TEMPLATE_TEST_CASE("net/async/basic_socket_acceptor", "[!nonportable]",
 		}
 	}
 
+	SECTION("not async") //{{{1
+	{
+		if constexpr (!pal::assert_noexcept)
+		{
+			SECTION("async_accept")
+			{
+				CHECK_THROWS_AS(
+					acceptor.async_accept(&request),
+					std::logic_error
+				);
+			}
+
+			SECTION("async_accept")
+			{
+				CHECK_THROWS_AS(
+					acceptor.async_accept(&request, accept_endpoint),
+					std::logic_error
+				);
+			}
+		}
+	}
+
 	SECTION("make_async: bad file descriptor") //{{{1
 	{
 		handle_guard{acceptor.native_handle()};

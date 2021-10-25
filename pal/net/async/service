@@ -27,9 +27,10 @@ namespace net::async {
  * completed, service will notify application layer using provided callback
  * when run() or one of it's variants is invoked.
  *
- * \todo Document current time point updating strategy
- * \todo Document deferred posting
- * \todo Document exception safety
+ * Asynchronous service class explicitly marks methods that invoke user
+ * provided callbacks as 'noexcept' i.e. it is application responsibility to
+ * catch and handle exceptions in callback. Allowing exception to escape is
+ * undefined behaviour.
  */
 class service
 {
@@ -42,7 +43,11 @@ public:
 
 
 	/**
-	 * Return current time point.
+	 * Return current time point. This method returns reference to
+	 * internal attribute that is updated only during invocation of
+	 * run() or one of it's variants.
+	 *
+	 * \see run()
 	 */
 	const clock_type::time_point &now () const noexcept
 	{
@@ -51,9 +56,9 @@ public:
 
 
 	/**
-	 * Post \a request to completion queue. Next call to run() (or
-	 * similar polling methods) will pass this \a request to completion
-	 * handler.
+	 * Post \a request directly to completion queue. Next call to
+	 * run() (or similar polling methods) will pass this \a request to
+	 * completion handler.
 	 */
 	void post (not_null<request *> request) noexcept
 	{
@@ -65,8 +70,9 @@ public:
 
 	/**
 	 * Post \a request to completion queue at specified \a post_time.
-	 * \note TODO describe reasons for deferring even further
-	 * \see post()
+	 * It is possible callback invocation with \a request is delayed
+	 * further than \a post_time if previous callbacks take long time to
+	 * complete.
 	 */
 	void post_at (const clock_type::time_point &post_time, not_null<request *> request) noexcept
 	{
@@ -93,11 +99,9 @@ public:
 
 	/**
 	 * Gather completed I/O requests and invoke application provided
-	 * \a CompletionHandler. If there are no completed requests available,
-	 * suspend calling thread up to \a poll_duration until there are any
-	 * completions available.
-	 *
-	 * \todo document exceptions only from callback
+	 * completion \a handler. If there are no completed requests
+	 * available, suspend calling thread up to \a poll_duration until
+	 * there are any completions available.
 	 */
 	template <typename CompletionHandler>
 	void run_for (clock_type::duration poll_duration, CompletionHandler handler) noexcept;
@@ -127,7 +131,11 @@ public:
 
 
 	/**
-	 * TODO
+	 * Associate \a socket with this asynchronous completion service. Each
+	 * socket can be associated with one service. Attempt to associate
+	 * specific socket with different service instances is undefined
+	 * behaviour (for debug builds, std::logic_error is thrown). \a socket
+	 * asynchronous API can be used only after calling this method.
 	 */
 	template <typename Socket>
 	result<void> make_async (Socket &socket) noexcept(assert_noexcept)
