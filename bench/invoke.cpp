@@ -174,4 +174,32 @@ void invoke_std_function (benchmark::State &state)
 BENCHMARK(invoke_std_function);
 
 
+void invoke_std_reference_wrapper_function (benchmark::State &state)
+{
+	std::reference_wrapper f = std::ref(function);
+	for (auto _: state)
+	{
+		benchmark::DoNotOptimize(f(state));
+	}
+}
+BENCHMARK(invoke_std_reference_wrapper_function);
+
+
+void invoke_std_reference_wrapper_lambda (benchmark::State &state)
+{
+	auto lambda = [](benchmark::State &state) noexcept
+	{
+		return r * state.iterations();
+	};
+
+	for (auto _: state)
+	{
+		std::reference_wrapper f = std::ref(lambda);
+		benchmark::DoNotOptimize(f);
+		benchmark::DoNotOptimize(f(state));
+	}
+}
+BENCHMARK(invoke_std_reference_wrapper_lambda);
+
+
 } // namespace

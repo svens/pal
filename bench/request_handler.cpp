@@ -73,40 +73,38 @@ BENCHMARK(request_queue_handle)
 // (2)
 //
 
-template <typename Handler>
 struct request_handler
 {
-	Handler h;
-
-	request_handler (Handler h)
-		: h{h}
-	{ }
-
-	static void invoke (request_handler *self, pal::net::async::request *request)
+	template <typename Handler>
+	static void notify (pal::net::async::request *request, void *handler)
 	{
-		self->h(request);
+		(*reinterpret_cast<Handler *>(handler))(request);
+	}
+
+	template <typename Handler>
+	void invoke (pal::net::async::request *request, Handler handler)
+	{
+		void(*run)(pal::net::async::request *, void *) = &notify<Handler>;
+		(*run)(request, &handler);
 	}
 };
 
 void request_handle (benchmark::State &state)
 {
-	request_handler handler(
-		[](pal::net::async::request *request)
-		{
-			benchmark::DoNotOptimize(
-				std::get_if<pal::net::async::send_to>(request)
-			);
-		}
-	);
+	auto process = [](pal::net::async::request *request)
+	{
+		benchmark::DoNotOptimize(
+			std::get_if<pal::net::async::send_to>(request)
+		);
+	};
+	request_handler handler;
 
 	std::vector<pal::net::async::request> pool(state.range(0));
-	auto handle = decltype(handler)::invoke;
-
 	for (auto _: state)
 	{
 		for (auto &r: pool)
 		{
-			handle(&handler, &r);
+			handler.invoke(&r, process);
 		}
 	}
 }
