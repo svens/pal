@@ -1,5 +1,6 @@
 #include <pal/net/internet>
 #include <pal/net/test>
+#include <catch2/catch_test_macros.hpp>
 
 
 namespace {

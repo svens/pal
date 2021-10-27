@@ -1,8 +1,7 @@
 #define _CRT_SECURE_NO_WARNINGS
-#define CATCH_CONFIG_RUNNER
 
-#include <catch2/catch.hpp>
 #include <pal/test>
+#include <catch2/catch_session.hpp>
 #include <cstdlib>
 
 
@@ -14,7 +13,7 @@ int report_hook (int report_type, char *message, int *return_value)
 	static const char *level[] = { "WARN", "ERROR", "ASSERT" };
 	printf("[%s] %s\n", level[report_type], message);
 	*return_value = 0;
-	return TRUE;
+	return true;
 }
 
 void set_report_hook ()

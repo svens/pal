@@ -1,4 +1,0 @@
-[submodule "cmake"]
-	path = cmake
-	url = ../cmake
-	branch = main

@@ -4,11 +4,3 @@ end_of_line = lf
 indent_style = tab
 insert_final_newline = true
 trim_trailing_whitespace = true
-
-[{CMakeLists.txt,*.cmake}]
-indent_style = space
-indent_size = 4
-
-[*.yaml]
-indent_style = space
-indent_size = 2

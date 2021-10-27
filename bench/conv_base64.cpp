@@ -15,7 +15,7 @@ void gen_to_base64_data (std::span<char> span) noexcept
 	auto first = span.data(), last = first + span.size_bytes();
 	while (first != last)
 	{
-		*first++ = gen(rng);
+		*first++ = static_cast<char>(gen(rng));
 	}
 }
 
@@ -25,7 +25,7 @@ void conv_to_base64 (benchmark::State &state)
 	char in[512];
 	char out[pal::to_base64_size(in)];
 
-	const auto size = state.range(0);
+	const size_t size = state.range(0);
 	if (size > sizeof(in))
 	{
 		state.SkipWithError("invalid size");
@@ -75,7 +75,7 @@ void conv_from_base64 (benchmark::State &state)
 	char in[512];
 	char out[pal::from_base64_size(in)];
 
-	const auto size = state.range(0);
+	const size_t size = state.range(0);
 	if (size > sizeof(in))
 	{
 		state.SkipWithError("invalid size");

@@ -1,6 +1,7 @@
 #include <pal/net/ip/tcp>
 #include <pal/net/async/service>
 #include <pal/net/test>
+#include <catch2/catch_template_test_macros.hpp>
 #include <deque>
 
 

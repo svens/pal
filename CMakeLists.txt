@@ -5,40 +5,14 @@ include(cmake/project_version.cmake)
 message(STATUS "${CMAKE_PROJECT_NAME} ${CMAKE_PROJECT_VERSION}")
 
 option(pal_test "Build tests" ON)
-option(pal_cov "Generate test coverage" OFF)
+option(pal_bench "Build benchmarks" OFF)
 option(pal_doc "Generate documentation" OFF)
-option(pal_bench "Build benchmarking application" OFF)
+option(pal_samples "Build samples" OFF)
 
-set(pal_features)
-if(pal_test)
-    list(APPEND pal_features WITH_TEST)
-endif()
-if(pal_cov)
-    list(APPEND pal_features WITH_COV)
-endif()
-if(pal_doc)
-    list(APPEND pal_features WITH_DOC)
-endif()
-
-if(pal_test OR pal_bench)
-    if(${CMAKE_SYSTEM_NAME} STREQUAL "Darwin")
-        # MacOS
-        find_library(core_foundation_lib CoreFoundation)
-        find_library(security_lib Security)
-        set(pal_libs WITH_LIBS ${core_foundation_lib} ${security_lib})
-    elseif(${CMAKE_SYSTEM_NAME} STREQUAL "Linux")
-        # Linux
-        find_package(Threads REQUIRED)
-        find_package(OpenSSL REQUIRED)
-        list(FIND CMAKE_CXX_IMPLICIT_INCLUDE_DIRECTORIES OPENSSL_INCLUDE_DIR i)
-        if(${i} EQUAL -1)
-            include_directories(${OPENSSL_INCLUDE_DIR})
-        endif()
-        set(pal_libs WITH_LIBS ${OPENSSL_CRYPTO_LIBRARY} Threads::Threads)
-    elseif(${CMAKE_SYSTEM_NAME} STREQUAL "Windows")
-        # Windows
-        set(pal_libs WITH_LIBS bcrypt crypt32 ncrypt ntdll ws2_32)
-    endif()
+if(CMAKE_BUILD_TYPE MATCHES "Coverage")
+	set(CMAKE_BUILD_TYPE "Debug")
+	set(Coverage ON)
+	set(pal_test ON)
 endif()
 
 set(CMAKE_CXX_STANDARD 20)
@@ -46,15 +20,59 @@ set(CMAKE_CXX_STANDARD_REQUIRED ON)
 set(CMAKE_CXX_EXTENSIONS OFF)
 
 include(cmake/cxx.cmake)
-cmake_cxx_add_library(pal
-    LIST_FILE pal/list.cmake
-    ${pal_features}
-    ${pal_libs}
+
+# library {{{1
+include(pal/list.cmake)
+cxx_library(pal
+	SOURCES ${pal_sources}
 )
 
+# dependencies {{{1
+set(pal_libraries pal::pal)
+if(${CMAKE_SYSTEM_NAME} STREQUAL "Darwin")
+	find_library(core_foundation_lib CoreFoundation)
+	find_library(security_lib Security)
+	list(APPEND pal_libraries ${core_foundation_lib} ${security_lib})
+elseif(${CMAKE_SYSTEM_NAME} STREQUAL "Linux")
+	find_package(Threads REQUIRED)
+	find_package(OpenSSL REQUIRED)
+	list(FIND CMAKE_CXX_IMPLICIT_INCLUDE_DIRECTORIES OPENSSL_INCLUDE_DIR i)
+	if(${i} EQUAL -1)
+		include_directories(SYSTEM ${OPENSSL_INCLUDE_DIR})
+	endif()
+	list(APPEND pal_libraries ${OPENSSL_CRYPTO_LIBRARY} Threads::Threads)
+elseif(${CMAKE_SYSTEM_NAME} STREQUAL "Windows")
+	list(APPEND pal_libraries bcrypt crypt32 ncrypt ntdll ws2_32)
+endif()
+
+# tests (+coverage) {{{1
+if(pal_test)
+	cxx_test(pal_test
+		SOURCES ${pal_test_sources}
+		LIBRARIES ${pal_libraries}
+		COVERAGE ${Coverage}
+		COVERAGE_BASE_DIR ${CMAKE_SOURCE_DIR}/pal
+	)
+endif()
+
+# benchmarks {{{1
 if(pal_bench)
-    cmake_cxx_add_benchmark(pal
-        LIST_FILE bench/list.cmake
-        ${pal_libs} pal::pal
-    )
+	include(bench/list.cmake)
+	cxx_benchmark(pal_bench
+		SOURCES ${pal_bench_sources}
+		LIBRARIES ${pal_libraries}
+	)
+endif()
+
+# documentation {{{1
+if(pal_doc)
+	cxx_doc(
+		MAIN_PAGE ${CMAKE_SOURCE_DIR}/README.md
+		DIRECTORY ${CMAKE_SOURCE_DIR}/pal
+	)
+endif()
+
+# samples {{{1
+if(pal_samples)
+	# TODO
 endif()
