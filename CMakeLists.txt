@@ -9,10 +9,8 @@ option(pal_bench "Build benchmarks" OFF)
 option(pal_doc "Generate documentation" OFF)
 option(pal_samples "Build samples" OFF)
 
-if(CMAKE_BUILD_TYPE MATCHES "Coverage")
-	set(CMAKE_BUILD_TYPE "Debug")
-	set(Coverage ON)
-	set(pal_test ON)
+if(NOT "${CMAKE_BUILD_TYPE};${CMAKE_CONFIGURATION_TYPES}" MATCHES ".*Coverage.*")
+	set(xxx_test ON)
 endif()
 
 set(CMAKE_CXX_STANDARD 20)
@@ -50,7 +48,6 @@ if(pal_test)
 	cxx_test(pal_test
 		SOURCES ${pal_test_sources}
 		LIBRARIES ${pal_libraries}
-		COVERAGE ${Coverage}
 		COVERAGE_BASE_DIR ${CMAKE_SOURCE_DIR}/pal
 	)
 endif()
@@ -66,7 +63,7 @@ endif()
 
 # documentation {{{1
 if(pal_doc)
-	cxx_doc(
+	cxx_doc(pal
 		MAIN_PAGE ${CMAKE_SOURCE_DIR}/README.md
 		DIRECTORY ${CMAKE_SOURCE_DIR}/pal
 	)
