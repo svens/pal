@@ -71,5 +71,5 @@ endif()
 
 # samples {{{1
 if(pal_samples)
-	# TODO
+	include(samples/list.cmake)
 endif()
