@@ -1,5 +1,7 @@
 #include <pal/byte_order>
 #include <pal/test>
+#include <catch2/catch_template_test_macros.hpp>
+#include <catch2/generators/catch_generators.hpp>
 #include <limits>
 
 #if __pal_os_linux || __pal_os_macos

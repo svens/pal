@@ -1,5 +1,6 @@
 #include <pal/net/basic_socket>
 #include <pal/net/test>
+#include <catch2/catch_template_test_macros.hpp>
 
 
 namespace {

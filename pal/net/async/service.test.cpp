@@ -1,5 +1,7 @@
 #include <pal/net/async/service>
 #include <pal/net/test>
+#include <catch2/catch_approx.hpp>
+#include <catch2/catch_test_macros.hpp>
 
 
 namespace {
@@ -12,6 +14,7 @@ namespace {
 TEST_CASE("net/async/service", "[!mayfail]")
 {
 	using namespace std::chrono_literals;
+	using Catch::Approx;
 
 	SECTION("make_service not enough memory")
 	{

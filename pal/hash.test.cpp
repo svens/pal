@@ -1,5 +1,6 @@
 #include <pal/hash>
 #include <pal/test>
+#include <catch2/catch_test_macros.hpp>
 
 
 namespace {

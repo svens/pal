@@ -1,5 +1,6 @@
 #include <pal/intrusive_mpsc_queue>
 #include <pal/test>
+#include <catch2/catch_test_macros.hpp>
 #include <algorithm>
 #include <array>
 #include <thread>

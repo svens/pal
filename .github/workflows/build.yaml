@@ -78,12 +78,12 @@ jobs:
             | gunzip -c \
             | tar xvf -
           sudo make -C lcov-1.15 install
-          CC=gcc-10 CXX=g++-10 COV=gcov-10 cmake . -DCMAKE_BUILD_TYPE=Debug -Dpal_cov=yes
+          CC=gcc-10 CXX=g++-10 COV=gcov-10 cmake . -DCMAKE_BUILD_TYPE=Coverage
 
       - name: Generate test coverage
-        run: SSL_CERT_FILE=scripts/test-chain.pem cmake --build . --target pal-cov
+        run: SSL_CERT_FILE=scripts/test-chain.pem cmake --build . --target pal_test-cov
 
       - uses: coverallsapp/github-action@master
         with:
           github-token: ${{ secrets.GITHUB_TOKEN }}
-          path-to-lcov: pal.info
+          path-to-lcov: pal_test.info

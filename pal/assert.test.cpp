@@ -1,5 +1,7 @@
 #include <pal/assert>
 #include <pal/test>
+#include <catch2/catch_test_macros.hpp>
+#include <catch2/matchers/catch_matchers_string.hpp>
 
 
 namespace {
@@ -132,7 +134,7 @@ TEST_CASE("assert")
 
 	if constexpr (!pal::assert_noexcept)
 	{
-		using Catch::Matchers::Contains;
+		using Catch::Matchers::ContainsSubstring;
 
 		SECTION("without message")
 		{
@@ -143,7 +145,7 @@ TEST_CASE("assert")
 			}
 			catch (const std::logic_error &e)
 			{
-				CHECK_THAT(e.what(), Contains("1 > 2"));
+				CHECK_THAT(e.what(), ContainsSubstring("1 > 2"));
 			}
 		}
 
@@ -157,7 +159,7 @@ TEST_CASE("assert")
 			}
 			catch (const std::logic_error &e)
 			{
-				CHECK_THAT(e.what(), Contains(message));
+				CHECK_THAT(e.what(), ContainsSubstring(message));
 			}
 		}
 	}

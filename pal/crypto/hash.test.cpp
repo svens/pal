@@ -1,5 +1,6 @@
 #include <pal/crypto/hash>
 #include <pal/crypto/test>
+#include <catch2/catch_template_test_macros.hpp>
 #include <unordered_map>
 
 
