@@ -4,9 +4,11 @@
 //   value that client session used to register itself
 // - relay forwards data from peer to client endpoint
 
-// udp_relay_server_global_map variant registers each client in global map
-// protected by std::shared_mutex (registering does unique_lock, lookup does
-// shared_lock)
+// udp_relay_server_global_map variant
+// * register: client is registered in global map protected by
+//   std::unique_lock<std::shared_mutex>
+// * lookup: on peer receive, cliend endpoint is looked up from map
+//   protected by std::shared_lock<std::shared_mutex>
 
 #include <samples/command_line>
 #include <samples/metrics>
@@ -42,7 +44,7 @@ struct config //{{{1
 	//
 
 	static constexpr std::chrono::seconds stop_check_interval = 5s;
-	static constexpr size_t requests_per_thread = 10'000;
+	static constexpr size_t requests_per_thread_port = 2'000;
 	static constexpr size_t max_receive_size = 1'200;
 
 	//
@@ -113,9 +115,13 @@ public:
 		: config_{config}
 		, stopped_{stopped}
 		, thread_id_{thread_id++}
+		, service_{pal_try(pal::net::async::make_service())}
 		, client_{make_socket(config_.client.port)}
 		, peer_{make_socket(config_.peer.port)}
-	{ }
+	{
+		pal_try(service_.make_async(client_));
+		pal_try(service_.make_async(peer_));
+	}
 
 	~listener ()
 	{
@@ -142,6 +148,7 @@ private:
 	const size_t thread_id_;
 	std::thread thread_{};
 
+	pal::net::async::service service_;
 	socket_type client_, peer_;
 	metrics metrics_{};
 
@@ -176,63 +183,70 @@ private:
 		pal::net::async::request handle{};
 		char data[config::max_receive_size] = {};
 		endpoint_type endpoint{};
-		void(request::*on_completion)(listener *) = {};
 
-		void ready (listener *listener)
+		::listener &listener;
+		void(request::*on_completion)();
+
+		struct client_tag {};
+		struct peer_tag {};
+
+		request (::listener &listener, const client_tag &)
+			: listener{listener}
+			, on_completion{&request::on_client_receive}
 		{
-			(this->*on_completion)(listener);
+			listener.client_.async_receive_from(&handle, std::span{data}, endpoint);
 		}
 
-		void wait_client_receive (listener *listener)
+		request (::listener &listener, const peer_tag &)
+			: listener{listener}
+			, on_completion{&request::on_peer_receive}
 		{
-			on_completion = &request::on_client_receive;
-			listener->client_.async_receive_from(&handle, std::span{data}, endpoint);
+			listener.peer_.async_receive(&handle, std::span{data});
 		}
 
-		void on_client_receive (listener *listener)
+		static void ready (pal::net::async::request *request)
+		{
+			auto &that = *reinterpret_cast<listener::request *>(request);
+			std::invoke(that.on_completion, that);
+		}
+
+		void on_client_receive ()
 		{
 			auto &receive_from = std::get<pal::net::async::receive_from>(handle);
-			listener->metrics_.inc(listener->metrics_.in, receive_from.bytes_transferred);
-
+			listener.metrics_.inc(listener.metrics_.in, receive_from.bytes_transferred);
 			if (receive_from.bytes_transferred == sizeof(client_id))
 			{
 				register_client(get_client_id(data), endpoint);
-				on_completion = &request::on_peer_receive;
-				listener->peer_.async_receive(&handle, std::span{data});
-				return;
 			}
-
-			listener->client_.async_receive_from(&handle, std::span{data}, endpoint);
+			listener.client_.async_receive_from(&handle, std::span{data}, endpoint);
 		}
 
-		void on_peer_receive (listener *listener)
+		void on_peer_receive ()
 		{
 			auto &receive = std::get<pal::net::async::receive>(handle);
-			listener->metrics_.inc(listener->metrics_.in, receive.bytes_transferred);
-
+			listener.metrics_.inc(listener.metrics_.in, receive.bytes_transferred);
 			if (receive.bytes_transferred >= sizeof(client_id))
 			{
-				if (auto *client = try_load(get_client_id(data)))
+				if (auto *client_endpoint = try_load(get_client_id(data)))
 				{
 					on_completion = &request::on_client_send;
-					listener->client_.async_send_to(
+					listener.client_.async_send_to(
 						&handle,
 						std::span{data, receive.bytes_transferred},
-						*client
+						*client_endpoint
 					);
 					return;
 				}
 			}
-
-			listener->peer_.async_receive(&handle, std::span{data});
+			listener.peer_.async_receive(&handle, std::span{data});
 		}
 
-		void on_client_send (listener *listener)
+		void on_client_send ()
 		{
 			auto &send_to = std::get<pal::net::async::send_to>(handle);
-			listener->metrics_.inc(listener->metrics_.out, send_to.bytes_transferred);
+			listener.metrics_.inc(listener.metrics_.out, send_to.bytes_transferred);
 			on_completion = &request::on_peer_receive;
-			listener->peer_.async_receive(&handle, std::span{data});
+			listener.peer_.async_receive(&handle, std::span{data});
 		}
 	};
 
@@ -303,24 +317,16 @@ void listener::io_thread ()
 {
 	this_thread::pin_to_cpu(thread_id_);
 
-	auto service = pal_try(pal::net::async::make_service());
-	pal_try(service.make_async(client_));
-	pal_try(service.make_async(peer_));
-
-	std::deque<request> requests(config_.requests_per_thread);
-	for (auto &request: requests)
+	std::deque<request> client_requests, peer_requests;
+	for (auto i = 0u;  i < config_.requests_per_thread_port;  ++i)
 	{
-		request.wait_client_receive(this);
+		client_requests.emplace_back(*this, request::client_tag{});
+		peer_requests.emplace_back(*this, request::peer_tag{});
 	}
 
 	while (!stopped_)
 	{
-		service.run_for(config_.stop_check_interval,
-			[this](auto *request)
-			{
-				reinterpret_cast<listener::request *>(request)->ready(this);
-			}
-		);
+		service_.run_for(config_.stop_check_interval, &request::ready);
 	}
 }
 
