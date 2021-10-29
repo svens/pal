@@ -164,7 +164,6 @@ private:
 
 	static client_id get_client_id (const void *data) noexcept
 	{
-		// TODO: ntohll
 		return *reinterpret_cast<const client_id *>(data);
 	}
 
