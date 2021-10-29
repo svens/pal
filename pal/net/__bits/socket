@@ -148,7 +148,7 @@ struct message
 		{
 			auto &v = msg_iov[msg_iovlen++];
 			auto &s = *it++;
-			v.buf = const_cast<CHAR *>(s.data());
+			v.buf = const_cast<CHAR *>(reinterpret_cast<const CHAR *>(s.data()));
 			v.len = static_cast<ULONG>(s.size_bytes());
 		}
 
