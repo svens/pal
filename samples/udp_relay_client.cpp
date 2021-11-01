@@ -18,6 +18,7 @@
 
 #include <chrono>
 #include <deque>
+#include <forward_list>
 #include <iostream>
 #include <random>
 
@@ -35,15 +36,15 @@ struct config //{{{1
 	// compile time config
 	//
 
-	static constexpr size_t max_payload_size = 1'200;
+	static constexpr unsigned max_payload_size = 1'200;
 
 	//
 	// runtime config
 	//
 
-	size_t kbps = 59;
-	size_t payload = 200;
-	size_t streams = 1;
+	unsigned kbps = 59;
+	unsigned payload = 200;
+	unsigned streams = 1;
 
 	pal::net::ip::address_v4 server = pal::net::ip::address_v4::loopback();
 
@@ -63,19 +64,19 @@ struct config //{{{1
 		{
 			if (option == "kbps")
 			{
-				kbps = parse<size_t>(option, argument);
+				kbps = parse<unsigned>(option, argument);
 			}
 			else if (option == "payload")
 			{
 				payload = std::clamp(
-					parse<size_t>(option, argument),
-					sizeof(uint64_t),
+					parse<unsigned>(option, argument),
+					static_cast<unsigned>(sizeof(uint64_t)),
 					max_payload_size
 				);
 			}
 			else if (option == "streams")
 			{
-				streams = parse<size_t>(option, argument);
+				streams = std::clamp(parse<unsigned>(option, argument), 1u, 10'000u);
 			}
 			else if (option == "server")
 			{
@@ -118,15 +119,16 @@ class stream //{{{1
 public:
 
 	stream ()
+		: id_{++id}
+		, socket_{pal_try(pal::net::make_datagram_socket(protocol::v4()))}
 	{
 		while (pool_.size() != max_pending_requests)
 		{
-			available_.push(&pool_.emplace_back(*this).handle);
+			available_.push(&pool_.emplace_back(*this, id_).handle);
 		}
-		register_stream();
+		pal_try(service.make_async(socket_));
+		pal_try(socket_.send_to(std::span{&id_, 1}, client_endpoint));
 	}
-
-	void tick ();
 
 	static int run_all (const config &config);
 
@@ -136,24 +138,6 @@ private:
 	// per stream data
 	//
 
-	uint64_t id_{};
-	socket_type socket_{};
-	pal::net::async::service::clock_type::time_point next_tick_{};
-
-	void register_stream ()
-	{
-		id_ = ++id;
-		for (auto &request: pool_)
-		{
-			*reinterpret_cast<uint64_t *>(request.data) = id_;
-		}
-
-		next_tick_ = service.now() + std::chrono::seconds{id_ % 10};
-		socket_ = pal_try(pal::net::make_datagram_socket(protocol::v4()));
-		pal_try(service.make_async(socket_));
-		pal_try(socket_.send_to(std::span{&id_, 1}, client_endpoint));
-	}
-
 	struct request
 	{
 		pal::net::async::request handle{};
@@ -161,9 +145,11 @@ private:
 		void(request::*on_completion)() = {};
 		stream &owner;
 
-		request (stream &owner)
+		request (stream &owner, uint64_t client_id) noexcept
 			: owner{owner}
-		{ }
+		{
+			*reinterpret_cast<uint64_t *>(data) = client_id;
+		}
 
 		void on_peer_send ()
 		{
@@ -180,6 +166,18 @@ private:
 			owner.available_.push(&handle);
 		}
 
+		void on_tick ()
+		{
+			tick();
+			service.post_after(tick_interval, &handle);
+		}
+
+		void on_metrics_print ()
+		{
+			metrics_print();
+			service.post_after(metrics_print_interval, &handle);
+		}
+
 		static void ready (pal::net::async::request *request)
 		{
 			auto &that = *reinterpret_cast<stream::request *>(request);
@@ -187,9 +185,37 @@ private:
 		}
 	};
 
+	uint64_t id_{};
+	socket_type socket_{};
 	std::deque<request> pool_{};
 	pal::net::async::request_queue available_{};
 
+	void start_tick ()
+	{
+		auto &request = pool_.emplace_back(*this, id_);
+		request.on_completion = &request::on_tick;
+		service.post_after(tick_interval, &request.handle);
+	}
+
+	void start_metrics_print ()
+	{
+		auto &request = pool_.emplace_back(*this, id_);
+		request.on_completion = &request::on_metrics_print;
+		service.post_after(metrics_print_interval, &request.handle);
+	}
+
+	void send ()
+	{
+		if (auto *request = reinterpret_cast<stream::request *>(available_.try_pop()))
+		{
+			request->on_completion = &request::on_peer_send;
+			socket_.async_send_to(
+				&request->handle,
+				std::span{request->data, payload_size},
+				peer_endpoint
+			);
+		}
+	}
 
 	//
 	// common streams' data
@@ -203,37 +229,40 @@ private:
 		return dist(eng);
 	}
 
-	// initialized by stream::run_all()
-	static inline uint64_t id = init_id();
-	static inline pal::net::async::service service = pal_try(pal::net::async::make_service());
+	// initialized by run_all()
+	static inline pal::net::async::service::clock_type::duration tick_interval;
+	static inline const std::chrono::seconds metrics_print_interval = 5s;
 	static inline endpoint_type client_endpoint, peer_endpoint;
-	static inline std::chrono::milliseconds tick_interval;
 	static inline size_t max_pending_requests;
 	static inline size_t payload_size;
 
+	static inline uint64_t id = init_id();
+	static inline pal::net::async::service service = pal_try(pal::net::async::make_service());
+	static inline std::forward_list<stream> streams;
 	static inline ::metrics metrics{};
-	static void print_metrics ();
+
+	static void tick ()
+	{
+		for (auto &stream: streams)
+		{
+			stream.send();
+		}
+	}
+
+	static void metrics_print ()
+	{
+		::metrics total;
+		metrics.load_and_reset(total);
+		auto [in_bps, in_unit] = metrics::bits_per_sec(total.in.bytes, metrics_print_interval);
+		auto [out_bps, out_unit] = metrics::bits_per_sec(total.out.bytes, metrics_print_interval);
+		total.in.packets /= metrics_print_interval.count();
+		total.out.packets /= metrics_print_interval.count();
+		std::cout
+			<< " > out: " << total.out.packets << '/' << out_bps << out_unit
+			<< " | in: " << total.in.packets << '/' << in_bps << in_unit
+			<< '\n';
+	}
 };
-
-
-void stream::tick ()
-{
-	if (next_tick_ > service.now())
-	{
-		return;
-	}
-	next_tick_ = service.now() + tick_interval;
-
-	if (auto *request = reinterpret_cast<stream::request *>(available_.try_pop()))
-	{
-		request->on_completion = &request::on_peer_send;
-		socket_.async_send_to(
-			&request->handle,
-			std::span{request->data, payload_size},
-			peer_endpoint
-		);
-	}
-}
 
 
 int stream::run_all (const config &config)
@@ -243,60 +272,40 @@ int stream::run_all (const config &config)
 	client_endpoint = {config.server, config.client.port};
 	peer_endpoint = {config.server, config.peer.port};
 
-	const auto stream_bytes_per_sec = config.kbps * 1000 / 8;
-	const auto total_bytes_per_sec = stream_bytes_per_sec * config.streams;
-	const auto total_packets_per_min = 60 * total_bytes_per_sec / config.payload;
+	const auto stream_bytes_per_min = 60 * config.kbps * 1000 / 8;
+	const auto total_bytes_per_min = config.streams * stream_bytes_per_min;
+	const auto total_packets_per_min = total_bytes_per_min / config.payload;
 	const auto stream_packets_per_min = total_packets_per_min / config.streams;
 
-	tick_interval = 60000ms / stream_packets_per_min;
-	max_pending_requests = 10 * stream_packets_per_min / 60;
 	payload_size = config.payload;
+	max_pending_requests = 10 * stream_packets_per_min / 60;
+	tick_interval = 60000ms * config.payload / config.kbps / 8 / 1000;
 
-	std::cout << "connecting: " << config.streams << " stream(s)\n";
-	std::deque<stream> streams;
-	while (streams.size() != config.streams)
+	const auto [bps, unit] = metrics::bits_per_sec(total_bytes_per_min, 60s);
+	std::cout
+		<< "streaming: "
+			<< bps << unit
+			<< ", " << total_packets_per_min/60 << "pps"
+			<< '\n'
+		<< "connecting: "
+			<< config.streams << " stream(s)"
+			<< '\n'
+	;
+
+	for (auto i = 0u;  i != config.streams;  ++i)
 	{
-		streams.emplace_back();
+		streams.emplace_front();
 	}
 
-	const auto [bps, unit] = metrics::bits_per_sec(total_bytes_per_sec, 1s);
-	std::cout << "streaming: " << bps << unit << ", " << total_packets_per_min/60 << "pps\n";
+	streams.front().start_metrics_print();
+	streams.front().start_tick();
+
 	while (true)
 	{
-		service.run_for(tick_interval / 2, &stream::request::ready);
-		for (auto &stream: streams)
-		{
-			stream.tick();
-		}
-		print_metrics();
+		service.run_for(tick_interval, &stream::request::ready);
 	}
 
 	return EXIT_SUCCESS;
-}
-
-
-void stream::print_metrics ()
-{
-	static const auto interval = 5s;
-	static auto next_print_ = service.now() + interval;
-
-	if (next_print_ > service.now())
-	{
-		return;
-	}
-	next_print_ = service.now() + interval;
-
-	::metrics total;
-	metrics.load_and_reset(total);
-	auto [in_bps, in_unit] = metrics::bits_per_sec(total.in.bytes, interval);
-	auto [out_bps, out_unit] = metrics::bits_per_sec(total.out.bytes, interval);
-	total.in.packets /= interval.count();
-	total.out.packets /= interval.count();
-
-	std::cout
-		<< " > in: " << total.in.packets << '/' << in_bps << in_unit
-		<< " | out: " << total.out.packets << '/' << out_bps << out_unit
-		<< '\n';
 }
 
 //}}}1
