@@ -43,7 +43,7 @@ struct config //{{{1
 	// compile time config
 	//
 
-	static constexpr std::chrono::seconds stop_check_interval = 5s;
+	static constexpr std::chrono::seconds stop_check_interval = 1s;
 	static constexpr size_t requests_per_thread_port = 2'000;
 	static constexpr size_t max_receive_size = 1'200;
 
@@ -435,8 +435,8 @@ void print_metrics (std::deque<listener> &listeners, const std::chrono::seconds 
 	metrics.in.packets /= interval.count();
 	metrics.out.packets /= interval.count();
 	std::cout
-		<< " > in: " << metrics.in.packets << '/' << in_bps << in_unit
-		<< " | out: " << metrics.out.packets << '/' << out_bps << out_unit
+		<< " > in: " << in_bps << in_unit << '/' << metrics.in.packets << "pps"
+		<< " | out: " << out_bps << out_unit << '/' << metrics.out.packets << "pps"
 		<< " | dist: " << ingress_distribution
 		<< '\n'
 	;

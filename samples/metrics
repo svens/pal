@@ -25,6 +25,14 @@ struct metrics
 		dest.out.bytes = std::exchange(out.bytes, 0);
 	}
 
+	void sum_and_reset (metrics &dest) noexcept
+	{
+		dest.in.packets += std::exchange(in.packets, 0);
+		dest.in.bytes += std::exchange(in.bytes, 0);
+		dest.out.packets += std::exchange(out.packets, 0);
+		dest.out.bytes += std::exchange(out.bytes, 0);
+	}
+
 	void sum (metrics &dest) noexcept
 	{
 		dest.in.packets += in.packets;
