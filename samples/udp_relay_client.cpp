@@ -4,13 +4,9 @@
 //   expects data to be sent back to same port from where initial registration
 //   was sent
 
-// Note: this client does not tolerate cumulative packet loss over 10sec:
-// receive requests remain in pending state, not resending packets. It is easy
-// to fix (close/open socket, move pending requests back to available queue,
-// re-register with new id to relay) but for our purposes we don't care.
-
 #include <samples/command_line>
 #include <samples/metrics>
+#include <samples/thread>
 
 #include <pal/net/async/request>
 #include <pal/net/async/service>
@@ -18,9 +14,13 @@
 
 #include <chrono>
 #include <deque>
-#include <forward_list>
 #include <iostream>
 #include <random>
+#include <thread>
+
+#if __pal_os_linux || __pal_os_macos
+	#include <sys/resource.h>
+#endif
 
 
 using namespace std::chrono_literals;
@@ -28,23 +28,30 @@ using namespace std::chrono_literals;
 using protocol = pal::net::ip::udp;
 using endpoint_type = protocol::endpoint;
 using socket_type = protocol::socket;
+using service_type = pal::net::async::service;
 
 
-struct config //{{{1
+class config //{{{1
 {
+public:
+
 	//
 	// compile time config
 	//
 
-	static constexpr unsigned max_payload_size = 1'200;
+	static constexpr size_t max_payload_size = 1'200;
+
+	static inline const pal::net::send_buffer_size send_buffer_size{4 * 1024 * 1024};
+	static inline const pal::net::receive_buffer_size receive_buffer_size{4 * 1024 * 1024};
 
 	//
-	// runtime config
+	// user-provided startup config
 	//
 
-	unsigned kbps = 59;
-	unsigned payload = 200;
-	unsigned streams = 1;
+	size_t kbps = 59;
+	size_t payload = 200;
+	size_t streams = 1;
+	size_t threads = 1;
 
 	pal::net::ip::address_v4 server = pal::net::ip::address_v4::loopback();
 
@@ -64,19 +71,19 @@ struct config //{{{1
 		{
 			if (option == "kbps")
 			{
-				kbps = parse<unsigned>(option, argument);
+				kbps = parse<size_t>(option, argument);
 			}
 			else if (option == "payload")
 			{
-				payload = std::clamp(
-					parse<unsigned>(option, argument),
-					static_cast<unsigned>(sizeof(uint64_t)),
-					max_payload_size
-				);
+				payload = std::clamp(parse<size_t>(option, argument), sizeof(uint64_t), max_payload_size);
 			}
 			else if (option == "streams")
 			{
-				streams = std::clamp(parse<unsigned>(option, argument), 1u, 10'000u);
+				streams = std::max<size_t>(parse<size_t>(option, argument), 1);
+			}
+			else if (option == "threads")
+			{
+				threads = parse<size_t>(option, argument);
 			}
 			else if (option == "server")
 			{
@@ -98,6 +105,7 @@ struct config //{{{1
 				throw std::runtime_error("invalid option '" + option + "'");
 			}
 		});
+		init_runtime_config();
 	}
 
 	void print () const
@@ -106,10 +114,37 @@ struct config //{{{1
 			<< "\n > kbps=" << kbps
 			<< "\n > payload=" << payload
 			<< "\n > streams=" << streams
+			<< "\n > threads=" << threads
 			<< "\n > server=" << server
 			<< "\n > client.port=" << client.port
 			<< "\n > peer.port=" << peer.port
-			<< '\n';
+			<< '\n'
+		;
+	}
+
+	socket_type make_socket () const
+	{
+		auto socket = pal_try(pal::net::make_datagram_socket(protocol::v4()));
+
+		if (send_buffer_size.value() > 0)
+		{
+			pal_try(socket.set_option(send_buffer_size));
+		}
+
+		if (receive_buffer_size.value() > 0)
+		{
+			pal_try(socket.set_option(receive_buffer_size));
+		}
+
+		return socket;
+	}
+
+private:
+
+	void init_runtime_config ()
+	{
+		const auto max_threads = std::min<size_t>(streams, std::thread::hardware_concurrency());
+		threads = std::clamp<size_t>(threads, 1, max_threads);
 	}
 };
 
@@ -118,204 +153,264 @@ class stream //{{{1
 {
 public:
 
-	stream ()
-		: id_{++id}
-		, socket_{pal_try(pal::net::make_datagram_socket(protocol::v4()))}
+	const uint64_t id;
+
+	stream (uint64_t id, const config &config)
+		: id{id}
+		, config_{config}
+		, socket_{config.make_socket()}
+		, blob_{data, config_.payload}
 	{
-		while (pool_.size() != max_pending_requests)
-		{
-			available_.push(&pool_.emplace_back(*this, id_).handle);
-		}
-		pal_try(service.make_async(socket_));
-		pal_try(socket_.send_to(std::span{&id_, 1}, client_endpoint));
+		*reinterpret_cast<uint64_t *>(data) = id;
+		pal_try(socket_.connect({config_.server, config_.peer.port}));
 	}
 
-	static int run_all (const config &config);
+	size_t send ()
+	{
+		return pal_try(socket_.send(blob_));
+	}
 
 private:
 
-	//
-	// per stream data
-	//
-
-	struct request
-	{
-		pal::net::async::request handle{};
-		char data[config::max_payload_size] = {};
-		void(request::*on_completion)() = {};
-		stream &owner;
-
-		request (stream &owner, uint64_t client_id) noexcept
-			: owner{owner}
-		{
-			*reinterpret_cast<uint64_t *>(data) = client_id;
-		}
-
-		void on_peer_send ()
-		{
-			auto &send_to = std::get<pal::net::async::send_to>(handle);
-			metrics.inc(metrics.out, send_to.bytes_transferred);
-			on_completion = &request::on_client_receive;
-			owner.socket_.async_receive(&handle, std::span{data});
-		}
-
-		void on_client_receive ()
-		{
-			auto &receive = std::get<pal::net::async::receive>(handle);
-			metrics.inc(metrics.in, receive.bytes_transferred);
-			owner.available_.push(&handle);
-		}
-
-		void on_tick ()
-		{
-			tick();
-			service.post_after(tick_interval, &handle);
-		}
-
-		void on_metrics_print ()
-		{
-			metrics_print();
-			service.post_after(metrics_print_interval, &handle);
-		}
-
-		static void ready (pal::net::async::request *request)
-		{
-			auto &that = *reinterpret_cast<stream::request *>(request);
-			std::invoke(that.on_completion, that);
-		}
-	};
-
-	uint64_t id_{};
-	socket_type socket_{};
-	std::deque<request> pool_{};
-	pal::net::async::request_queue available_{};
-
-	void start_tick ()
-	{
-		auto &request = pool_.emplace_back(*this, id_);
-		request.on_completion = &request::on_tick;
-		service.post_after(tick_interval, &request.handle);
-	}
-
-	void start_metrics_print ()
-	{
-		auto &request = pool_.emplace_back(*this, id_);
-		request.on_completion = &request::on_metrics_print;
-		service.post_after(metrics_print_interval, &request.handle);
-	}
-
-	void send ()
-	{
-		if (auto *request = reinterpret_cast<stream::request *>(available_.try_pop()))
-		{
-			request->on_completion = &request::on_peer_send;
-			socket_.async_send_to(
-				&request->handle,
-				std::span{request->data, payload_size},
-				peer_endpoint
-			);
-		}
-	}
-
-	//
-	// common streams' data
-	//
-
-	static uint64_t init_id ()
-	{
-		static std::random_device dev;
-		static std::default_random_engine eng(dev());
-		static std::uniform_int_distribution<uint64_t> dist;
-		return dist(eng);
-	}
-
-	// initialized by run_all()
-	static inline pal::net::async::service::clock_type::duration tick_interval;
-	static inline const std::chrono::seconds metrics_print_interval = 5s;
-	static inline endpoint_type client_endpoint, peer_endpoint;
-	static inline size_t max_pending_requests;
-	static inline size_t payload_size;
-
-	static inline uint64_t id = init_id();
-	static inline pal::net::async::service service = pal_try(pal::net::async::make_service());
-	static inline std::forward_list<stream> streams;
-	static inline ::metrics metrics{};
-
-	static void tick ()
-	{
-		for (auto &stream: streams)
-		{
-			stream.send();
-		}
-	}
-
-	static void metrics_print ()
-	{
-		::metrics total;
-		metrics.load_and_reset(total);
-		auto [in_bps, in_unit] = metrics::bits_per_sec(total.in.bytes, metrics_print_interval);
-		auto [out_bps, out_unit] = metrics::bits_per_sec(total.out.bytes, metrics_print_interval);
-		total.in.packets /= metrics_print_interval.count();
-		total.out.packets /= metrics_print_interval.count();
-		std::cout
-			<< " > out: " << total.out.packets << '/' << out_bps << out_unit
-			<< " | in: " << total.in.packets << '/' << in_bps << in_unit
-			<< '\n';
-	}
+	const config &config_;
+	socket_type socket_;
+	char data[config::max_payload_size];
+	const std::span<char> blob_;
 };
 
+using stream_list = std::deque<stream>;
 
-int stream::run_all (const config &config)
+
+class receiver //{{{1
+{
+public:
+
+	static inline bool stopped = false;
+	::metrics metrics{};
+
+	receiver (const config &config, stream_list &streams, size_t begin, size_t end)
+		: config_{config}
+		, socket_{config.make_socket()}
+		, service_{pal_try(pal::net::async::make_service())}
+	{
+		init(streams, begin, end);
+	}
+
+	~receiver ()
+	{
+		if (thread_.joinable())
+		{
+			thread_.join();
+		}
+	}
+
+	void start ()
+	{
+		static int thread_id = 1;
+		auto id = thread_id++;
+
+		thread_ = std::thread([this,id]
+		{
+			try
+			{
+				this_thread::pin_to_cpu(id);
+				#if __pal_os_linux
+				{
+					::setsockopt(socket_.native_handle(),
+						SOL_SOCKET,
+						SO_INCOMING_CPU,
+						&id, sizeof(id)
+					);
+				}
+				#endif
+				run();
+			}
+			catch (const std::exception &e)
+			{
+				std::cerr << "receiver: " << e.what() << '\n';
+				stopped = true;
+			}
+		});
+	}
+
+private:
+
+	const config &config_;
+	socket_type socket_;
+	service_type service_;
+	std::thread thread_{};
+
+	// all receives share same data, we don't use content anyway
+	char data_[config::max_payload_size] = {};
+	std::span<char, sizeof(data_)> span_{data_};
+	std::deque<pal::net::async::request> pool_{};
+
+	void init (stream_list &streams, size_t begin, size_t end);
+	void run ();
+};
+
+using receiver_list = std::deque<receiver>;
+
+
+void receiver::init (stream_list &streams, size_t begin, size_t end)
+{
+	pal_try(service_.make_async(socket_));
+	pal_try(socket_.connect({config_.server, config_.client.port}));
+
+	for (auto it = begin;  it != end;  ++it)
+	{
+		pal_try(socket_.send(std::span{&streams[it].id, 1}));
+	}
+
+	pool_.resize((end - begin) * 10);
+	for (auto &request: pool_)
+	{
+		socket_.async_receive(&request, span_);
+	}
+}
+
+
+void receiver::run ()
+{
+	while (!stopped)
+	{
+		service_.run([this](auto *request)
+		{
+			auto &receive = std::get<pal::net::async::receive>(*request);
+			metrics.inc(metrics.in, receive.bytes_transferred);
+			socket_.async_receive(request, span_);
+		});
+	}
+}
+
+
+//}}}
+
+
+void set_max_open_handles (size_t v)
+{
+	#if __pal_os_linux || __pal_os_macos
+	{
+		rlimit limit{};
+		if (::getrlimit(RLIMIT_NOFILE, &limit) == -1)
+		{
+			throw std::system_error(errno, std::generic_category(), "getrlimit");
+		}
+
+		if (limit.rlim_cur >= v)
+		{
+			return;
+		}
+
+		limit.rlim_cur = v;
+		if (::setrlimit(RLIMIT_NOFILE, &limit) == -1)
+		{
+			throw std::system_error(errno, std::generic_category(), "setrlimit");
+		}
+	}
+	#else
+	{
+		(void)v;
+	}
+	#endif
+}
+
+
+void run (const config &config)
 {
 	config.print();
 
-	client_endpoint = {config.server, config.client.port};
-	peer_endpoint = {config.server, config.peer.port};
+	const auto receiver_count = config.threads > 1 ? config.threads - 1 : 1;
+	set_max_open_handles(config.streams + receiver_count + 10);
+	this_thread::pin_to_cpu(0);
 
-	const auto stream_bytes_per_min = 60 * config.kbps * 1000 / 8;
-	const auto total_bytes_per_min = config.streams * stream_bytes_per_min;
-	const auto total_packets_per_min = total_bytes_per_min / config.payload;
-	const auto stream_packets_per_min = total_packets_per_min / config.streams;
+	std::random_device dev;
+	uint64_t next_stream_id = dev();
 
-	payload_size = config.payload;
-	max_pending_requests = 10 * stream_packets_per_min / 60;
-	tick_interval = 60000ms * config.payload / config.kbps / 8 / 1000;
-
-	const auto [bps, unit] = metrics::bits_per_sec(total_bytes_per_min, 60s);
-	std::cout
-		<< "streaming: "
-			<< bps << unit
-			<< ", " << total_packets_per_min/60 << "pps"
-			<< '\n'
-		<< "connecting: "
-			<< config.streams << " stream(s)"
-			<< '\n'
-	;
-
-	for (auto i = 0u;  i != config.streams;  ++i)
+	stream_list streams;
+	while (streams.size() != config.streams)
 	{
-		streams.emplace_front();
+		streams.emplace_back(next_stream_id++, config);
 	}
 
-	streams.front().start_metrics_print();
-	streams.front().start_tick();
+	const auto streams_per_receiver = config.streams / receiver_count;
+	auto reminder = config.streams % receiver_count;
+	size_t begin = 0;
 
-	while (true)
+	receiver_list receivers;
+	while (receivers.size() != receiver_count)
 	{
-		service.run_for(tick_interval, &stream::request::ready);
+		auto end = begin + streams_per_receiver;
+		if (reminder > 0)
+		{
+			end++, reminder--;
+		}
+		receivers.emplace_back(config, streams, begin, end).start();
+		begin = end;
 	}
 
-	return EXIT_SUCCESS;
+	double bytes_per_sec = config.streams * config.kbps * 1000.0 / 8;
+	const auto [bps, unit] = metrics::bits_per_sec(static_cast<size_t>(bytes_per_sec), 1s);
+	std::cout << "streaming " << bps << unit << '/' << (bytes_per_sec / config.payload) << "pps\n";
+
+	constexpr auto burst_interval = 1ms;
+	constexpr auto bursts_per_sec = 1s / burst_interval;
+	auto bytes_per_burst = bytes_per_sec / bursts_per_sec;
+
+	auto now = std::chrono::steady_clock::now();
+	auto start_time = now;
+	size_t bytes_sent = 0, stream = 0;
+
+	constexpr auto metrics_print_interval = 1s;
+	auto next_metrics_print = now + metrics_print_interval;
+	::metrics metrics{};
+
+	while (!receiver::stopped)
+	{
+		auto run_time = std::chrono::duration_cast<std::chrono::milliseconds>(now - start_time);
+		auto bytes_allowance = run_time.count() * bytes_per_burst;
+
+		while (bytes_allowance - bytes_sent >= config.payload)
+		{
+			auto sent = streams[stream++ % streams.size()].send();
+			metrics.inc(metrics.out, sent);
+			bytes_sent += sent;
+		}
+
+		if (next_metrics_print < now)
+		{
+			for (auto &receiver: receivers)
+			{
+				receiver.metrics.sum(metrics).reset();
+			}
+
+			auto [out_bps, out_unit] = metrics::bits_per_sec(metrics.out.bytes, metrics_print_interval);
+			auto [in_bps, in_unit] = metrics::bits_per_sec(metrics.in.bytes, metrics_print_interval);
+			std::cout
+				<< " > out: " << out_bps << out_unit << '/' << metrics.out.packets << "pps"
+				<< " | in: " << in_bps << in_unit << '/' << metrics.in.packets << "pps"
+				<< '\n'
+			;
+
+			metrics.reset();
+			next_metrics_print += metrics_print_interval;
+		}
+		else
+		{
+			std::this_thread::sleep_for(burst_interval);
+		}
+
+		now = std::chrono::steady_clock::now();
+	}
 }
-
-//}}}1
 
 
 int main (int argc, const char *argv[])
 {
 	try
 	{
-		return stream::run_all(config{argc, argv});
+		run(config{argc, argv});
+		return EXIT_SUCCESS;
 	}
 	catch (const std::exception &e)
 	{

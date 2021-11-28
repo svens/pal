@@ -285,7 +285,7 @@ metrics listener::load_metrics (std::deque<listener> &listeners, char (&ingress_
 	std::deque<metrics> listener_metrics{listeners.size()};
 	for (auto i = 0u;  i < listeners.size();  ++i)
 	{
-		listeners[i].metrics_.load_and_reset(listener_metrics[i]);
+		listeners[i].metrics_.load(listener_metrics[i]).reset();
 		listener_metrics[i].sum(total);
 	}
 

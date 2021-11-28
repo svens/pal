@@ -164,7 +164,7 @@ private:
 		(*reinterpret_cast<CompletionHandler *>(handler))(request);
 	}
 
-	static constexpr auto to_msec (const clock_type::duration &d) noexcept
+	static constexpr std::chrono::milliseconds to_msec (const clock_type::duration &d) noexcept
 	{
 		return std::chrono::duration_cast<std::chrono::milliseconds>(d);
 	}

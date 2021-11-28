@@ -17,28 +17,27 @@ struct metrics
 		dest.bytes += bytes_transferred;
 	}
 
-	void load_and_reset (metrics &dest) noexcept
+	void reset () noexcept
 	{
-		dest.in.packets = std::exchange(in.packets, 0);
-		dest.in.bytes = std::exchange(in.bytes, 0);
-		dest.out.packets = std::exchange(out.packets, 0);
-		dest.out.bytes = std::exchange(out.bytes, 0);
+		in.packets = in.bytes = out.packets = out.bytes = 0;
 	}
 
-	void sum_and_reset (metrics &dest) noexcept
+	metrics &load (metrics &dest) noexcept
 	{
-		dest.in.packets += std::exchange(in.packets, 0);
-		dest.in.bytes += std::exchange(in.bytes, 0);
-		dest.out.packets += std::exchange(out.packets, 0);
-		dest.out.bytes += std::exchange(out.bytes, 0);
+		dest.in.packets = in.packets;
+		dest.in.bytes = in.bytes;
+		dest.out.packets = out.packets;
+		dest.out.bytes = out.bytes;
+		return *this;
 	}
 
-	void sum (metrics &dest) noexcept
+	metrics &sum (metrics &dest) noexcept
 	{
 		dest.in.packets += in.packets;
 		dest.in.bytes += in.bytes;
 		dest.out.packets += out.packets;
 		dest.out.bytes += out.bytes;
+		return *this;
 	}
 
 	static constexpr std::pair<size_t, const char *> bits_per_sec (
