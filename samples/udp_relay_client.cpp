@@ -159,9 +159,9 @@ public:
 		: id{id}
 		, config_{config}
 		, socket_{config.make_socket()}
-		, blob_{data, config_.payload}
+		, blob_{data_, config_.payload}
 	{
-		*reinterpret_cast<uint64_t *>(data) = id;
+		*reinterpret_cast<uint64_t *>(data_) = id;
 		pal_try(socket_.connect({config_.server, config_.peer.port}));
 	}
 
@@ -174,7 +174,7 @@ private:
 
 	const config &config_;
 	socket_type socket_;
-	char data[config::max_payload_size];
+	char data_[config::max_payload_size];
 	const std::span<char> blob_;
 };
 
@@ -209,7 +209,7 @@ public:
 		static int thread_id = 1;
 		auto id = thread_id++;
 
-		thread_ = std::thread([this,id]
+		thread_ = std::thread([this, id]
 		{
 			try
 			{
@@ -326,6 +326,8 @@ void run (const config &config)
 
 	std::random_device dev;
 	uint64_t next_stream_id = dev();
+	next_stream_id ^= std::chrono::steady_clock::now().time_since_epoch().count();
+	next_stream_id ^= std::hash<std::thread::id>{}(std::this_thread::get_id());
 
 	stream_list streams;
 	while (streams.size() != config.streams)

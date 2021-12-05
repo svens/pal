@@ -173,10 +173,14 @@ private:
 		global_client_map_.emplace(id, endpoint);
 	}
 
-	static auto try_extract_client (client_id id)
+	static const endpoint_type *try_load_global (client_id id)
 	{
 		std::lock_guard lock{global_client_map_mutex_};
-		return global_client_map_.extract(id);
+		if (auto it = global_client_map_.find(id);  it != global_client_map_.end())
+		{
+			return &it->second;
+		}
+		return nullptr;
 	}
 
 	const endpoint_type *try_load (client_id id)
@@ -187,12 +191,11 @@ private:
 			return &it->second;
 		}
 
-		if (auto node = try_extract_client(id))
+		if (const auto *endpoint = try_load_global(id))
 		{
-			// cold-path: found in global map, move to local map
-			const auto *result = &node.mapped();
-			client_map_.insert(std::move(node));
-			return result;
+			// cold-path: found in global map, copy to local map
+			client_map_.emplace(id, *endpoint);
+			return endpoint;
 		}
 
 		// not found
