@@ -38,7 +38,7 @@ elseif(${CMAKE_SYSTEM_NAME} STREQUAL "Linux")
 	if(${i} EQUAL -1)
 		include_directories(SYSTEM ${OPENSSL_INCLUDE_DIR})
 	endif()
-	list(APPEND pal_libraries ${OPENSSL_CRYPTO_LIBRARY} Threads::Threads)
+	list(APPEND pal_libraries OpenSSL::Crypto Threads::Threads)
 elseif(${CMAKE_SYSTEM_NAME} STREQUAL "Windows")
 	list(APPEND pal_libraries bcrypt crypt32 ncrypt ntdll ws2_32)
 endif()
@@ -71,5 +71,5 @@ endif()
 
 # samples {{{1
 if(pal_samples)
-	# TODO
+	include(samples/list.cmake)
 endif()

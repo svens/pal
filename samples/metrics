@@ -1,0 +1,59 @@
+#pragma once // -*- c++ -*-
+
+#include <chrono>
+#include <utility>
+
+
+struct metrics
+{
+	struct dir
+	{
+		size_t packets, bytes;
+	} in{}, out{};
+
+	void inc (dir &dest, size_t bytes_transferred) noexcept
+	{
+		dest.packets++;
+		dest.bytes += bytes_transferred;
+	}
+
+	void reset () noexcept
+	{
+		in.packets = in.bytes = out.packets = out.bytes = 0;
+	}
+
+	metrics &load (metrics &dest) noexcept
+	{
+		dest.in.packets = in.packets;
+		dest.in.bytes = in.bytes;
+		dest.out.packets = out.packets;
+		dest.out.bytes = out.bytes;
+		return *this;
+	}
+
+	metrics &sum (metrics &dest) noexcept
+	{
+		dest.in.packets += in.packets;
+		dest.in.bytes += in.bytes;
+		dest.out.packets += out.packets;
+		dest.out.bytes += out.bytes;
+		return *this;
+	}
+
+	static constexpr std::pair<size_t, const char *> bits_per_sec (
+		size_t bytes,
+		const std::chrono::seconds &interval) noexcept
+	{
+		constexpr const char *units[] = { "bps", "Kbps", "Mbps", "Gbps" };
+		auto unit = std::cbegin(units);
+
+		auto bits_per_sec = 8 * bytes / interval.count();
+		while (bits_per_sec >= 1000 && (unit + 1) != std::cend(units))
+		{
+			bits_per_sec /= 1000;
+			unit++;
+		}
+
+		return {bits_per_sec, *unit};
+	}
+};

@@ -104,7 +104,10 @@ public:
 	 * there are any completions available.
 	 */
 	template <typename CompletionHandler>
-	void run_for (clock_type::duration poll_duration, CompletionHandler handler) noexcept;
+	void run_for (clock_type::duration poll_duration, CompletionHandler handler) noexcept
+	{
+		poll_for(to_msec(poll_duration), handler);
+	}
 
 
 	/**
@@ -115,7 +118,7 @@ public:
 	template <typename CompletionHandler>
 	void run_once (CompletionHandler handler) noexcept
 	{
-		run_for(clock_type::duration::zero(), handler);
+		poll_for(std::chrono::milliseconds::zero(), handler);
 	}
 
 
@@ -126,7 +129,7 @@ public:
 	template <typename CompletionHandler>
 	void run (CompletionHandler handler) noexcept
 	{
-		run_for((clock_type::duration::max)(), handler);
+		poll_for((std::chrono::milliseconds::max)(), handler);
 	}
 
 
@@ -161,32 +164,35 @@ private:
 		(*reinterpret_cast<CompletionHandler *>(handler))(request);
 	}
 
-	static constexpr auto to_msec (const clock_type::duration &d) noexcept
+	static constexpr std::chrono::milliseconds to_msec (const clock_type::duration &d) noexcept
 	{
 		return std::chrono::duration_cast<std::chrono::milliseconds>(d);
 	}
+
+	template <typename CompletionHandler>
+	void poll_for (std::chrono::milliseconds duration, CompletionHandler handler) noexcept;
 
 	friend result<service> make_service () noexcept;
 };
 
 
 template <typename CompletionHandler>
-void service::run_for (clock_type::duration poll_duration, CompletionHandler handler) noexcept
+void service::poll_for (std::chrono::milliseconds duration, CompletionHandler handler) noexcept
 {
 	now_ = clock_type::now();
 	if (auto r = pending_.head())
 	{
 		if (r->impl_.post_time < now_)
 		{
-			poll_duration = clock_type::duration::zero();
+			duration = std::chrono::milliseconds::zero();
 		}
-		else if (auto delay = r->impl_.post_time - now_;  delay < poll_duration)
+		else if (auto delay = to_msec(r->impl_.post_time - now_);  delay < duration)
 		{
-			poll_duration = delay;
+			duration = delay;
 		}
 	}
 
-	impl_.poll_for(to_msec(poll_duration), &notify<CompletionHandler>, &handler);
+	impl_.poll_for(duration, &notify<CompletionHandler>, &handler);
 
 	now_ = clock_type::now();
 	while (auto *r = pending_.head())

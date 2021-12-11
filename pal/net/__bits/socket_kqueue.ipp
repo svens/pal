@@ -147,20 +147,20 @@ result<void> service::add (__bits::socket &socket) noexcept
 
 
 void service::poll_for (
-	const std::chrono::milliseconds &poll_duration,
+	const std::chrono::milliseconds &duration,
 	notify_fn notify,
 	void *handler) noexcept
 {
 	::timespec timeout, *timeout_p = nullptr;
-	if (!impl->completed.empty() || poll_duration == poll_duration.zero())
+	if (!impl->completed.empty())
 	{
 		timeout.tv_sec = timeout.tv_nsec = 0;
 		timeout_p = &timeout;
 	}
-	else if (poll_duration != poll_duration.max())
+	else if (duration != duration.max())
 	{
-		auto sec = std::chrono::duration_cast<std::chrono::seconds>(poll_duration);
-		auto nsec = std::chrono::duration_cast<std::chrono::nanoseconds>(poll_duration - sec);
+		auto sec = std::chrono::duration_cast<std::chrono::seconds>(duration);
+		auto nsec = std::chrono::duration_cast<std::chrono::nanoseconds>(duration - sec);
 		timeout.tv_sec = sec.count();
 		timeout.tv_nsec = nsec.count();
 		timeout_p = &timeout;

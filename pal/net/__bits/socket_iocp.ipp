@@ -468,18 +468,14 @@ result<void> service::add (__bits::socket &socket) noexcept
 
 
 void service::poll_for (
-	const std::chrono::milliseconds &poll_duration,
+	const std::chrono::milliseconds &duration,
 	notify_fn notify,
 	void *handler) noexcept
 {
-	DWORD timeout = INFINITE, bytes_transferred, flags;
-	if (!impl->completed.empty() || poll_duration == poll_duration.zero())
+	DWORD timeout = static_cast<DWORD>(duration.count()), bytes_transferred, flags;
+	if (!impl->completed.empty())
 	{
 		timeout = 0;
-	}
-	else if (poll_duration != (poll_duration.max)())
-	{
-		timeout = static_cast<DWORD>(poll_duration.count());
 	}
 
 	// completions since last poll
