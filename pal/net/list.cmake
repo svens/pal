@@ -28,6 +28,7 @@ list(APPEND pal_sources
 	pal/net/ip/udp
 
 	# async
+	pal/net/async/multi_request
 	pal/net/async/request
 	pal/net/async/service
 )

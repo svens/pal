@@ -3,6 +3,7 @@
 #if __pal_os_linux || __pal_os_macos
 
 #include <pal/net/async/request>
+#include <pal/net/async/multi_request>
 #include <fcntl.h>
 #include <sys/ioctl.h>
 #include <unistd.h>
@@ -48,7 +49,7 @@ unexpected<std::error_code> sys_error (int e = errno) noexcept
 	return unexpected<std::error_code>{std::in_place, e, std::generic_category()};
 }
 
-bool is_blocking_error (int error = errno) noexcept
+constexpr bool is_blocking_error (int error) noexcept
 {
 	if constexpr (EAGAIN != EWOULDBLOCK)
 	{
@@ -58,6 +59,11 @@ bool is_blocking_error (int error = errno) noexcept
 	{
 		return error == EWOULDBLOCK;
 	}
+}
+
+constexpr bool is_connection_error (int error) noexcept
+{
+	return error == EDESTADDRREQ || error == EPIPE;
 }
 
 } // namespace
@@ -185,8 +191,6 @@ struct socket::impl_type
 	}
 
 	#if __pal_os_linux
-
-		static constexpr size_t max_mmsg = 64;
 
 		::mmsghdr *make_mmsg (async::request *src, ::mmsghdr *it, ::mmsghdr *end) noexcept
 		{
@@ -391,21 +395,12 @@ result<size_t> socket::send (const message &msg) noexcept
 		// unify with Windows
 		return sys_error(ETIMEDOUT);
 	}
-	else if (errno == EDESTADDRREQ)
+	else if (is_connection_error(errno))
 	{
 		// unify with Windows for sendmsg with no recipient endpoint
 		// (adjusting Windows for Linux behaviour would be harder,
 		// requiring additional syscall)
 		return sys_error(ENOTCONN);
-	}
-	if constexpr (is_linux_build)
-	{
-		// sendmsg(2) BUGS
-		// "Linux may return EPIPE instead of ENOTCONN"
-		if (errno == EPIPE)
-		{
-			return sys_error(ENOTCONN);
-		}
 	}
 	return sys_error();
 }
@@ -605,6 +600,34 @@ void socket::start (async::accept &accept) noexcept
 }
 
 
+void socket::start_send_many (async::multi_request &request) noexcept
+{
+	auto try_now = impl->pending_send.empty();
+
+	while (!request.queue.empty())
+	{
+		auto *it = request.queue.pop();
+		if (it->error)
+		{
+			impl->service->completed.push(it);
+		}
+		else
+		{
+			impl->pending_send.push(it);
+		}
+	}
+
+	if (try_now && !impl->pending_send.empty())
+	{
+		static auto push_back = [](void *handler, async::request *request) noexcept
+		{
+			reinterpret_cast<async::request_queue *>(handler)->push(request);
+		};
+		impl->send_many(push_back, &impl->service->completed);
+	}
+}
+
+
 void socket::impl_type::accept_many (service::notify_fn notify, void *handler) noexcept
 {
 	while (auto *it = pending_receive.head())
@@ -666,7 +689,7 @@ void socket::impl_type::send_one (async::request *request, size_t &bytes_transfe
 		pending_send.push(request);
 		return;
 	}
-	else if (errno == EDESTADDRREQ || errno == EPIPE)
+	else if (is_connection_error(errno))
 	{
 		request->error.assign(ENOTCONN, std::generic_category());
 	}

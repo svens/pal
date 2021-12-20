@@ -8,6 +8,7 @@
 #include <pal/__bits/lib>
 #include <pal/net/basic_socket>
 #include <pal/net/async/request>
+#include <pal/net/async/multi_request>
 #include <pal/not_null>
 #include <cassert>
 
@@ -206,6 +207,15 @@ public:
 			message.name(nullptr, 0);
 		}
 		base::socket_.start(request->emplace<async::send>());
+	}
+
+	/**
+	 * TODO
+	 */
+	async::multi_send_request<protocol_type> async_send_many () noexcept
+	{
+		assert(this->has_async());
+		return {this->socket_};
 	}
 
 

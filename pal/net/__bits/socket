@@ -25,6 +25,7 @@ __pal_begin
 
 namespace net::async {
 class request;
+struct multi_request;
 struct receive_from;
 struct receive;
 struct send_to;
@@ -320,6 +321,7 @@ struct socket
 	void start (async::send &send) noexcept;
 	void start (async::connect &connect) noexcept;
 	void start (async::accept &accept) noexcept;
+	void start_send_many (async::multi_request &request) noexcept;
 };
 
 

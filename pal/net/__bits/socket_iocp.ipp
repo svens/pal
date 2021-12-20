@@ -1,3 +1,5 @@
+#include <pal/net/async/multi_request>
+
 __pal_begin
 
 
@@ -428,6 +430,23 @@ int socket::impl_type::complete (async::accept &accept, async::request *request)
 	}
 
 	return 0;
+}
+
+
+void socket::start_send_many (async::multi_request &request) noexcept
+{
+	while (!request.queue.empty())
+	{
+		auto *it = request.queue.pop();
+		if (auto *send_to = std::get_if<async::send_to>(it))
+		{
+			start(*send_to);
+		}
+		else if (auto *send = std::get_if<async::send>(it))
+		{
+			start(*send);
+		}
+	}
 }
 
 

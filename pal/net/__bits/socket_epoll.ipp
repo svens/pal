@@ -1,4 +1,5 @@
 #include <sys/epoll.h>
+#include <sys/uio.h>
 
 
 __pal_begin
@@ -7,33 +8,47 @@ __pal_begin
 namespace net::__bits {
 
 
+namespace {
+
+constexpr size_t max_mmsg = UIO_MAXIOV;
+
+} // namespace
+
+
 void socket::impl_type::receive_many (service::notify_fn notify, void *handler) noexcept
 {
 	::mmsghdr messages[max_mmsg];
 	while (!pending_receive.empty())
 	{
-		auto *first = &messages[0];
-		auto *last = make_mmsg(pending_receive.head(), first, &messages[max_mmsg]);
-		last = first + ::recvmmsg(handle, first, last - first, internal_flags, nullptr);
-		for (/**/;  first < last;  ++first)
+		auto *it = &messages[0];
+		auto *end = make_mmsg(pending_receive.head(), it, &messages[max_mmsg]);
+		end = it + ::recvmmsg(handle, it, end - it, internal_flags, nullptr);
+		for (/**/;  it < end;  ++it)
 		{
 			auto *request = pending_receive.pop();
 			if (auto *receive_from = std::get_if<async::receive_from>(request))
 			{
-				receive_from->bytes_transferred = first->msg_len;
-				receive_from->flags = first->msg_hdr.msg_flags;
+				receive_from->bytes_transferred = it->msg_len;
+				receive_from->flags = it->msg_hdr.msg_flags;
 			}
 			else if (auto *receive = std::get_if<async::receive>(request))
 			{
-				receive->bytes_transferred = first->msg_len;
-				receive->flags = first->msg_hdr.msg_flags;
+				receive->bytes_transferred = it->msg_len;
+				receive->flags = it->msg_hdr.msg_flags;
 			}
 			notify(handler, request);
 		}
 
-		if (first != last)
+		if (end == it - 1)
 		{
-			break;
+			if (is_blocking_error(errno))
+			{
+				break;
+			}
+
+			auto *request = pending_send.pop();
+			request->error.assign(errno, std::generic_category());
+			notify(handler, request);
 		}
 	}
 }
@@ -50,30 +65,41 @@ void socket::impl_type::send_many (service::notify_fn notify, void *handler) noe
 	::mmsghdr messages[max_mmsg];
 	while (!pending_send.empty())
 	{
-		auto *first = &messages[0];
-		auto *last = make_mmsg(pending_send.head(), first, &messages[max_mmsg]);
-		last = first + ::sendmmsg(handle, first, last - first, internal_flags);
-		for (/**/;  first < last;  ++first)
+		auto *it = &messages[0];
+		auto *end = make_mmsg(pending_send.head(), it, &messages[max_mmsg]);
+		end = it + ::sendmmsg(handle, it, end - it, internal_flags);
+		for (/**/;  it < end;  ++it)
 		{
 			auto *request = pending_send.pop();
 			if (auto *send_to = std::get_if<async::send_to>(request))
 			{
-				send_to->bytes_transferred = first->msg_len;
+				send_to->bytes_transferred = it->msg_len;
 			}
 			else if (auto *send = std::get_if<async::send>(request))
 			{
-				send->bytes_transferred = first->msg_len;
+				send->bytes_transferred = it->msg_len;
 			}
 			else if (auto *connect = std::get_if<async::connect>(request))
 			{
-				connect->bytes_transferred = first->msg_len;
+				connect->bytes_transferred = it->msg_len;
 			}
 			notify(handler, request);
 		}
 
-		if (first != last)
+		if (end == it - 1)
 		{
-			break;
+			if (is_blocking_error(errno))
+			{
+				break;
+			}
+			else if (is_connection_error(errno))
+			{
+				errno = ENOTCONN;
+			}
+
+			auto *request = pending_send.pop();
+			request->error.assign(errno, std::generic_category());
+			notify(handler, request);
 		}
 	}
 }

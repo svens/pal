@@ -437,7 +437,7 @@ TEMPLATE_TEST_CASE("net/async/basic_datagram_socket", "[!nonportable]",
 		socket.async_send_to(&request, send_msg, peer_endpoint);
 		REQUIRE(completed.empty());
 
-		auto received = peer.receive_from(recv_msg, peer_endpoint);
+		auto received = pal_try(peer.receive_from(recv_msg, peer_endpoint));
 		CHECK(received == send_view.size());
 		CHECK(peer_endpoint == endpoint);
 
@@ -473,6 +473,25 @@ TEMPLATE_TEST_CASE("net/async/basic_datagram_socket", "[!nonportable]",
 		CHECK(completed.at(0) == &request);
 		REQUIRE(request.error == std::errc::argument_list_too_long);
 		CHECK(std::holds_alternative<pal::net::async::send_to>(request));
+	}
+
+	SECTION("async_send_to: connected") //{{{1
+	{
+		socket.connect(peer_endpoint);
+		socket.async_send_to(&request, send_msg[0], peer_endpoint);
+
+		service.run_for(run_duration, add_completed);
+		CHECK(completed.at(0) == &request);
+		CHECK(std::holds_alternative<pal::net::async::send_to>(request));
+
+		if constexpr (pal::is_macos_build)
+		{
+			REQUIRE(request.error == std::errc::already_connected);
+		}
+		else
+		{
+			REQUIRE_FALSE(request.error);
+		}
 	}
 
 	SECTION("async_send / recv: single") //{{{1
@@ -551,6 +570,189 @@ TEMPLATE_TEST_CASE("net/async/basic_datagram_socket", "[!nonportable]",
 		CHECK(completed.at(0) == &request);
 		REQUIRE(request.error == std::errc::not_connected);
 		CHECK(std::holds_alternative<pal::net::async::send>(request));
+	}
+
+	SECTION("async_send_many: send_to") //{{{1
+	{
+		pal::net::async::request r[2];
+		socket.async_send_many()
+			.push_back(&r[0], send_msg[0], peer_endpoint)
+			.push_back(&r[1], send_msg[1], peer_endpoint)
+		;
+
+		service.run_for(run_duration, add_completed);
+		REQUIRE(completed.size() == 2);
+		CHECK(completed[0] == &r[0]);
+		CHECK(completed[1] == &r[1]);
+
+		auto received = pal_try(peer.receive_from(recv_msg, peer_endpoint));
+		REQUIRE(received == std::get<pal::net::async::send_to>(r[0]).bytes_transferred);
+		CHECK(send_bufs[0] == recv_view(received));
+		CHECK(peer_endpoint == endpoint);
+
+		received = pal_try(peer.receive_from(recv_msg, peer_endpoint));
+		REQUIRE(received == std::get<pal::net::async::send_to>(r[1]).bytes_transferred);
+		CHECK(send_bufs[1] == recv_view(received));
+		CHECK(peer_endpoint == endpoint);
+	}
+
+	SECTION("async_send_many: send") //{{{1
+	{
+		pal::net::async::request r[2];
+		socket.connect(peer_endpoint);
+		socket.async_send_many()
+			.push_back(&r[0], send_msg[0])
+			.push_back(&r[1], send_msg[1])
+		;
+
+		service.run_for(run_duration, add_completed);
+		REQUIRE(completed.size() == 2);
+		CHECK(completed[0] == &r[0]);
+		CHECK(completed[1] == &r[1]);
+
+		auto received = pal_try(peer.receive_from(recv_msg, peer_endpoint));
+		REQUIRE(received == std::get<pal::net::async::send>(r[0]).bytes_transferred);
+		CHECK(send_bufs[0] == recv_view(received));
+		CHECK(peer_endpoint == endpoint);
+
+		received = pal_try(peer.receive_from(recv_msg, peer_endpoint));
+		REQUIRE(received == std::get<pal::net::async::send>(r[1]).bytes_transferred);
+		CHECK(send_bufs[1] == recv_view(received));
+		CHECK(peer_endpoint == endpoint);
+	}
+
+	SECTION("async_send_many: send_to + send") //{{{1
+	{
+		size_t received;
+		pal::net::async::request r[2];
+		socket.connect(peer_endpoint);
+		socket.async_send_many()
+			.push_back(&r[0], send_msg[0], peer_endpoint)
+			.push_back(&r[1], send_msg[1])
+		;
+
+		service.run_for(run_duration, add_completed);
+		REQUIRE(completed.size() == 2);
+		CHECK(completed[0] == &r[0]);
+		CHECK(completed[1] == &r[1]);
+
+		if constexpr (pal::is_macos_build)
+		{
+			REQUIRE(r[0].error == std::errc::already_connected);
+		}
+		else
+		{
+			received = pal_try(peer.receive_from(recv_msg, peer_endpoint));
+			REQUIRE(received == std::get<pal::net::async::send_to>(r[0]).bytes_transferred);
+			CHECK(send_bufs[0] == recv_view(received));
+			CHECK(peer_endpoint == endpoint);
+		}
+
+		received = pal_try(peer.receive_from(recv_msg, peer_endpoint));
+		REQUIRE(received == std::get<pal::net::async::send>(r[1]).bytes_transferred);
+		CHECK(send_bufs[1] == recv_view(received));
+		CHECK(peer_endpoint == endpoint);
+	}
+
+	SECTION("async_send_many: send_to: argument list too long") //{{{1
+	{
+		pal::net::async::request r[2];
+		socket.async_send_many()
+			.push_back(&r[0], send_msg[0], peer_endpoint)
+			.push_back(&r[1], send_msg_list_too_long, peer_endpoint)
+		;
+
+		service.run_for(run_duration, add_completed);
+
+		REQUIRE(completed.size() == 2);
+		if constexpr (pal::is_windows_build)
+		{
+			CHECK(completed[0] == &r[0]);
+			CHECK(completed[1] == &r[1]);
+		}
+		else
+		{
+			// reordered because before send syscall erroneous requests
+			// are already pushed into completion list
+			CHECK(completed[0] == &r[1]);
+			CHECK(completed[1] == &r[0]);
+		}
+
+		auto received = pal_try(peer.receive_from(recv_msg, peer_endpoint));
+		REQUIRE(received == std::get<pal::net::async::send_to>(r[0]).bytes_transferred);
+		CHECK(send_bufs[0] == recv_view(received));
+		CHECK(peer_endpoint == endpoint);
+
+		REQUIRE(r[1].error == std::errc::argument_list_too_long);
+		CHECK(std::holds_alternative<pal::net::async::send_to>(r[1]));
+	}
+
+	SECTION("async_send_many: send: argument list too long") //{{{1
+	{
+		pal::net::async::request r[2];
+		socket.connect(peer_endpoint);
+		socket.async_send_many()
+			.push_back(&r[0], send_msg[0])
+			.push_back(&r[1], send_msg_list_too_long)
+		;
+
+		service.run_for(run_duration, add_completed);
+
+		REQUIRE(completed.size() == 2);
+		if constexpr (pal::is_windows_build)
+		{
+			CHECK(completed[0] == &r[0]);
+			CHECK(completed[1] == &r[1]);
+		}
+		else
+		{
+			// reordered because before send syscall erroneous requests
+			// are already pushed into completion list
+			CHECK(completed[0] == &r[1]);
+			CHECK(completed[1] == &r[0]);
+		}
+
+		auto received = pal_try(peer.receive_from(recv_msg, peer_endpoint));
+		REQUIRE(received == std::get<pal::net::async::send>(r[0]).bytes_transferred);
+		CHECK(send_bufs[0] == recv_view(received));
+		CHECK(peer_endpoint == endpoint);
+
+		REQUIRE(r[1].error == std::errc::argument_list_too_long);
+		CHECK(std::holds_alternative<pal::net::async::send>(r[1]));
+	}
+
+	SECTION("async_send_many: not connected") //{{{1
+	{
+		pal::net::async::request r[3];
+		socket.async_send_many()
+			.push_back(&r[0], send_msg[0], peer_endpoint)
+			.push_back(&r[1], send_msg[1])
+			.push_back(&r[2], send_msg[2], peer_endpoint)
+		;
+
+		service.run_for(run_duration, add_completed);
+
+		// no reordering, error is discovered during syscall
+		REQUIRE(completed.size() == 3);
+		CHECK(completed[0] == &r[0]);
+		CHECK(completed[1] == &r[1]);
+		CHECK(completed[2] == &r[2]);
+
+		// 0
+		auto received = pal_try(peer.receive_from(recv_msg, peer_endpoint));
+		REQUIRE(received == std::get<pal::net::async::send_to>(r[0]).bytes_transferred);
+		CHECK(send_bufs[0] == recv_view(received));
+		CHECK(peer_endpoint == endpoint);
+
+		// 1
+		REQUIRE(r[1].error == std::errc::not_connected);
+		CHECK(std::holds_alternative<pal::net::async::send>(r[1]));
+
+		// 2
+		received = pal_try(peer.receive_from(recv_msg, peer_endpoint));
+		REQUIRE(received == std::get<pal::net::async::send_to>(r[2]).bytes_transferred);
+		CHECK(send_bufs[2] == recv_view(received));
+		CHECK(peer_endpoint == endpoint);
 	}
 
 	//}}}1

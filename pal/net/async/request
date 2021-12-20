@@ -192,6 +192,7 @@ private:
 	} impl_{};
 
 	friend class service;
+	friend struct multi_request;
 	template <typename> friend class net::basic_datagram_socket;
 	template <typename> friend class net::basic_stream_socket;
 	template <typename> friend class net::basic_socket_acceptor;

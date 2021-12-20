@@ -1,0 +1,96 @@
+#pragma once // -*- C++ -*-
+
+/**
+ * \file pal/net/async/multi_request
+ * TODO
+ */
+
+
+#include <pal/__bits/lib>
+#include <pal/net/async/request>
+#include <type_traits>
+
+
+__pal_begin
+
+
+namespace net::async {
+
+
+struct multi_request
+{
+	request_queue queue{};
+
+	template <typename Request, typename ConstSpanSequence>
+	void push (not_null<request *> request,
+		const ConstSpanSequence &spans,
+		const void *name,
+		size_t name_size) noexcept
+	{
+		request->emplace<Request>();
+		auto &message = request->impl_.message;
+		if (message.set(spans, request->error))
+		{
+			message.flags(0);
+			message.name(name, name_size);
+		}
+		queue.push(request);
+	}
+};
+
+
+template <typename Protocol>
+class multi_send_request: protected multi_request
+{
+public:
+
+	using protocol_type = Protocol;
+	using endpoint_type = typename Protocol::endpoint;
+	using socket_type = typename Protocol::socket;
+
+	~multi_send_request () noexcept
+	{
+		start();
+	}
+
+	void start () noexcept
+	{
+		socket_.start_send_many(*this);
+	}
+
+	template <typename ConstSpanSequence>
+	requires(std::is_same_v<socket_type, basic_datagram_socket<Protocol>>)
+	multi_send_request &push_back (not_null<request *> request,
+		const ConstSpanSequence &spans,
+		const endpoint_type &recipient) noexcept
+	{
+		push<send_to>(request, spans, recipient.data(), recipient.size());
+		return *this;
+	}
+
+	template <typename ConstSpanSequence>
+	multi_send_request &push_back (not_null<request *> request,
+		const ConstSpanSequence &spans) noexcept
+	{
+		push<send>(request, spans, nullptr, 0);
+		return *this;
+	}
+
+
+private:
+
+	__bits::socket &socket_;
+
+	multi_send_request (__bits::socket &socket) noexcept
+		: socket_{socket}
+	{ }
+
+	friend class basic_datagram_socket<Protocol>;
+	friend class basic_stream_socket<Protocol>;
+};
+
+
+} // namespace net::async
+
+
+__pal_end
