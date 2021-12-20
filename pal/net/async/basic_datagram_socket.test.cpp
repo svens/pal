@@ -41,52 +41,6 @@ TEMPLATE_TEST_CASE("net/async/basic_datagram_socket", "[!nonportable]",
 	constexpr auto small_size = send_view.size() / 2;
 	constexpr auto run_duration = 1s;
 
-	SECTION("make_async: multiple times")
-	{
-		if constexpr (!pal::assert_noexcept)
-		{
-			CHECK_THROWS_AS(service.make_async(socket), std::logic_error);
-		}
-	}
-
-	SECTION("not async") //{{{1
-	{
-		if constexpr (!pal::assert_noexcept)
-		{
-			SECTION("async_receive_from")
-			{
-				CHECK_THROWS_AS(
-					peer.async_receive_from(&request, recv_msg, endpoint),
-					std::logic_error
-				);
-			}
-
-			SECTION("async_receive")
-			{
-				CHECK_THROWS_AS(
-					peer.async_receive(&request, recv_msg),
-					std::logic_error
-				);
-			}
-
-			SECTION("async_send_to")
-			{
-				CHECK_THROWS_AS(
-					peer.async_send_to(&request, send_msg, endpoint),
-					std::logic_error
-				);
-			}
-
-			SECTION("async_send")
-			{
-				CHECK_THROWS_AS(
-					peer.async_send(&request, send_msg),
-					std::logic_error
-				);
-			}
-		}
-	}
-
 	SECTION("send / async_receive_from: single") //{{{1
 	{
 		auto sent = pal_try(peer.send_to(send_msg[0], endpoint));

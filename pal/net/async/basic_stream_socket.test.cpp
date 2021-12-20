@@ -50,45 +50,6 @@ TEMPLATE_TEST_CASE("net/async/basic_stream_socket", "[!nonportable]",
 		return pal_try(acceptor.accept(peer_endpoint));
 	};
 
-	SECTION("make_async: multiple times") //{{{1
-	{
-		REQUIRE(service.make_async(socket));
-		if constexpr (!pal::assert_noexcept)
-		{
-			REQUIRE_THROWS_AS(service.make_async(socket), std::logic_error);
-		}
-	}
-
-	SECTION("not async") //{{{1
-	{
-		if constexpr (!pal::assert_noexcept)
-		{
-			SECTION("async_connect")
-			{
-				CHECK_THROWS_AS(
-					socket.async_connect(&request, accept_endpoint),
-					std::logic_error
-				);
-			}
-
-			SECTION("async_receive")
-			{
-				CHECK_THROWS_AS(
-					socket.async_receive(&request, recv_msg),
-					std::logic_error
-				);
-			}
-
-			SECTION("async_send")
-			{
-				CHECK_THROWS_AS(
-					socket.async_send(&request, send_msg),
-					std::logic_error
-				);
-			}
-		}
-	}
-
 	SECTION("make_async: bad file descriptor") //{{{1
 	{
 		auto s = pal_try(TestType::make_socket());

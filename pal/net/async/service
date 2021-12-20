@@ -8,7 +8,7 @@
 
 #include <pal/net/__bits/socket>
 #include <pal/net/async/request>
-#include <pal/assert>
+#include <cassert>
 
 
 __pal_begin
@@ -141,9 +141,9 @@ public:
 	 * asynchronous API can be used only after calling this method.
 	 */
 	template <typename Socket>
-	result<void> make_async (Socket &socket) noexcept(assert_noexcept)
+	result<void> make_async (Socket &socket) noexcept
 	{
-		pal_assert(!socket.has_async());
+		assert(!socket.has_async());
 		return socket.to_async(impl_);
 	}
 

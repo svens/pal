@@ -9,6 +9,7 @@
 #include <pal/net/basic_socket>
 #include <pal/net/async/request>
 #include <pal/not_null>
+#include <cassert>
 
 
 __pal_begin
@@ -137,9 +138,9 @@ public:
 	void async_receive_from (not_null<async::request *> request,
 		const MutableSpanSequence &spans,
 		endpoint_type &sender,
-		socket_base::message_flags flags = 0) noexcept(assert_noexcept)
+		socket_base::message_flags flags = 0) noexcept
 	{
-		pal_assert(this->has_async());
+		assert(this->has_async());
 		auto &message = request->impl_.message;
 		if (message.set(spans, request->error))
 		{
@@ -157,9 +158,9 @@ public:
 	void async_send_to (not_null<async::request *> request,
 		const ConstSpanSequence &spans,
 		const endpoint_type &recipient,
-		socket_base::message_flags flags = 0) noexcept(assert_noexcept)
+		socket_base::message_flags flags = 0) noexcept
 	{
-		pal_assert(this->has_async());
+		assert(this->has_async());
 		auto &message = request->impl_.message;
 		if (message.set(spans, request->error))
 		{
@@ -176,9 +177,9 @@ public:
 	template <typename MutableSpanSequence>
 	void async_receive (not_null<async::request *> request,
 		const MutableSpanSequence &spans,
-		socket_base::message_flags flags = 0) noexcept(assert_noexcept)
+		socket_base::message_flags flags = 0) noexcept
 	{
-		pal_assert(this->has_async());
+		assert(this->has_async());
 		auto &message = request->impl_.message;
 		if (message.set(spans, request->error))
 		{
@@ -195,9 +196,9 @@ public:
 	template <typename ConstSpanSequence>
 	void async_send (not_null<async::request *> request,
 		const ConstSpanSequence &spans,
-		socket_base::message_flags flags = 0) noexcept(assert_noexcept)
+		socket_base::message_flags flags = 0) noexcept
 	{
-		pal_assert(this->has_async());
+		assert(this->has_async());
 		auto &message = request->impl_.message;
 		if (message.set(spans, request->error))
 		{
