@@ -30,3 +30,12 @@ cxx_executable(udp_relay_server_local_map
 	SOURCES ${udp_relay_server_local_map} ${samples_common_sources}
 	LIBRARIES ${pal_libraries}
 )
+
+# udp_relay_server_multi_send {{{1
+list(APPEND udp_relay_server_multi_send
+	samples/udp_relay_server_multi_send.cpp
+)
+cxx_executable(udp_relay_server_multi_send
+	SOURCES ${udp_relay_server_multi_send} ${samples_common_sources}
+	LIBRARIES ${pal_libraries}
+)
