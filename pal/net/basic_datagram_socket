@@ -210,7 +210,8 @@ public:
 	}
 
 	/**
-	 * TODO
+	 * Return multiple send requests queue tied to this socket.
+	 * \see async::multi_send_request
 	 */
 	async::multi_send_request<protocol_type> async_send_many () noexcept
 	{

@@ -630,14 +630,14 @@ void socket::impl_type::accept_many (service::notify_fn notify, void *handler) n
 			std::get_if<async::accept>(it)->guard_.handle = r;
 			notify(handler, pending_receive.pop());
 		}
+		else if (is_blocking_error(errno) && await_read())
+		{
+			break;
+		}
 		else
 		{
-			if (!is_blocking_error(errno) || !await_read())
-			{
-				it->error.assign(errno, std::generic_category());
-				notify(handler, pending_receive.pop());
-			}
-			break;
+			it->error.assign(errno, std::generic_category());
+			notify(handler, pending_receive.pop());
 		}
 	}
 }

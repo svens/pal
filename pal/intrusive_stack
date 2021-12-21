@@ -20,10 +20,9 @@ template <typename T>
 using intrusive_stack_hook = T *;
 
 
-#if !defined(__DOXYGEN__)
-	template <auto Next>
-	class intrusive_stack;
-#endif
+/// \cond
+template <auto Next> class intrusive_stack;
+/// \endcond
 
 
 /**
