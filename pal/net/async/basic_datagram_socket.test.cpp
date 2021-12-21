@@ -663,20 +663,12 @@ TEMPLATE_TEST_CASE("net/async/basic_datagram_socket", "[!nonportable]",
 		;
 
 		service.run_for(run_duration, add_completed);
-
 		REQUIRE(completed.size() == 2);
-		if constexpr (pal::is_windows_build)
-		{
-			CHECK(completed[0] == &r[0]);
-			CHECK(completed[1] == &r[1]);
-		}
-		else
-		{
-			// reordered because before send syscall erroneous requests
-			// are already pushed into completion list
-			CHECK(completed[0] == &r[1]);
-			CHECK(completed[1] == &r[0]);
-		}
+
+		// reordered because before send syscall erroneous requests
+		// are already pushed into completion list
+		CHECK(completed[0] == &r[1]);
+		CHECK(completed[1] == &r[0]);
 
 		auto received = pal_try(peer.receive_from(recv_msg, peer_endpoint));
 		REQUIRE(received == std::get<pal::net::async::send_to>(r[0]).bytes_transferred);
@@ -697,20 +689,12 @@ TEMPLATE_TEST_CASE("net/async/basic_datagram_socket", "[!nonportable]",
 		;
 
 		service.run_for(run_duration, add_completed);
-
 		REQUIRE(completed.size() == 2);
-		if constexpr (pal::is_windows_build)
-		{
-			CHECK(completed[0] == &r[0]);
-			CHECK(completed[1] == &r[1]);
-		}
-		else
-		{
-			// reordered because before send syscall erroneous requests
-			// are already pushed into completion list
-			CHECK(completed[0] == &r[1]);
-			CHECK(completed[1] == &r[0]);
-		}
+
+		// reordered because before send syscall erroneous requests
+		// are already pushed into completion list
+		CHECK(completed[0] == &r[1]);
+		CHECK(completed[1] == &r[0]);
 
 		auto received = pal_try(peer.receive_from(recv_msg, peer_endpoint));
 		REQUIRE(received == std::get<pal::net::async::send>(r[0]).bytes_transferred);

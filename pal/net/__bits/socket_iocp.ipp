@@ -435,9 +435,11 @@ int socket::impl_type::complete (async::accept &accept, async::request *request)
 
 void socket::start_send_many (async::multi_request &request) noexcept
 {
-	while (!request.queue.empty())
+	impl->service->completed.splice(std::move(request.failed));
+
+	while (!request.pending.empty())
 	{
-		auto *it = request.queue.pop();
+		auto *it = request.pending.pop();
 		if (auto *send_to = std::get_if<async::send_to>(it))
 		{
 			start(*send_to);

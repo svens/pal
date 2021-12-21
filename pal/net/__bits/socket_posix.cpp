@@ -602,21 +602,10 @@ void socket::start (async::accept &accept) noexcept
 
 void socket::start_send_many (async::multi_request &request) noexcept
 {
+	impl->service->completed.splice(std::move(request.failed));
+
 	auto try_now = impl->pending_send.empty();
-
-	while (!request.queue.empty())
-	{
-		auto *it = request.queue.pop();
-		if (it->error)
-		{
-			impl->service->completed.push(it);
-		}
-		else
-		{
-			impl->pending_send.push(it);
-		}
-	}
-
+	impl->pending_send.splice(std::move(request.pending));
 	if (try_now && !impl->pending_send.empty())
 	{
 		static auto push_back = [](void *handler, async::request *request) noexcept

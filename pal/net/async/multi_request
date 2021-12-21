@@ -19,7 +19,7 @@ namespace net::async {
 
 struct multi_request
 {
-	request_queue queue{};
+	request_queue pending{}, failed{};
 
 	template <typename Request, typename ConstSpanSequence>
 	void push (not_null<request *> request,
@@ -33,8 +33,12 @@ struct multi_request
 		{
 			message.flags(0);
 			message.name(name, name_size);
+			pending.push(request);
 		}
-		queue.push(request);
+		else
+		{
+			failed.push(request);
+		}
 	}
 };
 

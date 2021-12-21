@@ -498,18 +498,10 @@ TEMPLATE_TEST_CASE("net/async/basic_stream_socket", "[!nonportable]",
 		service.run_for(run_duration, add_completed);
 		REQUIRE(completed.size() == 2);
 
-		if constexpr (pal::is_windows_build)
-		{
-			CHECK(completed[0] == &r[0]);
-			CHECK(completed[1] == &r[1]);
-		}
-		else
-		{
-			// reordered because before send syscall erroneous requests
-			// are already pushed into completion list
-			CHECK(completed[0] == &r[1]);
-			CHECK(completed[1] == &r[0]);
-		}
+		// reordered because before send syscall erroneous requests
+		// are already pushed into completion list
+		CHECK(completed[0] == &r[1]);
+		CHECK(completed[1] == &r[0]);
 
 		REQUIRE(std::get<pal::net::async::send>(r[0]).bytes_transferred == send_bufs[0].size());
 		CHECK(recv_view(pal_try(peer.receive(recv_msg))) == send_bufs[0]);
