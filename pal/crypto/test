@@ -62,7 +62,7 @@ inline std::string to_der (std::string_view pem)
 namespace cert {
 
 
-/* see scripts/make_ca.sh
+/* see scripts/cert-gen/make_ca.sh
 notBefore=Nov 28 15:31:48 2020 GMT
 notAfter=Nov 23 15:31:48 2040 GMT
 */
