@@ -1,0 +1,129 @@
+#pragma once // -*- C++ -*-
+
+/**
+ * \file pal/net/async/multi_request
+ * Multiple requests batch
+ */
+
+
+#include <pal/__bits/lib>
+#include <pal/net/async/request>
+#include <type_traits>
+
+
+__pal_begin
+
+
+namespace net::async {
+
+
+/// \cond
+struct multi_request
+{
+	request_queue pending{}, failed{};
+
+	template <typename Request, typename ConstSpanSequence>
+	void push (not_null<request *> request,
+		const ConstSpanSequence &spans,
+		const void *name,
+		size_t name_size) noexcept
+	{
+		request->emplace<Request>();
+		auto &message = request->impl_.message;
+		if (message.set(spans, request->error))
+		{
+			message.flags(0);
+			message.name(name, name_size);
+			pending.push(request);
+		}
+		else
+		{
+			failed.push(request);
+		}
+	}
+};
+/// \endcond
+
+
+/**
+ * Multiple send requests queue. It batches number of individual send/send_to
+ * requests together and starts them asynchronously in single invocation. On
+ * platforms that support it, these requests are started with single syscall
+ * (Linux: sendmmsg). Otherwise all requests are started individually in same
+ * order as they were enqueued except vectored sends that exceed
+ * socket_base::iov_max_size elements. Such requests are marked as failed and
+ * enqueued later directly into completion queue.
+ */
+template <typename Protocol>
+class multi_send_request: protected multi_request
+{
+public:
+
+	/// Socket protocol
+	using protocol_type = Protocol;
+
+	/// Protocol-specific endpoint type
+	using endpoint_type = typename Protocol::endpoint;
+
+	/// Socket type that created this multi_send_request
+	using socket_type = typename Protocol::socket;
+
+
+	/**
+	 * If there are requests in batch, start them.
+	 */
+	~multi_send_request () noexcept
+	{
+		start();
+	}
+
+	/**
+	 * Start multiple asynchronous enqueued send requests
+	 */
+	void start () noexcept
+	{
+		socket_.start_send_many(*this);
+	}
+
+	/**
+	 * Enqueue asynchronous send_to \a request for later invocation.
+	 */
+	template <typename ConstSpanSequence>
+	requires std::is_same_v<socket_type, basic_datagram_socket<Protocol>>
+	multi_send_request &push_back (not_null<request *> request,
+		const ConstSpanSequence &spans,
+		const endpoint_type &recipient) noexcept
+	{
+		push<send_to>(request, spans, recipient.data(), recipient.size());
+		return *this;
+	}
+
+	/**
+	 * Enqueue asynchronous send \a request for later invocation.
+	 */
+	template <typename ConstSpanSequence>
+	multi_send_request &push_back (not_null<request *> request,
+		const ConstSpanSequence &spans) noexcept
+	{
+		push<send>(request, spans, nullptr, 0);
+		return *this;
+	}
+
+
+private:
+
+	__bits::socket &socket_;
+
+	multi_send_request (__bits::socket &socket) noexcept
+		: socket_{socket}
+	{ }
+
+	friend class basic_datagram_socket<Protocol>;
+	friend class basic_stream_socket<Protocol>;
+};
+
+
+} // namespace net::async
+
+
+__pal_end

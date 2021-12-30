@@ -1,0 +1,12 @@
+#!/bin/bash
+
+source _common.sh
+nic=$(get_nic)
+
+# hashing
+ethtool --show-ntuple $nic rx-flow-hash udp4
+ethtool --config-ntuple $nic rx-flow-hash udp4 sdfn
+
+# rx/tx queue sizes
+ethtool --show-ring $nic
+ethtool --set-ring $nic rx 8192 tx 8192

@@ -34,38 +34,6 @@ TEMPLATE_TEST_CASE("net/async/basic_socket_acceptor", "[!nonportable]",
 
 	constexpr auto run_duration = 1s;
 
-	SECTION("make_async: multiple times") //{{{1
-	{
-		REQUIRE(service.make_async(acceptor));
-		REQUIRE(acceptor.has_async());
-		if constexpr (!pal::assert_noexcept)
-		{
-			REQUIRE_THROWS_AS(service.make_async(acceptor), std::logic_error);
-		}
-	}
-
-	SECTION("not async") //{{{1
-	{
-		if constexpr (!pal::assert_noexcept)
-		{
-			SECTION("async_accept")
-			{
-				CHECK_THROWS_AS(
-					acceptor.async_accept(&request),
-					std::logic_error
-				);
-			}
-
-			SECTION("async_accept")
-			{
-				CHECK_THROWS_AS(
-					acceptor.async_accept(&request, accept_endpoint),
-					std::logic_error
-				);
-			}
-		}
-	}
-
 	SECTION("make_async: bad file descriptor") //{{{1
 	{
 		handle_guard{acceptor.native_handle()};

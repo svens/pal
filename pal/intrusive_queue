@@ -21,10 +21,9 @@ template <typename T>
 using intrusive_queue_hook = T *;
 
 
-#if !defined(__DOXYGEN__)
-	template <auto Next>
-	class intrusive_queue;
-#endif
+/// \cond
+template <auto Next> class intrusive_queue;
+/// \endcond
 
 
 /**

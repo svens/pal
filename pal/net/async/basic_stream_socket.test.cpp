@@ -50,45 +50,6 @@ TEMPLATE_TEST_CASE("net/async/basic_stream_socket", "[!nonportable]",
 		return pal_try(acceptor.accept(peer_endpoint));
 	};
 
-	SECTION("make_async: multiple times") //{{{1
-	{
-		REQUIRE(service.make_async(socket));
-		if constexpr (!pal::assert_noexcept)
-		{
-			REQUIRE_THROWS_AS(service.make_async(socket), std::logic_error);
-		}
-	}
-
-	SECTION("not async") //{{{1
-	{
-		if constexpr (!pal::assert_noexcept)
-		{
-			SECTION("async_connect")
-			{
-				CHECK_THROWS_AS(
-					socket.async_connect(&request, accept_endpoint),
-					std::logic_error
-				);
-			}
-
-			SECTION("async_receive")
-			{
-				CHECK_THROWS_AS(
-					socket.async_receive(&request, recv_msg),
-					std::logic_error
-				);
-			}
-
-			SECTION("async_send")
-			{
-				CHECK_THROWS_AS(
-					socket.async_send(&request, send_msg),
-					std::logic_error
-				);
-			}
-		}
-	}
-
 	SECTION("make_async: bad file descriptor") //{{{1
 	{
 		auto s = pal_try(TestType::make_socket());
@@ -499,6 +460,54 @@ TEMPLATE_TEST_CASE("net/async/basic_stream_socket", "[!nonportable]",
 		CHECK(completed.at(0) == &request);
 		REQUIRE(request.error == std::errc::not_connected);
 		CHECK(std::holds_alternative<pal::net::async::send>(request));
+	}
+
+	SECTION("async_send_many: send") //{{{1
+	{
+		auto peer = make_peer(socket);
+		pal_try(service.make_async(socket));
+
+		pal::net::async::request r[3];
+		socket.async_send_many()
+			.push_back(&r[0], send_msg[0])
+			.push_back(&r[1], send_msg[1])
+			.push_back(&r[2], send_msg[2])
+		;
+
+		service.run_for(run_duration, add_completed);
+		REQUIRE(completed.size() == 3);
+
+		CHECK(std::get<pal::net::async::send>(r[0]).bytes_transferred == send_msg[0].size());
+		CHECK(std::get<pal::net::async::send>(r[1]).bytes_transferred == send_msg[1].size());
+		CHECK(std::get<pal::net::async::send>(r[2]).bytes_transferred == send_msg[2].size());
+
+		CHECK(recv_view(pal_try(peer.receive(recv_msg))) == send_view);
+	}
+
+	SECTION("async_send_many: send: argument list too long") //{{{1
+	{
+		auto peer = make_peer(socket);
+		pal_try(service.make_async(socket));
+
+		pal::net::async::request r[2];
+		socket.async_send_many()
+			.push_back(&r[0], send_msg[0])
+			.push_back(&r[1], send_msg_list_too_long)
+		;
+
+		service.run_for(run_duration, add_completed);
+		REQUIRE(completed.size() == 2);
+
+		// reordered because before send syscall erroneous requests
+		// are already pushed into completion list
+		CHECK(completed[0] == &r[1]);
+		CHECK(completed[1] == &r[0]);
+
+		REQUIRE(std::get<pal::net::async::send>(r[0]).bytes_transferred == send_bufs[0].size());
+		CHECK(recv_view(pal_try(peer.receive(recv_msg))) == send_bufs[0]);
+
+		REQUIRE(r[1].error == std::errc::argument_list_too_long);
+		CHECK(std::holds_alternative<pal::net::async::send>(r[1]));
 	}
 
 	SECTION("async_connect") //{{{1

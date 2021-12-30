@@ -1,0 +1,7 @@
+#!/bin/bash
+
+cat <<EOF | sysctl --load=-
+net.core.rmem_max=8388608
+net.core.wmem_max=8388608
+net.core.netdev_max_backlog=30000
+EOF

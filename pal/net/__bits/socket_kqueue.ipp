@@ -54,14 +54,14 @@ void socket::impl_type::receive_many (service::notify_fn notify, void *handler) 
 			}
 			notify(handler, pending_receive.pop());
 		}
+		else if (is_blocking_error(errno) && await_read())
+		{
+			break;
+		}
 		else
 		{
-			if (!is_blocking_error(errno) || !await_read())
-			{
-				it->error.assign(errno, std::generic_category());
-				notify(handler, pending_receive.pop());
-			}
-			break;
+			it->error.assign(errno, std::generic_category());
+			notify(handler, pending_receive.pop());
 		}
 	}
 }
@@ -103,14 +103,18 @@ void socket::impl_type::send_many (service::notify_fn notify, void *handler) noe
 			}
 			notify(handler, pending_send.pop());
 		}
+		else if (is_blocking_error(errno) && await_write())
+		{
+			break;
+		}
 		else
 		{
-			if (!is_blocking_error(errno) || !await_write())
+			if (is_connection_error(errno))
 			{
-				it->error.assign(errno, std::generic_category());
-				notify(handler, pending_send.pop());
+				errno = ENOTCONN;
 			}
-			break;
+			it->error.assign(errno, std::generic_category());
+			notify(handler, pending_send.pop());
 		}
 	}
 }
