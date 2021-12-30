@@ -1,0 +1,11 @@
+#!/bin/bash
+
+source _common.sh
+nic=$(get_nic)
+
+cpu=0
+for txq in /sys/class/net/$nic/queues/tx-*; do
+	echo $((1 << cpu)) > $txq/xps_cpus
+	echo $((1 << cpu)) > $txq/xps_rxqs
+	cpu=$((cpu + 1))
+done

@@ -1,0 +1,17 @@
+#!/bin/bash
+
+source _common.sh
+irq_list=$(get_irq)
+
+# How to override irqbalance continuous tweakingr
+# (in order of preference but some not available depending on distro)
+# 1. set /proc/irq/$irq/affinity_hint
+# 2. set irqbalance --banirq=$irq and restart service
+# 3. turn irqbalance completely off
+service irqbalance stop
+
+cpu=0
+for irq in $irq_list; do
+	echo $((1 << cpu)) > /proc/irq/$irq/smp_affinity
+	cpu=$((cpu + 1))
+done

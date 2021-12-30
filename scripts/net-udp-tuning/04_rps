@@ -1,0 +1,8 @@
+#!/bin/bash
+
+# Receive Packet Steering
+# Software emulation of RSS
+
+# Not needed as Mellanox driver does it in hardware (RSS)
+# Might be still useful if # of cores > # of rss queues
+# TODO
