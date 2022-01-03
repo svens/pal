@@ -1,7 +1,7 @@
 # UDP throughput tuning
 
 
-## Assumptions:
+## Assumptions
 * different applications' typical packet size differs. When designing
   protocol, try to lower UDP packet header vs payload ratio to improve
   bandwidth utilization (bytes per second, BPS). Tuning this is application
@@ -60,24 +60,31 @@ Implementations of used configurations can be found in scripts in current direct
 |VM		|OS		|Sessions	|CPU load	|Mbps	|Kpps	|Notes|
 |---------------|---------------|---------------|---------------|-------|-------|-----|
 |`F4s_v2`	|Windows	|6000		|58%		|354	|218	|2 cores at 100%|
-|`F4s_v2`	|Linux		|9600		|91%		|564	|354	|MLX4|
-|`F4s_v2`	|Linux		|12000		|90%		|708	|442	|MLX5|
+|`F4s_v2`	|Linux		|9600		|91%		|564	|354	|Mellanox v4|
+|`F4s_v2`	|Linux		|12000		|90%		|708	|442	|Mellanox v5|
 |`DS2_v2`	|Windows	|4700		|100%		|276	|173	||
-|`DS2_v2`	|Linux		|7000		|76%		|412	|258	|MLX5|
+|`DS2_v2`	|Linux		|7000		|76%		|412	|258	|Mellanox v5|
 
 
 ### `udp_relay_server_local_map`
 |VM		|OS		|Sessions	|CPU load	|Mbps	|Kpps	|Notes|
 |---------------|---------------|---------------|---------------|-------|-------|-----|
 |`F4s_v2`	|Windows	|6000		|54%		|354	|218	|2 cores at 100%|
-|`F4s_v2`	|Linux		|9600		|90%		|564	|354	|MLX4|
-|`F4s_v2`	|Linux		|12000		|90%		|708	|442	|MLX5|
+|`F4s_v2`	|Linux		|9600		|90%		|564	|354	|Mellanox v4|
+|`F4s_v2`	|Linux		|12000		|90%		|708	|442	|Mellanox v5|
 |`DS2_v2`	|Windows	|4700		|97%		|276	|173	||
-|`DS2_v2`	|Linux		|7000		|74%		|412	|258	|MLX5|
+|`DS2_v2`	|Linux		|7000		|74%		|412	|258	|Mellanox v5|
 
 
 ### `udp_relay_server_multi_send`
 |VM		|OS		|Sessions	|CPU load	|Mbps	|Kpps	|Notes|
 |---------------|---------------|---------------|---------------|-------|-------|-----|
-|`F4s_v2`	|Linux		|15000		|92%		|882	|553	|MLX5|
-|`DS2_v2`	|Linux		|8700		|85%		|513	|320	|MLX5|
+|`F4s_v2`	|Linux		|15000		|92%		|882	|553	|Mellanox v5|
+|`DS2_v2`	|Linux		|8700		|85%		|513	|320	|Mellanox v5|
+
+
+### `NA/relay_server_udp_mt`
+(internal)
+|VM		|OS		|Sessions	|CPU load	|Mbps	|Kpps	|Notes|
+|---------------|---------------|---------------|---------------|-------|-------|-----|
+|`F4s_v2`	|Linux		|10200		|75%		|600	|376	|Mellanox v5|

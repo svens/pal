@@ -1,0 +1,6 @@
+#!/bin/bash
+
+cat <<EOF | sysctl --load=-
+kernel.perf_event_paranoid=-1
+kernel.kptr_restrict=0
+EOF
