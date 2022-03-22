@@ -46,7 +46,7 @@ void socket::impl_type::receive_many (service::notify_fn notify, void *handler) 
 				break;
 			}
 
-			auto *request = pending_send.pop();
+			auto *request = pending_receive.pop();
 			request->error.assign(errno, std::generic_category());
 			notify(handler, request);
 		}
