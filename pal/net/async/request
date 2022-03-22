@@ -215,7 +215,7 @@ using request_queue = intrusive_queue<&request::next>;
 __pal_end
 
 
-#if __cpp_lib_variant < 202102L
+#if __cpp_lib_variant <= 202106L
 
 //
 // Here be dragons
