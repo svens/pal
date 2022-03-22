@@ -19,7 +19,6 @@ list(APPEND pal_sources
 	pal/scoped_alloc
 	pal/span
 	pal/string
-	pal/uninitialized
 )
 
 list(APPEND pal_test_sources
@@ -38,7 +37,6 @@ list(APPEND pal_test_sources
 	pal/result.test.cpp
 	pal/scoped_alloc.test.cpp
 	pal/span.test.cpp
-	pal/uninitialized.test.cpp
 )
 
 include(pal/crypto/list.cmake)
