@@ -302,6 +302,7 @@ struct socket
 
 	result<native_socket> accept (void *endpoint, size_t *endpoint_size) noexcept;
 	result<void> connect (const void *endpoint, size_t endpoint_size) noexcept;
+	result<void> shutdown (shutdown_type what) noexcept;
 
 	result<size_t> receive (message &msg) noexcept;
 	result<size_t> send (const message &msg) noexcept;

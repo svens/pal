@@ -400,6 +400,16 @@ result<void> socket::connect (const void *endpoint, size_t endpoint_size) noexce
 }
 
 
+result<void> socket::shutdown (shutdown_type what) noexcept
+{
+	if (::shutdown(impl->handle, static_cast<int>(what)) == 0)
+	{
+		return {};
+	}
+	return sys_error();
+}
+
+
 result<size_t> socket::receive (message &msg) noexcept
 {
 	int result;
@@ -433,6 +443,13 @@ result<size_t> socket::receive (message &msg) noexcept
 	if (result != SOCKET_ERROR)
 	{
 		return received;
+	}
+
+	auto e = ::WSAGetLastError();
+	if (e == WSAESHUTDOWN)
+	{
+		// unify with Posix
+		return 0u;
 	}
 	return sys_error();
 }
@@ -472,7 +489,14 @@ result<size_t> socket::send (const message &msg) noexcept
 	{
 		return sent;
 	}
-	return sys_error();
+
+	auto e = ::WSAGetLastError();
+	if (e == WSAESHUTDOWN)
+	{
+		// unify with Posix
+		e = WSAENOTCONN;
+	}
+	return sys_error(e);
 }
 
 

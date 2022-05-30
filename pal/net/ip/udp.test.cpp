@@ -189,6 +189,28 @@ TEMPLATE_TEST_CASE("net/ip/udp", "", udp_v4, udp_v6, udp_v6_only)
 			CHECK(recv_view(*recv) == send_view);
 		}
 
+		SECTION("send after shutdown")
+		{
+			auto shutdown = sender.shutdown(sender.shutdown_send);
+			REQUIRE(shutdown);
+
+			auto send = sender.send(send_msg);
+			REQUIRE_FALSE(send);
+			CHECK(send.error() == std::errc::not_connected);
+		}
+
+		SECTION("receive after shutdown")
+		{
+			REQUIRE(receiver.connect(sender.local_endpoint().value()));
+
+			auto shutdown = receiver.shutdown(sender.shutdown_receive);
+			REQUIRE(shutdown);
+
+			auto recv = receiver.receive(recv_msg);
+			REQUIRE(recv);
+			CHECK(*recv == 0);
+		}
+
 		SECTION("argument list too long")
 		{
 			auto send = sender.send(send_msg_list_too_long);

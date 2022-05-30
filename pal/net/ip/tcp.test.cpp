@@ -112,6 +112,26 @@ TEMPLATE_TEST_CASE("net/ip/tcp", "[!nonportable]", tcp_v4, tcp_v6, tcp_v6_only)
 			CHECK(recv.error() == std::errc::argument_list_too_long);
 		}
 
+		SECTION("send after shutdown")
+		{
+			auto shutdown = sender.shutdown(sender.shutdown_send);
+			REQUIRE(shutdown);
+
+			auto send = sender.send(send_msg);
+			REQUIRE_FALSE(send);
+			CHECK(send.error() == std::errc::not_connected);
+		}
+
+		SECTION("receive after shutdown")
+		{
+			auto shutdown = receiver.shutdown(sender.shutdown_receive);
+			REQUIRE(shutdown);
+
+			auto recv = receiver.receive(recv_msg);
+			REQUIRE(recv);
+			CHECK(*recv == 0);
+		}
+
 		SECTION("receive timeout")
 		{
 			REQUIRE(receiver.set_option(pal::net::receive_timeout(10ms)));
