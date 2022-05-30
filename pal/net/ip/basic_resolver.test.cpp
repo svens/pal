@@ -80,14 +80,15 @@ TEMPLATE_TEST_CASE("net/ip/basic_resolver", "",
 
 	SECTION("resolve canonical name")
 	{
-		auto resolve = resolver.resolve("mail.google.com", {}, resolver.canonical_name);
+		constexpr std::string_view host = "stun.azure.com";
+		auto resolve = resolver.resolve(host, {}, resolver.canonical_name);
 		REQUIRE(resolve);
 		REQUIRE_FALSE(resolve->empty());
 		for (auto &it: *resolve)
 		{
 			// Note: this test makes assumptions about setup
 			// if starts failing, find another where host name != canonical name
-			CHECK(it.host_name() != "mail.google.com");
+			CHECK(it.host_name() != host);
 		}
 	}
 
