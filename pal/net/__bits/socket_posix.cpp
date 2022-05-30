@@ -367,6 +367,16 @@ result<void> socket::connect (const void *endpoint, size_t endpoint_size) noexce
 }
 
 
+result<void> socket::shutdown (shutdown_type what) noexcept
+{
+	if (::shutdown(impl->handle, static_cast<int>(what)) == 0)
+	{
+		return {};
+	}
+	return sys_error();
+}
+
+
 result<size_t> socket::receive (message &msg) noexcept
 {
 	auto r = ::recvmsg(impl->handle, &msg, msg.msg_flags | MSG_NOSIGNAL);

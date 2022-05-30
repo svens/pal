@@ -192,6 +192,15 @@ public:
 
 
 	/**
+	 * Shut down all or part of a full-duplex connection for the socket.
+	 */
+	result<void> shutdown (shutdown_type what) noexcept
+	{
+		return socket_.shutdown(what);
+	}
+
+
+	/**
 	 * Get socket non-blocking mode.
 	 */
 	result<bool> native_non_blocking () const noexcept
