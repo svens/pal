@@ -5,37 +5,29 @@ list(APPEND samples_common_sources
 )
 
 # udp_relay_client {{{1
-list(APPEND udp_relay_client
-	samples/udp_relay_client.cpp
-)
 cxx_executable(udp_relay_client
-	SOURCES ${udp_relay_client} ${samples_common_sources}
-	LIBRARIES ${pal_libraries}
+	SOURCES ${samples_common_sources}
+		samples/udp_relay_client.cpp
+	LIBRARIES pal::pal
 )
 
 # udp_relay_server_global_map {{{1
-list(APPEND udp_relay_server_global_map
-	samples/udp_relay_server_global_map.cpp
-)
 cxx_executable(udp_relay_server_global_map
-	SOURCES ${udp_relay_server_global_map} ${samples_common_sources}
-	LIBRARIES ${pal_libraries}
+	SOURCES ${samples_common_sources}
+		samples/udp_relay_server_global_map.cpp
+	LIBRARIES pal::pal
 )
 
 # udp_relay_server_local_map {{{1
-list(APPEND udp_relay_server_local_map
-	samples/udp_relay_server_local_map.cpp
-)
 cxx_executable(udp_relay_server_local_map
-	SOURCES ${udp_relay_server_local_map} ${samples_common_sources}
-	LIBRARIES ${pal_libraries}
+	SOURCES ${samples_common_sources}
+		samples/udp_relay_server_local_map.cpp
+	LIBRARIES pal::pal
 )
 
 # udp_relay_server_multi_send {{{1
-list(APPEND udp_relay_server_multi_send
-	samples/udp_relay_server_multi_send.cpp
-)
 cxx_executable(udp_relay_server_multi_send
-	SOURCES ${udp_relay_server_multi_send} ${samples_common_sources}
-	LIBRARIES ${pal_libraries}
+	SOURCES ${samples_common_sources}
+		samples/udp_relay_server_multi_send.cpp
+	LIBRARIES pal::pal
 )
