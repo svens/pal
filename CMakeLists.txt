@@ -2,7 +2,7 @@ cmake_minimum_required(VERSION 3.12)
 
 project(pal LANGUAGES CXX)
 include(cmake/project_version.cmake)
-message(STATUS "${CMAKE_PROJECT_NAME} ${CMAKE_PROJECT_VERSION}")
+message(STATUS "${PROJECT_NAME} ${CMAKE_PROJECT_VERSION}")
 
 option(pal_test "Build tests" ON)
 option(pal_bench "Build benchmarks" OFF)
