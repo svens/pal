@@ -68,7 +68,7 @@ public:
 	{
 		if (ptr_ != &stack_[0])
 		{
-			delete ptr_;
+			delete[] ptr_;
 		}
 	}
 
