@@ -3,6 +3,7 @@
 #include <pal/test>
 #include <pal/assert>
 #include <pal/conv>
+#include <algorithm>
 #include <string>
 
 
