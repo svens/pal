@@ -26,6 +26,7 @@ list(APPEND pal_test_sources
 	pal/test.cpp
 	pal/assert.test.cpp
 	pal/byte_order.test.cpp
+	pal/conv.bench.cpp
 	pal/conv.test.cpp
 	pal/error.test.cpp
 	pal/expected.test.cpp
