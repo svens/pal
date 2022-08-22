@@ -33,6 +33,7 @@ list(APPEND pal_test_sources
 	pal/intrusive_mpsc_queue.test.cpp
 	pal/intrusive_queue.test.cpp
 	pal/intrusive_stack.test.cpp
+	pal/invoke.bench.cpp
 	pal/not_null.test.cpp
 	pal/result.test.cpp
 	pal/scoped_alloc.test.cpp
