@@ -29,6 +29,7 @@ list(APPEND pal_test_sources
 	pal/conv.test.cpp
 	pal/error.test.cpp
 	pal/expected.test.cpp
+	pal/hash.bench.cpp
 	pal/hash.test.cpp
 	pal/intrusive_mpsc_queue.test.cpp
 	pal/intrusive_queue.test.cpp
