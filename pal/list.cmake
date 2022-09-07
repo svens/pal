@@ -29,6 +29,7 @@ list(APPEND pal_test_sources
 	pal/conv.bench.cpp
 	pal/conv.test.cpp
 	pal/error.test.cpp
+	pal/expected.bench.cpp
 	pal/expected.test.cpp
 	pal/hash.bench.cpp
 	pal/hash.test.cpp
