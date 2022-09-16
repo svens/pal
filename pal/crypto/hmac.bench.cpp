@@ -22,7 +22,7 @@ TEMPLATE_TEST_CASE("crypto/hmac", "[!benchmark]",
 	sha384,
 	sha512)
 {
-	size_t size = 1 << GENERATE(range(5, 10));
+	auto size = 1ull << GENERATE(range(5, 10));
 	uint8_t buffer[512];
 	std::span span{buffer, size};
 	pal::crypto::random(span);

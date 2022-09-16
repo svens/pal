@@ -9,7 +9,7 @@ namespace {
 
 TEST_CASE("hash", "[!benchmark]")
 {
-	std::string blob(1 << GENERATE(range(2, 10)), 'x');
+	std::string blob(1ull << GENERATE(range(2, 10)), 'x');
 	BENCHMARK("fnv_1a_64/" + std::to_string(blob.size()))
 	{
 		return pal::fnv_1a_64(blob);

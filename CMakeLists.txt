@@ -5,7 +5,6 @@ include(cmake/project_version.cmake)
 message(STATUS "${PROJECT_NAME} ${CMAKE_PROJECT_VERSION}")
 
 option(pal_test "Build tests" ON)
-option(pal_bench "Build benchmarks" OFF)
 option(pal_doc "Generate documentation" OFF)
 option(pal_samples "Build samples" OFF)
 
@@ -49,15 +48,6 @@ if(pal_test)
 		SOURCES ${pal_test_sources}
 		LIBRARIES pal::pal
 		COVERAGE_BASE_DIR ${CMAKE_SOURCE_DIR}/pal
-	)
-endif()
-
-# benchmarks {{{1
-if(pal_bench)
-	include(bench/list.cmake)
-	cxx_benchmark(pal_bench
-		SOURCES ${pal_bench_sources}
-		LIBRARIES pal::pal
 	)
 endif()
 

@@ -98,7 +98,7 @@ TEMPLATE_TEST_CASE("conv", "[!benchmark]",
 	base64,
 	hex)
 {
-	size_t size = 1 << GENERATE(range(2, 10));
+	auto size = 1ull << GENERATE(range(2, 10));
 	char buffer[512];
 	std::span in{buffer, size};
 	char out[(std::max)({TestType::to_size(buffer), TestType::from_size(buffer)})];
