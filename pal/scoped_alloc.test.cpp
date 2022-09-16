@@ -66,7 +66,7 @@ TEST_CASE("scoped_alloc")
 
 			// never reached, just create side-effect to disable
 			// over-eager optimiser
-			CHECK_FALSE(x.fail);
+			CHECK(data.get() != data.stack());
 		};
 		CHECK_THROWS_AS(f(), std::bad_alloc);
 	}

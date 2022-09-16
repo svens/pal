@@ -1,5 +1,6 @@
-#include <benchmark/benchmark.h>
 #include <pal/expected>
+#include <catch2/benchmark/catch_benchmark.hpp>
+#include <catch2/catch_template_test_macros.hpp>
 
 
 namespace {
@@ -16,13 +17,13 @@ struct bench_base
 {
 	errc code_path;
 
-	bench_base (errc code_path)
+	bench_base (errc code_path) noexcept
 		: code_path{code_path}
-	{}
+	{ }
 };
 
 
-struct value: public bench_base //{{{1
+struct value: bench_base //{{{1
 {
 	using bench_base::bench_base;
 
@@ -46,7 +47,7 @@ struct value: public bench_base //{{{1
 };
 
 
-struct exception: public bench_base //{{{1
+struct exception: bench_base //{{{1
 {
 	using bench_base::bench_base;
 
@@ -55,7 +56,7 @@ struct exception: public bench_base //{{{1
 		auto result = time(nullptr);
 		if (code_path == errc::failure)
 		{
-			throw std::exception{};
+			throw std::runtime_error{"exception"};
 		}
 		return result;
 	}
@@ -68,14 +69,19 @@ struct exception: public bench_base //{{{1
 		}
 		catch (const std::exception &e)
 		{
-			benchmark::DoNotOptimize(e.what());
+			// pretend examining error
+			// (not sure if compiler optimises this out)
+			if (*e.what() != 'x')
+			{
+				return 1;
+			}
 			return {};
 		}
 	}
 };
 
 
-struct variant: public bench_base //{{{1
+struct variant: bench_base //{{{1
 {
 	using bench_base::bench_base;
 
@@ -101,7 +107,7 @@ struct variant: public bench_base //{{{1
 };
 
 
-struct expected: public bench_base //{{{1
+struct expected: bench_base //{{{1
 {
 	using bench_base::bench_base;
 
@@ -122,11 +128,11 @@ struct expected: public bench_base //{{{1
 };
 
 
-struct expected_throw: public expected //{{{1
+struct expected_throw: expected //{{{1
 {
 	using expected::expected;
 
-	time_t run ()
+	time_t run () noexcept
 	{
 		try
 		{
@@ -134,36 +140,40 @@ struct expected_throw: public expected //{{{1
 		}
 		catch (const pal::bad_expected_access<errc> &e)
 		{
-			benchmark::DoNotOptimize(e.error());
+			// pretend examining error
+			// (not sure if compiler optimises this out)
+			if (e.error() == errc::failure)
+			{
+				return 1;
+			}
 			return {};
 		}
+
 	}
 };
 
 //}}}1
 
 
-template <typename F>
-void returns (benchmark::State &state, F f)
+TEMPLATE_TEST_CASE("returns", "[!benchmark]",
+	value,
+	exception,
+	variant,
+	expected,
+	expected_throw)
 {
-	for (auto _: state)
+	BENCHMARK_ADVANCED("success")(Catch::Benchmark::Chronometer meter)
 	{
-		auto result = f.run();
-		benchmark::DoNotOptimize(result);
-	}
+		TestType f{errc::success};
+		meter.measure([&f]{ return f.run(); });
+	};
+
+	BENCHMARK_ADVANCED("failure")(Catch::Benchmark::Chronometer meter)
+	{
+		TestType f{errc::failure};
+		meter.measure([&f]{ return f.run(); });
+	};
 }
-
-BENCHMARK_CAPTURE(returns, value_success, value{errc::success});
-BENCHMARK_CAPTURE(returns, exception_success, exception{errc::success});
-BENCHMARK_CAPTURE(returns, variant_success, variant{errc::success});
-BENCHMARK_CAPTURE(returns, expected_success, expected{errc::success});
-BENCHMARK_CAPTURE(returns, expected_throw_success, expected_throw{errc::success});
-
-BENCHMARK_CAPTURE(returns, value_failure, value{errc::failure});
-BENCHMARK_CAPTURE(returns, exception_failure, exception{errc::failure});
-BENCHMARK_CAPTURE(returns, variant_failure, variant{errc::failure});
-BENCHMARK_CAPTURE(returns, expected_failure, expected{errc::failure});
-BENCHMARK_CAPTURE(returns, expected_throw_failure, expected_throw{errc::failure});
 
 
 } // namespace

@@ -26,13 +26,17 @@ list(APPEND pal_test_sources
 	pal/test.cpp
 	pal/assert.test.cpp
 	pal/byte_order.test.cpp
+	pal/conv.bench.cpp
 	pal/conv.test.cpp
 	pal/error.test.cpp
+	pal/expected.bench.cpp
 	pal/expected.test.cpp
+	pal/hash.bench.cpp
 	pal/hash.test.cpp
 	pal/intrusive_mpsc_queue.test.cpp
 	pal/intrusive_queue.test.cpp
 	pal/intrusive_stack.test.cpp
+	pal/invoke.bench.cpp
 	pal/not_null.test.cpp
 	pal/result.test.cpp
 	pal/scoped_alloc.test.cpp

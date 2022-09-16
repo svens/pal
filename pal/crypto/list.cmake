@@ -20,7 +20,9 @@ list(APPEND pal_test_sources
 	pal/crypto/test
 	pal/crypto/certificate.test.cpp
 	pal/crypto/error.test.cpp
+	pal/crypto/hash.bench.cpp
 	pal/crypto/hash.test.cpp
+	pal/crypto/hmac.bench.cpp
 	pal/crypto/hmac.test.cpp
 	pal/crypto/key.test.cpp
 	pal/crypto/oid.test.cpp

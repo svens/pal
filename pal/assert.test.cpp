@@ -1,5 +1,6 @@
 #include <pal/assert>
 #include <pal/test>
+#include <memory>
 #include <catch2/catch_test_macros.hpp>
 #include <catch2/matchers/catch_matchers_string.hpp>
 
@@ -49,9 +50,9 @@ TEST_CASE("assert")
 	{
 		SECTION("not_nullptr")
 		{
-			const char buf[] = "a", *p = buf;
+			char buf = 'a', *p = &buf;
 			REQUIRE_NOTHROW(pal_assert(p));
-			CHECK(pal_assert(p) == buf);
+			CHECK(pal_assert(p) == &buf);
 		}
 
 		SECTION("nullptr")
@@ -73,7 +74,7 @@ TEST_CASE("assert")
 	{
 		SECTION("not_nullptr")
 		{
-			auto buf = new char[3];
+			auto buf = new char;
 			std::unique_ptr<char> p{buf};
 			REQUIRE_NOTHROW(pal_assert(p));
 			CHECK(pal_assert(p).get() == buf);
@@ -98,7 +99,7 @@ TEST_CASE("assert")
 	{
 		SECTION("not_nullptr")
 		{
-			auto buf = new char[3];
+			auto buf = new char;
 			std::shared_ptr<char> p{buf};
 			REQUIRE_NOTHROW(pal_assert(p));
 			CHECK(pal_assert(p).get() == buf);

@@ -5,7 +5,6 @@
 #include <cstdlib>
 
 
-
 #if __pal_os_windows && !NDEBUG
 
 int report_hook (int report_type, char *message, int *return_value)
