@@ -1,0 +1,28 @@
+#pragma once // -*- C++ -*-
+
+/**
+ * \file pal/result
+ * Convenience type pal::result<T> for std::expected<T, std::error_code>
+ */
+
+#include <pal/__config>
+#include <pal/__expected>
+#include <system_error>
+
+
+namespace pal {
+
+#if 0
+/// Convenience wrapper for std::expected<T, E>, where E is std::error_code
+template <typename T>
+using result = expected<T, std::error_code>;
+#endif
+
+/// Return unexpected{std::make_error_code(ec)}
+unexpected<std::error_code> make_unexpected (std::errc ec) noexcept
+{
+	return unexpected{std::make_error_code(ec)};
+}
+
+
+} // namespace pal

@@ -1,0 +1,139 @@
+#pragma once // -*- C++ -*-
+
+#if __has_include(<expected>)
+	#include <expected>
+#else
+	#include <type_traits>
+	#include <utility>
+#endif
+
+namespace pal {
+
+/// \cond Temporary header until implemented by supported toolchains
+
+#if __cpp_lib_expected >= 202202L
+using std::unexpected;
+#else
+
+// unexpected<E> {{{1
+
+template <typename E>
+class unexpected
+{
+private:
+
+	template <typename U>
+	static constexpr bool constructible_from_value =
+		!std::is_same_v<std::remove_cvref_t<U>, std::in_place_t> &&
+		!std::is_same_v<std::remove_cvref_t<U>, unexpected<E>>;
+
+	template <typename U>
+	static constexpr bool convertible_from_unexpected_v =
+		!std::is_constructible_v<E, const unexpected<U> &> &&
+		!std::is_constructible_v<E, unexpected<U> &> &&
+		!std::is_constructible_v<E, const unexpected<U>> &&
+		!std::is_constructible_v<E, unexpected<U>> &&
+		!std::is_convertible_v<const unexpected<U> &, E> &&
+		!std::is_convertible_v<unexpected<U> &, E> &&
+		!std::is_convertible_v<const unexpected<U>, E> &&
+		!std::is_convertible_v<unexpected<U>, E>
+	;
+
+public:
+
+	static_assert(std::is_object_v<E>);
+	static_assert(!std::is_array_v<E>);
+
+	//
+	// Constructors
+	//
+
+	constexpr unexpected (const unexpected &) = default;
+	constexpr unexpected (unexpected &&) = default;
+
+	template <typename... Args>
+	requires(std::is_constructible_v<E, Args...>)
+	explicit constexpr unexpected (std::in_place_t, Args &&...args)
+		noexcept(std::is_nothrow_constructible_v<E, Args...>)
+		: error_{std::forward<Args>(args)...}
+	{ }
+
+	template <typename U>
+	requires(std::is_constructible_v<E, U> && constructible_from_value<U>)
+	explicit constexpr unexpected (U &&e)
+		noexcept(std::is_nothrow_constructible_v<E, U>)
+		: error_{std::forward<U>(e)}
+	{ }
+
+	//
+	// Assignments
+	//
+
+	constexpr unexpected &operator= (const unexpected &) = default;
+	constexpr unexpected &operator= (unexpected &&) = default;
+
+	//
+	// Observers
+	//
+
+	constexpr const E &error () const & noexcept
+	{
+		return error_;
+	}
+
+	constexpr E &error () & noexcept
+	{
+		return error_;
+	}
+
+	constexpr const E &&error () const && noexcept
+	{
+		return std::move(error_);
+	}
+
+	constexpr E &&error () && noexcept
+	{
+		return std::move(error_);
+	}
+
+	//
+	// Swap
+	//
+
+	void swap (unexpected &that)
+		noexcept(std::is_nothrow_swappable_v<E>)
+		requires(std::is_swappable_v<E>)
+	{
+		using std::swap;
+		swap(error_, that.error_);
+	}
+
+
+private:
+
+	E error_;
+	template <typename U> friend class unexpected;
+};
+
+template <typename E> unexpected(E) -> unexpected<E>;
+
+template <typename E1, typename E2>
+constexpr bool operator== (const unexpected<E1> &l, const unexpected<E2> &r)
+{
+	return l.error() == r.error();
+}
+
+template <typename E1, typename E2>
+constexpr bool operator!= (const unexpected<E1> &l, const unexpected<E2> &r)
+{
+	return l.error() != r.error();
+}
+
+// {{{1
+// }}}1
+
+#endif // __cpp_lib_expected
+
+/// \endcond
+
+} // namespace pal
