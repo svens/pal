@@ -1,0 +1,28 @@
+name: Documentation
+
+on:
+  push:
+    branches: [main]
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+
+    steps:
+    - uses: actions/checkout@v3
+      with:
+        submodules: recursive
+
+    - name: Generate
+      run: |
+        sudo apt-get install --yes doxygen graphviz
+        CC=gcc-12 CXX=g++-12 cmake . -Dpal_doc=yes -Dpal_test=no
+        cmake --build . --target pal-doc
+
+    - name: Publish
+      uses: peaceiris/actions-gh-pages@v3
+      with:
+        github_token: ${{secrets.GITHUB_TOKEN}}
+        publish_dir: ./docs
+        force_orphan: true
+        publish_branch: gh-pages

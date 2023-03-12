@@ -1,0 +1,16 @@
+#pragma once // -*- C++ -*-
+
+#include <catch2/interfaces/catch_interfaces_capture.hpp>
+#include <string>
+
+namespace pal_test {
+
+inline std::string case_name ()
+{
+	return Catch::getResultCapture().getCurrentTestName();
+}
+
+bool __on_ci ();
+inline const bool on_ci = __on_ci();
+
+} // namespace pal_test
