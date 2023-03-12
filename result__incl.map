@@ -1,0 +1,4 @@
+<map id="pal/result" name="pal/result">
+<area shape="rect" id="node1" title="Convenience type pal::result&lt;T&gt; for std::expected&lt;T, std::error_code&gt;" alt="" coords="18,5,101,32"/>
+<area shape="rect" id="node2" title=" " alt="" coords="5,80,113,107"/>
+</map>
