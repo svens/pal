@@ -1,8 +1,10 @@
 #pragma once // -*- C++ -*-
 
-#if __has_include(<expected>)
+#if __cpp_lib_expected >= 202202L
+	#define __pal_std_expected 1
 	#include <expected>
 #else
+	#define __pal_std_expected 0
 	#include <type_traits>
 	#include <utility>
 #endif
@@ -11,7 +13,7 @@ namespace pal {
 
 /// \cond Temporary header until implemented by supported toolchains
 
-#if __cpp_lib_expected >= 202202L
+#if __pal_std_expected
 using std::unexpected;
 #else
 
@@ -131,6 +133,8 @@ constexpr bool operator!= (const unexpected<E1> &l, const unexpected<E2> &r)
 
 // {{{1
 // }}}1
+
+#undef __pal_std_expected
 
 #endif // __cpp_lib_expected
 
