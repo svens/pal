@@ -18,11 +18,19 @@ set(CMAKE_CXX_EXTENSIONS OFF)
 
 include(cmake/cxx.cmake)
 
+set(pal_libraries)
+if(${CMAKE_SYSTEM_NAME} STREQUAL "Darwin")
+elseif(${CMAKE_SYSTEM_NAME} STREQUAL "Linux")
+elseif(${CMAKE_SYSTEM_NAME} STREQUAL "Windows")
+	set(pal_libraries ${pal_libraries} ws2_32)
+endif()
+
 # library {{{1
 include(pal/list.cmake)
 cxx_library(pal
 	ALIAS pal::pal
 	SOURCES ${pal_sources}
+	LIBRARIES ${pal_libraries}
 )
 
 # tests (+coverage) {{{1
