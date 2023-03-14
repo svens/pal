@@ -1,9 +1,7 @@
 #include <pal/error>
 #include <string>
 
-
 namespace pal {
-
 
 namespace {
 
@@ -20,7 +18,6 @@ constexpr std::string_view as_view (errc ec) noexcept
 }
 
 } // namespace
-
 
 const std::error_category &error_category () noexcept
 {
@@ -39,6 +36,5 @@ const std::error_category &error_category () noexcept
 	static const error_category_impl impl{};
 	return impl;
 }
-
 
 } // namespace pal

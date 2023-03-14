@@ -4,9 +4,7 @@
 #include <catch2/generators/catch_generators.hpp>
 #include <type_traits>
 
-
 namespace {
-
 
 TEST_CASE("error")
 {
@@ -26,7 +24,6 @@ TEST_CASE("error")
 		}
 	}
 
-
 	SECTION("unknown")
 	{
 		std::error_code ec = static_cast<pal::errc>(
@@ -37,6 +34,5 @@ TEST_CASE("error")
 		CHECK(ec.category().name() == std::string{"pal"});
 	}
 }
-
 
 } // namespace
