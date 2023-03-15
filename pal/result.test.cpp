@@ -5,28 +5,426 @@
 
 namespace {
 
-pal::result<bool> value (bool ok)
+using trivial_type = pal::result<int>;
+using non_trivial_type = pal::result<std::string>;
+
+template <typename T>
+T value ()
 {
-	if (!ok)
-	{
-		return pal::make_unexpected(std::errc::not_enough_memory);
-	}
-	return true;
+	return T{1};
 }
 
-TEST_CASE("value_or_throw")
+template <>
+std::string value ()
 {
-	SECTION("value")
+	return "1";
+}
+
+short other_value (int)
+{
+	return 2;
+}
+
+std::string_view other_value (std::string)
+{
+	return "2";
+}
+
+TEMPLATE_TEST_CASE("result", "",
+	trivial_type,
+	non_trivial_type)
+{
+	using T = typename TestType::value_type;
+	auto v1 = value<T>();
+	auto v2 = other_value(v1);
+
+	using U = std::remove_cvref_t<decltype(v2)>;
+	using other_t = pal::result<U>;
+
+	auto e = std::make_error_code(std::errc::not_enough_memory);
+	auto u = pal::unexpected{e};
+
+	SECTION("result()") //{{{1
 	{
-		CHECK(pal::value_or_throw(value(true)));
-		CHECK_NOTHROW(pal::value_or_throw(value(true).transform([](bool){})));
+		TestType x;
+		CHECK(x.value() == T{});
 	}
 
-	SECTION("throw")
+	SECTION("result(Args...)") //{{{1
 	{
-		CHECK_THROWS_AS(pal::value_or_throw(value(false)), std::system_error);
-		CHECK_THROWS_AS(pal::value_or_throw(value(false).transform([](bool){})), std::system_error);
+		TestType x{v1};
+		CHECK(x.value() == v1);
+
+		if constexpr (std::is_same_v<T, std::string>)
+		{
+			TestType y{v1.begin(), v1.end()};
+			CHECK(y.value() == v1);
+		}
 	}
+
+	SECTION("result(const result &)") //{{{1
+	{
+		SECTION("value")
+		{
+			TestType x{v1}, y{x};
+			CHECK(y.value() == v1);
+		}
+
+		SECTION("error")
+		{
+			TestType x{u}, y{x};
+			CHECK(y.error() == e);
+		}
+	}
+
+	SECTION("result(result &&)") //{{{1
+	{
+		SECTION("value")
+		{
+			TestType x{v1}, y{std::move(x)};
+			CHECK(y.value() == v1);
+		}
+
+		SECTION("error")
+		{
+			TestType x{u}, y{std::move(x)};
+			CHECK(y.error() == e);
+		}
+	}
+
+	SECTION("result(const result<U> &)") //{{{1
+	{
+		SECTION("value")
+		{
+			other_t x{v2};
+			TestType y{x};
+			CHECK(y.value() == v2);
+		}
+
+		SECTION("error")
+		{
+			other_t x{u};
+			TestType y{x};
+			CHECK(y.error() == e);
+		}
+	}
+
+	SECTION("result(result<U> &&)") //{{{1
+	{
+		SECTION("value")
+		{
+			other_t x{v2};
+			TestType y{std::move(x)};
+			CHECK(y.value() == v2);
+		}
+
+		SECTION("error")
+		{
+			other_t x{u};
+			TestType y{std::move(x)};
+			CHECK(y.error() == e);
+		}
+	}
+
+	SECTION("result(U &&)") //{{{1
+	{
+		TestType x{v2};
+		CHECK(x.value() == v2);
+	}
+
+	SECTION("result(const unexpected<std::error_code> &)") //{{{1
+	{
+		TestType x{u};
+		CHECK(x.error() == e);
+	}
+
+	SECTION("result(unexpected<std::error_code> &&)") //{{{1
+	{
+		TestType x{std::move(u)};
+		CHECK(x.error() == e);
+	}
+
+	SECTION("result(std::in_place, Args...)") //{{{1
+	{
+		TestType x{std::in_place, v1};
+		CHECK(x.value() == v1);
+
+		if constexpr (std::is_same_v<T, std::string>)
+		{
+			TestType y{std::in_place, v1.begin(), v1.end()};
+			CHECK(y.value() == v1);
+		}
+	}
+
+	SECTION("result(unexpect_t, Args...)") //{{{1
+	{
+		TestType x{pal::unexpect, e.value(), e.category()};
+		CHECK(x.error() == e);
+	}
+
+	SECTION("operator=(const result &)") //{{{1
+	{
+		SECTION("left && right")
+		{
+			TestType left{v2}, right{v1};
+			left = right;
+			CHECK(left.value() == v1);
+		}
+
+		SECTION("left && !right")
+		{
+			TestType left{v1}, right{u};
+			left = right;
+			CHECK(left.error() == e);
+		}
+
+		SECTION("!left && right")
+		{
+			TestType left{u}, right{v1};
+			left = right;
+			CHECK(left.value() == v1);
+		}
+
+		SECTION("!left && !right")
+		{
+			TestType left{u}, right{u};
+			left = right;
+			CHECK(left.error() == e);
+		}
+	}
+
+	SECTION("operator=(result &&)") //{{{1
+	{
+		SECTION("left && right")
+		{
+			TestType left{v2}, right{v1};
+			left = std::move(right);
+			CHECK(left.value() == v1);
+		}
+
+		SECTION("left && !right")
+		{
+			TestType left{v1}, right{u};
+			left = std::move(right);
+			CHECK(left.error() == e);
+		}
+
+		SECTION("!left && right")
+		{
+			TestType left{u}, right{v1};
+			left = std::move(right);
+			CHECK(left.value() == v1);
+		}
+
+		SECTION("!left && !right")
+		{
+			TestType left{u}, right{u};
+			left = std::move(right);
+			CHECK(left.error() == e);
+		}
+	}
+
+	SECTION("operator=(U &&)") //{{{1
+	{
+		SECTION("value")
+		{
+			TestType x{v1};
+			x = v2;
+			CHECK(x.value() == v2);
+		}
+
+		SECTION("error")
+		{
+			TestType x{u};
+			x = v2;
+			CHECK(x.value() == v2);
+		}
+	}
+
+	SECTION("operator=(const unexpected<E> &)") //{{{1
+	{
+		SECTION("left")
+		{
+			TestType left{v1};
+			left = u;
+			CHECK(left.error() == e);
+		}
+
+		SECTION("!left")
+		{
+			TestType left{u};
+			left = u;
+			CHECK(left.error() == e);
+		}
+	}
+
+	SECTION("operator=(unexpected<E> &&)") //{{{1
+	{
+		SECTION("left")
+		{
+			TestType left{v1};
+			left = std::move(u);
+			CHECK(left.error() == e);
+		}
+
+		SECTION("!left")
+		{
+			TestType left{u};
+			left = std::move(u);
+			CHECK(left.error() == e);
+		}
+	}
+
+	SECTION("emplace") //{{{1
+	{
+		// emplace(std::move(v)) to work around std::string(...) noexcept(false)
+		auto v = v1;
+
+		SECTION("value")
+		{
+			TestType x{v2};
+			CHECK(x.emplace(std::move(v)) == v1);
+			CHECK(x.value() == v1);
+		}
+
+		SECTION("error")
+		{
+			TestType x{u};
+			CHECK(x.emplace(std::move(v)) == v1);
+			CHECK(x.value() == v1);
+		}
+	}
+
+	SECTION("swap") //{{{1
+	{
+		SECTION("left && right")
+		{
+			TestType left{v2}, right{v1};
+			left.swap(right);
+			CHECK(right.value() == v2);
+			CHECK(left.value() == v1);
+		}
+
+		SECTION("left && !right")
+		{
+			TestType left{v1}, right{u};
+			left.swap(right);
+			CHECK(left.error() == e);
+			CHECK(right.value() == v1);
+		}
+
+		SECTION("!left && right")
+		{
+			TestType left{u}, right{v1};
+			left.swap(right);
+			CHECK(left.value() == v1);
+			CHECK(right.error() == e);
+		}
+
+		SECTION("!left && !right")
+		{
+			TestType left{u}, right{u};
+			left.swap(right);
+			CHECK(left.error() == e);
+			CHECK(right.error() == e);
+		}
+	}
+
+	SECTION("observers") //{{{1
+	{
+		SECTION("value")
+		{
+			TestType x{v2};
+
+			CHECK(x);
+			CHECK(x.has_value());
+
+			CHECK(x.value() == v2);
+			CHECK(static_cast<const TestType &>(x).value() == v2);
+			CHECK(static_cast<TestType &&>(x).value() == v2);
+			CHECK(static_cast<const TestType &&>(x).value() == v2);
+
+			CHECK(*x.operator->() == v2);
+			CHECK(*static_cast<const TestType &>(x).operator->() == v2);
+
+			CHECK(*x == v2);
+			CHECK(*static_cast<const TestType &>(x) == v2);
+
+			CHECK(*static_cast<TestType &&>(x) == v2);
+			CHECK(*static_cast<const TestType &&>(x) == v2);
+
+			CHECK(x.value_or(v1) == v2);
+			CHECK(static_cast<TestType &&>(x).value_or(v1) == v2);
+		}
+
+		SECTION("error")
+		{
+			TestType x{u};
+
+			CHECK_FALSE(x);
+			CHECK_FALSE(x.has_value());
+
+			CHECK_THROWS_AS(x.value(), std::system_error);
+			CHECK_THROWS_AS(static_cast<const TestType &>(x).value(), std::system_error);
+			CHECK_THROWS_AS(static_cast<TestType &&>(x).value(), std::system_error);
+			CHECK_THROWS_AS(static_cast<const TestType &&>(x).value(), std::system_error);
+
+			CHECK(x.error() == e);
+			CHECK(static_cast<const TestType &>(x).error() == e);
+			CHECK(static_cast<TestType &&>(x).error() == e);
+			CHECK(static_cast<const TestType &&>(x).error() == e);
+
+			CHECK(x.value_or(v1) == v1);
+			CHECK(static_cast<TestType &&>(x).value_or(v1) == v1);
+		}
+	}
+
+	SECTION("operator==") //{{{1
+	{
+		SECTION("left && right")
+		{
+			TestType left{v1}, right{v1};
+			CHECK(left == right);
+			CHECK(left == v1);
+			CHECK_FALSE(left == v2);
+			CHECK_FALSE(left == u);
+
+			right = v2;
+			CHECK_FALSE(left == right);
+		}
+
+		SECTION("left && !right")
+		{
+			TestType left{v1}, right{u};
+			CHECK_FALSE(left == right);
+			CHECK(left == v1);
+			CHECK_FALSE(left == u);
+		}
+
+		SECTION("!left && right")
+		{
+			TestType left{u}, right{v1};
+			CHECK_FALSE(left == right);
+			CHECK_FALSE(left == v1);
+			CHECK(left == u);
+		}
+
+		SECTION("!left && !right")
+		{
+			TestType left{u}, right{u};
+			CHECK(left == right);
+			CHECK_FALSE(left == v1);
+			CHECK(left == u);
+
+			u = pal::make_unexpected(std::errc::value_too_large);
+			CHECK_FALSE(left == u);
+
+			right = u;
+			CHECK_FALSE(left == right);
+		}
+	}
+
+	//}}}1
 }
 
 } // namespace
