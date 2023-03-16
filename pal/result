@@ -20,6 +20,8 @@ inline unexpected<std::error_code> make_unexpected (std::errc ec) noexcept
 
 namespace __result { //{{{1
 
+// type traits {{{2
+
 template <typename T>
 constexpr bool is_unexpected_v = false;
 
@@ -48,6 +50,11 @@ constexpr bool constructible_from_v = std::is_constructible_v<U, UF>
 	&& !std::is_constructible_v<unexpected<std::error_code>, const result<U>>
 ;
 
+template <typename Result>
+using value_t = typename std::decay_t<Result>::value_type;
+
+// ctor/dtor {{{2
+
 template <typename T, typename... Args>
 constexpr T *ctor (T *v, Args &&...args)
 	noexcept(std::is_nothrow_constructible_v<T, Args &&...>)
@@ -64,6 +71,8 @@ constexpr void dtor (T *v)
 		std::destroy_at(v);
 	}
 }
+
+// guard {{{2
 
 template <typename T>
 requires(std::is_nothrow_move_constructible_v<T>)
@@ -98,6 +107,8 @@ struct guard
 
 template <typename T> guard(T) -> guard<T>;
 
+// reinit {{{2
+
 template <typename T, typename U, typename V>
 constexpr void reinit (T &newval, U &oldval, V &&v)
 	noexcept(std::is_nothrow_constructible_v<T, V>)
@@ -121,7 +132,71 @@ constexpr void reinit (T &newval, U &oldval, V &&v)
 	}
 }
 
-} // namespace result }}}1
+// and_then {{{2
+
+template <typename Result, typename F, typename R = std::invoke_result_t<F, value_t<Result>>>
+requires(is_result_v<R> && !std::is_void_v<value_t<Result>>)
+constexpr auto and_then (Result &&result, F &&f)
+{
+	if (result.has_value())
+	{
+		return std::invoke(std::forward<F>(f), *std::forward<Result>(result));
+	}
+	return R{unexpect, std::forward<Result>(result).error()};
+}
+
+template <typename Result, typename F, typename R = std::invoke_result_t<F, value_t<Result>>>
+requires(std::is_void_v<R> && !std::is_void_v<value_t<Result>>)
+constexpr auto and_then (Result &&result, F &&f)
+{
+	if (result.has_value())
+	{
+		std::invoke(std::forward<F>(f), *std::forward<Result>(result));
+	}
+	return std::forward<Result>(result);
+}
+
+// or_else {{{2
+
+template <typename Result, typename F, typename R = std::invoke_result_t<F, std::error_code>>
+requires(is_result_v<R>)
+constexpr auto or_else (Result &&result, F &&f)
+{
+	if (!result.has_value())
+	{
+		return std::invoke(std::forward<F>(f), std::forward<Result>(result).error());
+	}
+	return std::forward<Result>(result);
+}
+
+template <typename Result, typename F, typename R = std::invoke_result_t<F, std::error_code>>
+requires(std::is_void_v<R>)
+constexpr auto or_else (Result &&result, F &&f)
+{
+	if (!result.has_value())
+	{
+		std::invoke(std::forward<F>(f), std::forward<Result>(result).error());
+	}
+	return std::forward<Result>(result);
+}
+
+// transform {{{2
+
+template <typename Result, typename F, typename R = std::invoke_result_t<F, value_t<Result>>>
+requires(!std::is_void_v<value_t<Result>> && !std::is_void_v<R>)
+constexpr auto transform (Result &&result, F &&f)
+{
+	using result_t = pal::result<std::decay_t<R>>;
+	if (result.has_value())
+	{
+		return result_t{std::invoke(std::forward<F>(f), *std::forward<Result>(result))};
+	}
+	return result_t{unexpect, std::forward<Result>(result).error()};
+}
+
+// }}}2
+
+} // namespace __result }}}1
 
 template <typename T>
 class result
@@ -514,6 +589,88 @@ public:
 		return std::move(error_);
 	}
 
+	// error_or {{{1
+
+	// TODO
+
+	// and_then {{{1
+
+	template <typename F>
+	constexpr auto and_then (F &&f) const &
+	{
+		return __result::and_then(*this, std::forward<F>(f));
+	}
+
+	template <typename F>
+	constexpr auto and_then (F &&f) &
+	{
+		return __result::and_then(*this, std::forward<F>(f));
+	}
+
+	template <typename F>
+	constexpr auto and_then (F &&f) const &&
+	{
+		return __result::and_then(std::move(*this), std::forward<F>(f));
+	}
+
+	template <typename F>
+	constexpr auto and_then (F &&f) &&
+	{
+		return __result::and_then(std::move(*this), std::forward<F>(f));
+	}
+
+	// or_else {{{1
+
+	template <typename F>
+	constexpr auto or_else (F &&f) const &
+	{
+		return __result::or_else(*this, std::forward<F>(f));
+	}
+
+	template <typename F>
+	constexpr auto or_else (F &&f) &
+	{
+		return __result::or_else(*this, std::forward<F>(f));
+	}
+
+	template <typename F>
+	constexpr auto or_else (F &&f) const &&
+	{
+		return __result::or_else(std::move(*this), std::forward<F>(f));
+	}
+
+	template <typename F>
+	constexpr auto or_else (F &&f) &&
+	{
+		return __result::or_else(std::move(*this), std::forward<F>(f));
+	}
+
+	// transform {{{1
+
+	template <typename F>
+	constexpr auto transform (F &&f) const &
+	{
+		return __result::transform(*this, std::forward<F>(f));
+	}
+
+	template <typename F>
+	constexpr auto transform (F &&f) &
+	{
+		return __result::transform(*this, std::forward<F>(f));
+	}
+
+	template <typename F>
+	constexpr auto transform (F &&f) const &&
+	{
+		return __result::transform(std::move(*this), std::forward<F>(f));
+	}
+
+	template <typename F>
+	constexpr auto transform (F &&f) &&
+	{
+		return __result::transform(std::move(*this), std::forward<F>(f));
+	}
+
 	// operator== {{{1
 
 	template <typename U>
@@ -608,5 +765,7 @@ private:
 
 	template <typename> friend class result;
 };
+
+template <typename T> result(T) -> result<T>;
 
 } // namespace pal

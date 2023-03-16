@@ -35,14 +35,14 @@ TEMPLATE_TEST_CASE("result", "",
 	non_trivial_type)
 {
 	using T = typename TestType::value_type;
-	auto v1 = value<T>();
-	auto v2 = other_value(v1);
+	const auto v1 = value<T>();
 
+	const auto v2 = other_value(v1);
 	using U = std::remove_cvref_t<decltype(v2)>;
-	using other_t = pal::result<U>;
 
-	auto e = std::make_error_code(std::errc::not_enough_memory);
-	auto u = pal::unexpected{e};
+	constexpr auto e = std::errc::not_enough_memory;
+	constexpr auto e1 = std::errc::value_too_large;
+	const auto u = pal::make_unexpected(e);
 
 	SECTION("result()") //{{{1
 	{
@@ -96,14 +96,14 @@ TEMPLATE_TEST_CASE("result", "",
 	{
 		SECTION("value")
 		{
-			other_t x{v2};
+			pal::result<U> x{v2};
 			TestType y{x};
 			CHECK(y.value() == v2);
 		}
 
 		SECTION("error")
 		{
-			other_t x{u};
+			pal::result<U> x{u};
 			TestType y{x};
 			CHECK(y.error() == e);
 		}
@@ -113,14 +113,14 @@ TEMPLATE_TEST_CASE("result", "",
 	{
 		SECTION("value")
 		{
-			other_t x{v2};
+			pal::result<U> x{v2};
 			TestType y{std::move(x)};
 			CHECK(y.value() == v2);
 		}
 
 		SECTION("error")
 		{
-			other_t x{u};
+			pal::result<U> x{u};
 			TestType y{std::move(x)};
 			CHECK(y.error() == e);
 		}
@@ -130,6 +130,15 @@ TEMPLATE_TEST_CASE("result", "",
 	{
 		TestType x{v2};
 		CHECK(x.value() == v2);
+	}
+
+	SECTION("user defined deduction guide") //{{{1
+	{
+		pal::result x{v1};
+		static_assert(std::is_same_v<typename decltype(x)::value_type, T>);
+
+		pal::result y{v2};
+		static_assert(std::is_same_v<typename decltype(y)::value_type, U>);
 	}
 
 	SECTION("result(const unexpected<std::error_code> &)") //{{{1
@@ -158,7 +167,8 @@ TEMPLATE_TEST_CASE("result", "",
 
 	SECTION("result(unexpect_t, Args...)") //{{{1
 	{
-		TestType x{pal::unexpect, e.value(), e.category()};
+		auto ec = std::make_error_code(e);
+		TestType x{pal::unexpect, ec.value(), ec.category()};
 		CHECK(x.error() == e);
 	}
 
@@ -416,11 +426,160 @@ TEMPLATE_TEST_CASE("result", "",
 			CHECK_FALSE(left == v1);
 			CHECK(left == u);
 
-			u = pal::make_unexpected(std::errc::value_too_large);
-			CHECK_FALSE(left == u);
+			auto u1 = pal::make_unexpected(e1);
+			CHECK_FALSE(left == u1);
 
-			right = u;
+			right = u1;
 			CHECK_FALSE(left == right);
+		}
+	}
+
+	int count = 0;
+
+	auto inc_count = [&count](auto)
+	{
+		count++;
+	};
+
+	auto change_result = [&](auto v) -> TestType
+	{
+		inc_count(v);
+		if constexpr (std::is_same_v<decltype(v), std::error_code>)
+		{
+			// error -> value
+			return v2;
+		}
+		else
+		{
+			// value -> error
+			return pal::make_unexpected(e1);
+		}
+	};
+
+	SECTION("and_then") //{{{1
+	{
+		SECTION("lambda with no return")
+		{
+			SECTION("value")
+			{
+				TestType x{v1};
+				CHECK(static_cast<const TestType &>(x).and_then(inc_count).has_value());
+				CHECK(static_cast<TestType &>(x).and_then(inc_count).has_value());
+				CHECK(static_cast<const TestType &&>(x).and_then(inc_count).has_value());
+				CHECK(static_cast<TestType &&>(x).and_then(inc_count).has_value());
+				CHECK(count == 4);
+			}
+
+			SECTION("error")
+			{
+				TestType x{u};
+				CHECK(static_cast<const TestType &>(x).and_then(inc_count).error() == e);
+				CHECK(static_cast<TestType &>(x).and_then(inc_count).error() == e);
+				CHECK(static_cast<const TestType &&>(x).and_then(inc_count).error() == e);
+				CHECK(static_cast<TestType &&>(x).and_then(inc_count).error() == e);
+				CHECK(count == 0);
+			}
+		}
+
+		SECTION("lambda with return")
+		{
+			SECTION("value")
+			{
+				TestType x{v1};
+				CHECK(static_cast<const TestType &>(x).and_then(change_result).error() == e1);
+				CHECK(static_cast<TestType &>(x).and_then(change_result).error() == e1);
+				CHECK(static_cast<const TestType &&>(x).and_then(change_result).error() == e1);
+				CHECK(static_cast<TestType &&>(x).and_then(change_result).error() == e1);
+				CHECK(count == 4);
+			}
+
+			SECTION("error")
+			{
+				TestType x{u};
+				CHECK(static_cast<const TestType &>(x).and_then(change_result).error() == e);
+				CHECK(static_cast<TestType &>(x).and_then(change_result).error() == e);
+				CHECK(static_cast<const TestType &&>(x).and_then(change_result).error() == e);
+				CHECK(static_cast<TestType &&>(x).and_then(change_result).error() == e);
+				CHECK(count == 0);
+			}
+		}
+	}
+
+	SECTION("or_else") //{{{1
+	{
+		SECTION("lambda with no return")
+		{
+			SECTION("value")
+			{
+				TestType x{v1};
+				CHECK(static_cast<const TestType &>(x).or_else(inc_count).value() == v1);
+				CHECK(static_cast<TestType &>(x).or_else(inc_count).value() == v1);
+				CHECK(static_cast<const TestType &&>(x).or_else(inc_count).value() == v1);
+				CHECK(static_cast<TestType &&>(x).or_else(inc_count).value() == v1);
+				CHECK(count == 0);
+			}
+
+			SECTION("error")
+			{
+				TestType x{u};
+				CHECK(static_cast<const TestType &>(x).or_else(inc_count).error() == e);
+				CHECK(static_cast<TestType &>(x).or_else(inc_count).error() == e);
+				CHECK(static_cast<const TestType &&>(x).or_else(inc_count).error() == e);
+				CHECK(static_cast<TestType &&>(x).or_else(inc_count).error() == e);
+				CHECK(count == 4);
+			}
+		}
+
+		SECTION("lambda with return")
+		{
+			SECTION("value")
+			{
+				TestType x{v1};
+				CHECK(static_cast<const TestType &>(x).or_else(change_result).value() == v1);
+				CHECK(static_cast<TestType &>(x).or_else(change_result).value() == v1);
+				CHECK(static_cast<const TestType &&>(x).or_else(change_result).value() == v1);
+				CHECK(static_cast<TestType &&>(x).or_else(change_result).value() == v1);
+				CHECK(count == 0);
+			}
+
+			SECTION("error")
+			{
+				TestType x{u};
+				CHECK(static_cast<const TestType &>(x).or_else(change_result).value() == v2);
+				CHECK(static_cast<TestType &>(x).or_else(change_result).value() == v2);
+				CHECK(static_cast<const TestType &&>(x).or_else(change_result).value() == v2);
+				CHECK(static_cast<TestType &&>(x).or_else(change_result).value() == v2);
+				CHECK(count == 4);
+			}
+		}
+	}
+
+	SECTION("transform") //{{{1
+	{
+		auto t_to_u = [&v2](T) -> U
+		{
+			return v2;
+		};
+
+		SECTION("T -> U")
+		{
+			SECTION("value")
+			{
+				TestType x{v1};
+				CHECK(static_cast<const TestType &>(x).transform(t_to_u).value() == v2);
+				CHECK(static_cast<TestType &>(x).transform(t_to_u).value() == v2);
+				CHECK(static_cast<const TestType &&>(x).transform(t_to_u).value() == v2);
+				CHECK(static_cast<TestType &&>(x).transform(t_to_u).value() == v2);
+			}
+
+			SECTION("error")
+			{
+				TestType x{u};
+				CHECK(static_cast<const TestType &>(x).transform(t_to_u).error() == e);
+				CHECK(static_cast<TestType &>(x).transform(t_to_u).error() == e);
+				CHECK(static_cast<const TestType &&>(x).transform(t_to_u).error() == e);
+				CHECK(static_cast<TestType &&>(x).transform(t_to_u).error() == e);
+			}
 		}
 	}
 
