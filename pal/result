@@ -20,7 +20,7 @@ inline unexpected<std::error_code> make_unexpected (std::errc ec) noexcept
 
 namespace __result {
 
-// type traits {{{2
+// type traits {{{1
 
 template <typename T>
 constexpr bool is_unexpected_v = false;
@@ -53,7 +53,7 @@ constexpr bool constructible_from_v = std::is_constructible_v<U, UF>
 template <typename Result>
 using value_t = typename std::decay_t<Result>::value_type;
 
-// ctor/dtor {{{2
+// ctor/dtor {{{1
 
 template <typename T, typename... Args>
 constexpr T *ctor (T *v, Args &&...args)
@@ -72,7 +72,7 @@ constexpr void dtor (T *v)
 	}
 }
 
-// guard {{{2
+// guard {{{1
 
 template <typename T>
 requires(std::is_nothrow_move_constructible_v<T>)
@@ -107,7 +107,7 @@ struct guard
 
 template <typename T> guard(T) -> guard<T>;
 
-// reinit {{{2
+// reinit {{{1
 
 template <typename T, typename U, typename V>
 constexpr void reinit (T &newval, U &oldval, V &&v)
@@ -132,7 +132,7 @@ constexpr void reinit (T &newval, U &oldval, V &&v)
 	}
 }
 
-// and_then {{{2
+// and_then {{{1
 
 template <typename Result, typename F, typename R = std::invoke_result_t<F, value_t<Result>>>
 	requires(is_result_v<R> && !std::is_void_v<value_t<Result>>)
@@ -156,7 +156,7 @@ constexpr auto and_then (Result &&result, F &&f)
 	return std::forward<Result>(result);
 }
 
-// or_else {{{2
+// or_else {{{1
 
 template <typename Result, typename F, typename R = std::invoke_result_t<F, std::error_code>>
 	requires(is_result_v<R>)
@@ -180,7 +180,7 @@ constexpr auto or_else (Result &&result, F &&f)
 	return std::forward<Result>(result);
 }
 
-// transform {{{2
+// transform {{{1
 
 template <typename Result, typename F, typename R = std::invoke_result_t<F, value_t<Result>>>
 	requires(!std::is_void_v<value_t<Result>> && !std::is_void_v<R>)
@@ -194,7 +194,7 @@ constexpr auto transform (Result &&result, F &&f)
 	return result_t{unexpect, std::forward<Result>(result).error()};
 }
 
-// }}}2
+// }}}1
 
 } // namespace __result
 
