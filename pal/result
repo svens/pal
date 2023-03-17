@@ -587,7 +587,21 @@ public:
 
 	// error_or {{{1
 
-	// TODO
+	template <typename U>
+	std::error_code error_or (U &&e) const &
+		noexcept(std::is_nothrow_convertible_v<U, std::error_code>)
+	{
+		static_assert(std::is_convertible_v<U, std::error_code>);
+		return has_value_ ? std::forward<U>(e) : error_;
+	}
+
+	template <typename U>
+	std::error_code error_or (U &&e) &&
+		noexcept(std::is_nothrow_convertible_v<U, std::error_code>)
+	{
+		static_assert(std::is_convertible_v<U, std::error_code>);
+		return has_value_ ? std::forward<U>(e) : std::move(error_);
+	}
 
 	// and_then {{{1
 
