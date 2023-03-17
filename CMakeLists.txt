@@ -42,6 +42,11 @@ if(pal_test)
 		LIBRARIES pal::pal
 		COVERAGE_BASE_DIR ${CMAKE_SOURCE_DIR}/pal
 	)
+	if(CMAKE_CXX_COMPILER_ID MATCHES "MSVC")
+		# did not find root cause, this is workaround
+		# https://stackoverflow.com/questions/14125007/gcc-string-table-overflow-error-during-compilation
+		target_compile_options(pal_test PRIVATE /GL)
+	endif()
 endif()
 
 # documentation {{{1

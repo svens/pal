@@ -18,7 +18,7 @@ inline unexpected<std::error_code> make_unexpected (std::errc ec) noexcept
 	return unexpected{std::make_error_code(ec)};
 }
 
-namespace __result { //{{{1
+namespace __result {
 
 // type traits {{{2
 
@@ -135,7 +135,7 @@ constexpr void reinit (T &newval, U &oldval, V &&v)
 // and_then {{{2
 
 template <typename Result, typename F, typename R = std::invoke_result_t<F, value_t<Result>>>
-requires(is_result_v<R> && !std::is_void_v<value_t<Result>>)
+	requires(is_result_v<R> && !std::is_void_v<value_t<Result>>)
 constexpr auto and_then (Result &&result, F &&f)
 {
 	if (result.has_value())
@@ -146,7 +146,7 @@ constexpr auto and_then (Result &&result, F &&f)
 }
 
 template <typename Result, typename F, typename R = std::invoke_result_t<F, value_t<Result>>>
-requires(std::is_void_v<R> && !std::is_void_v<value_t<Result>>)
+	requires(std::is_void_v<R> && !std::is_void_v<value_t<Result>>)
 constexpr auto and_then (Result &&result, F &&f)
 {
 	if (result.has_value())
@@ -159,7 +159,7 @@ constexpr auto and_then (Result &&result, F &&f)
 // or_else {{{2
 
 template <typename Result, typename F, typename R = std::invoke_result_t<F, std::error_code>>
-requires(is_result_v<R>)
+	requires(is_result_v<R>)
 constexpr auto or_else (Result &&result, F &&f)
 {
 	if (!result.has_value())
@@ -170,7 +170,7 @@ constexpr auto or_else (Result &&result, F &&f)
 }
 
 template <typename Result, typename F, typename R = std::invoke_result_t<F, std::error_code>>
-requires(std::is_void_v<R>)
+	requires(std::is_void_v<R>)
 constexpr auto or_else (Result &&result, F &&f)
 {
 	if (!result.has_value())
@@ -183,7 +183,7 @@ constexpr auto or_else (Result &&result, F &&f)
 // transform {{{2
 
 template <typename Result, typename F, typename R = std::invoke_result_t<F, value_t<Result>>>
-requires(!std::is_void_v<value_t<Result>> && !std::is_void_v<R>)
+	requires(!std::is_void_v<value_t<Result>> && !std::is_void_v<R>)
 constexpr auto transform (Result &&result, F &&f)
 {
 	using result_t = pal::result<std::decay_t<R>>;
@@ -196,7 +196,7 @@ constexpr auto transform (Result &&result, F &&f)
 
 // }}}2
 
-} // namespace __result }}}1
+} // namespace __result
 
 template <typename T>
 class result
@@ -239,8 +239,7 @@ public:
 		requires(std::is_copy_constructible_v<T>
 			&& !std::is_trivially_copy_constructible_v<T>
 		)
-		: no_init_{}
-		, has_value_{that.has_value_}
+		: has_value_{that.has_value_}
 	{
 		if (has_value_)
 		{
@@ -259,8 +258,7 @@ public:
 		requires(std::is_move_constructible_v<T>
 			&& !std::is_trivially_move_constructible_v<T>
 		)
-		: no_init_{}
-		, has_value_{that.has_value_}
+		: has_value_{that.has_value_}
 	{
 		if (has_value_)
 		{
@@ -277,8 +275,7 @@ public:
 		explicit(!std::is_convertible_v<const U &, T>)
 	constexpr result (const result<U> &that)
 		noexcept(std::is_nothrow_constructible_v<T, const U &>)
-		: no_init_{}
-		, has_value_{that.has_value_}
+		: has_value_{that.has_value_}
 	{
 		if (has_value_)
 		{
@@ -295,8 +292,7 @@ public:
 		explicit(!std::is_convertible_v<U, T>)
 	constexpr result (result<U> &&that)
 		noexcept(std::is_nothrow_constructible_v<T, U>)
-		: no_init_{}
-		, has_value_{that.has_value_}
+		: has_value_{that.has_value_}
 	{
 		if (has_value_)
 		{
@@ -703,13 +699,10 @@ public:
 
 private:
 
-	struct no_init_t {};
-
 	union
 	{
 		T value_;
 		std::error_code error_;
-		no_init_t no_init_;
 	};
 	bool has_value_;
 
