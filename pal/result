@@ -79,7 +79,7 @@ constexpr void dtor (T *v)
 // guard {{{1
 
 template <typename T>
-requires(std::is_nothrow_move_constructible_v<T>)
+	requires(std::is_nothrow_move_constructible_v<T>)
 struct guard
 {
 	T *target, tmp;

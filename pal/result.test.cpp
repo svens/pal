@@ -1044,4 +1044,86 @@ TEMPLATE_TEST_CASE("result", "",
 	//}}}1
 }
 
+struct no_noexcept_type
+{
+	static inline bool do_throw = false;
+
+	static void check_throw () noexcept(false)
+	{
+		if (do_throw)
+		{
+			do_throw = false;
+			throw true;
+		}
+	}
+
+	no_noexcept_type () = default;
+
+	no_noexcept_type (const no_noexcept_type &) noexcept(false)
+	{
+		check_throw();
+	}
+
+	no_noexcept_type (no_noexcept_type &&) noexcept(false)
+	{
+		check_throw();
+	}
+
+	no_noexcept_type &operator= (const no_noexcept_type &) noexcept(false)
+	{
+		check_throw();
+		return *this;
+	}
+
+	no_noexcept_type &operator= (no_noexcept_type &&) noexcept(false)
+	{
+		check_throw();
+		return *this;
+	}
+};
+
+TEMPLATE_TEST_CASE("result", "",
+	no_noexcept_type)
+{
+	TestType v;
+
+	SECTION("no throw")
+	{
+		SECTION("value")
+		{
+			pal::result<TestType> x;
+			CHECK_NOTHROW(x = v);
+			CHECK(x.has_value());
+		}
+
+		SECTION("error")
+		{
+			pal::result<TestType> x{u};
+			CHECK_NOTHROW(x = v);
+			CHECK(x.has_value());
+		}
+	}
+
+	SECTION("throw")
+	{
+		v.do_throw = true;
+
+		SECTION("value")
+		{
+			pal::result<TestType> x;
+			CHECK_THROWS_AS(x = v, bool);
+			CHECK(x.has_value());
+		}
+
+		SECTION("error")
+		{
+			pal::result<TestType> x{u};
+			CHECK_THROWS_AS(x = v, bool);
+			REQUIRE_FALSE(x.has_value());
+			CHECK(x.error() == e);
+		}
+	}
+
+}
+
 } // namespace
