@@ -6,6 +6,7 @@
  */
 
 #include <pal/__expected>
+#include <functional>
 #include <system_error>
 #include <type_traits>
 
