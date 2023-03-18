@@ -6,6 +6,7 @@ list(APPEND pal_sources
 	pal/error.cpp
 	pal/hash
 	pal/result
+	pal/string
 )
 
 list(APPEND pal_test_sources
