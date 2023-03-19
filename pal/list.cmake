@@ -18,3 +18,5 @@ list(APPEND pal_test_sources
 	pal/error.test.cpp
 	pal/result.test.cpp
 )
+
+include(pal/net/list.cmake)
