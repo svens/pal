@@ -5,7 +5,7 @@
  * Host/network byte order conversions
  */
 
-#include <pal/__config>
+#include <pal/version>
 #include <bit>
 
 namespace pal {

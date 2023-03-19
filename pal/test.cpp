@@ -4,7 +4,7 @@
 #include <cstdlib>
 
 #include <pal/test>
-#include <pal/__config>
+#include <pal/version>
 #include <catch2/catch_session.hpp>
 
 #if __pal_os_windows && __pal_build_debug

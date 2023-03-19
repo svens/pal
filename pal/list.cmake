@@ -1,5 +1,4 @@
 list(APPEND pal_sources
-	pal/__config
 	pal/__expected
 	pal/byte_order
 	pal/error
@@ -7,6 +6,7 @@ list(APPEND pal_sources
 	pal/hash
 	pal/result
 	pal/string
+	pal/version
 )
 
 list(APPEND pal_test_sources
