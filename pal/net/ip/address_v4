@@ -246,7 +246,7 @@ constexpr address_v4 make_address_v4 (const address_v4::uint_type &value) noexce
 	return address_v4{value};
 }
 
-/// \copydoc make_address_v4()
+/// Return new address parsed from human readable \a text.
 inline result<address_v4> make_address_v4 (const std::string_view &text) noexcept
 {
 	address_v4 result;

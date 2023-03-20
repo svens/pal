@@ -23,9 +23,10 @@ uint32_t to_host_uint (const std::string &src)
 
 TEST_CASE("net/ip/address_v4")
 {
+	using pal::net::ip::make_address_v4;
+
 	using A = pal::net::ip::address_v4;
 	using B = A::bytes_type;
-	using pal::net::ip::make_address_v4;
 
 	SECTION("constexpr")
 	{
