@@ -5,12 +5,10 @@
  * Host/network byte order conversions
  */
 
-#include <pal/__config>
+#include <pal/version>
 #include <bit>
 
-
 namespace pal {
-
 
 /// Convert 16-bit \a value from host to network order.
 constexpr uint16_t hton (uint16_t value)
@@ -30,7 +28,6 @@ constexpr uint16_t hton (uint16_t value)
 		return value;
 	}
 }
-
 
 /// Convert 32-bit \a value from host to network order.
 constexpr uint32_t hton (uint32_t value)
@@ -52,7 +49,6 @@ constexpr uint32_t hton (uint32_t value)
 		return value;
 	}
 }
-
 
 /// Convert 64-bit \a value from host to network order.
 constexpr uint64_t hton (uint64_t value)
@@ -79,13 +75,11 @@ constexpr uint64_t hton (uint64_t value)
 	}
 }
 
-
 /// Convert 16-bit \a value from network to host order.
 constexpr uint16_t ntoh (uint16_t value)
 {
 	return hton(value);
 }
-
 
 /// Convert 32-bit \a value from network to host order.
 constexpr uint32_t ntoh (uint32_t value)
@@ -93,12 +87,10 @@ constexpr uint32_t ntoh (uint32_t value)
 	return hton(value);
 }
 
-
 /// Convert 64-bit \a value from network to host order.
 constexpr uint64_t ntoh (uint64_t value)
 {
 	return hton(value);
 }
-
 
 } // namespace pal

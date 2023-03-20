@@ -1,0 +1,276 @@
+#pragma once // -*- C++ -*-
+
+/**
+ * \file pal/net/ip/address
+ * Version independent IP address
+ */
+
+#include <pal/net/ip/address_v4>
+#include <pal/net/ip/address_v6>
+
+namespace pal::net::ip {
+
+/// Address family
+enum class address_family: bool
+{
+	v4, ///< IPv4
+	v6, ///< IPv6
+};
+
+/// Version independent representation of IP address.
+/// It holds either IPv4 or IPv6 address.
+class address
+{
+public:
+
+	/// Maximum human readable representation length
+	static constexpr auto max_string_length = address_v6::max_string_length;
+
+	/// Construct new unspecified IPv4 address
+	constexpr address () noexcept
+		: v4_{}
+		, family_{address_family::v4}
+	{ }
+
+	/// Construct new address from \a that
+	constexpr address (const address &that) noexcept = default;
+
+	/// Construct new address from IPv4 address \a that
+	constexpr address (const address_v4 &that) noexcept
+		: v4_{that}
+		, family_{address_family::v4}
+	{ }
+
+	/// Construct new address from IPv6 address \a that
+	constexpr address (const address_v6 &that) noexcept
+		: v6_{that}
+		, family_{address_family::v6}
+	{ }
+
+	/// Assign \a this from \a that
+	address &operator= (const address &that) noexcept = default;
+
+	/// Assign \a this from \a that.
+	address &operator= (const address_v4 &that) noexcept
+	{
+		//new (&v4_) address_v4(that);
+		std::construct_at(&v4_, that);
+		family_ = address_family::v4;
+		return *this;
+	}
+
+	/// Assign \a this from \a that.
+	address &operator= (const address_v6 &that) noexcept
+	{
+		std::construct_at(&v6_, that);
+		family_ = address_family::v6;
+		return *this;
+	}
+
+	/// Return address family
+	constexpr address_family family () const noexcept
+	{
+		return family_;
+	}
+
+	/// Return \c true if object contains IPv4 address, otherwise \c false
+	constexpr bool is_v4 () const noexcept
+	{
+		return family_ == address_family::v4;
+	}
+
+	/// Return \c true if object contains IPv6 address, otherwise \c false
+	constexpr bool is_v6 () const noexcept
+	{
+		return family_ == address_family::v6;
+	}
+
+	/// Cast unconditionally to address_v4.
+	constexpr const address_v4 &v4 () const noexcept
+	{
+		return v4_;
+	}
+
+	/// Cast unconditionally to address_v6.
+	constexpr const address_v6 &v6 () const noexcept
+	{
+		return v6_;
+	}
+
+	/// Return IPv4 address or failure if this does not contain IPv4 address
+	result<address_v4> to_v4 () const noexcept
+	{
+		if (is_v4())
+		{
+			return v4();
+		}
+		return pal::make_unexpected(std::errc::address_not_available);
+	}
+
+	/// Return IPv4 address or failure if this does not contain IPv4 address
+	result<address_v6> to_v6 () const noexcept
+	{
+		if (is_v6())
+		{
+			return v6();
+		}
+		return pal::make_unexpected(std::errc::address_not_available);
+	}
+
+	/// Return true if \a this is unspecified address.
+	constexpr bool is_unspecified () const noexcept
+	{
+		return is_v4() ? v4_.is_unspecified() : v6_.is_unspecified();
+	}
+
+	/// Return true if \a this is loopback address.
+	constexpr bool is_loopback () const noexcept
+	{
+		return is_v4() ? v4_.is_loopback() : v6_.is_loopback();
+	}
+
+	/**
+	 * Convert \a this address to human readable textual representation by
+	 * filling range [\a first, \a last).
+	 *
+	 * On success, returns std::to_chars_result with ptr pointing at past
+	 * last filled character and ec default value initialized.
+	 *
+	 * On failure, ptr is set to \a last and ec std::errc::value_too_large.
+	 * Content of [\a first, \a last) is unspecified.
+	 */
+	std::to_chars_result to_chars (char *first, char *last) const noexcept
+	{
+		return is_v4() ? v4_.to_chars(first, last) : v6_.to_chars(first, last);
+	}
+
+	/**
+	 * Parses human readable address from range [\a first, \a last).
+	 *
+	 * On success, returns std::from_chars_result with ptr pointing to
+	 * first character not matching the IPv4 address text, or has value
+	 * equal to \a last if all characters were matched.
+	 *
+	 * On failure, ptr is set to \a first and ec std::errc::invalid_argument.
+	 * Content of this is undefined.
+	 */
+	std::from_chars_result from_chars (const char *first, const char *last) noexcept
+	{
+		std::from_chars_result r;
+		if (r = v4_.from_chars(first, last);  r.ec == std::errc{})
+		{
+			family_ = address_family::v4;
+		}
+		else if (r = v6_.from_chars(first, last);  r.ec == std::errc{})
+		{
+			family_ = address_family::v6;
+		}
+		return r;
+	}
+
+	/// Return \a this address as human readable textual representation.
+	template <typename Allocator = std::allocator<char>>
+	string<Allocator> to_string (const Allocator &allocator = Allocator()) const
+	{
+		return is_v4() ? v4_.to_string(allocator) : v6_.to_string(allocator);
+	}
+
+	/// Compare \a this to \a that. Return value has same meaning as std::memcmp.
+	constexpr int compare (const address &that) const noexcept
+	{
+		if (family_ == that.family_)
+		{
+			return is_v4() ? v4_.compare(that.v4_) : v6_.compare(that.v6_);
+		}
+		return family_ == address_family::v4 ? -1 : 1;
+	}
+
+	/// Return hash value for \a this.
+	constexpr uint64_t hash () const noexcept
+	{
+		return is_v4() ? v4_.hash() : v6_.hash();
+	}
+
+
+private:
+
+	union
+	{
+		address_v4 v4_;
+		address_v6 v6_;
+	};
+	address_family family_;
+
+	template <typename Protocol> friend class basic_endpoint;
+};
+
+/// Return true if \a a == \a b
+constexpr bool operator== (const address &a, const address &b) noexcept
+{
+	return a.compare(b) == 0;
+}
+
+/// Return true if \a a != \a b
+constexpr bool operator!= (const address &a, const address &b) noexcept
+{
+	return a.compare(b) != 0;
+}
+
+/// Return true if \a a < \a b
+constexpr bool operator< (const address &a, const address &b) noexcept
+{
+	return a.compare(b) < 0;
+}
+
+/// Return true if \a a <= \a b
+constexpr bool operator<= (const address &a, const address &b) noexcept
+{
+	return a.compare(b) <= 0;
+}
+
+/// Return true if \a a > \a b
+constexpr bool operator> (const address &a, const address &b) noexcept
+{
+	return a.compare(b) > 0;
+}
+
+/// Return true if \a a >= \a b
+constexpr bool operator>= (const address &a, const address &b) noexcept
+{
+	return a.compare(b) >= 0;
+}
+
+/// Insert address \a a into stream \a os
+inline std::ostream &operator<< (std::ostream &os, const address &a)
+{
+	char text[address_v6::max_string_length] = {};
+	a.to_chars(text, text + sizeof(text));
+	return (os << text);
+}
+
+/// Return new address parsed from human readable \a text.
+inline result<address> make_address (const std::string_view text) noexcept
+{
+	address result;
+	auto [_, ec] = result.from_chars(text.data(), text.data() + text.size());
+	if (ec == std::errc{})
+	{
+		return result;
+	}
+	return pal::make_unexpected(ec);
+}
+
+} // namespace pal::net::ip
+
+namespace std {
+
+template <>
+struct hash<pal::net::ip::address>
+{
+	size_t operator() (const pal::net::ip::address &a) const noexcept
+	{
+		return a.hash();
+	}
+};
+
+} // namespace std
