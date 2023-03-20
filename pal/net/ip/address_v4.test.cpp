@@ -148,7 +148,7 @@ TEST_CASE("net/ip/address_v4")
 
 	SECTION("to_chars")
 	{
-		char buf[INET_ADDRSTRLEN];
+		char buf[A::max_string_length + 1];
 		auto [p, ec] = a.to_chars(buf, buf + sizeof(buf));
 		REQUIRE(ec == std::errc{});
 		CHECK(std::string{buf, p} == view);

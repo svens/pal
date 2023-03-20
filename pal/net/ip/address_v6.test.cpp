@@ -5,12 +5,6 @@
 #include <catch2/generators/catch_generators_range.hpp>
 #include <sstream>
 
-#if __has_include(<arpa/inet.h>)
-	#include <arpa/inet.h>
-#elif __has_include(<ws2tcpip.h>)
-	#include <ws2tcpip.h>
-#endif
-
 namespace {
 
 TEST_CASE("net/ip/address_v6")
@@ -141,7 +135,7 @@ TEST_CASE("net/ip/address_v6")
 
 	SECTION("to_chars")
 	{
-		char buf[INET6_ADDRSTRLEN];
+		char buf[A::max_string_length + 1];
 		auto [p, ec] = a.to_chars(buf, buf + sizeof(buf));
 		REQUIRE(ec == std::errc{});
 		CHECK(std::string{buf, p} == view);
