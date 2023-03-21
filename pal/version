@@ -7,9 +7,14 @@
 	#include <version>
 #endif
 
-
 namespace pal {
 
+//
+// project version
+//
+
+extern const char version[];
+extern const int version_major, version_minor, version_patch;
 
 //
 // build type
@@ -39,7 +44,6 @@ constexpr build_type build =
 	build_type::release
 #endif
 ;
-
 
 //
 // compiler
@@ -79,7 +83,6 @@ constexpr compiler_type compiler =
 #endif
 ;
 
-
 //
 // build OS
 //
@@ -117,6 +120,5 @@ constexpr os_type os =
 	os_type::windows
 #endif
 ;
-
 
 } // namespace pal

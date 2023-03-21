@@ -1,0 +1,10 @@
+#include <pal/version>
+
+namespace pal {
+
+const char version[] = "@PROJECT_VERSION@";
+const int version_major = @PROJECT_VERSION_MAJOR@;
+const int version_minor = @PROJECT_VERSION_MINOR@;
+const int version_patch = @PROJECT_VERSION_PATCH@;
+
+} // namespace pal
