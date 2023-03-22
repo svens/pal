@@ -240,12 +240,12 @@ constexpr bool operator>= (const address &a, const address &b) noexcept
 	return a.compare(b) >= 0;
 }
 
-/// Insert address \a a into stream \a os
-inline std::ostream &operator<< (std::ostream &os, const address &a)
+/// Insert address \a a into \a stream
+inline std::ostream &operator<< (std::ostream &stream, const address &a)
 {
 	char text[address_v6::max_string_length] = {};
 	a.to_chars(text, text + sizeof(text));
-	return (os << text);
+	return (stream << text);
 }
 
 /// Return new address parsed from human readable \a text.

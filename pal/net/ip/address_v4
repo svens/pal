@@ -226,12 +226,12 @@ constexpr bool operator>= (const address_v4 &a, const address_v4 &b) noexcept
 	return a.compare(b) >= 0;
 }
 
-/// Insert IPv4 address \a a into stream \a os
-inline std::ostream &operator<< (std::ostream &os, const address_v4 &a)
+/// Insert IPv4 address \a a into \a stream
+inline std::ostream &operator<< (std::ostream &stream, const address_v4 &a)
 {
 	char text[address_v4::max_string_length + 1] = {};
 	a.to_chars(text, text + sizeof(text));
-	return (os << text);
+	return (stream << text);
 }
 
 /// Return new address from \a value.
