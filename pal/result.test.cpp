@@ -1,5 +1,6 @@
 #include <pal/result>
 #include <pal/test>
+#include <pal/version>
 #include <catch2/catch_template_test_macros.hpp>
 #include <catch2/generators/catch_generators.hpp>
 
@@ -551,47 +552,59 @@ TEMPLATE_TEST_CASE("result", "",
 
 	SECTION("operator==") //{{{1
 	{
+		// TODO: Catch2 has wires crossed here, mixing trivial_type and non_trivial_type
+		#if __pal_os_macos && __pal_compiler_clang
+			#define __pal_check(X) assert(X)
+			#define __pal_check_false(X) assert(!(X))
+		#else
+			#define __pal_check(X) CHECK(X)
+			#define __pal_check_false(X) CHECK_FALSE(X)
+		#endif
+
 		SECTION("left && right")
 		{
 			T left{v}, right{v};
-			CHECK(left == right);
-			CHECK(left == v);
-			CHECK_FALSE(left == v1);
-			CHECK_FALSE(left == u);
+			__pal_check(left == right);
+			__pal_check(left == v);
+			__pal_check_false(left == v1);
+			__pal_check_false(left == u);
 
 			right = v1;
-			CHECK_FALSE(left == right);
+			__pal_check_false(left == right);
 		}
 
 		SECTION("left && !right")
 		{
 			T left{v}, right{u};
-			CHECK_FALSE(left == right);
-			CHECK(left == v);
-			CHECK_FALSE(left == u);
+			__pal_check_false(left == right);
+			__pal_check(left == v);
+			__pal_check_false(left == u);
 		}
 
 		SECTION("!left && right")
 		{
 			T left{u}, right{v};
-			CHECK_FALSE(left == right);
-			CHECK_FALSE(left == v);
-			CHECK(left == u);
+			__pal_check_false(left == right);
+			__pal_check_false(left == v);
+			__pal_check(left == u);
 		}
 
 		SECTION("!left && !right")
 		{
 			T left{u}, right{u};
-			CHECK(left == right);
-			CHECK_FALSE(left == v);
-			CHECK(left == u);
+			__pal_check(left == right);
+			__pal_check_false(left == v);
+			__pal_check(left == u);
 
 			auto u1 = pal::make_unexpected(e1);
-			CHECK_FALSE(left == u1);
+			__pal_check_false(left == u1);
 
 			right = u1;
-			CHECK_FALSE(left == right);
+			__pal_check_false(left == right);
 		}
+
+		#undef __pal_check
+		#undef __pal_check_false
 	}
 
 	//}}}1
