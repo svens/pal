@@ -8,7 +8,7 @@ option(pal_test "Build tests" ON)
 option(pal_doc "Generate documentation" OFF)
 option(pal_samples "Build samples" OFF)
 
-if(NOT "${CMAKE_BUILD_TYPE};${CMAKE_CONFIGURATION_TYPES}" MATCHES ".*Coverage.*")
+if("${CMAKE_BUILD_TYPE};${CMAKE_CONFIGURATION_TYPES}" MATCHES ".*Coverage.*")
 	set(pal_test ON)
 endif()
 
