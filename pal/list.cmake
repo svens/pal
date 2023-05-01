@@ -7,6 +7,7 @@ list(APPEND pal_sources ${CMAKE_CURRENT_BINARY_DIR}/version.cpp)
 
 list(APPEND pal_sources
 	pal/__expected
+	pal/__platform_sdk
 	pal/byte_order
 	pal/error
 	pal/error.cpp
