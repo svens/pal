@@ -26,4 +26,5 @@ list(APPEND pal_test_sources
 	pal/result.test.cpp
 )
 
+include(pal/crypto/list.cmake)
 include(pal/net/list.cmake)

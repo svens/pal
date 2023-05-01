@@ -1,0 +1,98 @@
+#pragma once // -*- C++ -*-
+
+/**
+ * \file pal/crypto/oid
+ * Object identifiers for X509 certificates
+ */
+
+#include <string_view>
+
+namespace pal::crypto::oid {
+
+/// \defgroup OID_values OID values
+/// \see https://en.wikipedia.org/wiki/Object_identifier
+/// \{
+
+constexpr std::string_view
+
+	/// http://www.oid-info.com/cgi-bin/display?action=display&oid=2.5.4.8.1
+	collective_state_or_province_name = "2.5.4.8.1",
+
+	/// http://www.oid-info.com/cgi-bin/display?action=display&oid=2.5.4.9.1
+	collective_street_address = "2.5.4.9.1",
+
+	/// http://www.oid-info.com/cgi-bin/display?action=display&oid=2.5.4.3
+	common_name = "2.5.4.3",
+
+	/// http://www.oid-info.com/cgi-bin/display?action=display&oid=2.5.4.13
+	country_name = "2.5.4.6",
+
+	/// http://www.oid-info.com/cgi-bin/display?action=display&oid=2.5.4.6
+	description = "2.5.4.13",
+
+	/// http://www.oid-info.com/cgi-bin/display?action=display&oid=2.5.4.42
+	given_name = "2.5.4.42",
+
+	/// http://www.oid-info.com/cgi-bin/display?action=display&oid=2.5.4.7
+	locality_name = "2.5.4.7",
+
+	/// http://www.oid-info.com/cgi-bin/display?action=display&oid=2.5.4.10
+	organization_name = "2.5.4.10",
+
+	/// http://www.oid-info.com/cgi-bin/display?action=display&oid=2.5.4.11
+	organizational_unit_name = "2.5.4.11",
+
+	/// http://www.oid-info.com/cgi-bin/display?action=display&oid=2.5.4.5
+	serial_number = "2.5.4.5",
+
+	/// http://www.oid-info.com/cgi-bin/display?action=display&oid=2.5.4.8
+	state_or_province_name = "2.5.4.8",
+
+	/// http://www.oid-info.com/cgi-bin/display?action=display&oid=2.5.4.9
+	street_address = "2.5.4.9",
+
+	/// http://www.oid-info.com/cgi-bin/display?action=display&oid=2.5.4.4
+	surname = "2.5.4.4",
+
+	/// http://www.oid-info.com/cgi-bin/display?action=display&oid=2.5.4.12
+	title = "2.5.4.12";
+
+/// \}
+
+namespace __oid {
+
+using namespace std::string_view_literals;
+
+struct
+{
+	const std::string_view &oid;
+	std::string_view alias;
+}
+constexpr map[] =
+{
+	{ common_name, "CN"sv },
+	{ country_name, "C"sv },
+	{ locality_name, "L"sv },
+	{ organization_name, "O"sv },
+	{ organizational_unit_name, "OU"sv },
+	{ state_or_province_name, "ST"sv },
+	{ street_address, "STREET"sv },
+};
+
+} // namespace __oid
+
+/// Returns alias for \a oid. Supported OID aliases are listed in RFC 1779 2.3.
+/// If there is no alias for \a oid, it is returned itself.
+constexpr const std::string_view &alias_or (const std::string_view &oid) noexcept
+{
+	for (const auto &entry: __oid::map)
+	{
+		if (entry.oid == oid)
+		{
+			return entry.alias;
+		}
+	}
+	return oid;
+}
+
+} // namespace pal::crypto::oid
