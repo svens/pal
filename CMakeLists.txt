@@ -21,11 +21,19 @@ set(CMAKE_CXX_EXTENSIONS OFF)
 include(cmake/cxx.cmake)
 
 set(pal_libraries)
-if(${CMAKE_SYSTEM_NAME} STREQUAL "Darwin")
-elseif(${CMAKE_SYSTEM_NAME} STREQUAL "Linux")
-elseif(${CMAKE_SYSTEM_NAME} STREQUAL "Windows")
-	set(pal_libraries ${pal_libraries} ws2_32)
+if(${CMAKE_SYSTEM_NAME} STREQUAL "Darwin") #{{{1
+	#
+elseif(${CMAKE_SYSTEM_NAME} STREQUAL "Linux") #{{{1
+	find_package(OpenSSL REQUIRED)
+	list(FIND CMAKE_CXX_IMPLICIT_INCLUDE_DIRECTORIES OPENSSL_INCLUDE_DIR i)
+	if(${i} EQUAL -1)
+		include_directories(SYSTEM ${OPENSSL_INCLUDE_DIR})
+	endif()
+	set(pal_libraries ${pal_libraries} OpenSSL::Crypto)
+elseif(${CMAKE_SYSTEM_NAME} STREQUAL "Windows") #{{{1
+	set(pal_libraries ${pal_libraries} bcrypt ws2_32)
 endif()
+# }}}1
 
 # library {{{1
 include(pal/list.cmake)
