@@ -1,0 +1,100 @@
+#pragma once // -*- C++ -*-
+
+#include <iterator>
+#include <span>
+#include <type_traits>
+
+namespace pal {
+
+/// Return address of \a span
+template <typename T, size_t Extent>
+constexpr const std::span<T, Extent> *span_sequence_begin (
+	const std::span<T, Extent> &span) noexcept
+{
+	return std::addressof(span);
+}
+
+/// Return address past of \a span
+template <typename T, size_t Extent>
+constexpr const std::span<T, Extent> *span_sequence_end (
+	const std::span<T, Extent> &span) noexcept
+{
+	return std::addressof(span) + 1;
+}
+
+/// Return address of \a span
+template <typename T, size_t Extent>
+constexpr const std::span<const T, Extent> *span_sequence_begin (
+	const std::span<const T, Extent> &span) noexcept
+{
+	return std::addressof(span);
+}
+
+/// Return address past of \a span
+template <typename T, size_t Extent>
+constexpr const std::span<const T, Extent> *span_sequence_end (
+	const std::span<const T, Extent> &span) noexcept
+{
+	return std::addressof(span) + 1;
+}
+
+namespace __span {
+
+template <typename T>
+constexpr bool is_span_v = false;
+
+template <typename T, size_t Extent>
+constexpr bool is_span_v<std::span<T, Extent>> = true;
+
+} // namespace __span
+
+/// Return address of first span in \a spans
+template <typename SpanSequence>
+	requires(!__span::is_span_v<SpanSequence>)
+constexpr auto span_sequence_begin (SpanSequence &spans) noexcept
+	-> decltype(std::begin(spans))
+{
+	return std::begin(spans);
+}
+
+/// Return address of first span in \a spans
+template <typename SpanSequence>
+	requires(!__span::is_span_v<SpanSequence>)
+constexpr auto span_sequence_end (SpanSequence &spans) noexcept
+	-> decltype(std::end(spans))
+{
+	return std::end(spans);
+}
+
+/// Return address past of last span in \a spans
+template <typename SpanSequence>
+	requires(!__span::is_span_v<SpanSequence>)
+constexpr auto span_sequence_begin (const SpanSequence &spans) noexcept
+	-> decltype(std::begin(spans))
+{
+	return std::begin(spans);
+}
+
+/// Return address past of last span in \a spans
+template <typename SpanSequence>
+	requires(!__span::is_span_v<SpanSequence>)
+constexpr auto span_sequence_end (const SpanSequence &spans) noexcept
+	-> decltype(std::end(spans))
+{
+	return std::end(spans);
+}
+
+/// Return total size of all \a spans (in bytes).
+template <typename SpanSequence>
+constexpr size_t span_size_bytes (const SpanSequence &spans) noexcept
+{
+	size_t size_bytes = 0;
+	const auto end = span_sequence_end(spans);
+	for (auto it = span_sequence_begin(spans);  it != end;  ++it)
+	{
+		size_bytes += it->size_bytes();
+	}
+	return size_bytes;
+}
+
+} // namespace pal

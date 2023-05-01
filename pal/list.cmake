@@ -12,6 +12,7 @@ list(APPEND pal_sources
 	pal/error.cpp
 	pal/hash
 	pal/result
+	pal/span
 	pal/string
 	pal/version
 )
@@ -24,6 +25,7 @@ list(APPEND pal_test_sources
 	pal/hash.test.cpp
 	pal/error.test.cpp
 	pal/result.test.cpp
+	pal/span.test.cpp
 )
 
 include(pal/crypto/list.cmake)
