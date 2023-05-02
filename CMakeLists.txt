@@ -31,7 +31,7 @@ elseif(${CMAKE_SYSTEM_NAME} STREQUAL "Linux") #{{{1
 	endif()
 	set(pal_libraries ${pal_libraries} OpenSSL::Crypto)
 elseif(${CMAKE_SYSTEM_NAME} STREQUAL "Windows") #{{{1
-	set(pal_libraries ${pal_libraries} bcrypt ws2_32)
+	set(pal_libraries ${pal_libraries} bcrypt ntdll ws2_32)
 endif()
 # }}}1
 

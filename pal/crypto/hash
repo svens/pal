@@ -1,0 +1,168 @@
+#pragma once // -*- C++ -*-
+
+/**
+ * \file pal/crypto/hash
+ * Cryptographic hashing
+ */
+
+#include <pal/crypto/__algorithm>
+#include <pal/result>
+#include <pal/span>
+#include <array>
+#include <memory>
+
+namespace pal::crypto {
+
+/// Hash algorithms
+namespace algorithm {
+
+/// MD5. It is deprecated but provided for networking protocols that still
+/// rely on this (STUN/TURN/MS-TURN, etc)
+struct md5
+{
+	/// Hash digest size
+	static constexpr size_t digest_size = 16;
+
+	/// Hash algorithm implementation
+	using hash = __algorithm::md5_hash;
+};
+
+} // namespace algorithm
+
+/// Generic virtual hasher interface. It allows choosing implementation
+/// algorithm runtime, by using any of basic_hash<Algorithm>::make() creation
+/// method.
+struct any_hash
+{
+	virtual ~any_hash () noexcept = default;
+
+	/// Returns number of bytes in result digest
+	virtual size_t digest_size () const noexcept = 0;
+
+	/// Feed \a size bytes at \a ptr to hasher
+	virtual void update (const void *ptr, size_t size) noexcept = 0;
+
+	/// Calculate final \a digest.
+	/// \a digest storage must be at least \a digest_size() bytes long.
+	virtual void finish (void *digest) noexcept = 0;
+
+	/// Feed \a input to hasher. Returns *this for call chaining.
+	template <typename ConstSpanSequence>
+	any_hash &update (const ConstSpanSequence &input) noexcept
+	{
+		const auto end = span_sequence_end(input);
+		for (auto it = span_sequence_begin(input);  it != end;  ++it)
+		{
+			update(it->data(), it->size_bytes());
+		}
+		return *this;
+	}
+
+	/// Calculate final \a digest.
+	/// \a digest storage must be at least \a digest_size() bytes long.
+	result<size_t> finish (std::span<uint8_t> digest) noexcept
+	{
+		auto required_size = digest_size();
+		if (digest.size_bytes() >= required_size)
+		{
+			finish(digest.data());
+			return required_size;
+		}
+		return make_unexpected(std::errc::invalid_argument);
+	}
+};
+
+/// Pointer to generic hasher API
+using any_hash_ptr = std::unique_ptr<any_hash>;
+
+/// One-way cryptographic hashing using \a Algorithm.
+///
+/// If all data is already fully present, use static one_shot() to calculate
+/// digest immediately.
+///
+/// If data is not completely present, instantiate this class and add new data
+/// in one or more calls to update(). Once full data has been fed into hasher,
+/// call finish() to fetch calculated digest. Application can immediately reuse
+/// instance after call to finish(), it is re-initialized internally.
+template <typename Algorithm>
+class basic_hash
+{
+public:
+
+	/// Number of bytes in result digest
+	static constexpr size_t digest_size = Algorithm::digest_size;
+
+	/// Result digest type
+	using digest_type = std::array<uint8_t, digest_size>;
+
+	/// Feed \a input to hasher.
+	/// \returns \a *this for call chaining.
+	template <typename ConstSpanSequence>
+	basic_hash &update (const ConstSpanSequence &input) noexcept
+	{
+		const auto end = span_sequence_end(input);
+		for (auto it = span_sequence_begin(input);  it != end;  ++it)
+		{
+			impl_.update(it->data(), it->size_bytes());
+		}
+		return *this;
+	}
+
+	/// Calculate and return final digest. Hasher instance is reset and
+	/// ready for new updates.
+	digest_type finish () noexcept
+	{
+		digest_type digest{};
+		impl_.finish(digest.data());
+		return digest;
+	}
+
+	/// Convenience method to calculate digest of \a data in single invocation
+	template <typename ConstSpanSequence>
+	static digest_type one_shot (const ConstSpanSequence &input) noexcept
+	{
+		return basic_hash{}.update(input).finish();
+	}
+
+	/// Create generic hasher instance that uses internally \a Algorithm
+	static result<any_hash_ptr> make () noexcept;
+
+private:
+
+	typename Algorithm::hash impl_{};
+};
+
+template <typename Algorithm>
+result<any_hash_ptr> basic_hash<Algorithm>::make () noexcept
+{
+	struct impl_type final: any_hash
+	{
+		typename Algorithm::hash impl{};
+
+		size_t digest_size () const noexcept override
+		{
+			return Algorithm::digest_size;
+		}
+
+		void update (const void *ptr, size_t size) noexcept override
+		{
+			impl.update(ptr, size);
+		}
+
+		void finish (void *digest) noexcept override
+		{
+			impl.finish(digest);
+		}
+	};
+
+	if (auto impl = new(std::nothrow) impl_type)
+	{
+		return any_hash_ptr{impl};
+	}
+
+	return make_unexpected(std::errc::not_enough_memory);
+}
+
+using md5_hash = basic_hash<algorithm::md5>;
+
+} // namespace pal::crypto
