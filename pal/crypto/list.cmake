@@ -1,8 +1,8 @@
 list(APPEND pal_sources
-	pal/crypto/__algorithm
-	pal/crypto/__algorithm_linux.cpp
-	pal/crypto/__algorithm_macos.cpp
-	pal/crypto/__algorithm_windows.cpp
+	pal/crypto/digest_algorithm
+	pal/crypto/digest_algorithm_linux.cpp
+	pal/crypto/digest_algorithm_macos.cpp
+	pal/crypto/digest_algorithm_windows.cpp
 	pal/crypto/hash
 	pal/crypto/oid
 	pal/crypto/random
