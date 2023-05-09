@@ -1,7 +1,7 @@
 #pragma once // -*- C++ -*-
 
 /**
- * \file pal/crypto/hash
+ * \file pal/crypto/hmac
  * Cryptographic hashing
  */
 
@@ -13,7 +13,7 @@
 
 namespace pal::crypto {
 
-/// One-way cryptographic hashing using \a Algorithm.
+/// One-way cryptographic keyed hashing using \a Algorithm.
 ///
 /// If all data is already fully present, use static one_shot() to calculate
 /// digest immediately.
@@ -23,7 +23,7 @@ namespace pal::crypto {
 /// call finish() to fetch calculated digest. Application can immediately reuse
 /// instance after call to finish(), it is re-initialized internally.
 template <typename Algorithm>
-class basic_hash
+class basic_hmac
 {
 public:
 
@@ -36,7 +36,7 @@ public:
 	/// Feed \a input to hasher
 	/// \returns *this for call chaining
 	template <typename ConstSpanSequence>
-	basic_hash &update (const ConstSpanSequence &input) noexcept
+	basic_hmac &update (const ConstSpanSequence &input) noexcept
 	{
 		const auto end = span_sequence_end(input);
 		for (auto it = span_sequence_begin(input);  it != end;  ++it)
@@ -55,54 +55,76 @@ public:
 		return digest;
 	}
 
-	/// Create hasher instance
-	static result<basic_hash> make () noexcept
+	/// Create hasher instance without key
+	static result<basic_hmac> make () noexcept
 	{
 		std::error_code error;
-		if (basic_hash result{error}; !error)
+		if (basic_hmac result{{}, error}; !error)
 		{
 			return result;
 		}
 		return unexpected{error};
 	}
 
-	/// Convenience method to get digest of \a input in single step
+	/// Create hasher instance with \a key
+	template <typename Key>
+	static result<basic_hmac> make (const Key &key) noexcept
+	{
+		std::error_code error;
+		if (basic_hmac result{std::as_bytes(std::span{key}), error}; !error)
+		{
+			return result;
+		}
+		return unexpected{error};
+	}
+
+	/// Convenience method to get digest of \a input in single step without key
 	template <typename ConstSpanSequence>
 	static result<digest_type> one_shot (const ConstSpanSequence &input) noexcept
 	{
-		return make().transform([&](auto hash)
+		return make().transform([&](auto hmac)
 		{
-			return hash.update(input).finish();
+			return hmac.update(input).finish();
+		});
+	}
+
+	/// Convenience method to get digest of \a input in single step with \a key
+	template <typename Key, typename ConstSpanSequence>
+	static result<digest_type> one_shot (const Key &key, const ConstSpanSequence &input) noexcept
+	{
+		return make(key).transform([&](auto hmac)
+		{
+			return hmac.update(input).finish();
 		});
 	}
 
 private:
 
-	typename Algorithm::hash impl_;
+	typename Algorithm::hmac impl_;
 
-	basic_hash (std::error_code &error) noexcept
-		: impl_{error}
+	basic_hmac (std::span<const std::byte> key, std::error_code &error) noexcept
+		: impl_{key, error}
 	{ }
 };
 
-/// \defgroup crypto_hash Cryptographic hashers
+/// \defgroup crypto_hmac Cryptographic keyed hashers
 /// \{
 
-/// MD5 hasher
+/// MD5 HMAC
 /// \deprecated Provided for backward compatibility
-using md5_hash = basic_hash<algorithm::md5>;
+using md5_hmac = basic_hmac<algorithm::md5>;
 
-/// SHA1 hasher
-using sha1_hash = basic_hash<algorithm::sha1>;
+/// SHA1 HMAC
+using sha1_hmac = basic_hmac<algorithm::sha1>;
 
-/// SHA256 hasher
-using sha256_hash = basic_hash<algorithm::sha256>;
+/// SHA256 HMAC
+using sha256_hmac = basic_hmac<algorithm::sha256>;
 
-/// SHA384 hasher
-using sha384_hash = basic_hash<algorithm::sha384>;
+/// SHA384 HMAC
+using sha384_hmac = basic_hmac<algorithm::sha384>;
 
-/// SHA512 hasher
-using sha512_hash = basic_hash<algorithm::sha512>;
+/// SHA512 HMAC
+using sha512_hmac = basic_hmac<algorithm::sha512>;
 
 /// \}
 

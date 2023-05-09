@@ -81,6 +81,10 @@ struct impl_base
 
 } // namespace
 
+//
+// Hash
+//
+
 #define __pal_crypto_digest_algorithm_impl(Algorithm, Context, Size) \
 	namespace { template <> constexpr LPCWSTR algorithm_id<Algorithm> = BCRYPT_ ## Context ## _ALGORITHM; } \
 	\
@@ -124,6 +128,54 @@ struct impl_base
 	}
 
 __pal_crypto_digest_algorithm(__pal_crypto_digest_algorithm_impl)
+#undef __pal_crypto_digest_algorithm_impl
+
+//
+// HMAC
+//
+
+#define __pal_crypto_digest_algorithm_impl(Algorithm, Context, Size) \
+	struct Algorithm::hmac::impl_type: impl_base { }; \
+	\
+	Algorithm::hmac::~hmac () noexcept = default; \
+	Algorithm::hmac::hmac (hmac &&) noexcept = default; \
+	Algorithm::hmac &Algorithm::hmac::operator= (hmac &&) noexcept = default; \
+	\
+	Algorithm::hmac::hmac (std::span<const std::byte> key, std::error_code &error) noexcept \
+		: impl{new(std::nothrow) impl_type} \
+	{ \
+		if (!impl) \
+		{ \
+			error = std::make_error_code(std::errc::not_enough_memory); \
+		} \
+		else if (impl->handle = make_context<Algorithm, true>(key.data(), key.size(), error);  error) \
+		{ \
+			impl.reset(); \
+		} \
+	} \
+	\
+	void Algorithm::hmac::update (std::span<const std::byte> input) noexcept \
+	{ \
+		::BCryptHashData( \
+			impl->handle, \
+			reinterpret_cast<PUCHAR>(const_cast<std::byte *>(input.data())), \
+			static_cast<ULONG>(input.size()), \
+			0 \
+		); \
+	} \
+	\
+	void Algorithm::hmac::finish (std::span<std::byte, digest_size> digest) noexcept \
+	{ \
+		::BCryptFinishHash( \
+			impl->handle, \
+			reinterpret_cast<PUCHAR>(digest.data()), \
+			static_cast<ULONG>(digest_size), \
+			0 \
+		); \
+	}
+
+__pal_crypto_digest_algorithm(__pal_crypto_digest_algorithm_impl)
+#undef __pal_crypto_digest_algorithm_impl
 
 } // namespace pal::crypto::algorithm
 

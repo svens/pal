@@ -28,10 +28,26 @@ namespace pal::crypto::algorithm {
 			struct impl_type; \
 			std::unique_ptr<impl_type> impl; \
 			\
-			hash (std::error_code &) noexcept; \
+			hash (std::error_code &error) noexcept; \
 			~hash () noexcept; \
+			\
 			hash (hash &&) noexcept; \
 			hash &operator= (hash &&) noexcept; \
+			\
+			void update (std::span<const std::byte> input) noexcept; \
+			void finish (std::span<std::byte, digest_size> digest) noexcept; \
+		}; \
+		\
+		struct hmac \
+		{ \
+			struct impl_type; \
+			std::unique_ptr<impl_type> impl; \
+			\
+			hmac (std::span<const std::byte> key, std::error_code &) noexcept; \
+			~hmac () noexcept; \
+			\
+			hmac (hmac &&) noexcept; \
+			hmac &operator= (hmac &&) noexcept; \
 			\
 			void update (std::span<const std::byte> input) noexcept; \
 			void finish (std::span<std::byte, digest_size> digest) noexcept; \
@@ -39,7 +55,6 @@ namespace pal::crypto::algorithm {
 	};
 
 __pal_crypto_digest_algorithm(__pal_crypto_digest_algorithm_api)
-
 #undef __pal_crypto_digest_algorithm_api
 
 } // pal::crypto::algorithm

@@ -96,11 +96,10 @@ TEMPLATE_TEST_CASE("crypto/hash", "",
 	sha512)
 {
 	using Hash = pal::crypto::basic_hash<TestType>;
-	auto h = Hash::make().value();
-
 	CHECK(test_data<TestType>::digest_size == TestType::digest_size);
-	CHECK(h.digest_size == TestType::digest_size);
+	CHECK(test_data<TestType>::digest_size == Hash::digest_size);
 
+	auto hash = Hash::make().value();
 	const auto &expected = test_data<TestType>::expected;
 
 	const std::array spans =
@@ -111,37 +110,29 @@ TEMPLATE_TEST_CASE("crypto/hash", "",
 
 	SECTION("update")
 	{
-		CHECK(to_hex(h.update(std::span{lazy_dog}).finish()) == expected.at(lazy_dog));
-	}
-
-	SECTION("finish")
-	{
-		h.update(std::span{lazy_dog});
-		uint8_t data[Hash::digest_size];
-		*reinterpret_cast<typename Hash::digest_type *>(data) = h.finish();
-		CHECK(to_hex(data) == expected.at(lazy_dog));
+		CHECK(to_hex(hash.update(std::span{lazy_dog}).finish()) == expected.at(lazy_dog));
 	}
 
 	SECTION("no update")
 	{
-		CHECK(to_hex(h.finish()) == expected.at(empty));
+		CHECK(to_hex(hash.finish()) == expected.at(empty));
 	}
 
 	SECTION("reuse")
 	{
-		CHECK(to_hex(h.update(std::span{lazy_dog}).finish()) == expected.at(lazy_dog));
-		CHECK(to_hex(h.update(std::span{lazy_cog}).finish()) == expected.at(lazy_cog));
+		CHECK(to_hex(hash.update(std::span{lazy_dog}).finish()) == expected.at(lazy_dog));
+		CHECK(to_hex(hash.update(std::span{lazy_cog}).finish()) == expected.at(lazy_cog));
 	}
 
 	SECTION("multiple updates")
 	{
-		h.update(std::span{lazy_dog}).update(std::span{lazy_cog});
-		CHECK(to_hex(h.finish()) == expected.at(lazy_dog + lazy_cog));
+		hash.update(std::span{lazy_dog}).update(std::span{lazy_cog});
+		CHECK(to_hex(hash.finish()) == expected.at(lazy_dog + lazy_cog));
 	}
 
 	SECTION("multiple spans")
 	{
-		CHECK(to_hex(h.update(spans).finish()) == expected.at(lazy_dog + lazy_cog));
+		CHECK(to_hex(hash.update(spans).finish()) == expected.at(lazy_dog + lazy_cog));
 	}
 
 	SECTION("one_shot")
@@ -157,9 +148,9 @@ TEMPLATE_TEST_CASE("crypto/hash", "",
 	SECTION("make: not_enough_memory")
 	{
 		pal_test::bad_alloc_once x;
-		auto hasher = Hash::make();
-		REQUIRE(!hasher.has_value());
-		CHECK(hasher.error() == std::errc::not_enough_memory);
+		auto h = Hash::make();
+		REQUIRE(!h.has_value());
+		CHECK(h.error() == std::errc::not_enough_memory);
 	}
 }
 

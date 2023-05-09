@@ -9,6 +9,7 @@
 #undef OPENSSL_SUPPRESS_DEPRECATED
 
 #include <openssl/sha.h>
+#include <openssl/hmac.h>
 
 namespace {
 
@@ -19,6 +20,10 @@ using SHA384_CTX = ::SHA512_CTX;
 } // namespace
 
 namespace pal::crypto::algorithm {
+
+//
+// Hash
+//
 
 #define __pal_crypto_digest_algorithm_impl(Algorithm, Context, Size) \
 	struct Algorithm::hash::impl_type: ::Context ## _CTX { }; \
@@ -53,6 +58,57 @@ namespace pal::crypto::algorithm {
 	}
 
 __pal_crypto_digest_algorithm(__pal_crypto_digest_algorithm_impl)
+#undef __pal_crypto_digest_algorithm_impl
+
+//
+// HMAC
+//
+
+#define __pal_crypto_digest_algorithm_impl(Algorithm, Context, Size) \
+	struct Algorithm::hmac::impl_type \
+	{ \
+		std::unique_ptr<::HMAC_CTX, decltype(&::HMAC_CTX_free)> ctx{::HMAC_CTX_new(), &::HMAC_CTX_free}; \
+		\
+		impl_type (const void *key, size_t key_size) noexcept \
+		{ \
+			if (ctx) \
+			{ \
+				if (!key) \
+				{ \
+					key = ""; \
+					key_size = 0; \
+				} \
+				::HMAC_Init_ex(ctx.get(), key, key_size, ::EVP_ ## Algorithm (), nullptr); \
+			} \
+		} \
+	}; \
+	\
+	Algorithm::hmac::~hmac () noexcept = default; \
+	Algorithm::hmac::hmac (hmac &&) noexcept = default; \
+	Algorithm::hmac &Algorithm::hmac::operator= (hmac &&) noexcept = default; \
+	\
+	Algorithm::hmac::hmac (std::span<const std::byte> key, std::error_code &error) noexcept \
+		: impl{new(std::nothrow) impl_type(key.data(), key.size())} \
+	{ \
+		if (!impl || !impl->ctx) \
+		{ \
+			error = std::make_error_code(std::errc::not_enough_memory); \
+		} \
+	} \
+	\
+	void Algorithm::hmac::update (std::span<const std::byte> input) noexcept \
+	{ \
+		::HMAC_Update(impl->ctx.get(), reinterpret_cast<const uint8_t *>(input.data()), input.size()); \
+	} \
+	\
+	void Algorithm::hmac::finish (std::span<std::byte, digest_size> digest) noexcept \
+	{ \
+		::HMAC_Final(impl->ctx.get(), reinterpret_cast<uint8_t *>(digest.data()), nullptr); \
+		::HMAC_Init_ex(impl->ctx.get(), nullptr, 0U, nullptr, nullptr); \
+	}
+
+__pal_crypto_digest_algorithm(__pal_crypto_digest_algorithm_impl)
+#undef __pal_crypto_digest_algorithm_impl
 
 } // namespace pal::crypto::algorithm
 
