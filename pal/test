@@ -13,4 +13,19 @@ inline std::string case_name ()
 bool __on_ci ();
 inline const bool on_ci = __on_ci();
 
+struct bad_alloc_once
+{
+	static inline bool fail = false;
+
+	bad_alloc_once () noexcept
+	{
+		fail = true;
+	}
+
+	~bad_alloc_once () noexcept
+	{
+		fail = false;
+	}
+};
+
 } // namespace pal_test

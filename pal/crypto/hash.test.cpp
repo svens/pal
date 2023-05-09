@@ -93,6 +93,14 @@ TEMPLATE_TEST_CASE("crypto/hash", "",
 	{
 		CHECK(to_hex(Hash::one_shot(spans).value()) == expected.at(lazy_dog + lazy_cog));
 	}
+
+	SECTION("make: not_enough_memory")
+	{
+		pal_test::bad_alloc_once x;
+		auto h = Hash::make();
+		REQUIRE(!h.has_value());
+		CHECK(h.error() == std::errc::not_enough_memory);
+	}
 }
 
 } // namespace
