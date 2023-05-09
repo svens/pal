@@ -12,7 +12,6 @@ namespace pal::crypto::algorithm {
 namespace {
 
 template <typename Algorithm> constexpr LPCWSTR algorithm_id = nullptr;
-template <> constexpr LPCWSTR algorithm_id<md5> = BCRYPT_MD5_ALGORITHM;
 
 struct algorithm_provider
 {
@@ -83,6 +82,8 @@ struct impl_base
 } // namespace
 
 #define __pal_crypto_digest_algorithm_impl(Algorithm, Context, Size) \
+	namespace { template <> constexpr LPCWSTR algorithm_id<Algorithm> = BCRYPT_ ## Context ## _ALGORITHM; } \
+	\
 	struct Algorithm::hash::impl_type: impl_base { }; \
 	\
 	Algorithm::hash::~hash () noexcept = default; \

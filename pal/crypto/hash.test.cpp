@@ -97,9 +97,9 @@ TEMPLATE_TEST_CASE("crypto/hash", "",
 	SECTION("make: not_enough_memory")
 	{
 		pal_test::bad_alloc_once x;
-		auto h = Hash::make();
-		REQUIRE(!h.has_value());
-		CHECK(h.error() == std::errc::not_enough_memory);
+		auto hasher = Hash::make();
+		REQUIRE(!hasher.has_value());
+		CHECK(hasher.error() == std::errc::not_enough_memory);
 	}
 }
 
