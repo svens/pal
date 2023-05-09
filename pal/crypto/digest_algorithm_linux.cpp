@@ -6,6 +6,17 @@
 
 #define OPENSSL_SUPPRESS_DEPRECATED
 #include <openssl/md5.h>
+#undef OPENSSL_SUPPRESS_DEPRECATED
+
+#include <openssl/sha.h>
+
+namespace {
+
+// help machinery below with OpenSSL naming inconsistency
+using SHA1_CTX = ::SHA_CTX;
+using SHA384_CTX = ::SHA512_CTX;
+
+} // namespace
 
 namespace pal::crypto::algorithm {
 

@@ -6,6 +6,13 @@
 #include <CommonCrypto/CommonDigest.h>
 #include <CommonCrypto/CommonHMAC.h>
 
+namespace {
+
+// help machinery below with CommonCrypto naming inconsistency
+using CC_SHA384_CTX = ::CC_SHA512_CTX;
+
+} // namespace
+
 namespace pal::crypto::algorithm {
 
 #define __pal_crypto_digest_algorithm_impl(Algorithm, Context, Size) \
