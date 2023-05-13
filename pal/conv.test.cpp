@@ -8,6 +8,9 @@
 
 namespace {
 
+using pal::base64;
+using pal::hex;
+
 struct success_type
 {
 	std::string_view decoded, encoded;
@@ -23,13 +26,74 @@ struct decode_failure_type
 	std::string_view encoded;
 };
 
-template <typename Algorithm>
+template <typename Algorithm> //{{{1
 struct test_data;
 
-using pal::hex;
+template <>
+struct test_data<base64> //{{{1
+{
+	static inline constexpr success_type success[] =
+	{
+		{ "", "" },
+		{ "f", "Zg==" },
+		{ "fo", "Zm8=" },
+		{ "foo", "Zm9v" },
+		{ "foob", "Zm9vYg==" },
+		{ "fooba", "Zm9vYmE=" },
+		{ "foobar", "Zm9vYmFy" },
+	};
+
+	static inline constexpr size_failure_type size_failure[] =
+	{
+		{ "Z" },
+		{ "Zg" },
+		{ "Zg=" },
+		{ "Zm9v=" },
+		{ "Zm9v==" },
+	};
+
+	static inline constexpr decode_failure_type decode_failure[] =
+	{
+		{ "Z" },
+		{ "Zg" },
+		{ "Zg=" },
+		{ "Zm9v=" },
+		{ "Zm9v==" },
+
+		// 'test' -> 'dGVzdA=='
+		{ ".GVzdA==" },
+		{ "d.VzdA==" },
+		{ "dG.zdA==" },
+		{ "dGV.dA==" },
+		{ "dGVz.A==" },
+		{ "dGVzd.==" },
+		{ "dGVzdA.=" },
+		{ "dGVzdA=." },
+
+		// 'test1' -> 'dGVzdDE='
+		{ ".GVzdDE=" },
+		{ "d.VzdDE=" },
+		{ "dG.zdDE=" },
+		{ "dGV.dDE=" },
+		{ "dGVz.DE=" },
+		{ "dGVzd.E=" },
+		{ "dGVzdD.=" },
+		{ "dGVzdDE." },
+
+		// 'test12' -> 'dGVzdDEx'
+		{ ".GVzdDEx" },
+		{ "d.VzdDEx" },
+		{ "dG.zdDEx" },
+		{ "dGV.dDEx" },
+		{ "dGVz.DEx" },
+		{ "dGVzd.Ex" },
+		{ "dGVzdD.x" },
+		{ "dGVzdDE." },
+	};
+};
 
 template <>
-struct test_data<hex>
+struct test_data<hex> //{{{1
 {
 	static inline constexpr success_type success[] =
 	{
@@ -63,6 +127,8 @@ struct test_data<hex>
 	};
 };
 
+//}}}1
+
 constexpr auto generate_extended_ascii_table () noexcept
 {
 	std::array<std::byte, 256> table{};
@@ -75,6 +141,7 @@ constexpr auto generate_extended_ascii_table () noexcept
 constexpr const auto extended_ascii = generate_extended_ascii_table();
 
 TEMPLATE_TEST_CASE("conv", "",
+	base64,
 	hex)
 {
 	using TestData = test_data<TestType>;
@@ -83,7 +150,7 @@ TEMPLATE_TEST_CASE("conv", "",
 	SECTION("constexpr")
 	{
 		constexpr auto &success = TestData::success[1];
-		static_assert(pal::decode_size<TestType>(success.encoded) == success.decoded.size());
+		static_assert(pal::decode_size<TestType>(success.encoded) >= success.decoded.size());
 
 		constexpr auto &failure = TestData::size_failure[0];
 		static_assert(pal::decode_size<TestType>(failure.encoded) == -1);
@@ -102,7 +169,7 @@ TEMPLATE_TEST_CASE("conv", "",
 
 		SECTION("decode")
 		{
-			CHECK(pal::decode_size<TestType>(encoded) == decoded.size());
+			CHECK(pal::decode_size<TestType>(encoded) >= decoded.size());
 			CHECK(std::string_view{buf, pal::decode<TestType>(encoded, buf)} == decoded);
 		}
 	}

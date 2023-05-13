@@ -27,14 +27,14 @@ constexpr size_t size_bytes (const Data &input) noexcept
 
 } // namespace __conv
 
-/// Returns required output storage capacity in bytes when encoding \a input
+/// Returns maximum required output storage capacity in bytes when encoding \a input
 template <typename Algorithm, typename Data>
 constexpr size_t encode_size (const Data &input) noexcept
 {
 	return Algorithm::encode_size(__conv::size_bytes(input));
 }
 
-/// Returns required output storage capacity in bytes when decoding
+/// Returns maximum required output storage capacity in bytes when decoding
 /// \a input or (std::size_t)-1 on invalid \a input size
 template <typename Algorithm, typename Data>
 constexpr size_t decode_size (const Data &input) noexcept
@@ -74,6 +74,30 @@ It decode (const Data &input, It out) noexcept
 	}
 	return {};
 }
+
+// base64 {{{1
+
+/// Base64 encoding/decoding.
+struct base64
+{
+	/// \copydoc encode_size
+	static constexpr size_t encode_size (size_t size_bytes) noexcept
+	{
+		return ((size_bytes * 4 / 3) + 3) & ~3;
+	}
+
+	/// \copydoc decode_size
+	static constexpr size_t decode_size (size_t size_bytes) noexcept
+	{
+		return size_bytes % 4 == 0 ? (size_bytes / 4 * 3) : -1;
+	}
+
+	/// \copydoc encode
+	static std::byte *encode (const std::byte *first, const std::byte *last, std::byte *out) noexcept;
+
+	/// \copydoc decode
+	static std::byte *decode (const std::byte *first, const std::byte *last, std::byte *out) noexcept;
+};
 
 // hex {{{1
 

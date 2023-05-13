@@ -10,6 +10,7 @@ list(APPEND pal_sources
 	pal/__platform_sdk
 	pal/byte_order
 	pal/conv
+	pal/conv_base64.cpp
 	pal/conv_hex.cpp
 	pal/error
 	pal/error.cpp
