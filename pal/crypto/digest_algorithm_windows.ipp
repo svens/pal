@@ -1,10 +1,3 @@
-#include <pal/__platform_sdk>
-#include <pal/version>
-
-#if __pal_os_windows
-
-#include <pal/crypto/digest_algorithm>
-#include <system_error>
 #include <bcrypt.h>
 
 namespace pal::crypto::algorithm {
@@ -178,5 +171,3 @@ __pal_crypto_digest_algorithm(__pal_crypto_digest_algorithm_impl)
 #undef __pal_crypto_digest_algorithm_impl
 
 } // namespace pal::crypto::algorithm
-
-#endif // __pal_os_windows
