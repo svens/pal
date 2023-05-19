@@ -15,6 +15,7 @@ list(APPEND pal_sources
 	pal/error
 	pal/error.cpp
 	pal/hash
+	pal/memory
 	pal/result
 	pal/span
 	pal/string
@@ -30,6 +31,7 @@ list(APPEND pal_test_sources
 	pal/hash.bench.cpp
 	pal/hash.test.cpp
 	pal/error.test.cpp
+	pal/memory.test.cpp
 	pal/result.test.cpp
 	pal/span.test.cpp
 )
