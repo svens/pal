@@ -1,0 +1,70 @@
+#pragma once // -*- C++ -*-
+
+/**
+ * \file pal/crypto/certificate
+ * Public key certificate
+ *
+ * \see https://en.wikipedia.org/wiki/Public_key_certificate
+ */
+
+#include <pal/result>
+#include <memory>
+#include <span>
+#include <string_view>
+
+namespace pal::crypto {
+
+class certificate
+{
+public:
+
+	certificate () = default;
+
+	/// Load X509 certificate from DER-encoded blob \a der
+	template <typename Data>
+	static result<certificate> from_der (const Data &der) noexcept
+	{
+		return import_der(std::as_bytes(std::span{der}));
+	}
+
+	/// Load X509 certificate from PEM-encoded blob \a pem
+	template <typename Data>
+	static result<certificate> from_pem (const Data &pem) noexcept
+	{
+		return import_pem({std::data(pem), std::size(pem)});
+	}
+
+	/// Returns true if \a this certificate represents unspecified certificate
+	bool is_null () const noexcept
+	{
+		return impl_ == nullptr;
+	}
+
+	/// Returns true if \a this instance is not unspecified certificate
+	explicit operator bool () const noexcept
+	{
+		return !is_null();
+	}
+
+	/// Return Common Name (OID "2.5.4.3") of Distinguished Name of certificate
+	std::string_view common_name () const noexcept;
+
+	/// Returns fingerprint (SHA1 digest of public part) as lowercase hex-string
+	std::string_view fingerprint () const noexcept;
+
+private:
+
+	struct impl_type;
+	using impl_ptr = std::shared_ptr<impl_type>;
+
+	impl_ptr impl_{};
+
+	certificate (impl_ptr impl) noexcept
+		: impl_{impl}
+	{ }
+
+	static result<certificate> import_der (std::span<const std::byte> der) noexcept;
+	static result<certificate> import_pem (std::string_view pem) noexcept;
+};
+
+} // pal::crypto

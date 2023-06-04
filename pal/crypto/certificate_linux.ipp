@@ -1,0 +1,82 @@
+#include <pal/crypto/hash>
+#include <openssl/x509.h>
+
+namespace pal::crypto {
+
+struct certificate::impl_type
+{
+	using x509_ptr = std::unique_ptr<::X509, decltype(&::X509_free)>;
+	x509_ptr x509;
+
+	std::string_view common_name;
+
+	char fingerprint_buf[hex::encode_size(sha1_hash::digest_size) + 1];
+	std::string_view fingerprint;
+
+	impl_type (x509_ptr &&x509) noexcept
+		: x509{std::move(x509)}
+		, common_name{init_common_name()}
+		, fingerprint{init_fingerprint()}
+	{ }
+
+	std::string_view init_common_name () noexcept
+	{
+		auto subject = ::X509_get_subject_name(x509.get());
+		for (auto i = 0;  i != ::X509_NAME_entry_count(subject);  ++i)
+		{
+			static const auto filter = ::OBJ_txt2nid("CN");
+			auto subject_entry = ::X509_NAME_get_entry(subject, i);
+			if (::OBJ_obj2nid(::X509_NAME_ENTRY_get_object(subject_entry)) == filter)
+			{
+				return reinterpret_cast<const char *>(
+					::ASN1_STRING_get0_data(
+						::X509_NAME_ENTRY_get_data(subject_entry)
+					)
+				);
+			}
+		}
+		return "";
+	}
+
+	std::string_view init_fingerprint () noexcept
+	{
+		sha1_hash::digest_type fingerprint;
+		::X509_digest(x509.get(), ::EVP_sha1(), fingerprint.data(), nullptr);
+		encode<hex>(fingerprint, fingerprint_buf);
+		fingerprint_buf[sizeof(fingerprint_buf) - 1] = '\0';
+		return fingerprint_buf;
+	}
+};
+
+result<certificate> certificate::import_der (std::span<const std::byte> der) noexcept
+{
+	auto data = reinterpret_cast<const uint8_t *>(der.data());
+	impl_type::x509_ptr x509
+	{
+		::d2i_X509(nullptr, &data, static_cast<long>(der.size())),
+		&::X509_free
+	};
+
+	if (x509)
+	{
+		if (auto impl = impl_ptr{new(std::nothrow) impl_type(std::move(x509))})
+		{
+			return certificate{impl};
+		}
+		return make_unexpected(std::errc::not_enough_memory);
+	}
+
+	return make_unexpected(std::errc::invalid_argument);
+}
+
+std::string_view certificate::common_name () const noexcept
+{
+	return impl_->common_name;
+}
+
+std::string_view certificate::fingerprint () const noexcept
+{
+	return impl_->fingerprint;
+}
+
+} // namespace pal::crypto
