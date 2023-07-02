@@ -32,7 +32,7 @@ TEST_CASE("crypto/certificate")
 		CHECK(c.is_null());
 	}
 
-	SECTION("from") //{{{1
+	SECTION("from_pem / from_der") //{{{1
 	{
 		struct cert_info
 		{
@@ -81,26 +81,19 @@ TEST_CASE("crypto/certificate")
 				.fingerprint = "f7c05805853defda0f8e3376c4e70d4f09f5060e"
 			},
 		}));
+		CAPTURE(fingerprint);
 
-		SECTION("pem")
-		{
-			auto c = certificate::from_pem(pem);
-			REQUIRE(c);
-			CHECK(c->version() == version);
-			CHECK(pal_test::to_hex(c->serial_number()) == serial_number);
-			CHECK(c->common_name() == common_name);
-			CHECK(c->fingerprint() == fingerprint);
-		}
+		auto c = certificate::from_pem(pem).value();
+		CHECK(c.version() == version);
+		CHECK(pal_test::to_hex(c.serial_number()) == serial_number);
+		CHECK(c.common_name() == common_name);
+		CHECK(c.fingerprint() == fingerprint);
 
-		SECTION("der")
-		{
-			auto c = certificate::from_der(pal_test::to_der(pem));
-			REQUIRE(c);
-			CHECK(c->version() == version);
-			CHECK(pal_test::to_hex(c->serial_number()) == serial_number);
-			CHECK(c->common_name() == common_name);
-			CHECK(c->fingerprint() == fingerprint);
-		}
+		auto d = certificate::from_der(c.as_bytes()).value();
+		CHECK(d.version() == version);
+		CHECK(pal_test::to_hex(d.serial_number()) == serial_number);
+		CHECK(d.common_name() == common_name);
+		CHECK(d.fingerprint() == fingerprint);
 	}
 
 	SECTION("from_pem: first from multiple") //{{{1

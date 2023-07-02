@@ -1,4 +1,5 @@
 #include <pal/crypto/hash>
+#include <pal/memory>
 #include <openssl/asn1.h>
 #include <openssl/x509.h>
 
@@ -20,6 +21,9 @@ struct certificate::impl_type
 	using x509_ptr = std::unique_ptr<::X509, decltype(&::X509_free)>;
 	x509_ptr x509;
 
+	temporary_buffer<2048> bytes_buf;
+	std::span<const std::byte> bytes;
+
 	std::span<const uint8_t> serial_number;
 
 	std::string_view common_name;
@@ -29,14 +33,26 @@ struct certificate::impl_type
 
 	time_type not_before, not_after;
 
-	impl_type (x509_ptr &&x509) noexcept
+	impl_type (x509_ptr &&x509, const std::span<const std::byte> &der) noexcept
 		: x509{std::move(x509)}
+		, bytes_buf{std::nothrow, der.size()}
+		, bytes{init_bytes(der)}
 		, serial_number{init_serial_number()}
 		, common_name{init_common_name()}
 		, fingerprint{init_fingerprint()}
 		, not_before{to_time(::X509_get_notBefore(this->x509.get()))}
 		, not_after{to_time(::X509_get_notAfter(this->x509.get()))}
 	{ }
+
+	std::span<const std::byte> init_bytes (const std::span<const std::byte> &der) noexcept
+	{
+		auto p = static_cast<std::byte *>(bytes_buf.get());
+		if (p)
+		{
+			std::uninitialized_copy(der.begin(), der.end(), p);
+		}
+		return {p, der.size()};
+	}
 
 	std::span<const uint8_t> init_serial_number () noexcept
 	{
@@ -83,7 +99,8 @@ result<certificate> certificate::import_der (std::span<const std::byte> der) noe
 
 	if (x509)
 	{
-		if (auto impl = impl_ptr{new(std::nothrow) impl_type(std::move(x509))})
+		impl_ptr impl{new(std::nothrow) impl_type(std::move(x509), der)};
+		if (impl && impl->bytes.data())
 		{
 			return certificate{impl};
 		}
@@ -91,6 +108,11 @@ result<certificate> certificate::import_der (std::span<const std::byte> der) noe
 	}
 
 	return make_unexpected(std::errc::invalid_argument);
+}
+
+std::span<const std::byte> certificate::as_bytes () const noexcept
+{
+	return impl_->bytes;
 }
 
 int certificate::version () const noexcept

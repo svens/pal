@@ -53,6 +53,9 @@ public:
 		return !is_null();
 	}
 
+	/// Return X509 encoded as DER blob
+	std::span<const std::byte> as_bytes () const noexcept;
+
 	/// Returns X509 structure version (1 for v1, 3 for v3)
 	int version () const noexcept;
 
@@ -63,6 +66,10 @@ public:
 	std::string_view common_name () const noexcept;
 
 	/// Returns fingerprint (SHA1 digest of public part) as lowercase hex-string
+	///
+	/// \note This method is provided for convenience. To calculate
+	/// fingerprint with different digest algorithm, fetch certificate
+	/// public part with \a as_bytes() and calculate it explicitly.
 	std::string_view fingerprint () const noexcept;
 
 	/// Returns timestamp since when \a this certificate is valid.

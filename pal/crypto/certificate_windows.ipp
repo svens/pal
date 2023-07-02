@@ -119,6 +119,15 @@ result<certificate> certificate::import_der (std::span<const std::byte> der) noe
 	return make_unexpected(std::errc::invalid_argument);
 }
 
+std::span<const std::byte> certificate::as_bytes () const noexcept
+{
+	return
+	{
+		reinterpret_cast<const std::byte *>(impl_->x509->pbCertEncoded),
+		impl_->x509->cbCertEncoded
+	};
+}
+
 int certificate::version () const noexcept
 {
 	return impl_->x509->pCertInfo->dwVersion + 1;

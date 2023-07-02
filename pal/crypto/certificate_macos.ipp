@@ -42,6 +42,15 @@ unique_ref<::CFArrayRef> copy_values (::SecCertificateRef cert, ::CFTypeRef oid)
 	return make_unique((::CFArrayRef)values);
 }
 
+std::span<const std::byte> to_span (::CFDataRef data) noexcept
+{
+	return
+	{
+		reinterpret_cast<const std::byte *>(::CFDataGetBytePtr(data)),
+		static_cast<size_t>(::CFDataGetLength(data))
+	};
+}
+
 certificate::time_type to_time (::SecCertificateRef cert, ::CFTypeRef oid) noexcept
 {
 	::CFAbsoluteTime time{};
@@ -60,6 +69,9 @@ struct certificate::impl_type
 	using x509_ptr = unique_ref<::SecCertificateRef>;
 	x509_ptr x509;
 
+	unique_ref<::CFDataRef> bytes_buf;
+	std::span<const std::byte> bytes;
+
 	int version;
 
 	std::array<uint8_t, 20> serial_number_buf{};
@@ -73,12 +85,14 @@ struct certificate::impl_type
 
 	time_type not_before, not_after;
 
-	impl_type (x509_ptr &&x509, const std::span<const std::byte> &der) noexcept
+	impl_type (x509_ptr &&x509) noexcept
 		: x509{std::move(x509)}
+		, bytes_buf{make_unique(::SecCertificateCopyData(this->x509.get()))}
+		, bytes{to_span(this->bytes_buf.get())}
 		, version{init_version()}
 		, serial_number{init_serial_number()}
 		, common_name{init_common_name()}
-		, fingerprint{init_fingerprint(der)}
+		, fingerprint{init_fingerprint()}
 		, not_before{to_time(this->x509.get(), ::kSecOIDX509V1ValidityNotBefore)}
 		, not_after{to_time(this->x509.get(), ::kSecOIDX509V1ValidityNotAfter)}
 	{ }
@@ -126,9 +140,9 @@ struct certificate::impl_type
 		return "";
 	}
 
-	std::string_view init_fingerprint (const std::span<const std::byte> &der) noexcept
+	std::string_view init_fingerprint () noexcept
 	{
-		encode<hex>(*sha1_hash::one_shot(der), fingerprint_buf);
+		encode<hex>(*sha1_hash::one_shot(bytes), fingerprint_buf);
 		fingerprint_buf[sizeof(fingerprint_buf) - 1] = '\0';
 		return fingerprint_buf;
 	}
@@ -147,7 +161,7 @@ result<certificate> certificate::import_der (std::span<const std::byte> der) noe
 
 	if (auto x509 = make_unique(::SecCertificateCreateWithData(nullptr, data.get())))
 	{
-		if (auto impl = impl_ptr{new(std::nothrow) impl_type(std::move(x509), der)})
+		if (auto impl = impl_ptr{new(std::nothrow) impl_type(std::move(x509))})
 		{
 			return certificate{impl};
 		}
@@ -155,6 +169,11 @@ result<certificate> certificate::import_der (std::span<const std::byte> der) noe
 	}
 
 	return make_unexpected(std::errc::invalid_argument);
+}
+
+std::span<const std::byte> certificate::as_bytes () const noexcept
+{
+	return impl_->bytes;
 }
 
 int certificate::version () const noexcept
