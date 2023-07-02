@@ -38,39 +38,45 @@ TEST_CASE("crypto/certificate")
 		{
 			std::string_view pem;
 			int version;
+			std::string_view serial_number;
 			std::string_view common_name;
 			std::string_view fingerprint;
 		};
 
-		const auto &[pem, version, common_name, fingerprint] = GENERATE(values<cert_info>(
+		const auto &[pem, version, serial_number, common_name, fingerprint] = GENERATE(values<cert_info>(
 		{
 			{
 				.pem = test_cert::ca_pem,
 				.version = 3,
+				.serial_number = "ffc401131091ec63",
 				.common_name = "PAL Root CA",
 				.fingerprint = "f89bd9fc4050afa352104e7ec4e06c7f5237f88c"
 			},
 			{
 				.pem = test_cert::intermediate_pem,
 				.version = 3,
+				.serial_number = "1000",
 				.common_name = "PAL Intermediate CA",
 				.fingerprint = "919bbbf95b543f58498c5300e65b857aa7ff83b8"
 			},
 			{
 				.pem = test_cert::server_pem,
 				.version = 3,
+				.serial_number = "1001",
 				.common_name = "pal.alt.ee",
 				.fingerprint = "3bd31e7b696c888cd9b54aab6e31ce5b2636d271"
 			},
 			{
 				.pem = test_cert::client_pem,
 				.version = 3,
+				.serial_number = "1002",
 				.common_name = "pal.alt.ee",
 				.fingerprint = "a1e42e5a8a5af09fa70cf57524f8214f7b027352"
 			},
 			{
 				.pem = test_cert::self_signed_pem,
 				.version = 3,
+				.serial_number = "5feebd7481e6029946cfc05cd0b6c645",
 				.common_name = "Test",
 				.fingerprint = "f7c05805853defda0f8e3376c4e70d4f09f5060e"
 			},
@@ -81,6 +87,7 @@ TEST_CASE("crypto/certificate")
 			auto c = certificate::from_pem(pem);
 			REQUIRE(c);
 			CHECK(c->version() == version);
+			CHECK(pal_test::to_hex(c->serial_number()) == serial_number);
 			CHECK(c->common_name() == common_name);
 			CHECK(c->fingerprint() == fingerprint);
 		}
@@ -90,6 +97,7 @@ TEST_CASE("crypto/certificate")
 			auto c = certificate::from_der(pal_test::to_der(pem));
 			REQUIRE(c);
 			CHECK(c->version() == version);
+			CHECK(pal_test::to_hex(c->serial_number()) == serial_number);
 			CHECK(c->common_name() == common_name);
 			CHECK(c->fingerprint() == fingerprint);
 		}

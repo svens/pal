@@ -62,6 +62,9 @@ struct certificate::impl_type
 
 	int version;
 
+	std::array<uint8_t, 20> serial_number_buf{};
+	std::span<const uint8_t> serial_number;
+
 	char common_name_buf[512 + 1];
 	std::string_view common_name{};
 
@@ -73,6 +76,7 @@ struct certificate::impl_type
 	impl_type (x509_ptr &&x509, const std::span<const std::byte> &der) noexcept
 		: x509{std::move(x509)}
 		, version{init_version()}
+		, serial_number{init_serial_number()}
 		, common_name{init_common_name()}
 		, fingerprint{init_fingerprint(der)}
 		, not_before{to_time(this->x509.get(), ::kSecOIDX509V1ValidityNotBefore)}
@@ -88,6 +92,21 @@ struct certificate::impl_type
 			p = c_str(value.get(), buf);
 		}
 		return std::atoi(p);
+	}
+
+	std::span<const uint8_t> init_serial_number () noexcept
+	{
+		auto value = make_unique(::SecCertificateCopySerialNumberData(x509.get(), nullptr));
+
+		auto first = ::CFDataGetBytePtr(value.get());
+		auto last = first + ::CFDataGetLength(value.get());
+		first = std::find_if_not(first, last, [](auto &v){ return v == 0; });
+
+		return
+		{
+			serial_number_buf.begin(),
+			std::copy(first, last, serial_number_buf.begin())
+		};
 	}
 
 	std::string_view init_common_name () noexcept
@@ -141,6 +160,11 @@ result<certificate> certificate::import_der (std::span<const std::byte> der) noe
 int certificate::version () const noexcept
 {
 	return impl_->version;
+}
+
+std::span<const uint8_t> certificate::serial_number () const noexcept
+{
+	return impl_->serial_number;
 }
 
 std::string_view certificate::common_name () const noexcept

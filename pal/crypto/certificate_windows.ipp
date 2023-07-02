@@ -28,6 +28,9 @@ struct certificate::impl_type
 	using x509_ptr = std::unique_ptr<const ::CERT_CONTEXT, decltype(&::CertFreeCertificateContext)>;
 	x509_ptr x509;
 
+	std::array<uint8_t, 20> serial_number_buf{};
+	std::span<const uint8_t> serial_number;
+
 	char common_name_buf[512 + 1];
 	std::string_view common_name;
 
@@ -38,11 +41,29 @@ struct certificate::impl_type
 
 	impl_type (x509_ptr &&x509) noexcept
 		: x509{std::move(x509)}
+		, serial_number{init_serial_number()}
 		, common_name{init_common_name()}
 		, fingerprint{init_fingerprint()}
 		, not_before{to_time(this->x509->pCertInfo->NotBefore)}
 		, not_after{to_time(this->x509->pCertInfo->NotAfter)}
 	{ }
+
+	std::span<const uint8_t> init_serial_number () noexcept
+	{
+		auto first = x509->pCertInfo->SerialNumber.pbData;
+		auto last = first + x509->pCertInfo->SerialNumber.cbData;
+
+		while (last != first && !last[-1])
+		{
+			--last;
+		}
+
+		return
+		{
+			serial_number_buf.begin(),
+			std::reverse_copy(first, last, serial_number_buf.begin())
+		};
+	}
 
 	std::string_view init_common_name () noexcept
 	{
@@ -101,6 +122,11 @@ result<certificate> certificate::import_der (std::span<const std::byte> der) noe
 int certificate::version () const noexcept
 {
 	return impl_->x509->pCertInfo->dwVersion + 1;
+}
+
+std::span<const uint8_t> certificate::serial_number () const noexcept
+{
+	return impl_->serial_number;
 }
 
 std::string_view certificate::common_name () const noexcept

@@ -20,6 +20,8 @@ struct certificate::impl_type
 	using x509_ptr = std::unique_ptr<::X509, decltype(&::X509_free)>;
 	x509_ptr x509;
 
+	std::span<const uint8_t> serial_number;
+
 	std::string_view common_name;
 
 	char fingerprint_buf[hex::encode_size(sha1_hash::digest_size) + 1];
@@ -29,11 +31,18 @@ struct certificate::impl_type
 
 	impl_type (x509_ptr &&x509) noexcept
 		: x509{std::move(x509)}
+		, serial_number{init_serial_number()}
 		, common_name{init_common_name()}
 		, fingerprint{init_fingerprint()}
 		, not_before{to_time(::X509_get_notBefore(this->x509.get()))}
 		, not_after{to_time(::X509_get_notAfter(this->x509.get()))}
 	{ }
+
+	std::span<const uint8_t> init_serial_number () noexcept
+	{
+		auto sn = ::X509_get0_serialNumber(x509.get());
+		return {sn->data, static_cast<size_t>(sn->length)};
+	}
 
 	std::string_view init_common_name () noexcept
 	{
@@ -87,6 +96,11 @@ result<certificate> certificate::import_der (std::span<const std::byte> der) noe
 int certificate::version () const noexcept
 {
 	return ::X509_get_version(impl_->x509.get()) + 1;
+}
+
+std::span<const uint8_t> certificate::serial_number () const noexcept
+{
+	return impl_->serial_number;
 }
 
 std::string_view certificate::common_name () const noexcept
