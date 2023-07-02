@@ -34,35 +34,47 @@ TEST_CASE("crypto/certificate")
 
 	SECTION("from") //{{{1
 	{
-		auto [pem, version, common_name, fingerprint] = GENERATE(
-			table<std::string_view, int, std::string_view, std::string_view>(
+		struct cert_info
+		{
+			std::string_view pem;
+			int version;
+			std::string_view common_name;
+			std::string_view fingerprint;
+		};
+
+		const auto &[pem, version, common_name, fingerprint] = GENERATE(values<cert_info>(
+		{
 			{
-				{
-					test_cert::ca_pem,
-					3,
-					"PAL Root CA",
-					"f89bd9fc4050afa352104e7ec4e06c7f5237f88c"
-				},
-				{
-					test_cert::intermediate_pem,
-					3,
-					"PAL Intermediate CA",
-					"919bbbf95b543f58498c5300e65b857aa7ff83b8"
-				},
-				{
-					test_cert::server_pem,
-					3,
-					"pal.alt.ee",
-					"3bd31e7b696c888cd9b54aab6e31ce5b2636d271"
-				},
-				{
-					test_cert::client_pem,
-					3,
-					"pal.alt.ee",
-					"a1e42e5a8a5af09fa70cf57524f8214f7b027352"
-				},
-			})
-		);
+				.pem = test_cert::ca_pem,
+				.version = 3,
+				.common_name = "PAL Root CA",
+				.fingerprint = "f89bd9fc4050afa352104e7ec4e06c7f5237f88c"
+			},
+			{
+				.pem = test_cert::intermediate_pem,
+				.version = 3,
+				.common_name = "PAL Intermediate CA",
+				.fingerprint = "919bbbf95b543f58498c5300e65b857aa7ff83b8"
+			},
+			{
+				.pem = test_cert::server_pem,
+				.version = 3,
+				.common_name = "pal.alt.ee",
+				.fingerprint = "3bd31e7b696c888cd9b54aab6e31ce5b2636d271"
+			},
+			{
+				.pem = test_cert::client_pem,
+				.version = 3,
+				.common_name = "pal.alt.ee",
+				.fingerprint = "a1e42e5a8a5af09fa70cf57524f8214f7b027352"
+			},
+			{
+				.pem = test_cert::self_signed_pem,
+				.version = 3,
+				.common_name = "Test",
+				.fingerprint = "f7c05805853defda0f8e3376c4e70d4f09f5060e"
+			},
+		}));
 
 		SECTION("pem")
 		{
@@ -188,7 +200,8 @@ TEST_CASE("crypto/certificate")
 		    test_cert::ca_pem,
 		    test_cert::intermediate_pem,
 		    test_cert::server_pem,
-		    test_cert::client_pem
+		    test_cert::client_pem,
+		    test_cert::self_signed_pem
 		));
 		REQUIRE(c);
 		CAPTURE(c->fingerprint());

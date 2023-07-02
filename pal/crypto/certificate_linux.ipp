@@ -37,21 +37,20 @@ struct certificate::impl_type
 
 	std::string_view init_common_name () noexcept
 	{
+		const char *name = "";
 		auto subject = ::X509_get_subject_name(x509.get());
 		for (auto i = 0;  i != ::X509_NAME_entry_count(subject);  ++i)
 		{
-			static const auto filter = ::OBJ_txt2nid("CN");
 			auto subject_entry = ::X509_NAME_get_entry(subject, i);
-			if (::OBJ_obj2nid(::X509_NAME_ENTRY_get_object(subject_entry)) == filter)
+			if (::OBJ_obj2nid(::X509_NAME_ENTRY_get_object(subject_entry)) == NID_commonName)
 			{
-				return reinterpret_cast<const char *>(
-					::ASN1_STRING_get0_data(
-						::X509_NAME_ENTRY_get_data(subject_entry)
-					)
+				name = reinterpret_cast<const char *>(
+					::ASN1_STRING_get0_data(::X509_NAME_ENTRY_get_data(subject_entry))
 				);
+				break;
 			}
 		}
-		return "";
+		return name;
 	}
 
 	std::string_view init_fingerprint () noexcept
