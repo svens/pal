@@ -8,6 +8,7 @@
  */
 
 #include <pal/result>
+#include <chrono>
 #include <memory>
 #include <span>
 #include <string_view>
@@ -17,6 +18,12 @@ namespace pal::crypto {
 class certificate
 {
 public:
+
+	/// Clock for certificate time-related properties
+	using clock_type = std::chrono::system_clock;
+
+	/// Tiemstamp type for certificate time-related properties
+	using time_type = clock_type::time_point;
 
 	certificate () = default;
 
@@ -51,6 +58,28 @@ public:
 
 	/// Returns fingerprint (SHA1 digest of public part) as lowercase hex-string
 	std::string_view fingerprint () const noexcept;
+
+	/// Returns timestamp since when \a this certificate is valid.
+	time_type not_before () const noexcept;
+
+	/// Returns timestamp until \a this certificate is valid.
+	time_type not_after () const noexcept;
+
+	/// Returns true if \a this certificate is not expired at \a time
+	bool not_expired_at (const time_type &time) const noexcept
+	{
+		return not_before() <= time && time <= not_after();
+	}
+
+	/// Returns true fi \a this certificate does not expire at least for
+	/// \a duration at \a time (defaults to now)
+	template <typename Rep, typename Period>
+	bool not_expired_for (
+		const std::chrono::duration<Rep, Period> &duration,
+		const time_type &time = clock_type::now()) const noexcept
+	{
+		return not_before() <= time && time + duration <= not_after();
+	}
 
 private:
 

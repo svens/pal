@@ -1,8 +1,45 @@
 #include <pal/crypto/hash>
+#include <CoreFoundation/CFNumber.h>
 #include <CoreFoundation/CFString.h>
 #include <Security/SecCertificate.h>
+#include <Security/SecCertificateOIDs.h>
 
 namespace pal::crypto {
+
+namespace {
+
+unique_ref<::CFArrayRef> copy_values (::SecCertificateRef cert, ::CFTypeRef oid) noexcept
+{
+	auto keys = make_unique(::CFArrayCreate(nullptr, &oid, 1, &kCFTypeArrayCallBacks));
+	auto dir = make_unique(::SecCertificateCopyValues(cert, keys.get(), nullptr));
+
+	::CFTypeRef values{};
+	if (::CFDictionaryGetValueIfPresent(dir.get(), oid, &values))
+	{
+		if (::CFDictionaryGetValueIfPresent((::CFDictionaryRef)values, ::kSecPropertyKeyValue, &values))
+		{
+			::CFRetain(values);
+		}
+		else
+		{
+			values = nullptr;
+		}
+	}
+	return make_unique((::CFArrayRef)values);
+}
+
+certificate::time_type to_time (::SecCertificateRef cert, ::CFTypeRef oid) noexcept
+{
+	::CFAbsoluteTime time{};
+	if (auto value = copy_values(cert, oid))
+	{
+		::CFNumberGetValue((::CFNumberRef)value.get(), ::kCFNumberDoubleType, &time);
+		time += ::kCFAbsoluteTimeIntervalSince1970;
+	}
+	return certificate::clock_type::from_time_t(time);
+}
+
+} // namespace
 
 struct certificate::impl_type
 {
@@ -15,10 +52,14 @@ struct certificate::impl_type
 	char fingerprint_buf[hex::encode_size(sha1_hash::digest_size) + 1];
 	std::string_view fingerprint{};
 
+	time_type not_before, not_after;
+
 	impl_type (x509_ptr &&x509, const std::span<const std::byte> &der) noexcept
 		: x509{std::move(x509)}
 		, common_name{init_common_name()}
 		, fingerprint{init_fingerprint(der)}
+		, not_before{to_time(this->x509.get(), ::kSecOIDX509V1ValidityNotBefore)}
+		, not_after{to_time(this->x509.get(), ::kSecOIDX509V1ValidityNotAfter)}
 	{ }
 
 	std::string_view init_common_name () noexcept
@@ -77,6 +118,16 @@ std::string_view certificate::common_name () const noexcept
 std::string_view certificate::fingerprint () const noexcept
 {
 	return impl_->fingerprint;
+}
+
+certificate::time_type certificate::not_before () const noexcept
+{
+	return impl_->not_before;
+}
+
+certificate::time_type certificate::not_after () const noexcept
+{
+	return impl_->not_after;
 }
 
 } // namespace pal::crypto

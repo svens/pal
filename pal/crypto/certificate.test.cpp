@@ -7,6 +7,22 @@ namespace {
 
 using pal::crypto::certificate;
 namespace test_cert = pal_test::cert;
+using namespace std::chrono_literals;
+
+certificate::time_type now () noexcept
+{
+	return certificate::clock_type::now();
+}
+
+certificate::time_type far_past () noexcept
+{
+	return (certificate::time_type::min)() + 24h;
+}
+
+certificate::time_type far_future () noexcept
+{
+	return (certificate::time_type::max)() - 24h;
+}
 
 TEST_CASE("crypto/certificate")
 {
@@ -157,6 +173,48 @@ TEST_CASE("crypto/certificate")
 		auto c = certificate::from_der(der);
 		REQUIRE_FALSE(c);
 		CHECK(c.error() == std::errc::not_enough_memory);
+	}
+
+	SECTION("expired") //{{{1
+	{
+		auto c = certificate::from_pem(GENERATE
+		(
+		    test_cert::ca_pem,
+		    test_cert::intermediate_pem,
+		    test_cert::server_pem,
+		    test_cert::client_pem
+		));
+		REQUIRE(c);
+		CAPTURE(c->fingerprint());
+
+		SECTION("not_before")
+		{
+			CHECK(c->not_before() != certificate::time_type{});
+			CHECK(c->not_before() > far_past());
+			CHECK(c->not_before() < now());
+		}
+
+		SECTION("not_after")
+		{
+			CHECK(c->not_after() != certificate::time_type{});
+			CHECK(c->not_after() > now());
+			CHECK(c->not_after() < far_future());
+		}
+
+		SECTION("not_expired_at")
+		{
+			CHECK(c->not_expired_at(now()));
+			CHECK_FALSE(c->not_expired_at(far_past()));
+			CHECK_FALSE(c->not_expired_at(far_future()));
+		}
+
+		SECTION("not_expired_for")
+		{
+			CHECK(c->not_expired_for(24h, now()));
+			CHECK_FALSE(c->not_expired_for(24h * 365 * 100, now()));
+			CHECK_FALSE(c->not_expired_for(24h, far_past()));
+			CHECK_FALSE(c->not_expired_for(24h, far_future()));
+		}
 	}
 
 	//}}}1

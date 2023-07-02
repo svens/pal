@@ -1,7 +1,19 @@
 #include <pal/crypto/hash>
+#include <openssl/asn1.h>
 #include <openssl/x509.h>
 
 namespace pal::crypto {
+
+namespace {
+
+certificate::time_type to_time (const ::ASN1_TIME *time) noexcept
+{
+	std::tm tm{};
+	::ASN1_TIME_to_tm(time, &tm);
+	return certificate::clock_type::from_time_t(std::mktime(&tm));
+}
+
+} // namespace
 
 struct certificate::impl_type
 {
@@ -13,10 +25,14 @@ struct certificate::impl_type
 	char fingerprint_buf[hex::encode_size(sha1_hash::digest_size) + 1];
 	std::string_view fingerprint;
 
+	time_type not_before, not_after;
+
 	impl_type (x509_ptr &&x509) noexcept
 		: x509{std::move(x509)}
 		, common_name{init_common_name()}
 		, fingerprint{init_fingerprint()}
+		, not_before{to_time(::X509_get_notBefore(this->x509.get()))}
+		, not_after{to_time(::X509_get_notAfter(this->x509.get()))}
 	{ }
 
 	std::string_view init_common_name () noexcept
@@ -77,6 +93,16 @@ std::string_view certificate::common_name () const noexcept
 std::string_view certificate::fingerprint () const noexcept
 {
 	return impl_->fingerprint;
+}
+
+certificate::time_type certificate::not_before () const noexcept
+{
+	return impl_->not_before;
+}
+
+certificate::time_type certificate::not_after () const noexcept
+{
+	return impl_->not_after;
 }
 
 } // namespace pal::crypto

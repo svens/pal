@@ -3,6 +3,26 @@
 
 namespace pal::crypto {
 
+namespace {
+
+certificate::time_type to_time (const FILETIME &time) noexcept
+{
+	std::tm tm{};
+	SYSTEMTIME sys_time;
+	if (::FileTimeToSystemTime(&time, &sys_time))
+	{
+		tm.tm_sec = sys_time.wSecond;
+		tm.tm_min = sys_time.wMinute;
+		tm.tm_hour = sys_time.wHour;
+		tm.tm_mday = sys_time.wDay;
+		tm.tm_mon = sys_time.wMonth - 1;
+		tm.tm_year = sys_time.wYear - 1900;
+	}
+	return certificate::clock_type::from_time_t(std::mktime(&tm));
+}
+
+} // namespace
+
 struct certificate::impl_type
 {
 	using x509_ptr = std::unique_ptr<const ::CERT_CONTEXT, decltype(&::CertFreeCertificateContext)>;
@@ -14,10 +34,14 @@ struct certificate::impl_type
 	char fingerprint_buf[hex::encode_size(sha1_hash::digest_size) + 1];
 	std::string_view fingerprint;
 
+	time_type not_before, not_after;
+
 	impl_type (x509_ptr &&x509) noexcept
 		: x509{std::move(x509)}
 		, common_name{init_common_name()}
 		, fingerprint{init_fingerprint()}
+		, not_before{to_time(this->x509->pCertInfo->NotBefore)}
+		, not_after{to_time(this->x509->pCertInfo->NotAfter)}
 	{ }
 
 	std::string_view init_common_name () noexcept
@@ -82,6 +106,16 @@ std::string_view certificate::common_name () const noexcept
 std::string_view certificate::fingerprint () const noexcept
 {
 	return impl_->fingerprint;
+}
+
+certificate::time_type certificate::not_before () const noexcept
+{
+	return impl_->not_before;
+}
+
+certificate::time_type certificate::not_after () const noexcept
+{
+	return impl_->not_after;
 }
 
 } // namespace pal::crypto
