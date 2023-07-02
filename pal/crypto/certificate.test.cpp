@@ -34,26 +34,30 @@ TEST_CASE("crypto/certificate")
 
 	SECTION("from") //{{{1
 	{
-		auto [pem, common_name, fingerprint] = GENERATE(
-			table<std::string_view, std::string_view, std::string_view>(
+		auto [pem, version, common_name, fingerprint] = GENERATE(
+			table<std::string_view, int, std::string_view, std::string_view>(
 			{
 				{
 					test_cert::ca_pem,
+					3,
 					"PAL Root CA",
 					"f89bd9fc4050afa352104e7ec4e06c7f5237f88c"
 				},
 				{
 					test_cert::intermediate_pem,
+					3,
 					"PAL Intermediate CA",
 					"919bbbf95b543f58498c5300e65b857aa7ff83b8"
 				},
 				{
 					test_cert::server_pem,
+					3,
 					"pal.alt.ee",
 					"3bd31e7b696c888cd9b54aab6e31ce5b2636d271"
 				},
 				{
 					test_cert::client_pem,
+					3,
 					"pal.alt.ee",
 					"a1e42e5a8a5af09fa70cf57524f8214f7b027352"
 				},
@@ -64,6 +68,7 @@ TEST_CASE("crypto/certificate")
 		{
 			auto c = certificate::from_pem(pem);
 			REQUIRE(c);
+			CHECK(c->version() == version);
 			CHECK(c->common_name() == common_name);
 			CHECK(c->fingerprint() == fingerprint);
 		}
@@ -72,6 +77,7 @@ TEST_CASE("crypto/certificate")
 		{
 			auto c = certificate::from_der(pal_test::to_der(pem));
 			REQUIRE(c);
+			CHECK(c->version() == version);
 			CHECK(c->common_name() == common_name);
 			CHECK(c->fingerprint() == fingerprint);
 		}

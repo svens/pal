@@ -8,6 +8,20 @@ namespace pal::crypto {
 
 namespace {
 
+template <size_t N>
+const char *c_str (::CFTypeRef s, char (&buf)[N]) noexcept
+{
+	static constexpr auto encoding = ::kCFStringEncodingUTF8;
+
+	if (auto p = ::CFStringGetCStringPtr((::CFStringRef)s, encoding))
+	{
+		return p;
+	}
+
+	::CFStringGetCString((::CFStringRef)s, buf, N, encoding);
+	return static_cast<const char *>(&buf[0]);
+}
+
 unique_ref<::CFArrayRef> copy_values (::SecCertificateRef cert, ::CFTypeRef oid) noexcept
 {
 	auto keys = make_unique(::CFArrayCreate(nullptr, &oid, 1, &kCFTypeArrayCallBacks));
@@ -46,6 +60,8 @@ struct certificate::impl_type
 	using x509_ptr = unique_ref<::SecCertificateRef>;
 	x509_ptr x509;
 
+	int version;
+
 	char common_name_buf[512 + 1];
 	std::string_view common_name{};
 
@@ -56,11 +72,23 @@ struct certificate::impl_type
 
 	impl_type (x509_ptr &&x509, const std::span<const std::byte> &der) noexcept
 		: x509{std::move(x509)}
+		, version{init_version()}
 		, common_name{init_common_name()}
 		, fingerprint{init_fingerprint(der)}
 		, not_before{to_time(this->x509.get(), ::kSecOIDX509V1ValidityNotBefore)}
 		, not_after{to_time(this->x509.get(), ::kSecOIDX509V1ValidityNotAfter)}
 	{ }
+
+	int init_version () noexcept
+	{
+		char buf[16] = "0";
+		const char *p = buf;
+		if (auto value = copy_values(x509.get(), ::kSecOIDX509V1Version))
+		{
+			p = c_str(value.get(), buf);
+		}
+		return std::atoi(p);
+	}
 
 	std::string_view init_common_name () noexcept
 	{
@@ -108,6 +136,11 @@ result<certificate> certificate::import_der (std::span<const std::byte> der) noe
 	}
 
 	return make_unexpected(std::errc::invalid_argument);
+}
+
+int certificate::version () const noexcept
+{
+	return impl_->version;
 }
 
 std::string_view certificate::common_name () const noexcept

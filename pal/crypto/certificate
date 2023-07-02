@@ -53,6 +53,9 @@ public:
 		return !is_null();
 	}
 
+	/// Returns X509 structure version (1 for v1, 3 for v3)
+	int version () const noexcept;
+
 	/// Return Common Name (OID "2.5.4.3") of Distinguished Name of certificate
 	std::string_view common_name () const noexcept;
 

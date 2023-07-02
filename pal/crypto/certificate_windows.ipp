@@ -98,6 +98,11 @@ result<certificate> certificate::import_der (std::span<const std::byte> der) noe
 	return make_unexpected(std::errc::invalid_argument);
 }
 
+int certificate::version () const noexcept
+{
+	return impl_->x509->pCertInfo->dwVersion + 1;
+}
+
 std::string_view certificate::common_name () const noexcept
 {
 	return impl_->common_name;
