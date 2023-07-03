@@ -158,4 +158,13 @@ certificate::time_type certificate::not_after () const noexcept
 	return impl_->not_after;
 }
 
+bool certificate::is_issued_by (const certificate &that) const noexcept
+{
+	return ::CertCompareCertificateName(
+		X509_ASN_ENCODING | PKCS_7_ASN_ENCODING,
+		&that.impl_->x509->pCertInfo->Subject,
+		&impl_->x509->pCertInfo->Issuer
+	);
+}
+
 } // namespace pal::crypto

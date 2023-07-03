@@ -206,4 +206,21 @@ certificate::time_type certificate::not_after () const noexcept
 	return impl_->not_after;
 }
 
+bool certificate::is_issued_by (const certificate &that) const noexcept
+{
+	auto this_issuer = make_unique(::SecCertificateCopyNormalizedIssuerSequence(impl_->x509.get()));
+	auto that_subject = make_unique(::SecCertificateCopyNormalizedSubjectSequence(that.impl_->x509.get()));
+
+	auto this_issuer_size = ::CFDataGetLength(this_issuer.get());
+	auto that_subject_size = ::CFDataGetLength(that_subject.get());
+	if (this_issuer_size != that_subject_size)
+	{
+		return false;
+	}
+
+	auto this_issuer_data = ::CFDataGetBytePtr(this_issuer.get());
+	auto that_subject_data = ::CFDataGetBytePtr(that_subject.get());
+	return std::equal(this_issuer_data, this_issuer_data + this_issuer_size, that_subject_data);
+}
+
 } // namespace pal::crypto

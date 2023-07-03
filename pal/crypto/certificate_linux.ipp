@@ -145,4 +145,9 @@ certificate::time_type certificate::not_after () const noexcept
 	return impl_->not_after;
 }
 
+bool certificate::is_issued_by (const certificate &that) const noexcept
+{
+	return ::X509_check_issued(that.impl_->x509.get(), impl_->x509.get()) == X509_V_OK;
+}
+
 } // namespace pal::crypto

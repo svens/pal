@@ -94,6 +94,15 @@ public:
 		return not_before() <= time && time + duration <= not_after();
 	}
 
+	/// Returns true if \a this certificate is issued by \a that certificate
+	bool is_issued_by (const certificate &that) const noexcept;
+
+	/// Returns true if \a this certificate is self-signed.
+	bool is_self_signed () const noexcept
+	{
+		return is_issued_by(*this);
+	}
+
 private:
 
 	struct impl_type;

@@ -237,6 +237,38 @@ TEST_CASE("crypto/certificate")
 		}
 	}
 
+	SECTION("is_issued_by / is_self_signed") //{{{1
+	{
+		auto ca = certificate::from_pem(test_cert::ca_pem).value();
+		auto intermediate = certificate::from_pem(test_cert::intermediate_pem).value();
+		auto server = certificate::from_pem(test_cert::server_pem).value();
+		auto client = certificate::from_pem(test_cert::client_pem).value();
+
+		CHECK(ca.is_self_signed());
+		CHECK(ca.is_issued_by(ca));
+		CHECK_FALSE(ca.is_issued_by(intermediate));
+		CHECK_FALSE(ca.is_issued_by(server));
+		CHECK_FALSE(ca.is_issued_by(client));
+
+		CHECK_FALSE(intermediate.is_self_signed());
+		CHECK(intermediate.is_issued_by(ca));
+		CHECK_FALSE(intermediate.is_issued_by(intermediate));
+		CHECK_FALSE(intermediate.is_issued_by(server));
+		CHECK_FALSE(intermediate.is_issued_by(client));
+
+		CHECK_FALSE(server.is_self_signed());
+		CHECK_FALSE(server.is_issued_by(ca));
+		CHECK(server.is_issued_by(intermediate));
+		CHECK_FALSE(server.is_issued_by(server));
+		CHECK_FALSE(server.is_issued_by(client));
+
+		CHECK_FALSE(client.is_self_signed());
+		CHECK_FALSE(client.is_issued_by(ca));
+		CHECK(client.is_issued_by(intermediate));
+		CHECK_FALSE(client.is_issued_by(server));
+		CHECK_FALSE(client.is_issued_by(client));
+	}
+
 	//}}}1
 }
 
