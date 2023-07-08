@@ -1,4 +1,5 @@
 #include <pal/crypto/certificate>
+#include <pal/crypto/oid>
 #include <pal/crypto/test>
 #include <catch2/catch_test_macros.hpp>
 #include <catch2/generators/catch_generators.hpp>
@@ -6,6 +7,8 @@
 namespace {
 
 using pal::crypto::certificate;
+using pal::crypto::distinguished_name;
+
 namespace test_cert = pal_test::cert;
 using namespace std::chrono_literals;
 
@@ -22,6 +25,21 @@ certificate::time_type far_past () noexcept
 certificate::time_type far_future () noexcept
 {
 	return (certificate::time_type::max)() - 24h;
+}
+
+std::string to_string (const distinguished_name &name)
+{
+	std::string result;
+
+	for (const auto &[oid, value]: name)
+	{
+		result += '/';
+		result += pal::crypto::oid::alias_or(oid);
+		result += '=';
+		result += value;
+	}
+
+	return result;
 }
 
 TEST_CASE("crypto/certificate")
@@ -106,7 +124,7 @@ TEST_CASE("crypto/certificate")
 
 	SECTION("from_pem: invalid_argument") //{{{1
 	{
-		std::string pem{test_cert::client_pem};
+		std::string pem{test_cert::self_signed_pem};
 
 		SECTION("empty")
 		{
@@ -148,7 +166,7 @@ TEST_CASE("crypto/certificate")
 
 	SECTION("from_pem: not enough memory") //{{{1
 	{
-		std::string pem{test_cert::client_pem};
+		std::string pem{test_cert::self_signed_pem};
 		pem.insert(pem.size() / 2, (16 * 1024) / 3 * 4, '\n');
 		pal_test::bad_alloc_once x;
 		auto c = certificate::from_pem(pem);
@@ -158,7 +176,7 @@ TEST_CASE("crypto/certificate")
 
 	SECTION("from_der: invalid_argument") //{{{1
 	{
-		std::string der = pal_test::to_der(test_cert::client_pem);;
+		std::string der = pal_test::to_der(test_cert::self_signed_pem);;
 
 		SECTION("empty")
 		{
@@ -187,7 +205,7 @@ TEST_CASE("crypto/certificate")
 
 	SECTION("from_der: not_enough_memory") //{{{1
 	{
-		auto der = pal_test::to_der(test_cert::client_pem);
+		auto der = pal_test::to_der(test_cert::self_signed_pem);
 		pal_test::bad_alloc_once x;
 		auto c = certificate::from_der(der);
 		REQUIRE_FALSE(c);
@@ -198,11 +216,11 @@ TEST_CASE("crypto/certificate")
 	{
 		auto c = certificate::from_pem(GENERATE
 		(
-		    test_cert::ca_pem,
-		    test_cert::intermediate_pem,
-		    test_cert::server_pem,
-		    test_cert::client_pem,
-		    test_cert::self_signed_pem
+			test_cert::ca_pem,
+			test_cert::intermediate_pem,
+			test_cert::server_pem,
+			test_cert::client_pem,
+			test_cert::self_signed_pem
 		));
 		REQUIRE(c);
 		CAPTURE(c->fingerprint());
@@ -267,6 +285,44 @@ TEST_CASE("crypto/certificate")
 		CHECK(client.is_issued_by(intermediate));
 		CHECK_FALSE(client.is_issued_by(server));
 		CHECK_FALSE(client.is_issued_by(client));
+	}
+
+	SECTION("subject_name") //{{{1
+	{
+		const auto &[pem, expected] = GENERATE(table<std::string_view, std::string>(
+		{
+			{
+				test_cert::ca_pem,
+				"/C=EE/ST=Estonia/O=PAL/OU=PAL CA/CN=PAL Root CA"
+			},
+			{
+				test_cert::intermediate_pem,
+				"/C=EE/ST=Estonia/O=PAL/OU=PAL CA/CN=PAL Intermediate CA"
+			},
+			{
+				test_cert::server_pem,
+				"/C=EE/ST=Estonia/O=PAL/OU=PAL Test/CN=pal.alt.ee"
+			},
+			{
+				test_cert::client_pem,
+				"/C=EE/ST=Estonia/O=PAL/OU=PAL Test/CN=pal.alt.ee/1.2.840.113549.1.9.1=pal@alt.ee"
+			},
+			{
+				test_cert::self_signed_pem,
+				"/CN=Test"
+			},
+		}));
+		auto subject_name = to_string(certificate::from_pem(pem).value().subject_name().value());
+		CHECK(subject_name == expected);
+	}
+
+	SECTION("subject_name: not_enough_memory") //{{{1
+	{
+		auto c = certificate::from_pem(test_cert::self_signed_pem).value();
+		pal_test::bad_alloc_once x;
+		auto subject_name = c.subject_name();
+		REQUIRE_FALSE(subject_name);
+		CHECK(subject_name.error() == std::errc::not_enough_memory);
 	}
 
 	//}}}1

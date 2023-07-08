@@ -1,4 +1,5 @@
 #include <pal/crypto/hash>
+#include <pal/memory>
 #include <wincrypt.h>
 
 namespace pal::crypto {
@@ -31,7 +32,7 @@ struct certificate::impl_type
 	std::array<uint8_t, 20> serial_number_buf{};
 	std::span<const uint8_t> serial_number;
 
-	char common_name_buf[512 + 1];
+	distinguished_name_entry_value common_name_buf;
 	std::string_view common_name;
 
 	char fingerprint_buf[hex::encode_size(sha1_hash::digest_size) + 1];
@@ -165,6 +166,113 @@ bool certificate::is_issued_by (const certificate &that) const noexcept
 		&that.impl_->x509->pCertInfo->Subject,
 		&impl_->x509->pCertInfo->Issuer
 	);
+}
+
+namespace {
+
+template <typename T, size_t Size>
+struct asn_decoder
+{
+	LPCSTR type;
+	std::span<const BYTE> asn;
+	const DWORD buffer_size;
+	temporary_buffer<Size> buffer;
+	const T &value;
+
+	asn_decoder (LPCSTR type, std::span<const BYTE> asn) noexcept
+		: type{type}
+		, asn{asn}
+		, buffer_size{decode(nullptr, 0)}
+		, buffer{std::nothrow, buffer_size}
+		, value{*reinterpret_cast<const T *>(buffer.get())}
+	{
+		decode(buffer.get(), buffer_size);
+	}
+
+	DWORD decode (void *buf, DWORD buf_size) const noexcept
+	{
+		static constexpr DWORD decode_flags =
+			CRYPT_DECODE_NOCOPY_FLAG |
+			CRYPT_DECODE_SHARE_OID_STRING_FLAG
+		;
+
+		DWORD size = buf_size;
+		::CryptDecodeObjectEx(
+			X509_ASN_ENCODING,
+			type,
+			asn.data(),
+			static_cast<DWORD>(asn.size()),
+			decode_flags,
+			nullptr,
+			buf,
+			&size
+		);
+		return size;
+	}
+};
+
+} // namespace
+
+struct distinguished_name::impl_type
+{
+	certificate::impl_ptr owner;
+	asn_decoder<CERT_NAME_INFO, 3 * 1024> name;
+	size_t entries;
+
+	impl_type (certificate::impl_ptr owner, const CERT_NAME_BLOB &name) noexcept
+		: owner{owner}
+		, name{X509_NAME, {name.pbData, name.cbData}}
+		, entries{this->name.value.cRDN}
+	{ }
+
+	static result<distinguished_name> make (certificate::impl_ptr owner, const CERT_NAME_BLOB &name) noexcept
+	{
+		impl_ptr list{new(std::nothrow) impl_type{owner, name}};
+		if (!list || !list->name.buffer.get())
+		{
+			return make_unexpected(std::errc::not_enough_memory);
+		}
+		return distinguished_name{list};
+	}
+};
+
+namespace {
+
+template <size_t N>
+void copy_oid (const CERT_RDN_ATTR &entry, char (&buf)[N]) noexcept
+{
+	std::strncpy(buf, entry.pszObjId, N - 1);
+	buf[N - 1] = '\0';
+}
+
+template <size_t N>
+void copy_value (const CERT_RDN_ATTR &entry, char (&buf)[N]) noexcept
+{
+	::CertRDNValueToStr(
+		entry.dwValueType,
+		const_cast<CERT_RDN_VALUE_BLOB *>(&entry.Value),
+		buf,
+		N
+	);
+}
+
+} // namespace
+
+void distinguished_name::const_iterator::load_entry_at (size_t index) noexcept
+{
+	if (index < owner_->entries)
+	{
+		auto &entry = owner_->name.value.rgRDN[index].rgRDNAttr[0];
+		copy_oid(entry, entry_.oid);
+		copy_value(entry, entry_.value);
+		return;
+	}
+	owner_ = nullptr;
+}
+
+result<distinguished_name> certificate::subject_name () const noexcept
+{
+	return distinguished_name::impl_type::make(impl_, impl_->x509->pCertInfo->Subject);
 }
 
 } // namespace pal::crypto

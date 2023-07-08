@@ -8,17 +8,17 @@ namespace pal::crypto {
 
 namespace {
 
+static constexpr auto cstr_encoding = ::kCFStringEncodingUTF8;
+
 template <size_t N>
 const char *c_str (::CFTypeRef s, char (&buf)[N]) noexcept
 {
-	static constexpr auto encoding = ::kCFStringEncodingUTF8;
-
-	if (auto p = ::CFStringGetCStringPtr((::CFStringRef)s, encoding))
+	if (auto p = ::CFStringGetCStringPtr((::CFStringRef)s, cstr_encoding))
 	{
 		return p;
 	}
 
-	::CFStringGetCString((::CFStringRef)s, buf, N, encoding);
+	::CFStringGetCString((::CFStringRef)s, buf, N, cstr_encoding);
 	return static_cast<const char *>(&buf[0]);
 }
 
@@ -77,7 +77,7 @@ struct certificate::impl_type
 	std::array<uint8_t, 20> serial_number_buf{};
 	std::span<const uint8_t> serial_number;
 
-	char common_name_buf[512 + 1];
+	distinguished_name_entry_value common_name_buf;
 	std::string_view common_name{};
 
 	char fingerprint_buf[hex::encode_size(sha1_hash::digest_size) + 1];
@@ -221,6 +221,63 @@ bool certificate::is_issued_by (const certificate &that) const noexcept
 	auto this_issuer_data = ::CFDataGetBytePtr(this_issuer.get());
 	auto that_subject_data = ::CFDataGetBytePtr(that_subject.get());
 	return std::equal(this_issuer_data, this_issuer_data + this_issuer_size, that_subject_data);
+}
+
+struct distinguished_name::impl_type
+{
+	certificate::impl_ptr owner;
+	unique_ref<::CFArrayRef> name;
+	size_t entries;
+
+	impl_type (certificate::impl_ptr owner, unique_ref<::CFArrayRef> &&name, size_t entries) noexcept
+		: owner{owner}
+		, name{std::move(name)}
+		, entries{entries}
+	{ }
+
+	static result<distinguished_name> make (certificate::impl_ptr owner, ::CFTypeRef id) noexcept
+	{
+		impl_ptr list = nullptr;
+
+		if (auto name = copy_values(owner->x509.get(), id))
+		{
+			auto entries = static_cast<size_t>(::CFArrayGetCount(name.get()));
+			list.reset(new(std::nothrow) impl_type(owner, std::move(name), entries));
+			if (!list)
+			{
+				return make_unexpected(std::errc::not_enough_memory);
+			}
+		}
+
+		return distinguished_name{list};
+	}
+};
+
+namespace {
+
+template <size_t N>
+void copy (::CFTypeRef s, char (&buf)[N]) noexcept
+{
+	::CFStringGetCString((::CFStringRef)s, buf, N, cstr_encoding);
+}
+
+} // namespace
+
+void distinguished_name::const_iterator::load_entry_at (size_t index) noexcept
+{
+	if (index < owner_->entries)
+	{
+		auto entry = (::CFDictionaryRef)::CFArrayGetValueAtIndex(owner_->name.get(), index);
+		copy(::CFDictionaryGetValue(entry, ::kSecPropertyKeyLabel), entry_.oid);
+		copy(::CFDictionaryGetValue(entry, ::kSecPropertyKeyValue), entry_.value);
+		return;
+	};
+	owner_ = nullptr;
+}
+
+result<distinguished_name> certificate::subject_name () const noexcept
+{
+	return distinguished_name::impl_type::make(impl_, ::kSecOIDX509V1SubjectName);
 }
 
 } // namespace pal::crypto

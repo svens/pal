@@ -1,0 +1,128 @@
+#pragma once // -*- C++ -*-
+
+/**
+ * \file pal/crypto/distinguished_name
+ * Certificate distinguished name
+ */
+
+#include <iterator>
+#include <memory>
+#include <string_view>
+
+namespace pal::crypto {
+
+class certificate;
+
+/// Generic distinguished name entry value storage
+using distinguished_name_entry_value = char[64];
+
+/// Distinguished name entry
+struct distinguished_name_entry
+{
+	/// Entry name OID
+	distinguished_name_entry_value oid{};
+
+	/// Entry value
+	distinguished_name_entry_value value{};
+};
+
+/// Distinguished name that describes the identifying information in a
+/// certificate. It contains sequence of \a distinguished_name_entry, each
+/// describing part of whole distinguished name, containing OID and it's
+/// corresponding value.
+class distinguished_name
+{
+public:
+
+	class const_iterator;
+
+	/// Returns read-only iterator of first entry in distinguished_name entries.
+	const_iterator begin () const noexcept;
+
+	/// Returns read-only iterator of one past last entry in distinguished_name entries.
+	const_iterator end () const noexcept;
+
+private:
+
+	struct impl_type;
+	using impl_ptr = std::shared_ptr<impl_type>;
+	impl_ptr impl_;
+
+	distinguished_name (impl_ptr impl) noexcept
+		: impl_{impl}
+	{ }
+
+	friend class certificate;
+};
+
+/// Read-only forward iterator of distinguished name entries
+class distinguished_name::const_iterator
+{
+public:
+
+	using iterator_category = std::forward_iterator_tag;
+	using value_type = distinguished_name_entry;
+	using pointer = const distinguished_name_entry *;
+	using reference = const distinguished_name_entry &;
+	using difference_type = ptrdiff_t;
+
+	const_iterator () = default;
+
+	/// Returns true if \a this points to same entry as \a that
+	bool operator== (const const_iterator &that) const noexcept
+	{
+		return owner_ == that.owner_;
+	}
+
+	/// Returns true if \a this does not point to same entry as \a that
+	bool operator!= (const const_iterator &that) const noexcept
+	{
+		return !operator==(that);
+	}
+
+	/// Iterator pre-increment.
+	const_iterator &operator++ () noexcept
+	{
+		return load_entry_at(++index_), *this;
+	}
+
+	/// Return distinguished name entry that \a this iterator points to.
+	reference operator* () const noexcept
+	{
+		return entry_;
+	}
+
+	/// Return distinguished name entry that \a this iterator points to.
+	pointer operator-> () const noexcept
+	{
+		return &entry_;
+	}
+
+private:
+
+	impl_ptr owner_ = nullptr;
+	size_t index_ = 0;
+	distinguished_name_entry entry_{};
+
+	const_iterator (impl_ptr owner) noexcept
+		: owner_{owner}
+	{
+		load_entry_at(index_);
+	}
+
+	void load_entry_at (size_t index) noexcept;
+
+	friend class distinguished_name;
+};
+
+inline distinguished_name::const_iterator distinguished_name::begin () const noexcept
+{
+	return {impl_};
+}
+
+inline distinguished_name::const_iterator distinguished_name::end () const noexcept
+{
+	return {};
+}
+
+} // namespace pal::crypto

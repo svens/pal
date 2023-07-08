@@ -9,6 +9,7 @@ list(APPEND pal_sources
 	pal/crypto/digest_algorithm_linux.ipp
 	pal/crypto/digest_algorithm_macos.ipp
 	pal/crypto/digest_algorithm_windows.ipp
+	pal/crypto/distinguished_name
 	pal/crypto/hash
 	pal/crypto/hmac
 	pal/crypto/oid

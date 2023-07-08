@@ -7,6 +7,7 @@
  * \see https://en.wikipedia.org/wiki/Public_key_certificate
  */
 
+#include <pal/crypto/distinguished_name>
 #include <pal/result>
 #include <chrono>
 #include <memory>
@@ -103,11 +104,13 @@ public:
 		return is_issued_by(*this);
 	}
 
+	/// Returns subject name of \a this certificate
+	result<distinguished_name> subject_name () const noexcept;
+
 private:
 
 	struct impl_type;
 	using impl_ptr = std::shared_ptr<impl_type>;
-
 	impl_ptr impl_{};
 
 	certificate (impl_ptr impl) noexcept
@@ -116,6 +119,8 @@ private:
 
 	static result<certificate> import_der (std::span<const std::byte> der) noexcept;
 	static result<certificate> import_pem (std::string_view pem) noexcept;
+
+	friend class distinguished_name;
 };
 
 } // pal::crypto

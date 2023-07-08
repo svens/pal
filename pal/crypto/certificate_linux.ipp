@@ -150,4 +150,67 @@ bool certificate::is_issued_by (const certificate &that) const noexcept
 	return ::X509_check_issued(that.impl_->x509.get(), impl_->x509.get()) == X509_V_OK;
 }
 
+struct distinguished_name::impl_type
+{
+	certificate::impl_ptr owner;
+	::X509_NAME &name;
+	size_t entries;
+
+	impl_type (certificate::impl_ptr owner, ::X509_NAME *name, size_t entries) noexcept
+		: owner{owner}
+		, name{*name}
+		, entries{entries}
+	{ }
+
+	static result<distinguished_name> make (certificate::impl_ptr owner, ::X509_NAME *name) noexcept
+	{
+		impl_ptr list = nullptr;
+
+		if (auto entries = static_cast<size_t>(::X509_NAME_entry_count(name)))
+		{
+			list.reset(new(std::nothrow) impl_type(owner, name, entries));
+			if (!list)
+			{
+				return make_unexpected(std::errc::not_enough_memory);
+			}
+		}
+
+		return distinguished_name{list};
+	}
+};
+
+namespace {
+
+template <size_t N>
+void copy (const ::ASN1_STRING *s, char (&buf)[N]) noexcept
+{
+	std::strncpy(buf, reinterpret_cast<const char *>(::ASN1_STRING_get0_data(s)), N - 1);
+	buf[N - 1] = '\0';
+}
+
+template <size_t N>
+void copy (const ::ASN1_OBJECT *o, char (&buf)[N]) noexcept
+{
+	::OBJ_obj2txt(buf, N, o, 1);
+}
+
+} // namespace
+
+void distinguished_name::const_iterator::load_entry_at (size_t index) noexcept
+{
+	if (index < owner_->entries)
+	{
+		auto entry = ::X509_NAME_get_entry(&owner_->name, index);
+		copy(::X509_NAME_ENTRY_get_object(entry), entry_.oid);
+		copy(::X509_NAME_ENTRY_get_data(entry), entry_.value);
+		return;
+	}
+	owner_ = nullptr;
+}
+
+result<distinguished_name> certificate::subject_name () const noexcept
+{
+	return distinguished_name::impl_type::make(impl_, ::X509_get_subject_name(impl_->x509.get()));
+}
+
 } // namespace pal::crypto
