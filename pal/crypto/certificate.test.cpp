@@ -325,6 +325,44 @@ TEST_CASE("crypto/certificate")
 		CHECK(subject_name.error() == std::errc::not_enough_memory);
 	}
 
+	SECTION("issuer_name") //{{{1
+	{
+		const auto &[pem, expected] = GENERATE(table<std::string_view, std::string>(
+		{
+			{
+				test_cert::ca_pem,
+				"/C=EE/ST=Estonia/O=PAL/OU=PAL CA/CN=PAL Root CA"
+			},
+			{
+				test_cert::intermediate_pem,
+				"/C=EE/ST=Estonia/O=PAL/OU=PAL CA/CN=PAL Root CA"
+			},
+			{
+				test_cert::server_pem,
+				"/C=EE/ST=Estonia/O=PAL/OU=PAL CA/CN=PAL Intermediate CA"
+			},
+			{
+				test_cert::client_pem,
+				"/C=EE/ST=Estonia/O=PAL/OU=PAL CA/CN=PAL Intermediate CA"
+			},
+			{
+				test_cert::self_signed_pem,
+				"/CN=Test"
+			},
+		}));
+		auto issuer_name = to_string(certificate::from_pem(pem).value().issuer_name().value());
+		CHECK(issuer_name == expected);
+	}
+
+	SECTION("issuer_name: not_enough_memory") //{{{1
+	{
+		auto c = certificate::from_pem(test_cert::self_signed_pem).value();
+		pal_test::bad_alloc_once x;
+		auto issuer_name = c.issuer_name();
+		REQUIRE_FALSE(issuer_name);
+		CHECK(issuer_name.error() == std::errc::not_enough_memory);
+	}
+
 	//}}}1
 }
 

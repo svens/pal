@@ -104,6 +104,9 @@ public:
 		return is_issued_by(*this);
 	}
 
+	/// Returns issuer name of \a this certificate
+	result<distinguished_name> issuer_name () const noexcept;
+
 	/// Returns subject name of \a this certificate
 	result<distinguished_name> subject_name () const noexcept;
 

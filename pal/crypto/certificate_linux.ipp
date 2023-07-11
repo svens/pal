@@ -208,6 +208,11 @@ void distinguished_name::const_iterator::load_entry_at (size_t index) noexcept
 	owner_ = nullptr;
 }
 
+result<distinguished_name> certificate::issuer_name () const noexcept
+{
+	return distinguished_name::impl_type::make(impl_, ::X509_get_issuer_name(impl_->x509.get()));
+}
+
 result<distinguished_name> certificate::subject_name () const noexcept
 {
 	return distinguished_name::impl_type::make(impl_, ::X509_get_subject_name(impl_->x509.get()));
