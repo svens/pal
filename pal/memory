@@ -80,7 +80,7 @@ public:
 
 private:
 
-	char stack_[StackSize], *ptr_ = &stack_[0];
+	char stack_[StackSize] = {}, *ptr_ = &stack_[0];
 };
 
 } // namespace pal

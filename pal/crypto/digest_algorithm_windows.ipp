@@ -102,7 +102,7 @@ struct impl_base
 	\
 	void Algorithm::hash::update (std::span<const std::byte> input) noexcept \
 	{ \
-		::BCryptHashData( \
+		(void)::BCryptHashData( \
 			impl->handle, \
 			reinterpret_cast<PUCHAR>(const_cast<std::byte *>(input.data())), \
 			static_cast<ULONG>(input.size()), \
@@ -112,7 +112,7 @@ struct impl_base
 	\
 	void Algorithm::hash::finish (std::span<std::byte, digest_size> digest) noexcept \
 	{ \
-		::BCryptFinishHash( \
+		(void)::BCryptFinishHash( \
 			impl->handle, \
 			reinterpret_cast<PUCHAR>(digest.data()), \
 			static_cast<ULONG>(digest_size), \
@@ -149,7 +149,7 @@ __pal_crypto_digest_algorithm(__pal_crypto_digest_algorithm_impl)
 	\
 	void Algorithm::hmac::update (std::span<const std::byte> input) noexcept \
 	{ \
-		::BCryptHashData( \
+		(void)::BCryptHashData( \
 			impl->handle, \
 			reinterpret_cast<PUCHAR>(const_cast<std::byte *>(input.data())), \
 			static_cast<ULONG>(input.size()), \
@@ -159,7 +159,7 @@ __pal_crypto_digest_algorithm(__pal_crypto_digest_algorithm_impl)
 	\
 	void Algorithm::hmac::finish (std::span<std::byte, digest_size> digest) noexcept \
 	{ \
-		::BCryptFinishHash( \
+		(void)::BCryptFinishHash( \
 			impl->handle, \
 			reinterpret_cast<PUCHAR>(digest.data()), \
 			static_cast<ULONG>(digest_size), \

@@ -25,7 +25,7 @@ void fill (void *data, size_t size) noexcept
 	}
 	#elif __pal_os_windows
 	{
-		::BCryptGenRandom(nullptr,
+		(void)::BCryptGenRandom(nullptr,
 			static_cast<PUCHAR>(data),
 			static_cast<ULONG>(size),
 			BCRYPT_USE_SYSTEM_PREFERRED_RNG
