@@ -5,6 +5,7 @@
  * Certificate distinguished name
  */
 
+#include <pal/result>
 #include <iterator>
 #include <memory>
 #include <string_view>
@@ -41,6 +42,9 @@ public:
 
 	/// Returns read-only iterator of one past last entry in distinguished_name entries.
 	const_iterator end () const noexcept;
+
+	/// Returns first entry with \a oid or std::errc::result_out_of_range if not found
+	result<distinguished_name_entry> find_first (std::string_view oid) const noexcept;
 
 private:
 
@@ -123,6 +127,19 @@ inline distinguished_name::const_iterator distinguished_name::begin () const noe
 inline distinguished_name::const_iterator distinguished_name::end () const noexcept
 {
 	return {};
+}
+
+inline result<distinguished_name_entry> distinguished_name::find_first (std::string_view oid) const noexcept
+{
+	auto entry_with_oid = [=](const auto &entry) -> bool
+	{
+		return entry.oid == oid;
+	};
+	if (auto it = std::find_if(begin(), end(), entry_with_oid);  it != end())
+	{
+		return *it;
+	}
+	return make_unexpected(std::errc::result_out_of_range);
 }
 
 } // namespace pal::crypto

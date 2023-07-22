@@ -312,8 +312,16 @@ TEST_CASE("crypto/certificate")
 				"/CN=Test"
 			},
 		}));
-		auto subject_name = to_string(certificate::from_pem(pem).value().subject_name().value());
-		CHECK(subject_name == expected);
+		auto c = certificate::from_pem(pem).value();
+		auto subject_name = c.subject_name().value();
+		CHECK(to_string(subject_name) == expected);
+
+		auto common_name = subject_name.find_first(pal::crypto::oid::common_name).value();
+		CHECK(common_name.value == c.common_name());
+
+		auto street_address = subject_name.find_first(pal::crypto::oid::street_address);
+		REQUIRE_FALSE(street_address);
+		CHECK(street_address.error() == std::errc::result_out_of_range);
 	}
 
 	SECTION("subject_name: not_enough_memory") //{{{1
