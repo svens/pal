@@ -65,6 +65,10 @@ public:
 	/// Returns read-only iterator of one past last entry in alternative_name entries.
 	const_iterator end () const noexcept;
 
+	/// Returns true if \a fqdn matches any of DNS value entries in
+	/// \a this alternative name, including DNS wildcard entries
+	bool has_fqdn_match (std::string_view fqdn) const noexcept;
+
 private:
 
 	struct impl_type;

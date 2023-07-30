@@ -1,5 +1,6 @@
 list(APPEND pal_sources
 	pal/crypto/alternative_name
+	pal/crypto/alternative_name.cpp
 	pal/crypto/certificate
 	pal/crypto/certificate.cpp
 	pal/crypto/certificate_linux.ipp
