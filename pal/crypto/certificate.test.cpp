@@ -7,7 +7,6 @@
 namespace {
 
 using pal::crypto::certificate;
-using pal::crypto::distinguished_name;
 
 namespace test_cert = pal_test::cert;
 using namespace std::chrono_literals;
@@ -27,18 +26,50 @@ certificate::time_type far_future () noexcept
 	return (certificate::time_type::max)() - 24h;
 }
 
-std::string to_string (const distinguished_name &name)
+std::string to_string (const pal::crypto::distinguished_name &name)
 {
 	std::string result;
-
 	for (const auto &[oid, value]: name)
 	{
-		result += '/';
 		result += pal::crypto::oid::alias_or(oid);
 		result += '=';
 		result += value;
+		result += '\n';
 	}
+	return result;
+}
 
+std::string to_string (const pal::crypto::alternative_name &name)
+{
+	std::string result;
+	for (const auto &entry: name)
+	{
+		if (const auto *dns = std::get_if<pal::crypto::dns_name>(&entry))
+		{
+			result += "dns=";
+			result += *dns;
+		}
+		else if (const auto *email = std::get_if<pal::crypto::email_address>(&entry))
+		{
+			result += "email=";
+			result += *email;
+		}
+		else if (const auto *ip = std::get_if<pal::crypto::ip_address>(&entry))
+		{
+			result += "ip=";
+			result += *ip;
+		}
+		else if (const auto *uri = std::get_if<pal::crypto::uri>(&entry))
+		{
+			result += "uri=";
+			result += *uri;
+		}
+		else
+		{
+			result += "<unexpected>";
+		}
+		result += '\n';
+	}
 	return result;
 }
 
@@ -293,23 +324,40 @@ TEST_CASE("crypto/certificate")
 		{
 			{
 				test_cert::ca_pem,
-				"/C=EE/ST=Estonia/O=PAL/OU=PAL CA/CN=PAL Root CA"
+				"C=EE\n"
+				"ST=Estonia\n"
+				"O=PAL\n"
+				"OU=PAL CA\n"
+				"CN=PAL Root CA\n"
 			},
 			{
 				test_cert::intermediate_pem,
-				"/C=EE/ST=Estonia/O=PAL/OU=PAL CA/CN=PAL Intermediate CA"
+				"C=EE\n"
+				"ST=Estonia\n"
+				"O=PAL\n"
+				"OU=PAL CA\n"
+				"CN=PAL Intermediate CA\n"
 			},
 			{
 				test_cert::server_pem,
-				"/C=EE/ST=Estonia/O=PAL/OU=PAL Test/CN=pal.alt.ee"
+				"C=EE\n"
+				"ST=Estonia\n"
+				"O=PAL\n"
+				"OU=PAL Test\n"
+				"CN=pal.alt.ee\n"
 			},
 			{
 				test_cert::client_pem,
-				"/C=EE/ST=Estonia/O=PAL/OU=PAL Test/CN=pal.alt.ee/1.2.840.113549.1.9.1=pal@alt.ee"
+				"C=EE\n"
+				"ST=Estonia\n"
+				"O=PAL\n"
+				"OU=PAL Test\n"
+				"CN=pal.alt.ee\n"
+				"1.2.840.113549.1.9.1=pal@alt.ee\n"
 			},
 			{
 				test_cert::self_signed_pem,
-				"/CN=Test"
+				"CN=Test\n"
 			},
 		}));
 		auto c = certificate::from_pem(pem).value();
@@ -339,23 +387,39 @@ TEST_CASE("crypto/certificate")
 		{
 			{
 				test_cert::ca_pem,
-				"/C=EE/ST=Estonia/O=PAL/OU=PAL CA/CN=PAL Root CA"
+				"C=EE\n"
+				"ST=Estonia\n"
+				"O=PAL\n"
+				"OU=PAL CA\n"
+				"CN=PAL Root CA\n"
 			},
 			{
 				test_cert::intermediate_pem,
-				"/C=EE/ST=Estonia/O=PAL/OU=PAL CA/CN=PAL Root CA"
+				"C=EE\n"
+				"ST=Estonia\n"
+				"O=PAL\n"
+				"OU=PAL CA\n"
+				"CN=PAL Root CA\n"
 			},
 			{
 				test_cert::server_pem,
-				"/C=EE/ST=Estonia/O=PAL/OU=PAL CA/CN=PAL Intermediate CA"
+				"C=EE\n"
+				"ST=Estonia\n"
+				"O=PAL\n"
+				"OU=PAL CA\n"
+				"CN=PAL Intermediate CA\n"
 			},
 			{
 				test_cert::client_pem,
-				"/C=EE/ST=Estonia/O=PAL/OU=PAL CA/CN=PAL Intermediate CA"
+				"C=EE\n"
+				"ST=Estonia\n"
+				"O=PAL\n"
+				"OU=PAL CA\n"
+				"CN=PAL Intermediate CA\n"
 			},
 			{
 				test_cert::self_signed_pem,
-				"/CN=Test"
+				"CN=Test\n"
 			},
 		}));
 		auto issuer_name = to_string(certificate::from_pem(pem).value().issuer_name().value());
@@ -369,6 +433,91 @@ TEST_CASE("crypto/certificate")
 		auto issuer_name = c.issuer_name();
 		REQUIRE_FALSE(issuer_name);
 		CHECK(issuer_name.error() == std::errc::not_enough_memory);
+	}
+
+	SECTION("issuer_alternative_name") //{{{1
+	{
+		const auto &[pem, expected] = GENERATE(table<std::string_view, std::string>(
+		{
+			{
+				test_cert::ca_pem,
+				""
+			},
+			{
+				test_cert::intermediate_pem,
+				""
+			},
+			{
+				test_cert::server_pem,
+				"dns=ca.pal.alt.ee\n"
+				"uri=https://ca.pal.alt.ee/path\n"
+			},
+			{
+				test_cert::client_pem,
+				""
+			},
+			{
+				test_cert::self_signed_pem,
+				""
+			},
+		}));
+		auto c = certificate::from_pem(pem).value();
+		auto name = to_string(c.issuer_alternative_name().value());
+		CHECK(name == expected);
+	}
+
+	SECTION("issuer_alternative_name: not_enough_memory") //{{{1
+	{
+		auto c = certificate::from_pem(test_cert::server_pem).value();
+		pal_test::bad_alloc_once x;
+		auto name = c.issuer_alternative_name();
+		REQUIRE_FALSE(name);
+		CHECK(name.error() == std::errc::not_enough_memory);
+	}
+
+	SECTION("subject_alternative_name") //{{{1
+	{
+		const auto &[pem, expected] = GENERATE(table<std::string_view, std::string>(
+		{
+			{
+				test_cert::ca_pem,
+				""
+			},
+			{
+				test_cert::intermediate_pem,
+				""
+			},
+			{
+				test_cert::server_pem,
+				"ip=1.2.3.4\n"
+				"ip=2001:db8:85a3::8a2e:370:7334\n"
+				"dns=*.pal.alt.ee\n"
+				"dns=server.pal.alt.ee\n"
+				"email=pal@alt.ee\n"
+				"uri=https://pal.alt.ee/path\n"
+			},
+			{
+				test_cert::client_pem,
+				"email=pal@alt.ee\n"
+				"dns=client.pal.alt.ee\n"
+			},
+			{
+				test_cert::self_signed_pem,
+				""
+			},
+		}));
+		auto c = certificate::from_pem(pem).value();
+		auto name = to_string(c.subject_alternative_name().value());
+		CHECK(name == expected);
+	}
+
+	SECTION("subject_alternative_name: not_enough_memory") //{{{1
+	{
+		auto c = certificate::from_pem(test_cert::server_pem).value();
+		pal_test::bad_alloc_once x;
+		auto name = c.subject_alternative_name();
+		REQUIRE_FALSE(name);
+		CHECK(name.error() == std::errc::not_enough_memory);
 	}
 
 	//}}}1

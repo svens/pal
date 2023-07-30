@@ -1,0 +1,156 @@
+#pragma once // -*- C++ -*-
+
+/**
+ * \file pal/crypto/alternative_name
+ * Certificate alternative name
+ */
+
+#include <pal/result>
+#include <iterator>
+#include <memory>
+#include <string_view>
+#include <variant>
+
+namespace pal::crypto {
+
+class certificate;
+
+/// Generic alternative name value entry as std::string_view.
+/// \internal Unused template argument 'int' is used to distinguish various
+/// alternative name entry types (DNS, email, etc)
+template <int>
+struct alternative_name_entry_value: std::string_view
+{
+	using std::string_view::string_view;
+};
+
+/// \defgroup alternative_name_entry_type Alternative name entry type
+/// \{
+
+/// DNS name
+using dns_name = alternative_name_entry_value<__LINE__>;
+
+/// Email address
+using email_address = alternative_name_entry_value<__LINE__>;
+
+/// IP address
+using ip_address = alternative_name_entry_value<__LINE__>;
+
+/// URI
+using uri = alternative_name_entry_value<__LINE__>;
+
+/// \}
+
+/// Alternative name entry
+using alternative_name_entry = std::variant<
+	std::monostate,
+	dns_name,
+	email_address,
+	ip_address,
+	uri
+>;
+
+/// Alternative name, allowing to specify various values associated with
+/// a certificate. It contains sequence of \a alternative_name_entry, each
+/// describing entry kind (as std::variant) and corresponding value.
+class alternative_name
+{
+public:
+
+	class const_iterator;
+
+	/// Returns read-only iterator of first entry in alternative_name entries.
+	const_iterator begin () const noexcept;
+
+	/// Returns read-only iterator of one past last entry in alternative_name entries.
+	const_iterator end () const noexcept;
+
+private:
+
+	struct impl_type;
+	using impl_ptr = std::shared_ptr<impl_type>;
+	impl_ptr impl_;
+
+	alternative_name (impl_ptr impl) noexcept
+		: impl_{impl}
+	{ }
+
+	friend class certificate;
+};
+
+/// Read-only forward iterator of distinguished name entries.
+///
+/// \note Returned entry pointer or reference contains std::variant with
+/// std::string_view as value. Underlying buffer is overwritten on iterator
+/// increment operator.
+class alternative_name::const_iterator
+{
+public:
+
+	using iterator_category = std::forward_iterator_tag;
+	using value_type = alternative_name_entry;
+	using pointer = const alternative_name_entry *;
+	using reference = const alternative_name_entry &;
+	using difference_type = ptrdiff_t;
+
+	const_iterator () = default;
+
+	/// Returns true if \a this points to same entry as \a that
+	bool operator== (const const_iterator &that) const noexcept
+	{
+		return owner_ == that.owner_;
+	}
+
+	/// Returns true if \a this does not point to same entry as \a that
+	bool operator!= (const const_iterator &that) const noexcept
+	{
+		return !operator==(that);
+	}
+
+	/// Iterator pre-increment.
+	const_iterator &operator++ () noexcept
+	{
+		return load_next_entry(), *this;
+	}
+
+	/// Return distinguished name entry that \a this iterator points to.
+	reference operator* () const noexcept
+	{
+		return entry_;
+	}
+
+	/// Return distinguished name entry that \a this iterator points to.
+	pointer operator-> () const noexcept
+	{
+		return &entry_;
+	}
+
+private:
+
+	impl_ptr owner_ = nullptr;
+	size_t index_ = 0;
+	char entry_value_[512] = {};
+	alternative_name_entry entry_{};
+
+	const_iterator (impl_ptr owner) noexcept
+		: owner_{owner}
+	{
+		load_next_entry();
+	}
+
+	void load_next_entry () noexcept;
+
+	friend class alternative_name;
+};
+
+inline alternative_name::const_iterator alternative_name::begin () const noexcept
+{
+	return impl_ ? impl_ : end();
+}
+
+inline alternative_name::const_iterator alternative_name::end () const noexcept
+{
+	return {};
+}
+
+} // namespace pal::crypto

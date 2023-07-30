@@ -1,7 +1,10 @@
 #include <pal/crypto/hash>
+#include <pal/net/ip/address_v4>
+#include <pal/net/ip/address_v6>
 #include <pal/memory>
 #include <openssl/asn1.h>
 #include <openssl/x509.h>
+#include <cstring>
 
 namespace pal::crypto {
 
@@ -182,14 +185,30 @@ struct distinguished_name::impl_type
 namespace {
 
 template <size_t N>
-void copy (const ::ASN1_STRING *s, char (&buf)[N]) noexcept
+void copy_string (const ::ASN1_STRING *s, char (&buf)[N]) noexcept
 {
-	std::strncpy(buf, reinterpret_cast<const char *>(::ASN1_STRING_get0_data(s)), N - 1);
-	buf[N - 1] = '\0';
+	buf[0] = buf[N - 1] = '\0';
+	std::strncat(buf, reinterpret_cast<const char *>(::ASN1_STRING_get0_data(s)), N - 1);
 }
 
 template <size_t N>
-void copy (const ::ASN1_OBJECT *o, char (&buf)[N]) noexcept
+void copy_ip (const ::ASN1_OCTET_STRING *s, char (&buf)[N]) noexcept
+{
+	buf[0] = '\0';
+	if (s->length == sizeof(net::ip::address_v4::bytes_type))
+	{
+		auto &bytes = *reinterpret_cast<const net::ip::address_v4::bytes_type *>(s->data);
+		net::ip::make_address_v4(bytes).to_chars(buf, buf + N);
+	}
+	else if (s->length == sizeof(net::ip::address_v6::bytes_type))
+	{
+		auto &bytes = *reinterpret_cast<const net::ip::address_v6::bytes_type *>(s->data);
+		net::ip::make_address_v6(bytes).to_chars(buf, buf + N);
+	}
+}
+
+template <size_t N>
+void copy_oid (const ::ASN1_OBJECT *o, char (&buf)[N]) noexcept
 {
 	::OBJ_obj2txt(buf, N, o, 1);
 }
@@ -201,8 +220,8 @@ void distinguished_name::const_iterator::load_entry_at (size_t index) noexcept
 	if (index < owner_->entries)
 	{
 		auto entry = ::X509_NAME_get_entry(&owner_->name, index);
-		copy(::X509_NAME_ENTRY_get_object(entry), entry_.oid);
-		copy(::X509_NAME_ENTRY_get_data(entry), entry_.value);
+		copy_oid(::X509_NAME_ENTRY_get_object(entry), entry_.oid);
+		copy_string(::X509_NAME_ENTRY_get_data(entry), entry_.value);
 		return;
 	}
 	owner_ = nullptr;
@@ -216,6 +235,81 @@ result<distinguished_name> certificate::issuer_name () const noexcept
 result<distinguished_name> certificate::subject_name () const noexcept
 {
 	return distinguished_name::impl_type::make(impl_, ::X509_get_subject_name(impl_->x509.get()));
+}
+
+struct alternative_name::impl_type
+{
+	certificate::impl_ptr owner;
+	std::unique_ptr<::GENERAL_NAMES, void(*)(::GENERAL_NAMES *)> name;
+	size_t entries;
+
+	impl_type (certificate::impl_ptr owner, void *name) noexcept
+		: owner{owner}
+		, name{static_cast<::GENERAL_NAMES *>(name), free_name_list}
+		, entries{static_cast<size_t>(::sk_GENERAL_NAME_num(this->name.get()))}
+	{ }
+
+	static void free_name_list (::GENERAL_NAMES *p) noexcept
+	{
+		::sk_GENERAL_NAME_pop_free(p, ::GENERAL_NAME_free);
+	}
+
+	static result<alternative_name> make (certificate::impl_ptr owner, int id) noexcept
+	{
+		impl_ptr list = nullptr;
+
+		if (auto name = ::X509_get_ext_d2i(owner->x509.get(), id, nullptr, nullptr))
+		{
+			list.reset(new(std::nothrow) impl_type(owner, name));
+			if (!list)
+			{
+				return make_unexpected(std::errc::not_enough_memory);
+			}
+		}
+
+		return alternative_name{list};
+	}
+};
+
+void alternative_name::const_iterator::load_next_entry () noexcept
+{
+	while (index_ < owner_->entries)
+	{
+		const auto &entry = *sk_GENERAL_NAME_value(owner_->name.get(), index_++);
+		switch (entry.type)
+		{
+			case GEN_DNS:
+				copy_string(entry.d.dNSName, entry_value_);
+				entry_.emplace<dns_name>(entry_value_);
+				return;
+
+			case GEN_EMAIL:
+				copy_string(entry.d.rfc822Name, entry_value_);
+				entry_.emplace<email_address>(entry_value_);
+				return;
+
+			case GEN_IPADD:
+				copy_ip(entry.d.iPAddress, entry_value_);
+				entry_.emplace<ip_address>(entry_value_);
+				return;
+
+			case GEN_URI:
+				copy_string(entry.d.uniformResourceIdentifier, entry_value_);
+				entry_.emplace<uri>(entry_value_);
+				return;
+		}
+	}
+	owner_ = nullptr;
+}
+
+result<alternative_name> certificate::issuer_alternative_name () const noexcept
+{
+	return alternative_name::impl_type::make(impl_, NID_issuer_alt_name);
+}
+
+result<alternative_name> certificate::subject_alternative_name () const noexcept
+{
+	return alternative_name::impl_type::make(impl_, NID_subject_alt_name);
 }
 
 } // namespace pal::crypto

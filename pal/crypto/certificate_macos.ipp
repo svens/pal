@@ -1,6 +1,8 @@
 #include <pal/crypto/hash>
+#include <pal/net/ip/address_v6>
 #include <CoreFoundation/CFNumber.h>
 #include <CoreFoundation/CFString.h>
+#include <CoreFoundation/CFURL.h>
 #include <Security/SecCertificate.h>
 #include <Security/SecCertificateOIDs.h>
 
@@ -229,10 +231,10 @@ struct distinguished_name::impl_type
 	unique_ref<::CFArrayRef> name;
 	size_t entries;
 
-	impl_type (certificate::impl_ptr owner, unique_ref<::CFArrayRef> &&name, size_t entries) noexcept
+	impl_type (certificate::impl_ptr owner, unique_ref<::CFArrayRef> &&name) noexcept
 		: owner{owner}
 		, name{std::move(name)}
-		, entries{entries}
+		, entries{static_cast<size_t>(::CFArrayGetCount(this->name.get()))}
 	{ }
 
 	static result<distinguished_name> make (certificate::impl_ptr owner, ::CFTypeRef id) noexcept
@@ -241,8 +243,7 @@ struct distinguished_name::impl_type
 
 		if (auto name = copy_values(owner->x509.get(), id))
 		{
-			auto entries = static_cast<size_t>(::CFArrayGetCount(name.get()));
-			list.reset(new(std::nothrow) impl_type(owner, std::move(name), entries));
+			list.reset(new(std::nothrow) impl_type(owner, std::move(name)));
 			if (!list)
 			{
 				return make_unexpected(std::errc::not_enough_memory);
@@ -256,9 +257,32 @@ struct distinguished_name::impl_type
 namespace {
 
 template <size_t N>
-void copy (::CFTypeRef s, char (&buf)[N]) noexcept
+void copy_string (::CFTypeRef s, char (&buf)[N]) noexcept
 {
+	buf[0] = buf[N - 1] = '\0';
 	::CFStringGetCString((::CFStringRef)s, buf, N, cstr_encoding);
+}
+
+template <size_t N>
+void copy_uri (::CFTypeRef u, char (&buf)[N]) noexcept
+{
+	copy_string(::CFURLGetString((::CFURLRef)u), buf);
+}
+
+template <size_t N>
+void copy_ip (::CFTypeRef s, char (&buf)[N]) noexcept
+{
+	copy_string(s, buf);
+
+	static constexpr auto v6_length = sizeof("0000:0000:0000:0000:0000:0000:0000:0000") - 1;
+	auto length = ::CFStringGetLength((::CFStringRef)s);
+	if (length == v6_length)
+	{
+		net::ip::make_address_v6(buf).and_then([&](const auto &address)
+		{
+			address.to_chars(buf, buf + sizeof(buf));
+		});
+	}
 }
 
 } // namespace
@@ -268,8 +292,8 @@ void distinguished_name::const_iterator::load_entry_at (size_t index) noexcept
 	if (index < owner_->entries)
 	{
 		auto entry = (::CFDictionaryRef)::CFArrayGetValueAtIndex(owner_->name.get(), index);
-		copy(::CFDictionaryGetValue(entry, ::kSecPropertyKeyLabel), entry_.oid);
-		copy(::CFDictionaryGetValue(entry, ::kSecPropertyKeyValue), entry_.value);
+		copy_string(::CFDictionaryGetValue(entry, ::kSecPropertyKeyLabel), entry_.oid);
+		copy_string(::CFDictionaryGetValue(entry, ::kSecPropertyKeyValue), entry_.value);
 		return;
 	};
 	owner_ = nullptr;
@@ -283,6 +307,81 @@ result<distinguished_name> certificate::issuer_name () const noexcept
 result<distinguished_name> certificate::subject_name () const noexcept
 {
 	return distinguished_name::impl_type::make(impl_, ::kSecOIDX509V1SubjectName);
+}
+
+struct alternative_name::impl_type
+{
+	certificate::impl_ptr owner;
+	unique_ref<::CFArrayRef> name;
+	size_t entries;
+
+	impl_type (certificate::impl_ptr owner, unique_ref<::CFArrayRef> &&name) noexcept
+		: owner{owner}
+		, name{std::move(name)}
+		, entries{static_cast<size_t>(::CFArrayGetCount(this->name.get()))}
+	{ }
+
+	static result<alternative_name> make (certificate::impl_ptr owner, ::CFTypeRef id) noexcept
+	{
+		impl_ptr list = nullptr;
+
+		if (auto name = copy_values(owner->x509.get(), id))
+		{
+			list.reset(new(std::nothrow) impl_type(owner, std::move(name)));
+			if (!list)
+			{
+				return make_unexpected(std::errc::not_enough_memory);
+			}
+		}
+
+		return alternative_name{list};
+	}
+};
+
+void alternative_name::const_iterator::load_next_entry () noexcept
+{
+	while (index_ < owner_->entries)
+	{
+		auto entry = (::CFDictionaryRef)::CFArrayGetValueAtIndex(owner_->name.get(), index_++);
+		auto label = ::CFDictionaryGetValue(entry, ::kSecPropertyKeyLabel);
+		auto value = ::CFDictionaryGetValue(entry, ::kSecPropertyKeyValue);
+
+		if (::CFEqual(label, CFSTR("DNS Name")))
+		{
+			copy_string(value, entry_value_);
+			entry_.emplace<dns_name>(entry_value_);
+			return;
+		}
+		else if (::CFEqual(label, CFSTR("Email Address")))
+		{
+			copy_string(value, entry_value_);
+			entry_.emplace<email_address>(entry_value_);
+			return;
+		}
+		else if (::CFEqual(label, CFSTR("IP Address")))
+		{
+			copy_ip(value, entry_value_);
+			entry_.emplace<ip_address>(entry_value_);
+			return;
+		}
+		else if (::CFEqual(label, CFSTR("URI")))
+		{
+			copy_uri(value, entry_value_);
+			entry_.emplace<uri>(entry_value_);
+			return;
+		}
+	}
+	owner_ = nullptr;
+}
+
+result<alternative_name> certificate::issuer_alternative_name () const noexcept
+{
+	return alternative_name::impl_type::make(impl_, ::kSecOIDIssuerAltName);
+}
+
+result<alternative_name> certificate::subject_alternative_name () const noexcept
+{
+	return alternative_name::impl_type::make(impl_, ::kSecOIDSubjectAltName);
 }
 
 } // namespace pal::crypto

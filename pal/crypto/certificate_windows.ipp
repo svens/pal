@@ -1,4 +1,6 @@
 #include <pal/crypto/hash>
+#include <pal/net/ip/address_v4>
+#include <pal/net/ip/address_v6>
 #include <pal/memory>
 #include <wincrypt.h>
 
@@ -241,12 +243,41 @@ namespace {
 template <size_t N>
 void copy_oid (const CERT_RDN_ATTR &entry, char (&buf)[N]) noexcept
 {
-	std::strncpy(buf, entry.pszObjId, N - 1);
-	buf[N - 1] = '\0';
+	std::snprintf(buf, sizeof(buf), "%s", entry.pszObjId);
 }
 
 template <size_t N>
-void copy_value (const CERT_RDN_ATTR &entry, char (&buf)[N]) noexcept
+void copy_string (const LPWSTR &string, char (&buf)[N]) noexcept
+{
+	buf[0] = buf[N - 1] = '\0';
+	::WideCharToMultiByte(
+		CP_UTF8,
+		0,
+		string, -1,
+		buf, N,
+		nullptr,
+		nullptr
+	);
+}
+
+template <size_t N>
+void copy_ip (const void *data, size_t length, char (&buf)[N]) noexcept
+{
+	buf[0] = '\0';
+	if (length == sizeof(net::ip::address_v4::bytes_type))
+	{
+		auto &bytes = *static_cast<const net::ip::address_v4::bytes_type *>(data);
+		net::ip::make_address_v4(bytes).to_chars(buf, buf + N);
+	}
+	else if (length == sizeof(net::ip::address_v6::bytes_type))
+	{
+		auto &bytes = *static_cast<const net::ip::address_v6::bytes_type *>(data);
+		net::ip::make_address_v6(bytes).to_chars(buf, buf + N);
+	}
+}
+
+template <size_t N>
+void copy_rdn_value (const CERT_RDN_ATTR &entry, char (&buf)[N]) noexcept
 {
 	::CertRDNValueToStr(
 		entry.dwValueType,
@@ -264,7 +295,7 @@ void distinguished_name::const_iterator::load_entry_at (size_t index) noexcept
 	{
 		auto &entry = owner_->name.value.rgRDN[index].rgRDNAttr[0];
 		copy_oid(entry, entry_.oid);
-		copy_value(entry, entry_.value);
+		copy_rdn_value(entry, entry_.value);
 		return;
 	}
 	owner_ = nullptr;
@@ -278,6 +309,77 @@ result<distinguished_name> certificate::issuer_name () const noexcept
 result<distinguished_name> certificate::subject_name () const noexcept
 {
 	return distinguished_name::impl_type::make(impl_, impl_->x509->pCertInfo->Subject);
+}
+
+struct alternative_name::impl_type
+{
+	certificate::impl_ptr owner;
+	asn_decoder<CERT_ALT_NAME_INFO, 3 * 1024> name;
+	size_t entries;
+
+	impl_type (certificate::impl_ptr owner, const CERT_EXTENSION &ext) noexcept
+		: owner{owner}
+		, name{X509_ALTERNATE_NAME, {ext.Value.pbData, ext.Value.cbData}}
+		, entries{this->name.value.cAltEntry}
+	{ }
+
+	static result<alternative_name> make (certificate::impl_ptr owner, LPCSTR oid) noexcept
+	{
+		impl_ptr list = nullptr;
+
+		auto &info = *owner->x509->pCertInfo;
+		if (auto ext = ::CertFindExtension(oid, info.cExtension, info.rgExtension))
+		{
+			list.reset(new(std::nothrow) impl_type(owner, *ext));
+			if (!list)
+			{
+				return make_unexpected(std::errc::not_enough_memory);
+			}
+		}
+
+		return alternative_name{list};
+	}
+};
+
+void alternative_name::const_iterator::load_next_entry () noexcept
+{
+	while (index_ < owner_->entries)
+	{
+		const auto &entry = owner_->name.value.rgAltEntry[index_++];
+		switch (entry.dwAltNameChoice)
+		{
+			case CERT_ALT_NAME_DNS_NAME:
+				copy_string(entry.pwszDNSName, entry_value_);
+				entry_.emplace<dns_name>(entry_value_);
+				return;
+
+			case CERT_ALT_NAME_RFC822_NAME:
+				copy_string(entry.pwszRfc822Name, entry_value_);
+				entry_.emplace<email_address>(entry_value_);
+				return;
+
+			case CERT_ALT_NAME_IP_ADDRESS:
+				copy_ip(entry.IPAddress.pbData, entry.IPAddress.cbData, entry_value_);
+				entry_.emplace<ip_address>(entry_value_);
+				return;
+
+			case CERT_ALT_NAME_URL:
+				copy_string(entry.pwszURL, entry_value_);
+				entry_.emplace<uri>(entry_value_);
+				return;
+		}
+	}
+	owner_ = nullptr;
+}
+
+result<alternative_name> certificate::issuer_alternative_name () const noexcept
+{
+	return alternative_name::impl_type::make(impl_, szOID_ISSUER_ALT_NAME2);
+}
+
+result<alternative_name> certificate::subject_alternative_name () const noexcept
+{
+	return alternative_name::impl_type::make(impl_, szOID_SUBJECT_ALT_NAME2);
 }
 
 } // namespace pal::crypto

@@ -1,8 +1,3 @@
-#if !defined(_CRT_SECURE_NO_WARNINGS)
-	#define _CRT_SECURE_NO_WARNINGS
-#endif
-#include <cstring>
-
 #include <pal/__platform_sdk>
 #include <pal/crypto/certificate>
 #include <pal/conv>

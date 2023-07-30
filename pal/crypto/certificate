@@ -7,6 +7,7 @@
  * \see https://en.wikipedia.org/wiki/Public_key_certificate
  */
 
+#include <pal/crypto/alternative_name>
 #include <pal/crypto/distinguished_name>
 #include <pal/result>
 #include <chrono>
@@ -110,6 +111,12 @@ public:
 	/// Returns subject name of \a this certificate
 	result<distinguished_name> subject_name () const noexcept;
 
+	/// Returns issuer alternative name of \a this certificate
+	result<alternative_name> issuer_alternative_name () const noexcept;
+
+	/// Returns subject alternative name of \a this certificate
+	result<alternative_name> subject_alternative_name () const noexcept;
+
 private:
 
 	struct impl_type;
@@ -123,6 +130,7 @@ private:
 	static result<certificate> import_der (std::span<const std::byte> der) noexcept;
 	static result<certificate> import_pem (std::string_view pem) noexcept;
 
+	friend class alternative_name;
 	friend class distinguished_name;
 };
 
