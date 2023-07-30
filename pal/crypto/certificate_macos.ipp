@@ -79,7 +79,7 @@ struct certificate::impl_type
 	std::array<uint8_t, 20> serial_number_buf{};
 	std::span<const uint8_t> serial_number;
 
-	distinguished_name_entry_value common_name_buf;
+	char common_name_buf[64];
 	std::string_view common_name{};
 
 	char fingerprint_buf[hex::encode_size(sha1_hash::digest_size) + 1];
@@ -229,12 +229,12 @@ struct distinguished_name::impl_type
 {
 	certificate::impl_ptr owner;
 	unique_ref<::CFArrayRef> name;
-	size_t entries;
+	const size_t size;
 
 	impl_type (certificate::impl_ptr owner, unique_ref<::CFArrayRef> &&name) noexcept
 		: owner{owner}
 		, name{std::move(name)}
-		, entries{static_cast<size_t>(::CFArrayGetCount(this->name.get()))}
+		, size{static_cast<size_t>(::CFArrayGetCount(this->name.get()))}
 	{ }
 
 	static result<distinguished_name> make (certificate::impl_ptr owner, ::CFTypeRef id) noexcept
@@ -287,15 +287,21 @@ void copy_ip (::CFTypeRef s, char (&buf)[N]) noexcept
 
 } // namespace
 
-void distinguished_name::const_iterator::load_entry_at (size_t index) noexcept
+void distinguished_name::const_iterator::load_next_entry () noexcept
 {
-	if (index < owner_->entries)
+	if (at_ < owner_->size)
 	{
-		auto entry = (::CFDictionaryRef)::CFArrayGetValueAtIndex(owner_->name.get(), index);
-		copy_string(::CFDictionaryGetValue(entry, ::kSecPropertyKeyLabel), entry_.oid);
-		copy_string(::CFDictionaryGetValue(entry, ::kSecPropertyKeyValue), entry_.value);
+		auto entry = (::CFDictionaryRef)::CFArrayGetValueAtIndex(owner_->name.get(), at_++);
+
+		copy_string(::CFDictionaryGetValue(entry, ::kSecPropertyKeyLabel), oid_);
+		entry_.oid = oid_;
+
+		copy_string(::CFDictionaryGetValue(entry, ::kSecPropertyKeyValue), value_);
+		entry_.value = value_;
+
 		return;
 	};
+
 	owner_ = nullptr;
 }
 

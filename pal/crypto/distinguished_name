@@ -14,17 +14,14 @@ namespace pal::crypto {
 
 class certificate;
 
-/// Generic distinguished name entry value storage
-using distinguished_name_entry_value = char[64];
-
 /// Distinguished name entry
 struct distinguished_name_entry
 {
 	/// Entry name OID
-	distinguished_name_entry_value oid{};
+	std::string_view oid{};
 
 	/// Entry value
-	distinguished_name_entry_value value{};
+	std::string_view value{};
 };
 
 /// Distinguished name that describes the identifying information in a
@@ -42,9 +39,6 @@ public:
 
 	/// Returns read-only iterator of one past last entry in distinguished_name entries.
 	const_iterator end () const noexcept;
-
-	/// Returns first entry with \a oid or std::errc::result_out_of_range if not found
-	result<distinguished_name_entry> find_first (std::string_view oid) const noexcept;
 
 private:
 
@@ -87,7 +81,7 @@ public:
 	/// Iterator pre-increment.
 	const_iterator &operator++ () noexcept
 	{
-		return load_entry_at(++index_), *this;
+		return load_next_entry(), *this;
 	}
 
 	/// Return distinguished name entry that \a this iterator points to.
@@ -105,16 +99,17 @@ public:
 private:
 
 	impl_ptr owner_ = nullptr;
-	size_t index_ = 0;
+	size_t at_ = 0;
+	char oid_[64] = {}, value_[64] = {};
 	distinguished_name_entry entry_{};
 
 	const_iterator (impl_ptr owner) noexcept
 		: owner_{owner}
 	{
-		load_entry_at(index_);
+		load_next_entry();
 	}
 
-	void load_entry_at (size_t index) noexcept;
+	void load_next_entry () noexcept;
 
 	friend class distinguished_name;
 };
@@ -127,19 +122,6 @@ inline distinguished_name::const_iterator distinguished_name::begin () const noe
 inline distinguished_name::const_iterator distinguished_name::end () const noexcept
 {
 	return {};
-}
-
-inline result<distinguished_name_entry> distinguished_name::find_first (std::string_view oid) const noexcept
-{
-	auto entry_with_oid = [=](const auto &entry) -> bool
-	{
-		return entry.oid == oid;
-	};
-	if (auto it = std::find_if(begin(), end(), entry_with_oid);  it != end())
-	{
-		return *it;
-	}
-	return make_unexpected(std::errc::result_out_of_range);
 }
 
 } // namespace pal::crypto

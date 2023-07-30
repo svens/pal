@@ -34,7 +34,7 @@ struct certificate::impl_type
 	std::array<uint8_t, 20> serial_number_buf{};
 	std::span<const uint8_t> serial_number;
 
-	distinguished_name_entry_value common_name_buf;
+	char common_name_buf[64];
 	std::string_view common_name;
 
 	char fingerprint_buf[hex::encode_size(sha1_hash::digest_size) + 1];
@@ -219,12 +219,12 @@ struct distinguished_name::impl_type
 {
 	certificate::impl_ptr owner;
 	asn_decoder<CERT_NAME_INFO, 3 * 1024> name;
-	size_t entries;
+	const size_t size;
 
 	impl_type (certificate::impl_ptr owner, const CERT_NAME_BLOB &name) noexcept
 		: owner{owner}
 		, name{X509_NAME, {name.pbData, name.cbData}}
-		, entries{this->name.value.cRDN}
+		, size{this->name.value.cRDN}
 	{ }
 
 	static result<distinguished_name> make (certificate::impl_ptr owner, const CERT_NAME_BLOB &name) noexcept
@@ -289,13 +289,18 @@ void copy_rdn_value (const CERT_RDN_ATTR &entry, char (&buf)[N]) noexcept
 
 } // namespace
 
-void distinguished_name::const_iterator::load_entry_at (size_t index) noexcept
+void distinguished_name::const_iterator::load_next_entry () noexcept
 {
-	if (index < owner_->entries)
+	if (at_ < owner_->size)
 	{
-		auto &entry = owner_->name.value.rgRDN[index].rgRDNAttr[0];
-		copy_oid(entry, entry_.oid);
-		copy_rdn_value(entry, entry_.value);
+		auto &entry = owner_->name.value.rgRDN[at_++].rgRDNAttr[0];
+
+		copy_oid(entry, oid_);
+		entry_.oid = oid_;
+
+		copy_rdn_value(entry, value_);
+		entry_.value = value_;
+
 		return;
 	}
 	owner_ = nullptr;

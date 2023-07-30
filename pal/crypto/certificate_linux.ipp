@@ -157,21 +157,21 @@ struct distinguished_name::impl_type
 {
 	certificate::impl_ptr owner;
 	::X509_NAME &name;
-	size_t entries;
+	const size_t size;
 
-	impl_type (certificate::impl_ptr owner, ::X509_NAME *name, size_t entries) noexcept
+	impl_type (certificate::impl_ptr owner, ::X509_NAME *name, size_t size) noexcept
 		: owner{owner}
 		, name{*name}
-		, entries{entries}
+		, size{size}
 	{ }
 
 	static result<distinguished_name> make (certificate::impl_ptr owner, ::X509_NAME *name) noexcept
 	{
 		impl_ptr list = nullptr;
 
-		if (auto entries = static_cast<size_t>(::X509_NAME_entry_count(name)))
+		if (auto size = static_cast<size_t>(::X509_NAME_entry_count(name)))
 		{
-			list.reset(new(std::nothrow) impl_type(owner, name, entries));
+			list.reset(new(std::nothrow) impl_type(owner, name, size));
 			if (!list)
 			{
 				return make_unexpected(std::errc::not_enough_memory);
@@ -215,15 +215,21 @@ void copy_oid (const ::ASN1_OBJECT *o, char (&buf)[N]) noexcept
 
 } // namespace
 
-void distinguished_name::const_iterator::load_entry_at (size_t index) noexcept
+void distinguished_name::const_iterator::load_next_entry () noexcept
 {
-	if (index < owner_->entries)
+	if (at_ < owner_->size)
 	{
-		auto entry = ::X509_NAME_get_entry(&owner_->name, index);
-		copy_oid(::X509_NAME_ENTRY_get_object(entry), entry_.oid);
-		copy_string(::X509_NAME_ENTRY_get_data(entry), entry_.value);
+		auto entry = ::X509_NAME_get_entry(&owner_->name, at_++);
+
+		copy_oid(::X509_NAME_ENTRY_get_object(entry), oid_);
+		entry_.oid = oid_;
+
+		copy_string(::X509_NAME_ENTRY_get_data(entry), value_);
+		entry_.value = value_;
+
 		return;
 	}
+
 	owner_ = nullptr;
 }
 

@@ -3,6 +3,7 @@
 #include <pal/crypto/test>
 #include <catch2/catch_test_macros.hpp>
 #include <catch2/generators/catch_generators.hpp>
+#include <sstream>
 
 namespace {
 
@@ -28,49 +29,41 @@ certificate::time_type far_future () noexcept
 
 std::string to_string (const pal::crypto::distinguished_name &name)
 {
-	std::string result;
+	std::ostringstream result;
 	for (const auto &[oid, value]: name)
 	{
-		result += pal::crypto::oid::alias_or(oid);
-		result += '=';
-		result += value;
-		result += '\n';
+		result << pal::crypto::oid::alias_or(oid) << '=' << value << '\n';
 	}
-	return result;
+	return result.str();
 }
 
 std::string to_string (const pal::crypto::alternative_name &name)
 {
-	std::string result;
+	std::ostringstream result;
 	for (const auto &entry: name)
 	{
 		if (const auto *dns = std::get_if<pal::crypto::dns_name>(&entry))
 		{
-			result += "dns=";
-			result += *dns;
+			result << "dns=" << *dns << '\n';
 		}
 		else if (const auto *email = std::get_if<pal::crypto::email_address>(&entry))
 		{
-			result += "email=";
-			result += *email;
+			result << "email=" << *email << '\n';
 		}
 		else if (const auto *ip = std::get_if<pal::crypto::ip_address>(&entry))
 		{
-			result += "ip=";
-			result += *ip;
+			result << "ip=" << *ip << '\n';
 		}
 		else if (const auto *uri = std::get_if<pal::crypto::uri>(&entry))
 		{
-			result += "uri=";
-			result += *uri;
+			result << "uri=" << *uri << '\n';
 		}
 		else
 		{
-			result += "<unexpected>";
+			result << "<unexpected>\n";
 		}
-		result += '\n';
 	}
-	return result;
+	return result.str();
 }
 
 TEST_CASE("crypto/certificate")
@@ -361,24 +354,17 @@ TEST_CASE("crypto/certificate")
 			},
 		}));
 		auto c = certificate::from_pem(pem).value();
-		auto subject_name = c.subject_name().value();
-		CHECK(to_string(subject_name) == expected);
-
-		auto common_name = subject_name.find_first(pal::crypto::oid::common_name).value();
-		CHECK(common_name.value == c.common_name());
-
-		auto street_address = subject_name.find_first(pal::crypto::oid::street_address);
-		REQUIRE_FALSE(street_address);
-		CHECK(street_address.error() == std::errc::result_out_of_range);
+		auto name = to_string(c.subject_name().value());
+		CHECK(name == expected);
 	}
 
 	SECTION("subject_name: not_enough_memory") //{{{1
 	{
 		auto c = certificate::from_pem(test_cert::self_signed_pem).value();
 		pal_test::bad_alloc_once x;
-		auto subject_name = c.subject_name();
-		REQUIRE_FALSE(subject_name);
-		CHECK(subject_name.error() == std::errc::not_enough_memory);
+		auto name = c.subject_name();
+		REQUIRE_FALSE(name);
+		CHECK(name.error() == std::errc::not_enough_memory);
 	}
 
 	SECTION("issuer_name") //{{{1
