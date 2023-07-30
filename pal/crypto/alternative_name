@@ -132,7 +132,7 @@ public:
 private:
 
 	impl_ptr owner_ = nullptr;
-	size_t index_ = 0;
+	size_t at_ = 0;
 	char entry_value_[512] = {};
 	alternative_name_entry entry_{};
 
@@ -149,7 +149,7 @@ private:
 
 inline alternative_name::const_iterator alternative_name::begin () const noexcept
 {
-	return impl_ ? impl_ : end();
+	return {impl_};
 }
 
 inline alternative_name::const_iterator alternative_name::end () const noexcept

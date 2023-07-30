@@ -241,12 +241,12 @@ struct alternative_name::impl_type
 {
 	certificate::impl_ptr owner;
 	std::unique_ptr<::GENERAL_NAMES, void(*)(::GENERAL_NAMES *)> name;
-	size_t entries;
+	const size_t size;
 
 	impl_type (certificate::impl_ptr owner, void *name) noexcept
 		: owner{owner}
 		, name{static_cast<::GENERAL_NAMES *>(name), free_name_list}
-		, entries{static_cast<size_t>(::sk_GENERAL_NAME_num(this->name.get()))}
+		, size{static_cast<size_t>(::sk_GENERAL_NAME_num(this->name.get()))}
 	{ }
 
 	static void free_name_list (::GENERAL_NAMES *p) noexcept
@@ -273,9 +273,14 @@ struct alternative_name::impl_type
 
 void alternative_name::const_iterator::load_next_entry () noexcept
 {
-	while (index_ < owner_->entries)
+	if (!owner_)
 	{
-		const auto &entry = *sk_GENERAL_NAME_value(owner_->name.get(), index_++);
+		return;
+	}
+
+	while (at_ < owner_->size)
+	{
+		const auto &entry = *sk_GENERAL_NAME_value(owner_->name.get(), at_++);
 		switch (entry.type)
 		{
 			case GEN_DNS:
@@ -299,7 +304,9 @@ void alternative_name::const_iterator::load_next_entry () noexcept
 				return;
 		}
 	}
+
 	owner_ = nullptr;
+	entry_.emplace<std::monostate>();
 }
 
 result<alternative_name> certificate::issuer_alternative_name () const noexcept

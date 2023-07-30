@@ -313,12 +313,12 @@ struct alternative_name::impl_type
 {
 	certificate::impl_ptr owner;
 	unique_ref<::CFArrayRef> name;
-	size_t entries;
+	const size_t size;
 
 	impl_type (certificate::impl_ptr owner, unique_ref<::CFArrayRef> &&name) noexcept
 		: owner{owner}
 		, name{std::move(name)}
-		, entries{static_cast<size_t>(::CFArrayGetCount(this->name.get()))}
+		, size{static_cast<size_t>(::CFArrayGetCount(this->name.get()))}
 	{ }
 
 	static result<alternative_name> make (certificate::impl_ptr owner, ::CFTypeRef id) noexcept
@@ -340,9 +340,14 @@ struct alternative_name::impl_type
 
 void alternative_name::const_iterator::load_next_entry () noexcept
 {
-	while (index_ < owner_->entries)
+	if (!owner_)
 	{
-		auto entry = (::CFDictionaryRef)::CFArrayGetValueAtIndex(owner_->name.get(), index_++);
+		return;
+	}
+
+	while (at_ < owner_->size)
+	{
+		auto entry = (::CFDictionaryRef)::CFArrayGetValueAtIndex(owner_->name.get(), at_++);
 		auto label = ::CFDictionaryGetValue(entry, ::kSecPropertyKeyLabel);
 		auto value = ::CFDictionaryGetValue(entry, ::kSecPropertyKeyValue);
 
@@ -371,7 +376,9 @@ void alternative_name::const_iterator::load_next_entry () noexcept
 			return;
 		}
 	}
+
 	owner_ = nullptr;
+	entry_.emplace<std::monostate>();
 }
 
 result<alternative_name> certificate::issuer_alternative_name () const noexcept

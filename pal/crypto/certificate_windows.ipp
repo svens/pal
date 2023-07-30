@@ -315,12 +315,12 @@ struct alternative_name::impl_type
 {
 	certificate::impl_ptr owner;
 	asn_decoder<CERT_ALT_NAME_INFO, 3 * 1024> name;
-	size_t entries;
+	const size_t size;
 
 	impl_type (certificate::impl_ptr owner, const CERT_EXTENSION &ext) noexcept
 		: owner{owner}
 		, name{X509_ALTERNATE_NAME, {ext.Value.pbData, ext.Value.cbData}}
-		, entries{this->name.value.cAltEntry}
+		, size{this->name.value.cAltEntry}
 	{ }
 
 	static result<alternative_name> make (certificate::impl_ptr owner, LPCSTR oid) noexcept
@@ -343,9 +343,14 @@ struct alternative_name::impl_type
 
 void alternative_name::const_iterator::load_next_entry () noexcept
 {
-	while (index_ < owner_->entries)
+	if (!owner_)
 	{
-		const auto &entry = owner_->name.value.rgAltEntry[index_++];
+		return;
+	}
+
+	while (at_ < owner_->size)
+	{
+		const auto &entry = owner_->name.value.rgAltEntry[at_++];
 		switch (entry.dwAltNameChoice)
 		{
 			case CERT_ALT_NAME_DNS_NAME:
@@ -369,7 +374,9 @@ void alternative_name::const_iterator::load_next_entry () noexcept
 				return;
 		}
 	}
+
 	owner_ = nullptr;
+	entry_.emplace<std::monostate>();
 }
 
 result<alternative_name> certificate::issuer_alternative_name () const noexcept
