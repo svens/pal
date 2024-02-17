@@ -30,7 +30,7 @@ public:
 
 	/// Ensure memory is allocated for \a size bytes.
 	/// On allocation failure, get() will return nullptr
-	temporary_buffer (std::nothrow_t, size_t size)
+	temporary_buffer (std::nothrow_t, size_t size) noexcept
 	{
 		if (size > StackSize)
 		{

@@ -5,6 +5,7 @@
  * Various non-cryptographic hash functions
  */
 
+#include <cstdint>
 #include <iterator>
 
 namespace pal {

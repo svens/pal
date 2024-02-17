@@ -1,4 +1,5 @@
 #include <pal/conv>
+#include <cstdint>
 
 namespace pal {
 

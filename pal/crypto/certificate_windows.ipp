@@ -3,6 +3,7 @@
 #include <pal/net/ip/address_v6>
 #include <pal/memory>
 #include <wincrypt.h>
+#include <algorithm>
 
 namespace pal::crypto {
 
