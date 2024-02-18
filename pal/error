@@ -30,6 +30,15 @@ inline std::error_code make_error_code (errc ec) noexcept
 	return {static_cast<int>(ec), error_category()};
 }
 
+namespace this_thread {
+
+/// Return last thread-specific system error
+/// - Linux/MacOS: errno + std::generic_category
+/// - Windows: GetLastError() + std::system_category
+std::error_code last_system_error () noexcept;
+
+} // namespace this_thread
+
 } // namespace pal
 
 
