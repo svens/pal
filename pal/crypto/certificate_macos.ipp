@@ -5,6 +5,8 @@
 #include <CoreFoundation/CFURL.h>
 #include <Security/SecCertificate.h>
 #include <Security/SecCertificateOIDs.h>
+#include <Security/SecItem.h>
+#include <Security/SecKey.h>
 
 namespace pal::crypto {
 
@@ -66,7 +68,7 @@ certificate::time_type to_time (::SecCertificateRef cert, ::CFTypeRef oid) noexc
 
 } // namespace
 
-struct certificate::impl_type
+struct certificate::impl_type //{{{1
 {
 	using x509_ptr = unique_ref<::SecCertificateRef>;
 	x509_ptr x509;
@@ -225,7 +227,7 @@ bool certificate::is_issued_by (const certificate &that) const noexcept
 	return std::equal(this_issuer_data, this_issuer_data + this_issuer_size, that_subject_data);
 }
 
-struct distinguished_name::impl_type
+struct distinguished_name::impl_type //{{{1
 {
 	certificate::impl_ptr owner;
 	unique_ref<::CFArrayRef> name;
@@ -315,7 +317,7 @@ result<distinguished_name> certificate::subject_name () const noexcept
 	return distinguished_name::impl_type::make(impl_, ::kSecOIDX509V1SubjectName);
 }
 
-struct alternative_name::impl_type
+struct alternative_name::impl_type //{{{1
 {
 	certificate::impl_ptr owner;
 	unique_ref<::CFArrayRef> name;
@@ -396,5 +398,59 @@ result<alternative_name> certificate::subject_alternative_name () const noexcept
 {
 	return alternative_name::impl_type::make(impl_, ::kSecOIDSubjectAltName);
 }
+
+struct key::impl_type //{{{1
+{
+	certificate::impl_ptr owner;
+	unique_ref<::SecKeyRef> pkey;
+	const size_t size_bits, max_block_size;
+
+	impl_type (certificate::impl_ptr owner, unique_ref<::SecKeyRef> pkey) noexcept
+		: owner{owner}
+		, pkey{std::move(pkey)}
+		, size_bits{get_size_bits(this->pkey.get())}
+		, max_block_size{::SecKeyGetBlockSize(this->pkey.get())}
+	{ }
+
+	static result<key> make (certificate::impl_ptr owner, unique_ref<::SecKeyRef> pkey) noexcept
+	{
+		if (auto impl = impl_ptr{new(std::nothrow) impl_type(owner, std::move(pkey))})
+		{
+			return key{impl};
+		}
+		return make_unexpected(std::errc::not_enough_memory);
+	}
+
+	static size_t get_size_bits (::SecKeyRef pkey) noexcept
+	{
+		size_t result = 0;
+
+		::CFTypeRef v;
+		auto dir = make_unique(::SecKeyCopyAttributes(pkey));
+		if (::CFDictionaryGetValueIfPresent(dir.get(), ::kSecAttrKeySizeInBits, &v))
+		{
+			::CFNumberGetValue(static_cast<::CFNumberRef>(v), kCFNumberSInt64Type, &result);
+		}
+
+		return result;
+	}
+};
+
+size_t key::size_bits () const noexcept
+{
+	return impl_->size_bits;
+}
+
+size_t key::max_block_size () const noexcept
+{
+	return impl_->max_block_size;
+}
+
+result<key> certificate::public_key () const noexcept
+{
+	return key::impl_type::make(impl_, make_unique(::SecCertificateCopyKey(impl_->x509.get())));
+}
+
+//}}}1
 
 } // namespace pal::crypto

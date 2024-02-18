@@ -1,0 +1,51 @@
+#pragma once // -*- C++ -*-
+
+/**
+ * \file pal/crypto/key
+ * Asymmetric key
+ */
+
+namespace pal::crypto {
+
+// pal/crypto/certificate
+class certificate;
+
+class key
+{
+public:
+
+	/// Returns true if \a this instance represents unspecified public key
+	bool is_null () const noexcept
+	{
+		return impl_ == nullptr;
+	}
+
+	/// Returns true if \a this instance is not unspecified public key
+	explicit operator bool () const noexcept
+	{
+		return !is_null();
+	}
+
+	/// Returns number of bits in this key
+	size_t size_bits () const noexcept;
+
+	/// Returns maximum suitable size for the output buffers for most
+	/// cryptographic operations that can be done with this key
+	///
+	/// \note Returned size does not represent size of actual operation
+	size_t max_block_size () const noexcept;
+
+private:
+
+	struct impl_type;
+	using impl_ptr = std::shared_ptr<impl_type>;
+	impl_ptr impl_{};
+
+	key (impl_ptr impl) noexcept
+		: impl_{impl}
+	{ }
+
+	friend class certificate;
+};
+
+} // namespace pal::crypto

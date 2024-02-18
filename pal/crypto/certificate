@@ -9,6 +9,7 @@
 
 #include <pal/crypto/alternative_name>
 #include <pal/crypto/distinguished_name>
+#include <pal/crypto/key>
 #include <pal/result>
 #include <chrono>
 #include <memory>
@@ -117,6 +118,9 @@ public:
 	/// Returns subject alternative name of \a this certificate
 	result<alternative_name> subject_alternative_name () const noexcept;
 
+	/// Returns certificate public key
+	result<key> public_key () const noexcept;
+
 private:
 
 	struct impl_type;
@@ -132,6 +136,7 @@ private:
 
 	friend class alternative_name;
 	friend class distinguished_name;
+	friend class key;
 };
 
 } // pal::crypto

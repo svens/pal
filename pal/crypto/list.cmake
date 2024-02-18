@@ -14,6 +14,7 @@ list(APPEND pal_sources
 	pal/crypto/distinguished_name
 	pal/crypto/hash
 	pal/crypto/hmac
+	pal/crypto/key
 	pal/crypto/oid
 	pal/crypto/random
 	pal/crypto/random.cpp

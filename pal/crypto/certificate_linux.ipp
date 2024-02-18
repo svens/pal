@@ -19,7 +19,7 @@ certificate::time_type to_time (const ::ASN1_TIME *time) noexcept
 
 } // namespace
 
-struct certificate::impl_type
+struct certificate::impl_type //{{{1
 {
 	using x509_ptr = std::unique_ptr<::X509, decltype(&::X509_free)>;
 	x509_ptr x509;
@@ -153,7 +153,7 @@ bool certificate::is_issued_by (const certificate &that) const noexcept
 	return ::X509_check_issued(that.impl_->x509.get(), impl_->x509.get()) == X509_V_OK;
 }
 
-struct distinguished_name::impl_type
+struct distinguished_name::impl_type //{{{1
 {
 	certificate::impl_ptr owner;
 	::X509_NAME &name;
@@ -243,7 +243,7 @@ result<distinguished_name> certificate::subject_name () const noexcept
 	return distinguished_name::impl_type::make(impl_, ::X509_get_subject_name(impl_->x509.get()));
 }
 
-struct alternative_name::impl_type
+struct alternative_name::impl_type //{{{1
 {
 	certificate::impl_ptr owner;
 	std::unique_ptr<::GENERAL_NAMES, void(*)(::GENERAL_NAMES *)> name;
@@ -324,5 +324,45 @@ result<alternative_name> certificate::subject_alternative_name () const noexcept
 {
 	return alternative_name::impl_type::make(impl_, NID_subject_alt_name);
 }
+
+struct key::impl_type //{{{1
+{
+	certificate::impl_ptr owner;
+	const ::EVP_PKEY &pkey;
+	const size_t size_bits, max_block_size;
+
+	impl_type (certificate::impl_ptr owner, const EVP_PKEY &pkey) noexcept
+		: owner{owner}
+		, pkey{pkey}
+		, size_bits{static_cast<size_t>(::EVP_PKEY_bits(&pkey))}
+		, max_block_size{static_cast<size_t>(::EVP_PKEY_size(&pkey))}
+	{ }
+
+	static result<key> make (certificate::impl_ptr owner, const EVP_PKEY *pkey) noexcept
+	{
+		if (auto impl = impl_ptr{new(std::nothrow) impl_type(owner, *pkey)})
+		{
+			return key{impl};
+		}
+		return make_unexpected(std::errc::not_enough_memory);
+	}
+};
+
+size_t key::size_bits () const noexcept
+{
+	return impl_->size_bits;
+}
+
+size_t key::max_block_size () const noexcept
+{
+	return impl_->max_block_size;
+}
+
+result<key> certificate::public_key () const noexcept
+{
+	return key::impl_type::make(impl_, ::X509_get0_pubkey(impl_->x509.get()));
+}
+
+//}}}1
 
 } // namespace pal::crypto

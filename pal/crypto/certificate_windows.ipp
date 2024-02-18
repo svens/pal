@@ -1,4 +1,5 @@
 #include <pal/crypto/hash>
+#include <pal/error>
 #include <pal/net/ip/address_v4>
 #include <pal/net/ip/address_v6>
 #include <pal/memory>
@@ -27,7 +28,7 @@ certificate::time_type to_time (const FILETIME &time) noexcept
 
 } // namespace
 
-struct certificate::impl_type
+struct certificate::impl_type //{{{1
 {
 	using x509_ptr = std::unique_ptr<const ::CERT_CONTEXT, decltype(&::CertFreeCertificateContext)>;
 	x509_ptr x509;
@@ -216,7 +217,7 @@ struct asn_decoder
 
 } // namespace
 
-struct distinguished_name::impl_type
+struct distinguished_name::impl_type //{{{1
 {
 	certificate::impl_ptr owner;
 	asn_decoder<CERT_NAME_INFO, 3 * 1024> name;
@@ -317,7 +318,7 @@ result<distinguished_name> certificate::subject_name () const noexcept
 	return distinguished_name::impl_type::make(impl_, impl_->x509->pCertInfo->Subject);
 }
 
-struct alternative_name::impl_type
+struct alternative_name::impl_type //{{{1
 {
 	certificate::impl_ptr owner;
 	asn_decoder<CERT_ALT_NAME_INFO, 3 * 1024> name;
@@ -394,5 +395,84 @@ result<alternative_name> certificate::subject_alternative_name () const noexcept
 {
 	return alternative_name::impl_type::make(impl_, szOID_SUBJECT_ALT_NAME2);
 }
+
+struct key::impl_type //{{{1
+{
+	certificate::impl_ptr owner;
+	BCRYPT_KEY_HANDLE pkey;
+	const size_t size_bits, max_block_size;
+
+	impl_type (certificate::impl_ptr owner, BCRYPT_KEY_HANDLE pkey) noexcept
+		: owner{owner}
+		, pkey{pkey}
+		, size_bits{get_size_property(pkey, BCRYPT_KEY_LENGTH)}
+		, max_block_size{get_size_property(pkey, BCRYPT_BLOCK_LENGTH)}
+	{ }
+
+	~impl_type () noexcept
+	{
+		::BCryptDestroyKey(pkey);
+	}
+
+	static result<key> make (certificate::impl_ptr owner, BCRYPT_KEY_HANDLE pkey) noexcept
+	{
+		if (auto impl = impl_ptr{new(std::nothrow) impl_type(owner, pkey)})
+		{
+			return key{impl};
+		}
+		::BCryptDestroyKey(pkey);
+		return make_unexpected(std::errc::not_enough_memory);
+	}
+
+	static size_t get_size_property (BCRYPT_KEY_HANDLE pkey, LPCWSTR property) noexcept
+	{
+		size_t result = 0;
+
+		DWORD buf;
+		ULONG buf_size;
+		auto status = ::BCryptGetProperty(pkey,
+			property,
+			reinterpret_cast<PUCHAR>(&buf),
+			sizeof(buf),
+			&buf_size,
+			0
+		);
+		if (status == ERROR_SUCCESS)
+		{
+			result = buf;
+		}
+
+		return result;
+	}
+};
+
+size_t key::size_bits () const noexcept
+{
+	return impl_->size_bits;
+}
+
+size_t key::max_block_size () const noexcept
+{
+	return impl_->max_block_size;
+}
+
+result<key> certificate::public_key () const noexcept
+{
+	::BCRYPT_KEY_HANDLE pkey;
+	auto status = ::CryptImportPublicKeyInfoEx2(
+		X509_ASN_ENCODING,
+		&impl_->x509->pCertInfo->SubjectPublicKeyInfo,
+		0,
+		nullptr,
+		&pkey
+	);
+	if (status)
+	{
+		return key::impl_type::make(impl_, pkey);
+	}
+	return unexpected{this_thread::last_system_error()};
+}
+
+//}}}1
 
 } // namespace pal::crypto

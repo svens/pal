@@ -543,6 +543,30 @@ TEST_CASE("crypto/certificate")
 		}
 	}
 
+	SECTION("public_key") //{{{1
+	{
+		const auto &[pem, size_bits, max_block_size] = GENERATE(table<std::string_view, size_t, size_t>(
+		{
+			{ test_cert::ca_pem,		4096,	512 },
+			{ test_cert::intermediate_pem,	4096,	512 },
+			{ test_cert::server_pem,	2048,	256 },
+			{ test_cert::client_pem,	2048,	256 },
+		}));
+		auto c = certificate::from_pem(pem).value();
+		auto key = c.public_key().value();
+		CHECK(key.size_bits() == size_bits);
+		CHECK(key.max_block_size() == max_block_size);
+	}
+
+	SECTION("public_key: not_enough_memory") //{{{1
+	{
+		auto c = certificate::from_pem(test_cert::server_pem).value();
+		pal_test::bad_alloc_once x;
+		auto key = c.public_key();
+		REQUIRE_FALSE(key);
+		CHECK(key.error() == std::errc::not_enough_memory);
+	}
+
 	//}}}1
 }
 
