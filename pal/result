@@ -870,7 +870,7 @@ public:
 
 	// operator= {{{1
 
-	constexpr result &operator= (const result &that)
+	constexpr result &operator= (const result &that) noexcept
 	{
 		if (that.has_value_)
 		{
@@ -880,7 +880,7 @@ public:
 		return assign_error(that.error_);
 	}
 
-	constexpr result &operator= (result &&that)
+	constexpr result &operator= (result &&that) noexcept
 	{
 		if (that.has_value_)
 		{
@@ -910,7 +910,7 @@ public:
 
 	// emplace {{{1
 
-	void emplace ()
+	void emplace () noexcept
 	{
 		has_value_ = true;
 	}
@@ -1131,7 +1131,7 @@ private:
 	}
 
 	template <typename U>
-	constexpr result &assign_error (U &&v)
+	constexpr result &assign_error (U &&v) noexcept
 	{
 		if (has_value_)
 		{

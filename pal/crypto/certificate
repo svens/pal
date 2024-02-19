@@ -1,0 +1,142 @@
+#pragma once // -*- C++ -*-
+
+/**
+ * \file pal/crypto/certificate
+ * Public key certificate
+ *
+ * \see https://en.wikipedia.org/wiki/Public_key_certificate
+ */
+
+#include <pal/crypto/alternative_name>
+#include <pal/crypto/distinguished_name>
+#include <pal/crypto/key>
+#include <pal/result>
+#include <chrono>
+#include <memory>
+#include <span>
+#include <string_view>
+
+namespace pal::crypto {
+
+class certificate
+{
+public:
+
+	/// Clock for certificate time-related properties
+	using clock_type = std::chrono::system_clock;
+
+	/// Tiemstamp type for certificate time-related properties
+	using time_type = clock_type::time_point;
+
+	certificate () = default;
+
+	/// Load X509 certificate from DER-encoded blob \a der
+	template <typename Data>
+	static result<certificate> from_der (const Data &der) noexcept
+	{
+		return import_der(std::as_bytes(std::span{der}));
+	}
+
+	/// Load X509 certificate from PEM-encoded blob \a pem
+	template <typename Data>
+	static result<certificate> from_pem (const Data &pem) noexcept
+	{
+		return import_pem({std::data(pem), std::size(pem)});
+	}
+
+	/// Returns true if \a this certificate represents unspecified certificate
+	bool is_null () const noexcept
+	{
+		return impl_ == nullptr;
+	}
+
+	/// Returns true if \a this instance is not unspecified certificate
+	explicit operator bool () const noexcept
+	{
+		return !is_null();
+	}
+
+	/// Return X509 encoded as DER blob
+	std::span<const std::byte> as_bytes () const noexcept;
+
+	/// Returns X509 structure version (1 for v1, 3 for v3)
+	int version () const noexcept;
+
+	/// Return certificate serial number as byte span (up to 20B)
+	std::span<const uint8_t> serial_number () const noexcept;
+
+	/// Return Common Name (OID "2.5.4.3") of Distinguished Name of certificate
+	std::string_view common_name () const noexcept;
+
+	/// Returns fingerprint (SHA1 digest of public part) as lowercase hex-string
+	///
+	/// \note This method is provided for convenience. To calculate
+	/// fingerprint with different digest algorithm, fetch certificate
+	/// public part with \a as_bytes() and calculate it explicitly.
+	std::string_view fingerprint () const noexcept;
+
+	/// Returns timestamp since when \a this certificate is valid.
+	time_type not_before () const noexcept;
+
+	/// Returns timestamp until \a this certificate is valid.
+	time_type not_after () const noexcept;
+
+	/// Returns true if \a this certificate is not expired at \a time
+	bool not_expired_at (const time_type &time) const noexcept
+	{
+		return not_before() <= time && time <= not_after();
+	}
+
+	/// Returns true fi \a this certificate does not expire at least for
+	/// \a duration at \a time (defaults to now)
+	template <typename Rep, typename Period>
+	bool not_expired_for (
+		const std::chrono::duration<Rep, Period> &duration,
+		const time_type &time = clock_type::now()) const noexcept
+	{
+		return not_before() <= time && time + duration <= not_after();
+	}
+
+	/// Returns true if \a this certificate is issued by \a that certificate
+	bool is_issued_by (const certificate &that) const noexcept;
+
+	/// Returns true if \a this certificate is self-signed.
+	bool is_self_signed () const noexcept
+	{
+		return is_issued_by(*this);
+	}
+
+	/// Returns issuer name of \a this certificate
+	result<distinguished_name> issuer_name () const noexcept;
+
+	/// Returns subject name of \a this certificate
+	result<distinguished_name> subject_name () const noexcept;
+
+	/// Returns issuer alternative name of \a this certificate
+	result<alternative_name> issuer_alternative_name () const noexcept;
+
+	/// Returns subject alternative name of \a this certificate
+	result<alternative_name> subject_alternative_name () const noexcept;
+
+	/// Returns certificate public key
+	result<key> public_key () const noexcept;
+
+private:
+
+	struct impl_type;
+	using impl_ptr = std::shared_ptr<impl_type>;
+	impl_ptr impl_{};
+
+	certificate (impl_ptr impl) noexcept
+		: impl_{impl}
+	{ }
+
+	static result<certificate> import_der (std::span<const std::byte> der) noexcept;
+	static result<certificate> import_pem (std::string_view pem) noexcept;
+
+	friend class alternative_name;
+	friend class distinguished_name;
+	friend class key;
+};
+
+} // pal::crypto

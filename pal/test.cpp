@@ -40,3 +40,33 @@ bool pal_test::__on_ci ()
 	static const bool has_env = (std::getenv("CI") != nullptr);
 	return has_env;
 }
+
+void *operator new (size_t size)
+{
+	if (pal_test::bad_alloc_once::fail)
+	{
+		pal_test::bad_alloc_once::fail = false;
+		throw std::bad_alloc();
+	}
+	return std::malloc(size);
+}
+
+void *operator new (size_t size, const std::nothrow_t &) noexcept
+{
+	if (pal_test::bad_alloc_once::fail)
+	{
+		pal_test::bad_alloc_once::fail = false;
+		return nullptr;
+	}
+	return std::malloc(size);
+}
+
+void operator delete (void *ptr) noexcept
+{
+	return std::free(ptr);
+}
+
+void operator delete (void *ptr, size_t) noexcept
+{
+	return std::free(ptr);
+}

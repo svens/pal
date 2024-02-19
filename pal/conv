@@ -1,0 +1,131 @@
+#pragma once // -*- C++ -*-
+
+/**
+ * \file pal/conv
+ * Encoding/decoding conversions (base64, hex)
+ *
+ * \note Conversion functions do not check for required output storage
+ * capacity during runtime. It is application responsibility to ensure there
+ * is sufficient capacity available (see encode_size(), decode_size())
+ */
+
+#include <cstddef>
+#include <iterator>
+
+namespace pal {
+
+namespace __conv {
+
+template <typename It>
+constexpr bool expect_sizeof_byte = sizeof(*std::declval<It>()) == sizeof(std::byte);
+
+template <typename Data>
+constexpr size_t size_bytes (const Data &input) noexcept
+{
+	return std::size(input) * sizeof(*std::data(input));
+}
+
+} // namespace __conv
+
+/// Returns maximum required output storage capacity in bytes when encoding \a input
+template <typename Algorithm, typename Data>
+constexpr size_t encode_size (const Data &input) noexcept
+{
+	return Algorithm::encode_size(__conv::size_bytes(input));
+}
+
+/// Returns maximum required output storage capacity in bytes when decoding
+/// \a input or (std::size_t)-1 on invalid \a input size
+template <typename Algorithm, typename Data>
+constexpr size_t decode_size (const Data &input) noexcept
+{
+	return Algorithm::decode_size(__conv::size_bytes(input));
+}
+
+/// Encode \a input, storing result in \a out. \a out storage must
+/// have capacity for at least \c encode_size(input) bytes.
+///
+/// \returns iterator to past the last byte generated in \a out storage
+template <typename Algorithm, typename Data, typename It>
+	requires(__conv::expect_sizeof_byte<It>)
+It encode (const Data &input, It out) noexcept
+{
+	auto first = reinterpret_cast<const std::byte *>(std::data(input));
+	auto last = first + __conv::size_bytes(input);
+	auto it = reinterpret_cast<std::byte *>(&*out);
+	return out + (Algorithm::encode(first, last, it) - it);
+}
+
+/// Decode \a input, storing result in \a out. \a out storage must
+/// have capacity for at least \c decode_size(input) bytes.
+///
+/// \returns iterator to past the last byte generated in \a out storage or
+/// default iterator on decoding error.
+template <typename Algorithm, typename Data, typename It>
+	requires(__conv::expect_sizeof_byte<It>)
+It decode (const Data &input, It out) noexcept
+{
+	auto first = reinterpret_cast<const std::byte *>(std::data(input));
+	auto last = first + __conv::size_bytes(input);
+	auto it = reinterpret_cast<std::byte *>(&*out);
+	if (auto end = Algorithm::decode(first, last, it))
+	{
+		return out + (end - it);
+	}
+	return {};
+}
+
+// base64 {{{1
+
+/// Base64 encoding/decoding.
+struct base64
+{
+	/// \copydoc encode_size
+	static constexpr size_t encode_size (size_t size_bytes) noexcept
+	{
+		return ((size_bytes * 4 / 3) + 3) & ~3;
+	}
+
+	/// \copydoc decode_size
+	static constexpr size_t decode_size (size_t size_bytes) noexcept
+	{
+		return size_bytes % 4 == 0 ? (size_bytes / 4 * 3) : -1;
+	}
+
+	/// \copydoc encode
+	static std::byte *encode (const std::byte *first, const std::byte *last, std::byte *out) noexcept;
+
+	/// \copydoc decode
+	static std::byte *decode (const std::byte *first, const std::byte *last, std::byte *out) noexcept;
+};
+
+// hex {{{1
+
+/// Hex-string encoding/decoding.
+///
+/// Decoding method accepts both upper- and lowercase characters. Encoding
+/// generates lowercase characters only.
+struct hex
+{
+	/// \copydoc encode_size
+	static constexpr size_t encode_size (size_t size_bytes) noexcept
+	{
+		return size_bytes * 2;
+	}
+
+	/// \copydoc decode_size
+	static constexpr size_t decode_size (size_t size_bytes) noexcept
+	{
+		return size_bytes % 2 == 0 ? size_bytes / 2 : -1;
+	}
+
+	/// \copydoc encode
+	static std::byte *encode (const std::byte *first, const std::byte *last, std::byte *out) noexcept;
+
+	/// \copydoc decode
+	static std::byte *decode (const std::byte *first, const std::byte *last, std::byte *out) noexcept;
+};
+
+// }}}1
+
+} // namespace pal

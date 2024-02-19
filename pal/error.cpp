@@ -1,6 +1,13 @@
 #include <pal/error>
 #include <string>
 
+#include <pal/version>
+#if __pal_os_linux || __pal_os_macos
+	#include <cerrno>
+#elif __pal_os_windows
+	#include <windows.h>
+#endif
+
 namespace pal {
 
 namespace {
@@ -36,5 +43,18 @@ const std::error_category &error_category () noexcept
 	static const error_category_impl impl{};
 	return impl;
 }
+
+namespace this_thread {
+
+std::error_code last_system_error () noexcept
+{
+	#if __pal_os_linux || __pal_os_macos
+		return {errno, std::generic_category()};
+	#elif __pal_os_windows
+		return {static_cast<int>(::GetLastError()), std::system_category()};
+	#endif
+}
+
+} // namespace this_thread
 
 } // namespace pal

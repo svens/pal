@@ -1,0 +1,109 @@
+#pragma once // -*- C++ -*-
+
+/**
+ * \file pal/crypto/hash
+ * Cryptographic hashing
+ */
+
+#include <pal/crypto/digest_algorithm>
+#include <pal/result>
+#include <pal/span>
+#include <array>
+#include <memory>
+
+namespace pal::crypto {
+
+/// One-way cryptographic hashing using \a Algorithm.
+///
+/// If all data is already fully present, use static one_shot() to calculate
+/// digest immediately.
+///
+/// If data is not completely present, instantiate this class and add new data
+/// in one or more calls to update(). Once full data has been fed into hasher,
+/// call finish() to fetch calculated digest. Application can immediately reuse
+/// instance after call to finish(), it is re-initialized internally.
+template <typename Algorithm>
+class basic_hash
+{
+public:
+
+	/// Number of bytes in result digest
+	static constexpr size_t digest_size = Algorithm::digest_size;
+
+	/// Result digest type
+	using digest_type = std::array<uint8_t, digest_size>;
+
+	/// Feed \a input to hasher
+	/// \returns *this for call chaining
+	template <typename ConstSpanSequence>
+	basic_hash &update (const ConstSpanSequence &input) noexcept
+	{
+		const auto end = span_sequence_end(input);
+		for (auto it = span_sequence_begin(input);  it != end;  ++it)
+		{
+			impl_.update(std::as_bytes(*it));
+		}
+		return *this;
+	}
+
+	/// Calculate and return final digest. Hasher instance is reset and
+	/// ready for new updates.
+	digest_type finish () noexcept
+	{
+		digest_type digest{};
+		impl_.finish(std::as_writable_bytes(std::span{digest}));
+		return digest;
+	}
+
+	/// Create hasher instance
+	static result<basic_hash> make () noexcept
+	{
+		std::error_code error;
+		if (basic_hash result{error}; !error)
+		{
+			return result;
+		}
+		return unexpected{error};
+	}
+
+	/// Convenience method to get digest of \a input in single step
+	template <typename ConstSpanSequence>
+	static result<digest_type> one_shot (const ConstSpanSequence &input) noexcept
+	{
+		return make().transform([&](auto hash)
+		{
+			return hash.update(input).finish();
+		});
+	}
+
+private:
+
+	typename Algorithm::hash impl_;
+
+	basic_hash (std::error_code &error) noexcept
+		: impl_{error}
+	{ }
+};
+
+/// \defgroup crypto_hash Cryptographic hashers
+/// \{
+
+/// MD5 hasher
+/// \deprecated Provided for backward compatibility
+using md5_hash = basic_hash<algorithm::md5>;
+
+/// SHA1 hasher
+using sha1_hash = basic_hash<algorithm::sha1>;
+
+/// SHA256 hasher
+using sha256_hash = basic_hash<algorithm::sha256>;
+
+/// SHA384 hasher
+using sha384_hash = basic_hash<algorithm::sha384>;
+
+/// SHA512 hasher
+using sha512_hash = basic_hash<algorithm::sha512>;
+
+/// \}
+
+} // namespace pal::crypto

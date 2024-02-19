@@ -1,0 +1,37 @@
+#pragma once // -*- C++ -*-
+
+/**
+ * \file pal/crypto/random
+ * Cryptographic random generation
+ */
+
+#include <pal/span>
+
+namespace pal::crypto {
+
+namespace __random {
+
+void fill (void *data, size_t size) noexcept;
+
+} // namespace __random
+
+/**
+ * Fill \a buffers with cryptographically strong random bytes suitable for
+ * cryptographic keys, nonces, etc.
+ */
+template <typename MutableSpanSequence>
+void random (const MutableSpanSequence &spans) noexcept
+{
+	const auto end = span_sequence_end(spans);
+	for (auto it = span_sequence_begin(spans);  it != end;  ++it)
+	{
+		auto *data = it->data();
+		auto size = it->size_bytes();
+		if (data && size)
+		{
+			__random::fill(data, size);
+		}
+	}
+}
+
+} // namespace pal::crypto

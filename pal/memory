@@ -1,0 +1,86 @@
+#pragma once // -*- C++ -*-
+
+/**
+ * \file pal/memory
+ * Additional helper utilities for <memory> header
+ */
+
+#include <cstddef>
+#include <new>
+
+namespace pal {
+
+/// Temporary buffer (scoped allocation) up to \a StackSize bytes are
+/// allocated from stack. If actually requested size is bigger (specificed
+/// runtime during construction), memory is allocated from heap instead.
+///
+/// If memory is taken from heap, it is automatically freed during destruction.
+template <size_t StackSize>
+class temporary_buffer
+{
+public:
+
+	static_assert(StackSize > 0);
+
+	temporary_buffer () = delete;
+	temporary_buffer (const temporary_buffer &) = delete;
+	temporary_buffer &operator= (const temporary_buffer &) = delete;
+	temporary_buffer (temporary_buffer &&) = delete;
+	temporary_buffer &operator= (temporary_buffer &&) = delete;
+
+	/// Ensure memory is allocated for \a size bytes.
+	/// On allocation failure, get() will return nullptr
+	temporary_buffer (std::nothrow_t, size_t size) noexcept
+	{
+		if (size > StackSize)
+		{
+			ptr_ = new(std::nothrow) char[size];
+		}
+	}
+
+	/// Ensure memory is allocated for \a size bytes.
+	/// On allocation failure, throws std::bad_alloc
+	temporary_buffer (size_t size)
+	{
+		if (size > StackSize)
+		{
+			ptr_ = new char[size];
+		}
+	}
+
+	/// Deallocate memory if it is allocated from heap during
+	/// construction. Otherwise does nothing
+	~temporary_buffer () noexcept
+	{
+		if (ptr_ != &stack_[0])
+		{
+			delete[] ptr_;
+		}
+	}
+
+	/// Returns pointer to allocated buffer (either in stack or heap)
+	/// If allocation did not succeed, returns nullptr
+	void *get () noexcept
+	{
+		return ptr_;
+	}
+
+	/// Returns true if allocation was successful.
+	explicit operator bool () const noexcept
+	{
+		return ptr_ != nullptr;
+	}
+
+	/// Returns pointer to stack regardless whether allocation was stack-
+	/// or heap-based.
+	void *stack () noexcept
+	{
+		return &stack_[0];
+	}
+
+private:
+
+	char stack_[StackSize] = {}, *ptr_ = &stack_[0];
+};
+
+} // namespace pal

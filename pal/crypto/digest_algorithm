@@ -1,0 +1,60 @@
+#pragma once // -*- C++ -*-
+
+/**
+ * \file pal/crypto/hash
+ * Cryptographic digest algorithms
+ */
+
+#include <memory>
+#include <span>
+#include <system_error>
+
+namespace pal::crypto::algorithm {
+
+#define __pal_crypto_digest_algorithm(Impl) \
+	Impl(md5, MD5, 16) \
+	Impl(sha1, SHA1, 20) \
+	Impl(sha256, SHA256, 32) \
+	Impl(sha384, SHA384, 48) \
+	Impl(sha512, SHA512, 64)
+
+#define __pal_crypto_digest_algorithm_api(Algorithm, Context, Size) \
+	struct Algorithm \
+	{ \
+		static constexpr size_t digest_size = Size; \
+		\
+		struct hash \
+		{ \
+			struct impl_type; \
+			std::unique_ptr<impl_type> impl; \
+			\
+			hash (std::error_code &error) noexcept; \
+			~hash () noexcept; \
+			\
+			hash (hash &&) noexcept; \
+			hash &operator= (hash &&) noexcept; \
+			\
+			void update (std::span<const std::byte> input) noexcept; \
+			void finish (std::span<std::byte, digest_size> digest) noexcept; \
+		}; \
+		\
+		struct hmac \
+		{ \
+			struct impl_type; \
+			std::unique_ptr<impl_type> impl; \
+			\
+			hmac (std::span<const std::byte> key, std::error_code &) noexcept; \
+			~hmac () noexcept; \
+			\
+			hmac (hmac &&) noexcept; \
+			hmac &operator= (hmac &&) noexcept; \
+			\
+			void update (std::span<const std::byte> input) noexcept; \
+			void finish (std::span<std::byte, digest_size> digest) noexcept; \
+		}; \
+	};
+
+__pal_crypto_digest_algorithm(__pal_crypto_digest_algorithm_api)
+#undef __pal_crypto_digest_algorithm_api
+
+} // pal::crypto::algorithm

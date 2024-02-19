@@ -1,0 +1,131 @@
+#pragma once // -*- C++ -*-
+
+/**
+ * \file pal/crypto/hmac
+ * Cryptographic hashing
+ */
+
+#include <pal/crypto/digest_algorithm>
+#include <pal/result>
+#include <pal/span>
+#include <array>
+#include <memory>
+
+namespace pal::crypto {
+
+/// One-way cryptographic keyed hashing using \a Algorithm.
+///
+/// If all data is already fully present, use static one_shot() to calculate
+/// digest immediately.
+///
+/// If data is not completely present, instantiate this class and add new data
+/// in one or more calls to update(). Once full data has been fed into hasher,
+/// call finish() to fetch calculated digest. Application can immediately reuse
+/// instance after call to finish(), it is re-initialized internally.
+template <typename Algorithm>
+class basic_hmac
+{
+public:
+
+	/// Number of bytes in result digest
+	static constexpr size_t digest_size = Algorithm::digest_size;
+
+	/// Result digest type
+	using digest_type = std::array<uint8_t, digest_size>;
+
+	/// Feed \a input to hasher
+	/// \returns *this for call chaining
+	template <typename ConstSpanSequence>
+	basic_hmac &update (const ConstSpanSequence &input) noexcept
+	{
+		const auto end = span_sequence_end(input);
+		for (auto it = span_sequence_begin(input);  it != end;  ++it)
+		{
+			impl_.update(std::as_bytes(*it));
+		}
+		return *this;
+	}
+
+	/// Calculate and return final digest. Hasher instance is reset and
+	/// ready for new updates.
+	digest_type finish () noexcept
+	{
+		digest_type digest{};
+		impl_.finish(std::as_writable_bytes(std::span{digest}));
+		return digest;
+	}
+
+	/// Create hasher instance without key
+	static result<basic_hmac> make () noexcept
+	{
+		std::error_code error;
+		if (basic_hmac result{{}, error}; !error)
+		{
+			return result;
+		}
+		return unexpected{error};
+	}
+
+	/// Create hasher instance with \a key
+	template <typename Key>
+	static result<basic_hmac> make (const Key &key) noexcept
+	{
+		std::error_code error;
+		if (basic_hmac result{std::as_bytes(std::span{key}), error}; !error)
+		{
+			return result;
+		}
+		return unexpected{error};
+	}
+
+	/// Convenience method to get digest of \a input in single step without key
+	template <typename ConstSpanSequence>
+	static result<digest_type> one_shot (const ConstSpanSequence &input) noexcept
+	{
+		return make().transform([&](auto hmac)
+		{
+			return hmac.update(input).finish();
+		});
+	}
+
+	/// Convenience method to get digest of \a input in single step with \a key
+	template <typename Key, typename ConstSpanSequence>
+	static result<digest_type> one_shot (const Key &key, const ConstSpanSequence &input) noexcept
+	{
+		return make(key).transform([&](auto hmac)
+		{
+			return hmac.update(input).finish();
+		});
+	}
+
+private:
+
+	typename Algorithm::hmac impl_;
+
+	basic_hmac (std::span<const std::byte> key, std::error_code &error) noexcept
+		: impl_{key, error}
+	{ }
+};
+
+/// \defgroup crypto_hmac Cryptographic keyed hashers
+/// \{
+
+/// MD5 HMAC
+/// \deprecated Provided for backward compatibility
+using md5_hmac = basic_hmac<algorithm::md5>;
+
+/// SHA1 HMAC
+using sha1_hmac = basic_hmac<algorithm::sha1>;
+
+/// SHA256 HMAC
+using sha256_hmac = basic_hmac<algorithm::sha256>;
+
+/// SHA384 HMAC
+using sha384_hmac = basic_hmac<algorithm::sha384>;
+
+/// SHA512 HMAC
+using sha512_hmac = basic_hmac<algorithm::sha512>;
+
+/// \}
+
+} // namespace pal::crypto
