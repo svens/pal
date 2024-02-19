@@ -19,8 +19,8 @@ jobs:
         - { host: windows, toolchain: msvc, build_type: Debug }
         - { host: windows, toolchain: msvc, build_type: Release }
         exclude:
-        # TODO: restore once has AppleClang 14.0.3
-        - { host: macos, toolchain: clang }
+        # TODO: restore once gcc and/or SDK issues fixed
+        - { host: macos }
 
 
     steps:
