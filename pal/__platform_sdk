@@ -1,6 +1,14 @@
 #pragma once // -*- C++ -*-
 
 #if __pal_os_macos || defined(__APPLE__) //{{{1
+	// TODO: Apple injects availability() to position that GNU g++ considers invalid
+	// remove this workaround once fixed
+	#if !__pal_compiler_clang && defined(__has_attribute)
+		#if __has_attribute(availability)
+			#define availability(...)
+		#endif
+	#endif
+
 	#include <memory>
 	#include <type_traits>
 	#include <CoreFoundation/CFBase.h>
