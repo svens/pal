@@ -68,7 +68,9 @@ jobs:
 
     - name: Configure buildsystem
       run: |
-        sudo apt-get install --yes ninja-build
+        sudo add-apt-repository --yes ppa:ubuntu-toolchain-r/test
+        sudo apt-get update --yes
+        sudo apt-get install --yes g++-13 ninja-build
         curl -Ls https://github.com/linux-test-project/lcov/releases/download/v1.15/lcov-1.15.tar.gz \
           | gunzip -c \
           | tar xvf -
