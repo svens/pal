@@ -18,9 +18,6 @@ jobs:
         include:
         - { host: windows, toolchain: msvc, build_type: Debug }
         - { host: windows, toolchain: msvc, build_type: Release }
-        exclude:
-        # TODO: restore once gcc and/or SDK issues fixed
-        - { host: macos }
 
 
     steps:
