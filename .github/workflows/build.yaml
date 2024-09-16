@@ -43,7 +43,7 @@ jobs:
           ubuntu)
             sudo add-apt-repository --yes ppa:ubuntu-toolchain-r/test
             sudo apt-get update --yes
-            sudo apt-get install --yes gcc-13 ninja-build
+            sudo apt-get install --yes g++-13 ninja-build
             cmake . -G Ninja -DCMAKE_BUILD_TYPE=${{matrix.build_type}}
             ;;
           windows)
