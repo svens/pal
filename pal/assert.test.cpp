@@ -162,5 +162,4 @@ TEST_CASE("assert")
 	}
 }
 
-
 } // namespace
