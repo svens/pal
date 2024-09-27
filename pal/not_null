@@ -5,9 +5,11 @@
  * Non-nullable fancy pointer
  */
 
-#include <pal/assert>
+#include <pal/version>
+#include <cstdio>
 #include <memory>
-#include <type_traits>
+#include <source_location>
+#include <stdexcept>
 
 namespace pal {
 
@@ -40,22 +42,26 @@ public:
 	not_null &operator= (std::nullptr_t) = delete;
 	operator bool () const = delete;
 
-	/// Construct not_null pointer from copy of \a ptr
-	constexpr not_null (const Pointer &ptr)
-		: ptr_{pal_assert(ptr, "Unexpected nullptr")}
-	{ }
+	/// Construct not_null pointer from copy of \a pointer
+	constexpr not_null (const Pointer &pointer, const std::source_location location = std::source_location::current())
+		: pointer_{pointer}
+	{
+		check_invariant(location);
+	}
 
-	/// Construct not_null pointer from moved \a ptr
-	constexpr not_null (Pointer &&ptr)
-		: ptr_{pal_assert(std::forward<Pointer>(ptr), "Unexpected nullptr")}
-	{ }
+	/// Construct not_null pointer from moved \a pointer
+	constexpr not_null (Pointer &&pointer, const std::source_location location = std::source_location::current())
+		: pointer_{std::forward<Pointer>(pointer)}
+	{
+		check_invariant(location);
+	}
 
 	/// Construct not_null from \a that
 	template <typename U>
 	requires(std::is_constructible_v<Pointer, U>)
 	explicit(!std::is_convertible_v<U, Pointer>)
 	constexpr not_null (const not_null<U> &that)
-		: ptr_{that.as_nullable()}
+		: pointer_{that.as_nullable()}
 	{ }
 
 	/// Construct not_null from \a that
@@ -63,13 +69,13 @@ public:
 	requires(std::is_constructible_v<Pointer, U> && !std::is_pointer_v<U>)
 	explicit(!std::is_convertible_v<U, Pointer>)
 	constexpr not_null (not_null<U> &&that)
-		: ptr_{std::move(that).as_nullable()}
+		: pointer_{std::move(that).as_nullable()}
 	{ }
 
 	/// Get plain pointer to element.
 	constexpr element_type *get () const
 	{
-		return &*ptr_;
+		return &*pointer_;
 	}
 
 	/// Get plain pointer to element.
@@ -87,7 +93,7 @@ public:
 	/// Return internal pointer as nullable pointer type.
 	constexpr const Pointer &as_nullable () const &
 	{
-		return ptr_;
+		return pointer_;
 	}
 
 	/// Return internal pointer as movable and nullable pointer type
@@ -96,7 +102,7 @@ public:
 	/// actually null).
 	constexpr Pointer &&as_nullable () &&
 	{
-		return std::forward<Pointer>(ptr_);
+		return std::forward<Pointer>(pointer_);
 	}
 
 	/// \see as_nullable() const &
@@ -113,7 +119,37 @@ public:
 
 private:
 
-	Pointer ptr_;
+	Pointer pointer_;
+
+	constexpr void check_invariant (const std::source_location &location)
+		noexcept(build == build_type::release)
+	{
+		if constexpr (build == build_type::debug)
+		{
+			if (!pointer_)
+			{
+				if constexpr (compiler == compiler_type::gcc && os == os_type::macos)
+				{
+					// TODO: MacOS:
+					// - gcc: completely random values in function default argument
+					throw std::logic_error("pal::not_null: unexpected nullptr");
+				}
+				else
+				{
+					// clang: gives function definition location in function default argument but can live with it
+					char unexpected_nullptr[1024];
+					std::snprintf(
+						unexpected_nullptr,
+						sizeof(unexpected_nullptr),
+						"%s:%d: unexpected nullptr",
+						location.file_name(),
+						location.line()
+					);
+					throw std::logic_error(unexpected_nullptr);
+				}
+			}
+		}
+	}
 };
 
 /// not_null \a Pointer type deduction guide.
@@ -161,26 +197,5 @@ constexpr auto operator>= (const not_null<L> &l, const not_null<R> &r)
 {
 	return !operator<(l, r);
 }
-
-#define pal_not_null(Pointer) internal
-
-namespace __not_null {
-
-template <typename Pointer>
-constexpr auto make (Pointer &&pointer, const char message[])
-	-> not_null<std::remove_cv_t<std::remove_reference_t<Pointer>>>
-{
-	if (!pointer)
-	{
-		throw std::runtime_error(message);
-	}
-	return std::forward<Pointer>(pointer);
-}
-
-#undef pal_not_null
-#define pal_not_null(Pointer) \
-	pal::__not_null::make((Pointer), blah ": unexpected nullptr");
-
-} // namespace __not_null
 
 } // namespace pal

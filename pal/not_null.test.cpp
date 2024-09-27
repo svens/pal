@@ -142,12 +142,27 @@ TEMPLATE_TEST_CASE("not_null", "",
 	if constexpr (std::is_same_v<base *, TestType>)
 	{
 		delete ptr;
+		ptr = nullptr;
 	}
 	else
 	{
 		ptr.reset();
 	}
 	CHECK(base::instances == 0);
+
+	SECTION("nullptr")
+	{
+		if constexpr (pal::build == pal::build_type::debug)
+		{
+			REQUIRE_THROWS_AS(not_null_TestType{std::move(ptr)}, std::logic_error);
+		}
+		else
+		{
+			// not ideal but what can we do?
+			auto p = not_null_TestType{std::move(ptr)};
+			CHECK(p.get() == nullptr);
+		}
+	}
 }
 
 template <typename T>
