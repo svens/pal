@@ -1,0 +1,68 @@
+#pragma once // -*- C++ -*-
+
+/**
+ * \file pal/assert
+ * PAL-specific implementation of assert macro
+ */
+
+#include <pal/version>
+#include <stdexcept>
+
+namespace pal {
+
+/// False if pal_assert() macro is no-op
+constexpr bool assert_can_throw = (build == build_type::debug);
+
+/// Require \a Expr to evaluate to true. On success, returns result of \a Expr.
+/// Otherwise, throws \c std::logic_error. If \a OptionalMessage is specified,
+/// it is passed to std::logic_error constructor as parameter.
+/// If no \a OptionalMessage is provided, textual representation of \a Expr
+/// with source code location is used as message.
+///
+/// \note It is similar to standard \c assert() macro, except \a Expr is
+/// always evaluated and result is returned.
+#define pal_assert(Expr, OptionalMessage) internal
+
+#if !defined(__DOXYGEN__) //{{{
+
+namespace __assert {
+
+template <typename T>
+constexpr decltype(auto) test (T &&expr, const char *message, ...)
+	noexcept(!assert_can_throw)
+{
+	if constexpr (assert_can_throw)
+	{
+		if (!expr)
+		{
+			throw std::logic_error(message);
+		}
+	}
+	return std::forward<T>(expr);
+}
+
+constexpr auto test (std::nullptr_t, const char *message, ...)
+	noexcept(noexcept(test(false, message)))
+{
+	return test<void *>(nullptr, message);
+}
+
+#undef pal_assert
+#define pal_assert(...) \
+	__pal_assert(__VA_ARGS__, __pal_assert_message(__VA_ARGS__, _), _)
+
+#define __pal_assert(Expr, Message, ...) \
+	pal::__assert::test(Expr, Message)
+
+#define __pal_assert_message(Expr, ...) \
+	__pal_at ": assertion failed '" #Expr "'"
+
+#define __pal_str_impl(S) #S
+#define __pal_str(S) __pal_str_impl(S)
+#define __pal_at __FILE__ ":" __pal_str(__LINE__)
+
+} // namespace __assert
+
+#endif // __DOXYGEN__ }}}
+
+} // namespace pal

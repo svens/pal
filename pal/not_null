@@ -1,0 +1,201 @@
+#pragma once // -*- C++ -*-
+
+/**
+ * \file pal/not_null
+ * Non-nullable fancy pointer
+ */
+
+#include <pal/version>
+#include <cstdio>
+#include <memory>
+#include <source_location>
+#include <stdexcept>
+
+namespace pal {
+
+template <typename Pointer>
+class not_null;
+
+/// True if type \a Pointer is not_null type
+template <typename T>
+constexpr bool is_not_null_v = false;
+
+/// True if type \a Pointer is not_null type
+template <typename Pointer>
+constexpr bool is_not_null_v<not_null<Pointer>> = true;
+
+/// Fancy pointer that restricts internal plain or smart \a Pointer to hold
+/// only non-nullptr values. It has no overhead over \a Pointer
+template <typename Pointer>
+class not_null
+{
+public:
+
+	static_assert(!is_not_null_v<Pointer>,
+		"not_null<not_null<Pointer>> not allowed"
+	);
+
+	/// Element type this smart pointer points to
+	using element_type = typename std::pointer_traits<Pointer>::element_type;
+
+	not_null (std::nullptr_t) = delete;
+	not_null &operator= (std::nullptr_t) = delete;
+	operator bool () const = delete;
+
+	/// Construct not_null pointer from copy of \a pointer
+	constexpr not_null (const Pointer &pointer, const std::source_location location = std::source_location::current())
+		: pointer_{pointer}
+	{
+		check_invariant(location);
+	}
+
+	/// Construct not_null pointer from moved \a pointer
+	constexpr not_null (Pointer &&pointer, const std::source_location location = std::source_location::current())
+		: pointer_{std::forward<Pointer>(pointer)}
+	{
+		check_invariant(location);
+	}
+
+	/// Construct not_null from \a that
+	template <typename U>
+	requires(std::is_constructible_v<Pointer, U>)
+	explicit(!std::is_convertible_v<U, Pointer>)
+	constexpr not_null (const not_null<U> &that)
+		: pointer_{that.as_nullable()}
+	{ }
+
+	/// Construct not_null from \a that
+	template <typename U>
+	requires(std::is_constructible_v<Pointer, U> && !std::is_pointer_v<U>)
+	explicit(!std::is_convertible_v<U, Pointer>)
+	constexpr not_null (not_null<U> &&that)
+		: pointer_{std::move(that).as_nullable()}
+	{ }
+
+	/// Get plain pointer to element.
+	constexpr element_type *get () const
+	{
+		return &*pointer_;
+	}
+
+	/// Get plain pointer to element.
+	constexpr element_type *operator-> () const
+	{
+		return get();
+	}
+
+	/// Dereference pointer.
+	constexpr element_type &operator* () const noexcept
+	{
+		return *get();
+	}
+
+	/// Return internal pointer as nullable pointer type.
+	constexpr const Pointer &as_nullable () const &
+	{
+		return pointer_;
+	}
+
+	/// Return internal pointer as movable and nullable pointer type
+	/// allowing to take ownership of pointed element. If ownership is
+	/// moved out of \a this, it remains undefined state (i.e. can be
+	/// actually null).
+	constexpr Pointer &&as_nullable () &&
+	{
+		return std::forward<Pointer>(pointer_);
+	}
+
+	/// \see as_nullable() const &
+	constexpr operator const Pointer & () const &
+	{
+		return as_nullable();
+	}
+
+	/// \see as_nullable() &&
+	constexpr operator Pointer && () &&
+	{
+		return std::move(*this).as_nullable();
+	}
+
+private:
+
+	Pointer pointer_;
+
+	constexpr void check_invariant (const std::source_location &location)
+		noexcept(build == build_type::release)
+	{
+		if constexpr (build == build_type::debug)
+		{
+			if (!pointer_)
+			{
+				if constexpr (compiler == compiler_type::gcc && os == os_type::macos)
+				{
+					// TODO: MacOS:
+					// - gcc: completely random values in function default argument
+					throw std::logic_error("pal::not_null: unexpected nullptr");
+				}
+				else
+				{
+					// clang: gives function definition location in function default argument but can live with it
+					char unexpected_nullptr[1024];
+					std::snprintf(
+						unexpected_nullptr,
+						sizeof(unexpected_nullptr),
+						"%s:%d: unexpected nullptr",
+						location.file_name(),
+						location.line()
+					);
+					throw std::logic_error(unexpected_nullptr);
+				}
+			}
+		}
+	}
+};
+
+/// not_null \a Pointer type deduction guide.
+template <typename Pointer>
+not_null (Pointer) -> not_null<Pointer>;
+
+/// Return true if \a l and \a r point to same memory location.
+template <typename L, typename R>
+constexpr auto operator== (const not_null<L> &l, const not_null<R> &r)
+{
+	return l.get() == r.get();
+}
+
+/// Return true if \a l and \a r point to different memory location.
+template <typename L, typename R>
+constexpr auto operator!= (const not_null<L> &l, const not_null<R> &r)
+{
+	return !operator==(l, r);
+}
+
+/// Return true if pointed memory location \a l < \a r
+template <typename L, typename R>
+constexpr auto operator< (const not_null<L> &l, const not_null<R> &r)
+{
+	return l.get() < r.get();
+}
+
+/// Return true if pointed memory location \a l > \a r
+template <typename L, typename R>
+constexpr auto operator> (const not_null<L> &l, const not_null<R> &r)
+{
+	return operator<(r, l);
+}
+
+/// Return true if pointed memory location \a l <= \a r
+template <typename L, typename R>
+constexpr auto operator<= (const not_null<L> &l, const not_null<R> &r)
+{
+	return !operator>(l, r);
+}
+
+/// Return true if pointed memory location \a l >= \a r
+template <typename L, typename R>
+constexpr auto operator>= (const not_null<L> &l, const not_null<R> &r)
+{
+	return !operator<(l, r);
+}
+
+} // namespace pal
