@@ -16,6 +16,7 @@ list(APPEND pal_sources
 	pal/error
 	pal/error.cpp
 	pal/hash
+	pal/intrusive_queue
 	pal/memory
 	pal/not_null
 	pal/result
@@ -34,6 +35,7 @@ list(APPEND pal_test_sources
 	pal/error.test.cpp
 	pal/hash.bench.cpp
 	pal/hash.test.cpp
+	pal/intrusive_queue.test.cpp
 	pal/memory.test.cpp
 	pal/not_null.test.cpp
 	pal/result.test.cpp
