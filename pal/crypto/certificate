@@ -131,11 +131,12 @@ private:
 		: impl_{impl}
 	{ }
 
-	static result<certificate> import_der (std::span<const std::byte> der) noexcept;
-	static result<certificate> import_pem (std::string_view pem) noexcept;
+	static result<certificate> import_der (const std::span<const std::byte> &der) noexcept;
+	static result<certificate> import_pem (const std::string_view &pem) noexcept;
 
 	friend class alternative_name;
 	friend class distinguished_name;
+	friend class certificate_store;
 	friend class key;
 };
 

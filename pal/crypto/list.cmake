@@ -6,6 +6,7 @@ list(APPEND pal_sources
 	pal/crypto/certificate_linux.ipp
 	pal/crypto/certificate_macos.ipp
 	pal/crypto/certificate_windows.ipp
+	pal/crypto/certificate_store
 	pal/crypto/digest_algorithm
 	pal/crypto/digest_algorithm.cpp
 	pal/crypto/digest_algorithm_linux.ipp
@@ -23,6 +24,7 @@ list(APPEND pal_sources
 list(APPEND pal_test_sources
 	pal/crypto/test
 	pal/crypto/certificate.test.cpp
+	pal/crypto/certificate_store.test.cpp
 	pal/crypto/hash.test.cpp
 	pal/crypto/hmac.test.cpp
 	pal/crypto/oid.test.cpp

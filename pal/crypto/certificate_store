@@ -1,0 +1,73 @@
+#pragma once // -*- C++ -*-
+
+/**
+ * \file pal/crypto/certificate_store
+ * Certificate store
+ */
+
+#include <pal/crypto/certificate>
+#include <pal/result>
+#include <span>
+#include <string_view>
+
+namespace pal::crypto {
+
+class certificate_store
+{
+public:
+
+	/// TODO
+	certificate_store () noexcept = default;
+
+	/// TODO
+	template <typename Data>
+	static result<certificate_store> from_pkcs12 (const Data &pkcs12, const char *password = nullptr) noexcept
+	{
+		return import_pkcs12(std::as_bytes(std::span{pkcs12}), password);
+	}
+
+	/// Returns true if \a this certificate store represents unspecified store
+	bool is_null () const noexcept
+	{
+		return impl_ == nullptr;
+	}
+
+	/// Returns true if \a this certificate store represents unspecified store
+	explicit operator bool () const noexcept
+	{
+		return !is_null();
+	}
+
+	size_t size () const noexcept
+	{
+		return impl_->size();
+	}
+
+	result<certificate> at (size_t index) const noexcept
+	{
+		static constexpr auto impl_to_api = [](certificate::impl_ptr &&impl) -> certificate
+		{
+			return {impl};
+		};
+		return impl_->at(index).transform(impl_to_api);
+	}
+
+private:
+
+	struct impl_api
+	{
+		virtual ~impl_api () noexcept = default;
+		virtual size_t size () const noexcept = 0;
+		virtual result<certificate::impl_ptr> at (size_t index) const noexcept = 0;
+	};
+	using impl_ptr = std::unique_ptr<impl_api>;
+	impl_ptr impl_{};
+
+	certificate_store (impl_ptr &&impl) noexcept
+		: impl_{std::move(impl)}
+	{ }
+
+	static result<certificate_store> import_pkcs12 (const std::span<const std::byte> &pkcs12, const char *password) noexcept;
+};
+
+} // pal::crypto

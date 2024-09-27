@@ -1,8 +1,12 @@
+// -*- C++ -*-
+
 #include <pal/crypto/hash>
+#include <pal/crypto/certificate_store>
 #include <pal/net/ip/address_v4>
 #include <pal/net/ip/address_v6>
 #include <pal/memory>
 #include <openssl/asn1.h>
+#include <openssl/pkcs12.h>
 #include <openssl/x509.h>
 #include <cstring>
 
@@ -17,11 +21,60 @@ certificate::time_type to_time (const ::ASN1_TIME *time) noexcept
 	return certificate::clock_type::from_time_t(std::mktime(&tm));
 }
 
+// X509 {{{1
+
+using x509_ptr = std::unique_ptr<::X509, decltype(&::X509_free)>;
+
+x509_ptr to_ptr (::X509 *p) noexcept
+{
+	return {p, &::X509_free};
+}
+
+void x509_stack_release (STACK_OF(X509) *p) noexcept
+{
+	::sk_X509_pop_free(p, &::X509_free);
+}
+
+// STACK_OF(X509) {{{1
+
+using x509_stack_ptr = std::unique_ptr<STACK_OF(X509), decltype(&x509_stack_release)>;
+
+x509_stack_ptr to_ptr (STACK_OF(X509) *p) noexcept
+{
+	return {p, &x509_stack_release};
+}
+
+// PKEY {{{1
+
+using pkey_ptr = std::unique_ptr<::EVP_PKEY, decltype(&::EVP_PKEY_free)>;
+
+pkey_ptr to_ptr (::EVP_PKEY *p) noexcept
+{
+	return {p, &::EVP_PKEY_free};
+}
+
+// GENERAL_NAMES {{{1
+
+void name_list_release (::GENERAL_NAMES *p) noexcept
+{
+	::sk_GENERAL_NAME_pop_free(p, ::GENERAL_NAME_free);
+}
+
+using name_list_ptr = std::unique_ptr<::GENERAL_NAMES, decltype(&name_list_release)>;
+
+name_list_ptr to_ptr (::GENERAL_NAMES *p) noexcept
+{
+	return {p, &name_list_release};
+}
+
+// }}}1
+
 } // namespace
 
-struct certificate::impl_type //{{{1
+// certificate {{{1
+
+struct certificate::impl_type
 {
-	using x509_ptr = std::unique_ptr<::X509, decltype(&::X509_free)>;
 	x509_ptr x509;
 
 	temporary_buffer<2048> bytes_buf;
@@ -47,6 +100,17 @@ struct certificate::impl_type //{{{1
 		, not_after{to_time(::X509_get_notAfter(this->x509.get()))}
 	{ }
 
+	impl_type (x509_ptr &&x509) noexcept
+		: x509{std::move(x509)}
+		, bytes_buf{std::nothrow, static_cast<size_t>(::i2d_X509(this->x509.get(), nullptr))}
+		, bytes{init_bytes()}
+		, serial_number{init_serial_number()}
+		, common_name{init_common_name()}
+		, fingerprint{init_fingerprint()}
+		, not_before{to_time(::X509_get_notBefore(this->x509.get()))}
+		, not_after{to_time(::X509_get_notAfter(this->x509.get()))}
+	{ }
+
 	std::span<const std::byte> init_bytes (const std::span<const std::byte> &der) noexcept
 	{
 		auto p = static_cast<std::byte *>(bytes_buf.get());
@@ -55,6 +119,17 @@ struct certificate::impl_type //{{{1
 			std::uninitialized_copy(der.begin(), der.end(), p);
 		}
 		return {p, der.size()};
+	}
+
+	std::span<const std::byte> init_bytes () noexcept
+	{
+		if (auto first = static_cast<std::byte *>(bytes_buf.get()))
+		{
+			auto last = first;
+			::i2d_X509(x509.get(), reinterpret_cast<uint8_t **>(&last));
+			return {first, last};
+		}
+		return {};
 	}
 
 	std::span<const uint8_t> init_serial_number () noexcept
@@ -91,16 +166,10 @@ struct certificate::impl_type //{{{1
 	}
 };
 
-result<certificate> certificate::import_der (std::span<const std::byte> der) noexcept
+result<certificate> certificate::import_der (const std::span<const std::byte> &der) noexcept
 {
 	auto data = reinterpret_cast<const uint8_t *>(der.data());
-	impl_type::x509_ptr x509
-	{
-		::d2i_X509(nullptr, &data, static_cast<long>(der.size())),
-		&::X509_free
-	};
-
-	if (x509)
+	if (auto x509 = to_ptr(::d2i_X509(nullptr, &data, static_cast<long>(der.size()))))
 	{
 		impl_ptr impl{new(std::nothrow) impl_type(std::move(x509), der)};
 		if (impl && impl->bytes.data())
@@ -153,7 +222,85 @@ bool certificate::is_issued_by (const certificate &that) const noexcept
 	return ::X509_check_issued(that.impl_->x509.get(), impl_->x509.get()) == X509_V_OK;
 }
 
-struct distinguished_name::impl_type //{{{1
+// certificate_store / pkcs12 {{{1
+
+result<certificate_store> certificate_store::import_pkcs12 (const std::span<const std::byte> &pkcs12, const char *password) noexcept
+{
+	struct pkcs12_store: public impl_api
+	{
+		x509_ptr first;
+		pkey_ptr first_private_key;
+		x509_stack_ptr chain;
+		const size_t chain_size;
+
+		pkcs12_store (x509_ptr &&first, pkey_ptr &&first_private_key, x509_stack_ptr &&chain) noexcept
+			: first{std::move(first)}
+			, first_private_key{std::move(first_private_key)}
+			, chain{std::move(chain)}
+			, chain_size{this->chain ? sk_X509_num(this->chain.get()) : 0ull}
+		{ }
+
+		~pkcs12_store () noexcept override = default;
+
+		size_t size () const noexcept override
+		{
+			return 1 + chain_size;
+		}
+
+		result<certificate::impl_ptr> at (size_t index) const noexcept override
+		{
+			auto cert = to_ptr(static_cast<X509 *>(nullptr));
+
+			if (index == 0)
+			{
+				// TODO: attach first_private_key
+				cert.reset(first.get());
+			}
+			else if (--index < chain_size)
+			{
+				cert.reset(sk_X509_value(chain.get(), index));
+			}
+			else
+			{
+				return make_unexpected(std::errc::invalid_argument);
+			}
+
+			::X509_up_ref(cert.get());
+			if (auto result = certificate::impl_ptr{new(std::nothrow) certificate::impl_type(std::move(cert))})
+			{
+				return result;
+			}
+
+			return make_unexpected(std::errc::not_enough_memory);
+		}
+	};
+
+	auto data = reinterpret_cast<const uint8_t *>(pkcs12.data());
+	std::unique_ptr<::PKCS12, decltype(&::PKCS12_free)> p12
+	{
+		::d2i_PKCS12(nullptr, &data, pkcs12.size_bytes()),
+		&::PKCS12_free
+	};
+
+	X509 *first = nullptr;
+	EVP_PKEY *first_private_key = nullptr;
+	STACK_OF(X509) *chain = nullptr;
+	if (!p12 || !::PKCS12_parse(p12.get(), password, &first_private_key, &first, &chain))
+	{
+		return make_unexpected(std::errc::invalid_argument);
+	}
+
+	if (auto impl = impl_ptr{new(std::nothrow) pkcs12_store(to_ptr(first), to_ptr(first_private_key), to_ptr(chain))})
+	{
+		return certificate_store{std::move(impl)};
+	}
+
+	return make_unexpected(std::errc::not_enough_memory);
+}
+
+// distinguished_name {{{1
+
+struct distinguished_name::impl_type
 {
 	certificate::impl_ptr owner;
 	::X509_NAME &name;
@@ -243,30 +390,27 @@ result<distinguished_name> certificate::subject_name () const noexcept
 	return distinguished_name::impl_type::make(impl_, ::X509_get_subject_name(impl_->x509.get()));
 }
 
-struct alternative_name::impl_type //{{{1
+// alternative_name {{{1
+
+struct alternative_name::impl_type
 {
 	certificate::impl_ptr owner;
-	std::unique_ptr<::GENERAL_NAMES, void(*)(::GENERAL_NAMES *)> name;
+	name_list_ptr name;
 	const size_t size;
 
-	impl_type (certificate::impl_ptr owner, void *name) noexcept
+	impl_type (certificate::impl_ptr owner, name_list_ptr &&name) noexcept
 		: owner{owner}
-		, name{static_cast<::GENERAL_NAMES *>(name), free_name_list}
+		, name{std::move(name)}
 		, size{static_cast<size_t>(::sk_GENERAL_NAME_num(this->name.get()))}
 	{ }
-
-	static void free_name_list (::GENERAL_NAMES *p) noexcept
-	{
-		::sk_GENERAL_NAME_pop_free(p, ::GENERAL_NAME_free);
-	}
 
 	static result<alternative_name> make (certificate::impl_ptr owner, int id) noexcept
 	{
 		impl_ptr list = nullptr;
 
-		if (auto name = ::X509_get_ext_d2i(owner->x509.get(), id, nullptr, nullptr))
+		if (auto name = to_ptr(static_cast<::GENERAL_NAMES *>(::X509_get_ext_d2i(owner->x509.get(), id, nullptr, nullptr))))
 		{
-			list.reset(new(std::nothrow) impl_type(owner, name));
+			list.reset(new(std::nothrow) impl_type(owner, std::move(name)));
 			if (!list)
 			{
 				return make_unexpected(std::errc::not_enough_memory);
@@ -325,27 +469,20 @@ result<alternative_name> certificate::subject_alternative_name () const noexcept
 	return alternative_name::impl_type::make(impl_, NID_subject_alt_name);
 }
 
-struct key::impl_type //{{{1
+// key {{{1
+
+struct key::impl_type
 {
 	certificate::impl_ptr owner;
 	const ::EVP_PKEY &pkey;
 	const size_t size_bits, max_block_size;
 
-	impl_type (certificate::impl_ptr owner, const EVP_PKEY &pkey) noexcept
+	impl_type (certificate::impl_ptr owner) noexcept
 		: owner{owner}
-		, pkey{pkey}
+		, pkey{*::X509_get0_pubkey(owner->x509.get())}
 		, size_bits{static_cast<size_t>(::EVP_PKEY_bits(&pkey))}
 		, max_block_size{static_cast<size_t>(::EVP_PKEY_size(&pkey))}
 	{ }
-
-	static result<key> make (certificate::impl_ptr owner, const EVP_PKEY *pkey) noexcept
-	{
-		if (auto impl = impl_ptr{new(std::nothrow) impl_type(owner, *pkey)})
-		{
-			return key{impl};
-		}
-		return make_unexpected(std::errc::not_enough_memory);
-	}
 };
 
 size_t key::size_bits () const noexcept
@@ -360,7 +497,11 @@ size_t key::max_block_size () const noexcept
 
 result<key> certificate::public_key () const noexcept
 {
-	return key::impl_type::make(impl_, ::X509_get0_pubkey(impl_->x509.get()));
+	if (auto impl = key::impl_ptr{new(std::nothrow) key::impl_type{impl_}})
+	{
+		return key{impl};
+	}
+	return make_unexpected(std::errc::not_enough_memory);
 }
 
 //}}}1

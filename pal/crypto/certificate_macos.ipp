@@ -1,10 +1,14 @@
+// -*- C++ -*-
+
 #include <pal/crypto/hash>
+#include <pal/crypto/certificate_store>
 #include <pal/net/ip/address_v6>
 #include <CoreFoundation/CFNumber.h>
 #include <CoreFoundation/CFString.h>
 #include <CoreFoundation/CFURL.h>
 #include <Security/SecCertificate.h>
 #include <Security/SecCertificateOIDs.h>
+#include <Security/SecImportExport.h>
 #include <Security/SecItem.h>
 #include <Security/SecKey.h>
 
@@ -55,6 +59,23 @@ std::span<const std::byte> to_span (::CFDataRef data) noexcept
 	};
 }
 
+unique_ref<::CFDataRef> from_span (const std::span<const std::byte> &data) noexcept
+{
+	return make_unique(
+		::CFDataCreateWithBytesNoCopy(
+			nullptr,
+			reinterpret_cast<const UInt8 *>(data.data()),
+			data.size(),
+			::kCFAllocatorNull
+		)
+	);
+}
+
+unique_ref<::CFStringRef> from_cstr (const char *data) noexcept
+{
+	return make_unique(::CFStringCreateWithCStringNoCopy(nullptr, data, cstr_encoding, ::kCFAllocatorNull));
+}
+
 certificate::time_type to_time (::SecCertificateRef cert, ::CFTypeRef oid) noexcept
 {
 	::CFAbsoluteTime time{};
@@ -68,7 +89,9 @@ certificate::time_type to_time (::SecCertificateRef cert, ::CFTypeRef oid) noexc
 
 } // namespace
 
-struct certificate::impl_type //{{{1
+// certificate {{{1
+
+struct certificate::impl_type
 {
 	using x509_ptr = unique_ref<::SecCertificateRef>;
 	x509_ptr x509;
@@ -137,7 +160,7 @@ struct certificate::impl_type //{{{1
 				cn.get(),
 				common_name_buf,
 				sizeof(common_name_buf),
-				::kCFStringEncodingUTF8
+				cstr_encoding
 			);
 			return common_name_buf;
 		}
@@ -152,17 +175,9 @@ struct certificate::impl_type //{{{1
 	}
 };
 
-result<certificate> certificate::import_der (std::span<const std::byte> der) noexcept
+result<certificate> certificate::import_der (const std::span<const std::byte> &der) noexcept
 {
-	auto data = make_unique(
-		::CFDataCreateWithBytesNoCopy(
-			nullptr,
-			reinterpret_cast<const UInt8 *>(der.data()),
-			der.size(),
-			kCFAllocatorNull
-		)
-	);
-
+	auto data = from_span(der);
 	if (auto x509 = make_unique(::SecCertificateCreateWithData(nullptr, data.get())))
 	{
 		if (auto impl = impl_ptr{new(std::nothrow) impl_type(std::move(x509))})
@@ -227,7 +242,101 @@ bool certificate::is_issued_by (const certificate &that) const noexcept
 	return std::equal(this_issuer_data, this_issuer_data + this_issuer_size, that_subject_data);
 }
 
-struct distinguished_name::impl_type //{{{1
+// certificate_store / pkcs12 {{{1
+
+result<certificate_store> certificate_store::import_pkcs12 (const std::span<const std::byte> &pkcs12, const char *password) noexcept
+{
+	struct pkcs12_store: public impl_api
+	{
+		unique_ref<::CFArrayRef> chain;
+		const size_t chain_size;
+
+		pkcs12_store (unique_ref<::CFArrayRef> &&chain, size_t chain_size) noexcept
+			: chain{std::move(chain)}
+			, chain_size{chain_size}
+		{ }
+
+		~pkcs12_store () noexcept override = default;
+
+		size_t size () const noexcept override
+		{
+			return chain_size;
+		}
+
+		result<certificate::impl_ptr> at (size_t index) const noexcept override
+		{
+			if (index >= chain_size)
+			{
+				return make_unexpected(std::errc::invalid_argument);
+			}
+
+			auto cert = make_unique((::SecCertificateRef)::CFArrayGetValueAtIndex(chain.get(), index));
+			::CFRetain(cert.get());
+			if (auto result = certificate::impl_ptr{new(std::nothrow) certificate::impl_type(std::move(cert))})
+			{
+				// TODO: attach private_key in identity
+				return result;
+			}
+
+			return make_unexpected(std::errc::not_enough_memory);
+		}
+	};
+
+	auto blob = from_span(pkcs12);
+	auto passphrase = from_cstr(password ? password : "");
+
+	::CFStringRef extension = nullptr;
+	::SecExternalFormat format = ::kSecFormatPKCS12;
+	::SecExternalItemType type = ::kSecItemTypeAggregate;
+	::SecItemImportExportFlags flags = 0;
+	::SecItemImportExportKeyParameters params =
+	{
+		.version = SEC_KEY_IMPORT_EXPORT_PARAMS_VERSION,
+		.flags = ::kSecKeyImportOnlyOne,
+		.passphrase = passphrase.get(),
+		.alertTitle = nullptr,
+		.alertPrompt = nullptr,
+		.accessRef = nullptr,
+		.keyUsage = nullptr,
+		.keyAttributes = nullptr,
+	};
+	::SecKeychainRef keychain = nullptr;
+	::CFArrayRef rv = nullptr;
+
+	auto status = ::SecItemImport(
+		blob.get(),
+		extension,
+		&format,
+		&type,
+		flags,
+		&params,
+		keychain,
+		&rv
+	);
+
+	if (status != ::errSecSuccess)
+	{
+		return make_unexpected(std::errc::invalid_argument);
+	}
+
+	auto chain = make_unique(rv);
+	auto chain_size = ::CFArrayGetCount(chain.get());
+	if (chain_size < 1)
+	{
+		return make_unexpected(std::errc::invalid_argument);
+	}
+
+	if (auto impl = impl_ptr{new(std::nothrow) pkcs12_store(std::move(chain), chain_size)})
+	{
+		return certificate_store{std::move(impl)};
+	}
+
+	return make_unexpected(std::errc::not_enough_memory);
+}
+
+// distinguished_name {{{1
+
+struct distinguished_name::impl_type
 {
 	certificate::impl_ptr owner;
 	unique_ref<::CFArrayRef> name;
@@ -317,7 +426,9 @@ result<distinguished_name> certificate::subject_name () const noexcept
 	return distinguished_name::impl_type::make(impl_, ::kSecOIDX509V1SubjectName);
 }
 
-struct alternative_name::impl_type //{{{1
+// alternative_name {{{1
+
+struct alternative_name::impl_type
 {
 	certificate::impl_ptr owner;
 	unique_ref<::CFArrayRef> name;
@@ -399,7 +510,9 @@ result<alternative_name> certificate::subject_alternative_name () const noexcept
 	return alternative_name::impl_type::make(impl_, ::kSecOIDSubjectAltName);
 }
 
-struct key::impl_type //{{{1
+// key {{{1
+
+struct key::impl_type
 {
 	certificate::impl_ptr owner;
 	unique_ref<::SecKeyRef> pkey;
