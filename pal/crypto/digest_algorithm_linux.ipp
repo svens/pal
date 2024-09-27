@@ -1,3 +1,5 @@
+// -*- C++ -*-
+
 #define OPENSSL_SUPPRESS_DEPRECATED
 #include <openssl/md5.h>
 #undef OPENSSL_SUPPRESS_DEPRECATED

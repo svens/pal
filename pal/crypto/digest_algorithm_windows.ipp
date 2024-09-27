@@ -1,3 +1,5 @@
+// -*- C++ -*-
+
 #include <bcrypt.h>
 
 namespace pal::crypto::algorithm {
