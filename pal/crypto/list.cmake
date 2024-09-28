@@ -23,6 +23,8 @@ list(APPEND pal_sources
 
 list(APPEND pal_test_sources
 	pal/crypto/test
+	pal/crypto/test.pkcs12_protected.ipp
+	pal/crypto/test.pkcs12_unprotected.ipp
 	pal/crypto/certificate.test.cpp
 	pal/crypto/certificate_store.test.cpp
 	pal/crypto/hash.test.cpp

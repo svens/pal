@@ -205,13 +205,15 @@ make_certificate \
   signer_password=IntermediatePassword
 
 # PKCS#12 {{{1
-# 2024-09: OpenSSL-3+ has disabled legacy algorithms that libressl still uses
-# generate stuff here but to make it usable for MacOS, either provide -legacy
-# and configure OpenSSL accordingly or import/export over Windows cert store,
-# after which it can be used by both OpenSSL & libressl
-cat server.key.pem intermediate.pem ca.pem server.pem \
+# see https://stackoverflow.com/questions/70431528/mac-verification-failed-during-pkcs12-import-wrong-password-azure-devops
+# as workaround using openssl for Linux/Windows and libressl on MacOS
+
+cat server.key.pem client.pem intermediate.pem ca.pem server.pem \
   | openssl pkcs12 -export -passin pass:ServerPassword -passout pass:TestPassword \
-  > pkcs12_protected.pfx
-cat server.key.pem intermediate.pem ca.pem server.pem \
+  | xxd -i \
+  | pbcopy
+
+cat server.key.pem client.pem intermediate.pem ca.pem server.pem \
   | openssl pkcs12 -export -passin pass:ServerPassword -passout pass:"" \
-  > pkcs12_unprotected.pfx
+  | xxd -i \
+  | pbcopy
