@@ -290,6 +290,11 @@ struct certificate_store::impl_type
 	{ }
 };
 
+bool certificate_store::empty () const noexcept
+{
+	return impl_->head == nullptr;
+}
+
 result<certificate_store> certificate_store::import_pkcs12 (const std::span<const std::byte> &pkcs12, const char *password) noexcept
 {
 	auto blob = from_span(pkcs12);

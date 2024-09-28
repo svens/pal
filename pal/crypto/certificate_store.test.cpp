@@ -2,6 +2,7 @@
 #include <pal/version>
 #include <pal/crypto/test>
 #include <catch2/catch_test_macros.hpp>
+#include <set>
 
 namespace {
 
@@ -31,8 +32,7 @@ TEST_CASE("crypto/certificate_store")
 			else
 			{
 				REQUIRE(store);
-				auto it = store.value().begin(), end = store.value().end();
-				CHECK(it != end);
+				CHECK_FALSE(store.value().empty());
 			}
 		}
 
@@ -54,8 +54,7 @@ TEST_CASE("crypto/certificate_store")
 		{
 			auto store = certificate_store::from_pkcs12(test_cert::pkcs12_protected, test_cert::pkcs12_password).value();
 			REQUIRE(store);
-			auto it = store.begin(), end = store.end();
-			CHECK(it != end);
+			CHECK_FALSE(store.empty());
 		}
 
 		SECTION("protected / invalid password")
@@ -76,21 +75,22 @@ TEST_CASE("crypto/certificate_store")
 	SECTION("loop")
 	{
 		auto store = certificate_store::from_pkcs12(test_cert::pkcs12_protected, test_cert::pkcs12_password).value();
-		auto it = store.begin(), end = store.end();
 
-		REQUIRE(it != end);
-		CHECK(it->fingerprint() == test_cert::server.fingerprint);
+		std::set<std::string_view> fingerprints;
+		for (auto &cert: store)
+		{
+			fingerprints.insert(cert.fingerprint());
+		}
 
-		it++;
-		REQUIRE(it != end);
-		CHECK(it->fingerprint() == test_cert::intermediate.fingerprint);
+		static const std::set expected =
+		{
+			test_cert::server.fingerprint,
+			test_cert::client.fingerprint,
+			test_cert::intermediate.fingerprint,
+			test_cert::ca.fingerprint,
+		};
 
-		it++;
-		REQUIRE(it != end);
-		CHECK(it->fingerprint() == test_cert::ca.fingerprint);
-
-		it++;
-		CHECK(it == end);
+		CHECK(fingerprints == expected);
 	}
 }
 

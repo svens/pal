@@ -36,6 +36,8 @@ public:
 		return !is_null();
 	}
 
+	bool empty () const noexcept;
+
 	class const_iterator;
 
 	const_iterator begin () const noexcept;
@@ -62,6 +64,7 @@ public:
 	using value_type = certificate;
 	using pointer = const certificate *;
 	using reference = const certificate &;
+	using difference_type = std::ptrdiff_t;
 
 	const_iterator () = default;
 	const_iterator (const const_iterator &) = default;
