@@ -30,12 +30,33 @@ certificate::time_type to_time (const FILETIME &time) noexcept
 	return certificate::clock_type::from_time_t(std::mktime(&tm));
 }
 
+// X509 {{{1
+
 using x509_ptr = std::unique_ptr<const ::CERT_CONTEXT, decltype(&::CertFreeCertificateContext)>;
 
 x509_ptr to_ptr (PCCERT_CONTEXT p) noexcept
 {
 	return {p, &::CertFreeCertificateContext};
 }
+
+// X509 system store {{{1
+
+using store_handle = uintptr_t;
+static_assert(sizeof(store_handle) == sizeof(::HCERTSTORE));
+
+void close_store (store_handle *store) noexcept
+{
+	::CertCloseStore(reinterpret_cast<::HCERTSTORE>(store), 0);
+}
+
+using store_ptr = std::unique_ptr<store_handle, decltype(&close_store)>;
+
+store_ptr to_ptr (::HCERTSTORE store) noexcept
+{
+	return {reinterpret_cast<store_handle *>(store), &close_store};
+}
+
+// }}}1
 
 } // namespace
 
@@ -55,6 +76,11 @@ struct certificate::impl_type
 	std::string_view fingerprint;
 
 	time_type not_before, not_after;
+
+	impl_ptr next = nullptr;
+
+	impl_type (const impl_type &) = delete;
+	impl_type &operator= (const impl_type &) = delete;
 
 	impl_type (x509_ptr &&x509) noexcept
 		: x509{std::move(x509)}
@@ -109,6 +135,39 @@ struct certificate::impl_type
 		encode<hex>(buf, fingerprint_buf);
 		fingerprint_buf[sizeof(fingerprint_buf) - 1] = '\0';
 		return fingerprint_buf;
+	}
+
+	static result<impl_ptr> make_forward_list (store_ptr &&chain) noexcept
+	{
+		impl_ptr head = nullptr;
+
+		::PCCERT_CONTEXT it = nullptr;
+		while ((it = ::CertEnumCertificatesInStore(chain.get(), it)) != nullptr)
+		{
+			auto x509 = to_ptr(::CertDuplicateCertificateContext(it));
+			auto cert = impl_ptr{new(std::nothrow) impl_type(std::move(x509))};
+			if (!cert)
+			{
+				return make_unexpected(std::errc::not_enough_memory);
+			}
+			cert->next = head;
+			head = cert;
+		}
+
+		// reorder: keep head (leaf), reverse rest from intermediate toward issuer
+		if (head->next)
+		{
+			auto rest = std::exchange(head->next, nullptr);
+			while (rest)
+			{
+				auto next = rest->next;
+				rest->next = head->next;
+				head->next = rest;
+				rest = next;
+			}
+		}
+
+		return head;
 	}
 };
 
@@ -186,21 +245,6 @@ bool certificate::is_issued_by (const certificate &that) const noexcept
 
 namespace {
 
-using store_handle = uintptr_t;
-static_assert(sizeof(store_handle *) == sizeof(::HCERTSTORE));
-
-void close_store (store_handle *store) noexcept
-{
-	::CertCloseStore(reinterpret_cast<::HCERTSTORE>(store), 0);
-}
-
-using store_ptr = std::unique_ptr<store_handle, decltype(&close_store)>;
-
-store_ptr to_ptr (::HCERTSTORE store) noexcept
-{
-	return {reinterpret_cast<store_handle *>(store), &close_store};
-}
-
 store_ptr open_store (const std::span<const std::byte> &pkcs12, const char *password)
 {
 	::CRYPT_DATA_BLOB pfx;
@@ -235,67 +279,48 @@ store_ptr open_store (const std::span<const std::byte> &pkcs12, const char *pass
 
 } // namespace
 
+struct certificate_store::impl_type
+{
+	certificate::impl_ptr head;
+
+	impl_type (const certificate::impl_ptr &head) noexcept
+		: head{head}
+	{ }
+};
+
 result<certificate_store> certificate_store::import_pkcs12 (const std::span<const std::byte> &pkcs12, const char *password) noexcept
 {
-	struct pkcs12_store: public impl_api
-	{
-		std::deque<x509_ptr> chain;
-
-		pkcs12_store (std::deque<x509_ptr> &&chain) noexcept
-			: chain{std::move(chain)}
-		{ }
-
-		~pkcs12_store () noexcept override = default;
-
-		size_t size () const noexcept override
-		{
-			return chain.size();
-		}
-
-		result<certificate::impl_ptr> at (size_t index) const noexcept override
-		{
-			if (index >= chain.size())
-			{
-				return make_unexpected(std::errc::invalid_argument);
-			}
-
-			auto x509 = to_ptr(::CertDuplicateCertificateContext(chain[index].get()));
-			if (auto result = certificate::impl_ptr{new(std::nothrow) certificate::impl_type(std::move(x509))})
-			{
-				// TODO: attach private key (::CryptAcquireCertificatePrivateKey)
-				return result;
-			}
-
-			return make_unexpected(std::errc::not_enough_memory);
-		}
-	};
-
-	auto store = open_store(pkcs12, password);
-	if (!store)
+	auto chain = open_store(pkcs12, password);
+	if (!chain)
 	{
 		return make_unexpected(std::errc::invalid_argument);
 	}
 
-	std::deque<x509_ptr> chain{};
-	::PCCERT_CONTEXT it = nullptr;
-	while ((it = ::CertEnumCertificatesInStore(store.get(), it)) != nullptr)
+	auto list = certificate::impl_type::make_forward_list(std::move(chain));
+	if (!list)
 	{
-		try
-		{
-			chain.emplace_front(to_ptr(::CertDuplicateCertificateContext(it)));
-		}
-		catch (const std::bad_alloc &)
-		{
-			return make_unexpected(std::errc::not_enough_memory);
-		}
+		return unexpected{list.error()};
 	}
 
-	if (auto impl = impl_ptr{new(std::nothrow) pkcs12_store(std::move(chain))})
+	auto impl = impl_ptr{new(std::nothrow) impl_type(std::move(*list))};
+	if (!impl)
 	{
-		return certificate_store{std::move(impl)};
+		return make_unexpected(std::errc::not_enough_memory);
 	}
 
-	return make_unexpected(std::errc::not_enough_memory);
+	// TODO: attach private key (::CryptAcquireCertificatePrivateKey)
+
+	return certificate_store{std::move(impl)};
+}
+
+certificate_store::const_iterator::const_iterator (const impl_type &store) noexcept
+	: entry_{store.head}
+{ }
+
+certificate_store::const_iterator &certificate_store::const_iterator::operator++ () noexcept
+{
+	entry_.impl_ = entry_.impl_->next;
+	return *this;
 }
 
 // distinguished_name {{{1

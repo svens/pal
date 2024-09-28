@@ -112,6 +112,11 @@ struct certificate::impl_type
 
 	time_type not_before, not_after;
 
+	impl_ptr next = nullptr;
+
+	impl_type (const impl_type &) = delete;
+	impl_type &operator= (const impl_type &) = delete;
+
 	impl_type (x509_ptr &&x509) noexcept
 		: x509{std::move(x509)}
 		, bytes_buf{make_unique(::SecCertificateCopyData(this->x509.get()))}
@@ -172,6 +177,38 @@ struct certificate::impl_type
 		encode<hex>(*sha1_hash::one_shot(bytes), fingerprint_buf);
 		fingerprint_buf[sizeof(fingerprint_buf) - 1] = '\0';
 		return fingerprint_buf;
+	}
+
+	static result<impl_ptr> make_forward_list (unique_ref<::CFArrayRef> &&chain) noexcept
+	{
+		impl_ptr head;
+
+		auto index = ::CFArrayGetCount(chain.get());
+		if (index)
+		{
+			auto cert = make_unique((::SecCertificateRef)::CFArrayGetValueAtIndex(chain.get(), 0));
+			::CFRetain(cert.get());
+
+			head = impl_ptr(new(std::nothrow) impl_type{std::move(cert)});
+			if (!head)
+			{
+				return make_unexpected(std::errc::not_enough_memory);
+			}
+		}
+
+		for (auto tail = head;  index > 1;  tail = tail->next)
+		{
+			auto cert = make_unique((::SecCertificateRef)::CFArrayGetValueAtIndex(chain.get(), --index));
+			::CFRetain(cert.get());
+
+			tail->next = impl_ptr{new(std::nothrow) impl_type{std::move(cert)}};
+			if (!tail->next)
+			{
+				return make_unexpected(std::errc::not_enough_memory);
+			}
+		}
+
+		return head;
 	}
 };
 
@@ -244,44 +281,17 @@ bool certificate::is_issued_by (const certificate &that) const noexcept
 
 // certificate_store / pkcs12 {{{1
 
+struct certificate_store::impl_type
+{
+	certificate::impl_ptr head;
+
+	impl_type (const certificate::impl_ptr &head) noexcept
+		: head{head}
+	{ }
+};
+
 result<certificate_store> certificate_store::import_pkcs12 (const std::span<const std::byte> &pkcs12, const char *password) noexcept
 {
-	struct pkcs12_store: public impl_api
-	{
-		unique_ref<::CFArrayRef> chain;
-		const size_t chain_size;
-
-		pkcs12_store (unique_ref<::CFArrayRef> &&chain, size_t chain_size) noexcept
-			: chain{std::move(chain)}
-			, chain_size{chain_size}
-		{ }
-
-		~pkcs12_store () noexcept override = default;
-
-		size_t size () const noexcept override
-		{
-			return chain_size;
-		}
-
-		result<certificate::impl_ptr> at (size_t index) const noexcept override
-		{
-			if (index >= chain_size)
-			{
-				return make_unexpected(std::errc::invalid_argument);
-			}
-
-			auto cert = make_unique((::SecCertificateRef)::CFArrayGetValueAtIndex(chain.get(), index));
-			::CFRetain(cert.get());
-			if (auto result = certificate::impl_ptr{new(std::nothrow) certificate::impl_type(std::move(cert))})
-			{
-				// TODO: attach private_key in identity
-				return result;
-			}
-
-			return make_unexpected(std::errc::not_enough_memory);
-		}
-	};
-
 	auto blob = from_span(pkcs12);
 	auto passphrase = from_cstr(password ? password : "");
 
@@ -313,25 +323,36 @@ result<certificate_store> certificate_store::import_pkcs12 (const std::span<cons
 		keychain,
 		&rv
 	);
-
 	if (status != ::errSecSuccess)
 	{
 		return make_unexpected(std::errc::invalid_argument);
 	}
 
-	auto chain = make_unique(rv);
-	auto chain_size = ::CFArrayGetCount(chain.get());
-	if (chain_size < 1)
+	auto chain = certificate::impl_type::make_forward_list(make_unique(rv));
+	if (!chain)
 	{
-		return make_unexpected(std::errc::invalid_argument);
+		return unexpected{chain.error()};
 	}
 
-	if (auto impl = impl_ptr{new(std::nothrow) pkcs12_store(std::move(chain), chain_size)})
+	auto impl = impl_ptr{new(std::nothrow) impl_type(*chain)};
+	if (!impl)
 	{
-		return certificate_store{std::move(impl)};
+		return make_unexpected(std::errc::not_enough_memory);
 	}
 
-	return make_unexpected(std::errc::not_enough_memory);
+	// TODO: attach private_key in identity
+
+	return certificate_store{std::move(impl)};
+}
+
+certificate_store::const_iterator::const_iterator (const impl_type &store) noexcept
+	: entry_{store.head}
+{ }
+
+certificate_store::const_iterator &certificate_store::const_iterator::operator++ () noexcept
+{
+	entry_.impl_ = entry_.impl_->next;
+	return *this;
 }
 
 // distinguished_name {{{1

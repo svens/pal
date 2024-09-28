@@ -16,10 +16,8 @@ class certificate_store
 {
 public:
 
-	/// TODO
 	certificate_store () noexcept = default;
 
-	/// TODO
 	template <typename Data>
 	static result<certificate_store> from_pkcs12 (const Data &pkcs12, const char *password = nullptr) noexcept
 	{
@@ -38,29 +36,15 @@ public:
 		return !is_null();
 	}
 
-	size_t size () const noexcept
-	{
-		return impl_->size();
-	}
+	class const_iterator;
 
-	result<certificate> at (size_t index) const noexcept
-	{
-		static constexpr auto impl_to_api = [](certificate::impl_ptr &&impl) -> certificate
-		{
-			return {impl};
-		};
-		return impl_->at(index).transform(impl_to_api);
-	}
+	const_iterator begin () const noexcept;
+	const_iterator end () const noexcept;
 
 private:
 
-	struct impl_api
-	{
-		virtual ~impl_api () noexcept = default;
-		virtual size_t size () const noexcept = 0;
-		virtual result<certificate::impl_ptr> at (size_t index) const noexcept = 0;
-	};
-	using impl_ptr = std::unique_ptr<impl_api>;
+	struct impl_type;
+	using impl_ptr = std::shared_ptr<impl_type>;
 	impl_ptr impl_{};
 
 	certificate_store (impl_ptr &&impl) noexcept
@@ -69,5 +53,66 @@ private:
 
 	static result<certificate_store> import_pkcs12 (const std::span<const std::byte> &pkcs12, const char *password) noexcept;
 };
+
+class certificate_store::const_iterator
+{
+public:
+
+	using iterator_category = std::forward_iterator_tag;
+	using value_type = certificate;
+	using pointer = const certificate *;
+	using reference = const certificate &;
+
+	const_iterator () = default;
+	const_iterator (const const_iterator &) = default;
+	const_iterator &operator= (const const_iterator &) = default;
+
+	bool operator== (const const_iterator &that) const noexcept
+	{
+		return entry_.impl_ == that.entry_.impl_;
+	}
+
+	bool operator!= (const const_iterator &that) const noexcept
+	{
+		return !operator==(that);
+	}
+
+	const_iterator &operator++ () noexcept;
+
+	const_iterator operator++ (int) noexcept
+	{
+		auto result = *this;
+		this->operator++();
+		return result;
+	}
+
+	reference operator* () const noexcept
+	{
+		return entry_;
+	}
+
+	pointer operator-> () const noexcept
+	{
+		return &entry_;
+	}
+
+private:
+
+	certificate entry_{};
+
+	const_iterator (const impl_type &store) noexcept;
+
+	friend class certificate_store;
+};
+
+inline certificate_store::const_iterator certificate_store::begin () const noexcept
+{
+	return {*impl_};
+}
+
+inline certificate_store::const_iterator certificate_store::end () const noexcept
+{
+	return {};
+}
 
 } // pal::crypto

@@ -89,6 +89,11 @@ struct certificate::impl_type
 
 	time_type not_before, not_after;
 
+	impl_ptr next = nullptr;
+
+	impl_type (const impl_type &) = delete;
+	impl_type &operator= (const impl_type &) = delete;
+
 	impl_type (x509_ptr &&x509, const std::span<const std::byte> &der) noexcept
 		: x509{std::move(x509)}
 		, bytes_buf{std::nothrow, der.size()}
@@ -164,6 +169,27 @@ struct certificate::impl_type
 		fingerprint_buf[sizeof(fingerprint_buf) - 1] = '\0';
 		return fingerprint_buf;
 	}
+
+	static result<impl_ptr> make_forward_list (x509_ptr &&first, x509_stack_ptr &&chain) noexcept
+	{
+		auto head = impl_ptr{new(std::nothrow) impl_type{std::move(first)}};
+		if (!head)
+		{
+			return make_unexpected(std::errc::not_enough_memory);
+		}
+
+		for (auto tail = head; ::sk_X509_num(chain.get()) > 0; tail = tail->next)
+		{
+			first.reset(sk_X509_pop(chain.get()));
+			tail->next = impl_ptr{new(std::nothrow) impl_type(std::move(first))};
+			if (!tail->next)
+			{
+				return make_unexpected(std::errc::not_enough_memory);
+			}
+		}
+
+		return head;
+	}
 };
 
 result<certificate> certificate::import_der (const std::span<const std::byte> &der) noexcept
@@ -224,57 +250,17 @@ bool certificate::is_issued_by (const certificate &that) const noexcept
 
 // certificate_store / pkcs12 {{{1
 
+struct certificate_store::impl_type
+{
+	certificate::impl_ptr head;
+
+	impl_type (const certificate::impl_ptr &head) noexcept
+		: head{head}
+	{ }
+};
+
 result<certificate_store> certificate_store::import_pkcs12 (const std::span<const std::byte> &pkcs12, const char *password) noexcept
 {
-	struct pkcs12_store: public impl_api
-	{
-		x509_ptr first;
-		pkey_ptr first_private_key;
-		x509_stack_ptr chain;
-		const size_t chain_size;
-
-		pkcs12_store (x509_ptr &&first, pkey_ptr &&first_private_key, x509_stack_ptr &&chain) noexcept
-			: first{std::move(first)}
-			, first_private_key{std::move(first_private_key)}
-			, chain{std::move(chain)}
-			, chain_size{this->chain ? sk_X509_num(this->chain.get()) : 0ull}
-		{ }
-
-		~pkcs12_store () noexcept override = default;
-
-		size_t size () const noexcept override
-		{
-			return 1 + chain_size;
-		}
-
-		result<certificate::impl_ptr> at (size_t index) const noexcept override
-		{
-			auto cert = to_ptr(static_cast<X509 *>(nullptr));
-
-			if (index == 0)
-			{
-				// TODO: attach first_private_key
-				cert.reset(first.get());
-			}
-			else if (--index < chain_size)
-			{
-				cert.reset(sk_X509_value(chain.get(), index));
-			}
-			else
-			{
-				return make_unexpected(std::errc::invalid_argument);
-			}
-
-			::X509_up_ref(cert.get());
-			if (auto result = certificate::impl_ptr{new(std::nothrow) certificate::impl_type(std::move(cert))})
-			{
-				return result;
-			}
-
-			return make_unexpected(std::errc::not_enough_memory);
-		}
-	};
-
 	auto data = reinterpret_cast<const uint8_t *>(pkcs12.data());
 	std::unique_ptr<::PKCS12, decltype(&::PKCS12_free)> p12
 	{
@@ -290,12 +276,32 @@ result<certificate_store> certificate_store::import_pkcs12 (const std::span<cons
 		return make_unexpected(std::errc::invalid_argument);
 	}
 
-	if (auto impl = impl_ptr{new(std::nothrow) pkcs12_store(to_ptr(first), to_ptr(first_private_key), to_ptr(chain))})
+	auto list = certificate::impl_type::make_forward_list(to_ptr(first), to_ptr(chain));
+	if (!list)
 	{
-		return certificate_store{std::move(impl)};
+		return unexpected{list.error()};
 	}
 
-	return make_unexpected(std::errc::not_enough_memory);
+	auto impl = impl_ptr{new(std::nothrow) impl_type(*list)};
+	if (!impl)
+	{
+		return make_unexpected(std::errc::not_enough_memory);
+	}
+
+	// TODO: attach to first cert in list
+	std::ignore = to_ptr(first_private_key);
+
+	return certificate_store{std::move(impl)};
+}
+
+certificate_store::const_iterator::const_iterator (const impl_type &store) noexcept
+	: entry_{store.head}
+{ }
+
+certificate_store::const_iterator &certificate_store::const_iterator::operator++ () noexcept
+{
+	entry_.impl_ = entry_.impl_->next;
+	return *this;
 }
 
 // distinguished_name {{{1
