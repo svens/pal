@@ -21,6 +21,39 @@ certificate::time_type to_time (const ::ASN1_TIME *time) noexcept
 	return certificate::clock_type::from_time_t(std::mktime(&tm));
 }
 
+size_t copy_string (const ::ASN1_STRING *s, char *first, char *last) noexcept
+{
+	*first = *(last - 1) = '\0';
+
+	// in general, ASN1_STRING_get0_data may contain '\0' in content
+	// but in this file it is used only to copy SAN values, should be ok
+	std::strncat(first, reinterpret_cast<const char *>(::ASN1_STRING_get0_data(s)), last - first - 1);
+
+	return ::ASN1_STRING_length(s);
+}
+
+size_t copy_ip (const ::ASN1_OCTET_STRING *s, char *first, char *last) noexcept
+{
+	*first = '\0';
+	if (s->length == sizeof(net::ip::address_v4::bytes_type))
+	{
+		auto &bytes = *reinterpret_cast<const net::ip::address_v4::bytes_type *>(s->data);
+		return net::ip::make_address_v4(bytes).to_chars(first, last).ptr - first;
+	}
+	else if (s->length == sizeof(net::ip::address_v6::bytes_type))
+	{
+		auto &bytes = *reinterpret_cast<const net::ip::address_v6::bytes_type *>(s->data);
+		return net::ip::make_address_v6(bytes).to_chars(first, last).ptr - first;
+	}
+	return 0;
+}
+
+template <size_t N>
+void copy_oid (const ::ASN1_OBJECT *o, char (&buf)[N]) noexcept
+{
+	::OBJ_obj2txt(buf, N, o, 1);
+}
+
 // X509 {{{1
 
 using x509_ptr = std::unique_ptr<::X509, decltype(&::X509_free)>;
@@ -248,6 +281,47 @@ bool certificate::is_issued_by (const certificate &that) const noexcept
 	return ::X509_check_issued(that.impl_->x509.get(), impl_->x509.get()) == X509_V_OK;
 }
 
+alternative_name_values certificate::subject_alternative_name_values () const noexcept
+{
+	auto names = to_ptr(static_cast<::GENERAL_NAMES *>(::X509_get_ext_d2i(impl_->x509.get(), NID_subject_alt_name, nullptr, nullptr)));
+
+	alternative_name_values result{};
+	auto *p = result.data_, * const end = p + sizeof(result.data_);
+	size_t index_size = 0;
+
+	auto count = ::sk_GENERAL_NAME_num(names.get());
+	for (auto i = 0; i < count && index_size < result.max_index_size && p < end; ++i)
+	{
+		size_t value_size = 0;
+
+		const auto &entry = *sk_GENERAL_NAME_value(names.get(), i);
+		if (entry.type == GEN_DNS)
+		{
+			value_size = copy_string(entry.d.dNSName, p, end);
+		}
+		else if (entry.type == GEN_EMAIL)
+		{
+			value_size = copy_string(entry.d.rfc822Name, p, end);
+		}
+		else if (entry.type == GEN_IPADD)
+		{
+			value_size = copy_string(entry.d.iPAddress, p, end);
+		}
+		else if (entry.type == GEN_URI)
+		{
+			value_size = copy_string(entry.d.uniformResourceIdentifier, p, end);
+		}
+
+		if (value_size)
+		{
+			result.index_[index_size++] = {p, value_size};
+			p += value_size;
+		}
+	}
+
+	return result;
+}
+
 // certificate_store / pkcs12 {{{1
 
 struct certificate_store::impl_type
@@ -340,39 +414,6 @@ struct distinguished_name::impl_type
 	}
 };
 
-namespace {
-
-template <size_t N>
-void copy_string (const ::ASN1_STRING *s, char (&buf)[N]) noexcept
-{
-	buf[0] = buf[N - 1] = '\0';
-	std::strncat(buf, reinterpret_cast<const char *>(::ASN1_STRING_get0_data(s)), N - 1);
-}
-
-template <size_t N>
-void copy_ip (const ::ASN1_OCTET_STRING *s, char (&buf)[N]) noexcept
-{
-	buf[0] = '\0';
-	if (s->length == sizeof(net::ip::address_v4::bytes_type))
-	{
-		auto &bytes = *reinterpret_cast<const net::ip::address_v4::bytes_type *>(s->data);
-		net::ip::make_address_v4(bytes).to_chars(buf, buf + N);
-	}
-	else if (s->length == sizeof(net::ip::address_v6::bytes_type))
-	{
-		auto &bytes = *reinterpret_cast<const net::ip::address_v6::bytes_type *>(s->data);
-		net::ip::make_address_v6(bytes).to_chars(buf, buf + N);
-	}
-}
-
-template <size_t N>
-void copy_oid (const ::ASN1_OBJECT *o, char (&buf)[N]) noexcept
-{
-	::OBJ_obj2txt(buf, N, o, 1);
-}
-
-} // namespace
-
 void distinguished_name::const_iterator::load_next_entry () noexcept
 {
 	if (at_ < owner_->size)
@@ -382,7 +423,7 @@ void distinguished_name::const_iterator::load_next_entry () noexcept
 		copy_oid(::X509_NAME_ENTRY_get_object(entry), oid_);
 		entry_.oid = oid_;
 
-		copy_string(::X509_NAME_ENTRY_get_data(entry), value_);
+		copy_string(::X509_NAME_ENTRY_get_data(entry), value_, value_ + sizeof(value_));
 		entry_.value = value_;
 
 		return;
@@ -445,22 +486,22 @@ void alternative_name::const_iterator::load_next_entry () noexcept
 		switch (entry.type)
 		{
 			case GEN_DNS:
-				copy_string(entry.d.dNSName, entry_value_);
+				copy_string(entry.d.dNSName, entry_value_, entry_value_ + sizeof(entry_value_));
 				entry_.emplace<dns_name>(entry_value_);
 				return;
 
 			case GEN_EMAIL:
-				copy_string(entry.d.rfc822Name, entry_value_);
+				copy_string(entry.d.rfc822Name, entry_value_, entry_value_ + sizeof(entry_value_));
 				entry_.emplace<email_address>(entry_value_);
 				return;
 
 			case GEN_IPADD:
-				copy_ip(entry.d.iPAddress, entry_value_);
+				copy_ip(entry.d.iPAddress, entry_value_, entry_value_ + sizeof(entry_value_));
 				entry_.emplace<ip_address>(entry_value_);
 				return;
 
 			case GEN_URI:
-				copy_string(entry.d.uniformResourceIdentifier, entry_value_);
+				copy_string(entry.d.uniformResourceIdentifier, entry_value_, entry_value_ + sizeof(entry_value_));
 				entry_.emplace<uri>(entry_value_);
 				return;
 		}

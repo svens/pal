@@ -10,9 +10,6 @@ namespace {
 
 using pal::crypto::certificate;
 using pal::crypto::certificate_store;
-using pal::crypto::with_common_name;
-using pal::crypto::with_fingerprint;
-using pal::crypto::with_fqdn;
 
 namespace test_cert = pal_test::cert;
 
@@ -104,32 +101,32 @@ TEST_CASE("crypto/certificate_store")
 			CHECK(fingerprints == expected);
 		}
 
-		SECTION("with_fingerprint")
+		SECTION("has_fingerprint")
 		{
 			std::copy_if(store.begin(), store.end(),
 				std::back_inserter(result),
-				with_fingerprint(test_cert::server.fingerprint)
+				certificate::has_fingerprint(test_cert::server.fingerprint)
 			);
 			REQUIRE(result.size() == 1);
 			CHECK(result[0].fingerprint() == test_cert::server.fingerprint);
 		}
 
-		SECTION("with_common_name")
+		SECTION("has_common_name")
 		{
 			std::copy_if(store.begin(), store.end(),
 				std::back_inserter(result),
-				with_common_name("pal.alt.ee")
+				certificate::has_common_name("pal.alt.ee")
 			);
 			REQUIRE(result.size() == 2);
 			CHECK(result[0].fingerprint() == test_cert::server.fingerprint);
 			CHECK(result[1].fingerprint() == test_cert::client.fingerprint);
 		}
 
-		SECTION("with_fqdn")
+		SECTION("has_subject_alternative_name")
 		{
 			std::copy_if(store.begin(), store.end(),
 				std::back_inserter(result),
-				with_fqdn("client.pal.alt.ee")
+				certificate::has_subject_alternative_name("client.pal.alt.ee")
 			);
 			REQUIRE(result.size() == 2);
 			CHECK(result[0].fingerprint() == test_cert::server.fingerprint);
@@ -138,12 +135,11 @@ TEST_CASE("crypto/certificate_store")
 			result.clear();
 			std::copy_if(store.begin(), store.end(),
 				std::back_inserter(result),
-				with_fqdn("server.pal.alt.ee")
+				certificate::has_subject_alternative_name("server.pal.alt.ee")
 			);
 			REQUIRE(result.size() == 1);
 			CHECK(result[0].fingerprint() == test_cert::server.fingerprint);
 		}
-
 	}
 }
 

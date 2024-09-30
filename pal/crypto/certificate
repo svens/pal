@@ -8,6 +8,7 @@
  */
 
 #include <pal/crypto/alternative_name>
+#include <pal/crypto/alternative_name_values>
 #include <pal/crypto/distinguished_name>
 #include <pal/crypto/key>
 #include <pal/result>
@@ -118,8 +119,50 @@ public:
 	/// Returns subject alternative name of \a this certificate
 	result<alternative_name> subject_alternative_name () const noexcept;
 
+	/// Returns concatenated content of subject alternative name, filtered by type
+	/// - DNS
+	/// - IP
+	/// - email
+	/// - URI
+	///
+	/// Value type is not preserved, only value text is stored. Application that needs
+	/// both should use alternative names from subject_alternative_name() instead.
+	alternative_name_values subject_alternative_name_values () const noexcept;
+
 	/// Returns certificate public key
 	result<key> public_key () const noexcept;
+
+	/// \defgroup certificate_predicates predicates checking certificate properties
+	/// \{
+
+	/// Returns predicate that checks if certificate has specified \a common_name
+	static constexpr auto has_common_name (const std::string_view &common_name) noexcept
+	{
+		return [=](const certificate &cert) -> bool
+		{
+			return cert.common_name() == common_name;
+		};
+	}
+
+	/// Returns predicate that checks if certificate has specified \a fingerprint
+	static constexpr auto has_fingerprint (const std::string_view &fingerprint) noexcept
+	{
+		return [=](const certificate &cert) -> bool
+		{
+			return cert.fingerprint() == fingerprint;
+		};
+	}
+
+	/// Returns predicate that checks if certificate subject alternative name contains \a fqdn
+	static constexpr auto has_subject_alternative_name (const std::string_view &fqdn) noexcept
+	{
+		return [=](const certificate &cert) -> bool
+		{
+			return cert.subject_alternative_name_values().contains(fqdn);
+		};
+	}
+
+	/// \}
 
 private:
 

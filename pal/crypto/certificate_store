@@ -118,28 +118,4 @@ inline certificate_store::const_iterator certificate_store::end () const noexcep
 	return {};
 }
 
-inline auto with_common_name (const std::string_view &common_name)
-{
-	return [=](const certificate &cert) -> bool
-	{
-		return cert.common_name() == common_name;
-	};
-}
-
-inline auto with_fingerprint (const std::string_view &fingerprint)
-{
-	return [=](const certificate &cert) -> bool
-	{
-		return cert.fingerprint() == fingerprint;
-	};
-}
-
-inline auto with_fqdn (const std::string_view &fqdn)
-{
-	return [=](const certificate &cert) -> bool
-	{
-		return cert.subject_alternative_name().value().has_fqdn_match(fqdn);
-	};
-}
-
 } // pal::crypto

@@ -327,40 +327,38 @@ TEST_CASE("crypto/certificate")
 		CHECK(name.error() == std::errc::not_enough_memory);
 	}
 
-	SECTION("subject_alternative_name: has_fqdn_match") //{{{1
+	SECTION("subject_alternative_name_values") //{{{1
 	{
 		{
-			auto c = certificate::from_pem(test_cert::server.pem).value();
-			auto name = c.subject_alternative_name().value();
+			auto san = certificate::from_pem(test_cert::server.pem).value().subject_alternative_name_values();
 
-			CHECK(name.has_fqdn_match("server.pal.alt.ee"));
-			CHECK(name.has_fqdn_match("client.pal.alt.ee"));
+			CHECK(san.contains("server.pal.alt.ee"));
+			CHECK(san.contains("client.pal.alt.ee"));
 
-			CHECK_FALSE(name.has_fqdn_match("ee"));
-			CHECK_FALSE(name.has_fqdn_match(".ee"));
-			CHECK_FALSE(name.has_fqdn_match("alt.ee"));
-			CHECK_FALSE(name.has_fqdn_match(".alt.ee"));
-			CHECK_FALSE(name.has_fqdn_match("pal.alt.ee"));
-			CHECK_FALSE(name.has_fqdn_match(".pal.alt.ee"));
-			CHECK_FALSE(name.has_fqdn_match("*.pal.alt.ee"));
-			CHECK_FALSE(name.has_fqdn_match("subdomain1.subdomain2.pal.alt.ee"));
+			CHECK_FALSE(san.contains("ee"));
+			CHECK_FALSE(san.contains(".ee"));
+			CHECK_FALSE(san.contains("alt.ee"));
+			CHECK_FALSE(san.contains(".alt.ee"));
+			CHECK_FALSE(san.contains("pal.alt.ee"));
+			CHECK_FALSE(san.contains(".pal.alt.ee"));
+			CHECK_FALSE(san.contains("*.pal.alt.ee"));
+			CHECK_FALSE(san.contains("subdomain1.subdomain2.pal.alt.ee"));
 		}
 
 		{
-			auto c = certificate::from_pem(test_cert::client.pem).value();
-			auto name = c.subject_alternative_name().value();
+			auto san = certificate::from_pem(test_cert::client.pem).value().subject_alternative_name_values();
 
-			CHECK(name.has_fqdn_match("client.pal.alt.ee"));
+			CHECK(san.contains("client.pal.alt.ee"));
 
-			CHECK_FALSE(name.has_fqdn_match("server.pal.alt.ee"));
-			CHECK_FALSE(name.has_fqdn_match("ee"));
-			CHECK_FALSE(name.has_fqdn_match(".ee"));
-			CHECK_FALSE(name.has_fqdn_match("alt.ee"));
-			CHECK_FALSE(name.has_fqdn_match(".alt.ee"));
-			CHECK_FALSE(name.has_fqdn_match("pal.alt.ee"));
-			CHECK_FALSE(name.has_fqdn_match(".pal.alt.ee"));
-			CHECK_FALSE(name.has_fqdn_match("*.pal.alt.ee"));
-			CHECK_FALSE(name.has_fqdn_match("subdomain1.subdomain2.pal.alt.ee"));
+			CHECK_FALSE(san.contains("server.pal.alt.ee"));
+			CHECK_FALSE(san.contains("ee"));
+			CHECK_FALSE(san.contains(".ee"));
+			CHECK_FALSE(san.contains("alt.ee"));
+			CHECK_FALSE(san.contains(".alt.ee"));
+			CHECK_FALSE(san.contains("pal.alt.ee"));
+			CHECK_FALSE(san.contains(".pal.alt.ee"));
+			CHECK_FALSE(san.contains("*.pal.alt.ee"));
+			CHECK_FALSE(san.contains("subdomain1.subdomain2.pal.alt.ee"));
 		}
 	}
 

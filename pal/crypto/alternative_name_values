@@ -1,0 +1,69 @@
+#pragma once // -*- C++ -*-
+
+/**
+ * \file pal/crypto/alternative_name_values
+ * Certificate alternative name value list
+ */
+
+#include <array>
+#include <string_view>
+
+namespace pal::crypto {
+
+class alternative_name_values
+{
+public:
+
+	static constexpr size_t max_index_size = 16;
+
+	const std::array<std::string_view, max_index_size> &index () const noexcept
+	{
+		return index_;
+	}
+
+	bool contains (const std::string_view &value) const noexcept
+	{
+		if (value.starts_with('.') || value.starts_with('*'))
+		{
+			return false;
+		}
+
+		for (auto &entry: index_)
+		{
+			if (entry.empty())
+			{
+				return false;
+			}
+			else if (matches(value, entry))
+			{
+				return true;
+			}
+		}
+
+		return false;
+	}
+
+private:
+
+	// specific values are chosen to make sizeof(*this) == 4096 for no particular reason
+	std::array<std::string_view, max_index_size> index_{};
+	char data_[max_index_size * 240] = {};
+
+	static bool matches (std::string_view value, std::string_view expected) noexcept
+	{
+		if (expected.starts_with("*."))
+		{
+			if (auto subdomain = value.find('.'); subdomain != value.npos)
+			{
+				value.remove_prefix(subdomain);
+				expected.remove_prefix(1);
+			}
+		}
+		return value == expected;
+	}
+
+	alternative_name_values () noexcept = default;
+	friend class certificate;
+};
+
+} // namespace pal::crypto

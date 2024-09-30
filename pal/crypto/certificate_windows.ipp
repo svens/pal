@@ -30,6 +30,96 @@ certificate::time_type to_time (const FILETIME &time) noexcept
 	return certificate::clock_type::from_time_t(std::mktime(&tm));
 }
 
+size_t copy_oid (const CERT_RDN_ATTR &entry, char *first, char *last) noexcept
+{
+	*first = *(last - 1) = '\0';
+	return std::snprintf(first, last - first, "%s", entry.pszObjId);
+}
+
+size_t copy_string (const LPWSTR &string, char *first, char *last) noexcept
+{
+	*first = *(last - 1) = '\0';
+	auto size = ::WideCharToMultiByte(
+		CP_UTF8,
+		0,
+		string,
+		-1,
+		first,
+		static_cast<int>(last - first),
+		nullptr,
+		nullptr
+	);
+	return size > 0 ? size - 1 : 0;
+}
+
+size_t copy_ip (const void *data, size_t length, char *first, char *last) noexcept
+{
+	*first = '\0';
+	if (length == sizeof(net::ip::address_v4::bytes_type))
+	{
+		auto &bytes = *static_cast<const net::ip::address_v4::bytes_type *>(data);
+		return net::ip::make_address_v4(bytes).to_chars(first, last).ptr - first;
+	}
+	else if (length == sizeof(net::ip::address_v6::bytes_type))
+	{
+		auto &bytes = *static_cast<const net::ip::address_v6::bytes_type *>(data);
+		return net::ip::make_address_v6(bytes).to_chars(first, last).ptr - first;
+	}
+	return 0;
+}
+
+size_t copy_rdn_value (const CERT_RDN_ATTR &entry, char *first, char *last) noexcept
+{
+	auto size = ::CertRDNValueToStr(
+		entry.dwValueType,
+		const_cast<CERT_RDN_VALUE_BLOB *>(&entry.Value),
+		first,
+		static_cast<DWORD>(last - first)
+	);
+	return size > 0 ? size - 1 : 0;
+}
+
+template <typename T, size_t Size>
+struct asn_decoder
+{
+	LPCSTR type;
+	std::span<const BYTE> asn;
+	const DWORD buffer_size;
+	temporary_buffer<Size> buffer;
+	const T &value;
+
+	asn_decoder (LPCSTR type, std::span<const BYTE> asn) noexcept
+		: type{type}
+		, asn{asn}
+		, buffer_size{decode(nullptr, 0)}
+		, buffer{std::nothrow, buffer_size}
+		, value{*reinterpret_cast<const T *>(buffer.get())}
+	{
+		decode(buffer.get(), buffer_size);
+	}
+
+	DWORD decode (void *buf, DWORD buf_size) const noexcept
+	{
+		static constexpr DWORD decode_flags =
+			CRYPT_DECODE_NOCOPY_FLAG |
+			CRYPT_DECODE_SHARE_OID_STRING_FLAG
+		;
+
+		DWORD size = buf_size;
+		::CryptDecodeObjectEx(
+			X509_ASN_ENCODING,
+			type,
+			asn.data(),
+			static_cast<DWORD>(asn.size()),
+			decode_flags,
+			nullptr,
+			buf,
+			&size
+		);
+		return size;
+	}
+};
+
 // X509 {{{1
 
 using x509_ptr = std::unique_ptr<const ::CERT_CONTEXT, decltype(&::CertFreeCertificateContext)>;
@@ -241,6 +331,56 @@ bool certificate::is_issued_by (const certificate &that) const noexcept
 	);
 }
 
+alternative_name_values certificate::subject_alternative_name_values () const noexcept
+{
+	auto &info = *impl_->x509->pCertInfo;
+	auto ext = ::CertFindExtension(szOID_SUBJECT_ALT_NAME2, info.cExtension, info.rgExtension);
+	if (!ext)
+	{
+		return {};
+	}
+
+	asn_decoder<CERT_ALT_NAME_INFO, 4096> name{X509_ALTERNATE_NAME, {ext->Value.pbData, ext->Value.cbData}};
+	auto count = name.value.cAltEntry;
+
+	alternative_name_values result{};
+	auto *p = result.data_, * const end = p + sizeof(result.data_);
+	size_t index_size = 0;
+
+	for (auto i = 0u; i < count && index_size < result.max_index_size && p < end; ++i)
+	{
+		size_t value_size = 0;
+
+		const auto &entry = name.value.rgAltEntry[i];
+		switch (entry.dwAltNameChoice)
+		{
+			case CERT_ALT_NAME_DNS_NAME:
+				value_size = copy_string(entry.pwszDNSName, p, end);
+				break;
+
+			case CERT_ALT_NAME_RFC822_NAME:
+				value_size = copy_string(entry.pwszRfc822Name, p, end);
+				break;
+
+			case CERT_ALT_NAME_IP_ADDRESS:
+				value_size = copy_ip(entry.IPAddress.pbData, entry.IPAddress.cbData, p, end);
+				break;
+
+			case CERT_ALT_NAME_URL:
+				value_size = copy_string(entry.pwszURL, p, end);
+				break;
+		}
+
+		if (value_size)
+		{
+			result.index_[index_size++] = {p, value_size};
+			p += value_size;
+		}
+	}
+
+	return result;
+}
+
 // certificate_store {{{1
 
 namespace {
@@ -330,51 +470,6 @@ certificate_store::const_iterator &certificate_store::const_iterator::operator++
 
 // distinguished_name {{{1
 
-namespace {
-
-template <typename T, size_t Size>
-struct asn_decoder
-{
-	LPCSTR type;
-	std::span<const BYTE> asn;
-	const DWORD buffer_size;
-	temporary_buffer<Size> buffer;
-	const T &value;
-
-	asn_decoder (LPCSTR type, std::span<const BYTE> asn) noexcept
-		: type{type}
-		, asn{asn}
-		, buffer_size{decode(nullptr, 0)}
-		, buffer{std::nothrow, buffer_size}
-		, value{*reinterpret_cast<const T *>(buffer.get())}
-	{
-		decode(buffer.get(), buffer_size);
-	}
-
-	DWORD decode (void *buf, DWORD buf_size) const noexcept
-	{
-		static constexpr DWORD decode_flags =
-			CRYPT_DECODE_NOCOPY_FLAG |
-			CRYPT_DECODE_SHARE_OID_STRING_FLAG
-		;
-
-		DWORD size = buf_size;
-		::CryptDecodeObjectEx(
-			X509_ASN_ENCODING,
-			type,
-			asn.data(),
-			static_cast<DWORD>(asn.size()),
-			decode_flags,
-			nullptr,
-			buf,
-			&size
-		);
-		return size;
-	}
-};
-
-} // namespace
-
 struct distinguished_name::impl_type
 {
 	certificate::impl_ptr owner;
@@ -398,67 +493,16 @@ struct distinguished_name::impl_type
 	}
 };
 
-namespace {
-
-template <size_t N>
-void copy_oid (const CERT_RDN_ATTR &entry, char (&buf)[N]) noexcept
-{
-	std::snprintf(buf, sizeof(buf), "%s", entry.pszObjId);
-}
-
-template <size_t N>
-void copy_string (const LPWSTR &string, char (&buf)[N]) noexcept
-{
-	buf[0] = buf[N - 1] = '\0';
-	::WideCharToMultiByte(
-		CP_UTF8,
-		0,
-		string, -1,
-		buf, N,
-		nullptr,
-		nullptr
-	);
-}
-
-template <size_t N>
-void copy_ip (const void *data, size_t length, char (&buf)[N]) noexcept
-{
-	buf[0] = '\0';
-	if (length == sizeof(net::ip::address_v4::bytes_type))
-	{
-		auto &bytes = *static_cast<const net::ip::address_v4::bytes_type *>(data);
-		net::ip::make_address_v4(bytes).to_chars(buf, buf + N);
-	}
-	else if (length == sizeof(net::ip::address_v6::bytes_type))
-	{
-		auto &bytes = *static_cast<const net::ip::address_v6::bytes_type *>(data);
-		net::ip::make_address_v6(bytes).to_chars(buf, buf + N);
-	}
-}
-
-template <size_t N>
-void copy_rdn_value (const CERT_RDN_ATTR &entry, char (&buf)[N]) noexcept
-{
-	::CertRDNValueToStr(
-		entry.dwValueType,
-		const_cast<CERT_RDN_VALUE_BLOB *>(&entry.Value),
-		buf,
-		N
-	);
-}
-
-} // namespace
-
 void distinguished_name::const_iterator::load_next_entry () noexcept
 {
 	if (at_ < owner_->size)
 	{
 		auto &entry = owner_->name.value.rgRDN[at_++].rgRDNAttr[0];
 
-		copy_oid(entry, oid_);
+		copy_oid(entry, oid_, oid_ + sizeof(oid_));
 		entry_.oid = oid_;
 
-		copy_rdn_value(entry, value_);
+		copy_rdn_value(entry, value_, value_ + sizeof(value_));
 		entry_.value = value_;
 
 		return;
@@ -521,22 +565,22 @@ void alternative_name::const_iterator::load_next_entry () noexcept
 		switch (entry.dwAltNameChoice)
 		{
 			case CERT_ALT_NAME_DNS_NAME:
-				copy_string(entry.pwszDNSName, entry_value_);
+				copy_string(entry.pwszDNSName, entry_value_, entry_value_ + sizeof(entry_value_));
 				entry_.emplace<dns_name>(entry_value_);
 				return;
 
 			case CERT_ALT_NAME_RFC822_NAME:
-				copy_string(entry.pwszRfc822Name, entry_value_);
+				copy_string(entry.pwszRfc822Name, entry_value_, entry_value_ + sizeof(entry_value_));
 				entry_.emplace<email_address>(entry_value_);
 				return;
 
 			case CERT_ALT_NAME_IP_ADDRESS:
-				copy_ip(entry.IPAddress.pbData, entry.IPAddress.cbData, entry_value_);
+				copy_ip(entry.IPAddress.pbData, entry.IPAddress.cbData, entry_value_, entry_value_ + sizeof(entry_value_));
 				entry_.emplace<ip_address>(entry_value_);
 				return;
 
 			case CERT_ALT_NAME_URL:
-				copy_string(entry.pwszURL, entry_value_);
+				copy_string(entry.pwszURL, entry_value_, entry_value_ + sizeof(entry_value_));
 				entry_.emplace<uri>(entry_value_);
 				return;
 		}

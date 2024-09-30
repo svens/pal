@@ -50,6 +50,34 @@ unique_ref<::CFArrayRef> copy_values (::SecCertificateRef cert, ::CFTypeRef oid)
 	return make_unique((::CFArrayRef)values);
 }
 
+size_t copy_string (::CFTypeRef s, char *first, char *last) noexcept
+{
+	*first = *(last - 1) = '\0';
+	::CFStringGetCString((::CFStringRef)s, first, last - first, cstr_encoding);
+	return ::CFStringGetLength((::CFStringRef)s);
+}
+
+size_t copy_uri (::CFTypeRef u, char *first, char *last) noexcept
+{
+	return copy_string(::CFURLGetString((::CFURLRef)u), first, last);
+}
+
+size_t copy_ip (::CFTypeRef s, char *first, char *last) noexcept
+{
+	static constexpr auto v6_length = sizeof("0000:0000:0000:0000:0000:0000:0000:0000") - 1;
+
+	auto length = copy_string(s, first, last);
+	if (length == v6_length)
+	{
+		net::ip::make_address_v6(first).and_then([&](const auto &address)
+		{
+			length = address.to_chars(first, last).ptr - first;
+		});
+	}
+
+	return length;
+}
+
 std::span<const std::byte> to_span (::CFDataRef data) noexcept
 {
 	return
@@ -279,6 +307,54 @@ bool certificate::is_issued_by (const certificate &that) const noexcept
 	return std::equal(this_issuer_data, this_issuer_data + this_issuer_size, that_subject_data);
 }
 
+alternative_name_values certificate::subject_alternative_name_values () const noexcept
+{
+	auto info = copy_values(impl_->x509.get(), ::kSecOIDSubjectAltName);
+	if (!info)
+	{
+		return {};
+	}
+
+	alternative_name_values result;
+	auto *p = result.data_, * const end = p + sizeof(result.data_);
+	size_t index_size = 0;
+
+	auto count = ::CFArrayGetCount(info.get());
+	for (auto i = 0; i < count && index_size < result.max_index_size && p < end; ++i)
+	{
+		auto entry = (::CFDictionaryRef)::CFArrayGetValueAtIndex(info.get(), i);
+
+		auto key = ::CFDictionaryGetValue(entry, ::kSecPropertyKeyLabel);
+		auto value = ::CFDictionaryGetValue(entry, ::kSecPropertyKeyValue);
+		size_t value_size = 0;
+
+		if (::CFEqual(key, CFSTR("DNS Name")))
+		{
+			value_size = copy_string(value, p, end);
+		}
+		else if (::CFEqual(key, CFSTR("Email Address")))
+		{
+			value_size = copy_string(value, p, end);
+		}
+		else if (::CFEqual(key, CFSTR("IP Address")))
+		{
+			value_size = copy_ip(value, p, end);
+		}
+		else if (::CFEqual(key, CFSTR("URI")))
+		{
+			value_size = copy_uri(value, p, end);
+		}
+
+		if (value_size)
+		{
+			result.index_[index_size++] = {p, value_size};
+			p += value_size;
+		}
+	}
+
+	return result;
+}
+
 // certificate_store / pkcs12 {{{1
 
 struct certificate_store::impl_type
@@ -391,49 +467,16 @@ struct distinguished_name::impl_type
 	}
 };
 
-namespace {
-
-template <size_t N>
-void copy_string (::CFTypeRef s, char (&buf)[N]) noexcept
-{
-	buf[0] = buf[N - 1] = '\0';
-	::CFStringGetCString((::CFStringRef)s, buf, N, cstr_encoding);
-}
-
-template <size_t N>
-void copy_uri (::CFTypeRef u, char (&buf)[N]) noexcept
-{
-	copy_string(::CFURLGetString((::CFURLRef)u), buf);
-}
-
-template <size_t N>
-void copy_ip (::CFTypeRef s, char (&buf)[N]) noexcept
-{
-	copy_string(s, buf);
-
-	static constexpr auto v6_length = sizeof("0000:0000:0000:0000:0000:0000:0000:0000") - 1;
-	auto length = ::CFStringGetLength((::CFStringRef)s);
-	if (length == v6_length)
-	{
-		net::ip::make_address_v6(buf).and_then([&](const auto &address)
-		{
-			address.to_chars(buf, buf + sizeof(buf));
-		});
-	}
-}
-
-} // namespace
-
 void distinguished_name::const_iterator::load_next_entry () noexcept
 {
 	if (at_ < owner_->size)
 	{
 		auto entry = (::CFDictionaryRef)::CFArrayGetValueAtIndex(owner_->name.get(), at_++);
 
-		copy_string(::CFDictionaryGetValue(entry, ::kSecPropertyKeyLabel), oid_);
+		copy_string(::CFDictionaryGetValue(entry, ::kSecPropertyKeyLabel), oid_, oid_ + sizeof(oid_));
 		entry_.oid = oid_;
 
-		copy_string(::CFDictionaryGetValue(entry, ::kSecPropertyKeyValue), value_);
+		copy_string(::CFDictionaryGetValue(entry, ::kSecPropertyKeyValue), value_, value_ + sizeof(value_));
 		entry_.value = value_;
 
 		return;
@@ -498,25 +541,25 @@ void alternative_name::const_iterator::load_next_entry () noexcept
 
 		if (::CFEqual(label, CFSTR("DNS Name")))
 		{
-			copy_string(value, entry_value_);
+			copy_string(value, entry_value_, entry_value_ + sizeof(entry_value_));
 			entry_.emplace<dns_name>(entry_value_);
 			return;
 		}
 		else if (::CFEqual(label, CFSTR("Email Address")))
 		{
-			copy_string(value, entry_value_);
+			copy_string(value, entry_value_, entry_value_ + sizeof(entry_value_));
 			entry_.emplace<email_address>(entry_value_);
 			return;
 		}
 		else if (::CFEqual(label, CFSTR("IP Address")))
 		{
-			copy_ip(value, entry_value_);
+			copy_ip(value, entry_value_, entry_value_ + sizeof(entry_value_));
 			entry_.emplace<ip_address>(entry_value_);
 			return;
 		}
 		else if (::CFEqual(label, CFSTR("URI")))
 		{
-			copy_uri(value, entry_value_);
+			copy_uri(value, entry_value_, entry_value_ + sizeof(entry_value_));
 			entry_.emplace<uri>(entry_value_);
 			return;
 		}
