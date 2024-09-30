@@ -307,7 +307,7 @@ bool certificate::is_issued_by (const certificate &that) const noexcept
 	return std::equal(this_issuer_data, this_issuer_data + this_issuer_size, that_subject_data);
 }
 
-alternative_name_values certificate::subject_alternative_name_values () const noexcept
+alternative_name_value certificate::subject_alternative_name_value () const noexcept
 {
 	auto info = copy_values(impl_->x509.get(), ::kSecOIDSubjectAltName);
 	if (!info)
@@ -315,7 +315,7 @@ alternative_name_values certificate::subject_alternative_name_values () const no
 		return {};
 	}
 
-	alternative_name_values result;
+	alternative_name_value result;
 	auto *p = result.data_, * const end = p + sizeof(result.data_);
 	size_t index_size = 0;
 
@@ -347,9 +347,14 @@ alternative_name_values certificate::subject_alternative_name_values () const no
 
 		if (value_size)
 		{
-			result.index_[index_size++] = {p, value_size};
+			result.index_data_[index_size++] = {p, value_size};
 			p += value_size;
 		}
+	}
+
+	if (index_size)
+	{
+		result.index_ = {result.index_data_.data(), index_size};
 	}
 
 	return result;

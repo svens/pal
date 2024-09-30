@@ -331,7 +331,7 @@ bool certificate::is_issued_by (const certificate &that) const noexcept
 	);
 }
 
-alternative_name_values certificate::subject_alternative_name_values () const noexcept
+alternative_name_value certificate::subject_alternative_name_value () const noexcept
 {
 	auto &info = *impl_->x509->pCertInfo;
 	auto ext = ::CertFindExtension(szOID_SUBJECT_ALT_NAME2, info.cExtension, info.rgExtension);
@@ -343,7 +343,7 @@ alternative_name_values certificate::subject_alternative_name_values () const no
 	asn_decoder<CERT_ALT_NAME_INFO, 4096> name{X509_ALTERNATE_NAME, {ext->Value.pbData, ext->Value.cbData}};
 	auto count = name.value.cAltEntry;
 
-	alternative_name_values result{};
+	alternative_name_value result{};
 	auto *p = result.data_, * const end = p + sizeof(result.data_);
 	size_t index_size = 0;
 
@@ -373,9 +373,14 @@ alternative_name_values certificate::subject_alternative_name_values () const no
 
 		if (value_size)
 		{
-			result.index_[index_size++] = {p, value_size};
+			result.index_data_[index_size++] = {p, value_size};
 			p += value_size;
 		}
+	}
+
+	if (index_size)
+	{
+		result.index_ = {result.index_data_.data(), index_size};
 	}
 
 	return result;

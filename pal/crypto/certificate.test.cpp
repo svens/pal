@@ -327,10 +327,14 @@ TEST_CASE("crypto/certificate")
 		CHECK(name.error() == std::errc::not_enough_memory);
 	}
 
-	SECTION("subject_alternative_name_values") //{{{1
+	SECTION("subject_alternative_name_value") //{{{1
 	{
 		{
-			auto san = certificate::from_pem(test_cert::server.pem).value().subject_alternative_name_values();
+			auto san = certificate::from_pem(test_cert::server.pem).value().subject_alternative_name_value();
+
+			constexpr auto san_list = test_cert::server.subject_alternative_name;
+			constexpr auto san_list_size = std::count(san_list.begin(), san_list.end(), '\n');
+			CHECK(san.index().size() == san_list_size);
 
 			CHECK(san.contains("server.pal.alt.ee"));
 			CHECK(san.contains("client.pal.alt.ee"));
@@ -346,7 +350,11 @@ TEST_CASE("crypto/certificate")
 		}
 
 		{
-			auto san = certificate::from_pem(test_cert::client.pem).value().subject_alternative_name_values();
+			auto san = certificate::from_pem(test_cert::client.pem).value().subject_alternative_name_value();
+
+			constexpr auto san_list = test_cert::client.subject_alternative_name;
+			constexpr auto san_list_size = std::count(san_list.begin(), san_list.end(), '\n');
+			CHECK(san.index().size() == san_list_size);
 
 			CHECK(san.contains("client.pal.alt.ee"));
 

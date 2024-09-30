@@ -8,7 +8,7 @@
  */
 
 #include <pal/crypto/alternative_name>
-#include <pal/crypto/alternative_name_values>
+#include <pal/crypto/alternative_name_value>
 #include <pal/crypto/distinguished_name>
 #include <pal/crypto/key>
 #include <pal/result>
@@ -127,7 +127,7 @@ public:
 	///
 	/// Value type is not preserved, only value text is stored. Application that needs
 	/// both should use alternative names from subject_alternative_name() instead.
-	alternative_name_values subject_alternative_name_values () const noexcept;
+	alternative_name_value subject_alternative_name_value () const noexcept;
 
 	/// Returns certificate public key
 	result<key> public_key () const noexcept;
@@ -158,7 +158,7 @@ public:
 	{
 		return [=](const certificate &cert) -> bool
 		{
-			return cert.subject_alternative_name_values().contains(fqdn);
+			return cert.subject_alternative_name_value().contains(fqdn);
 		};
 	}
 

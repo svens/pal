@@ -281,11 +281,11 @@ bool certificate::is_issued_by (const certificate &that) const noexcept
 	return ::X509_check_issued(that.impl_->x509.get(), impl_->x509.get()) == X509_V_OK;
 }
 
-alternative_name_values certificate::subject_alternative_name_values () const noexcept
+alternative_name_value certificate::subject_alternative_name_value () const noexcept
 {
 	auto names = to_ptr(static_cast<::GENERAL_NAMES *>(::X509_get_ext_d2i(impl_->x509.get(), NID_subject_alt_name, nullptr, nullptr)));
 
-	alternative_name_values result{};
+	alternative_name_value result{};
 	auto *p = result.data_, * const end = p + sizeof(result.data_);
 	size_t index_size = 0;
 
@@ -314,9 +314,14 @@ alternative_name_values certificate::subject_alternative_name_values () const no
 
 		if (value_size)
 		{
-			result.index_[index_size++] = {p, value_size};
+			result.index_data_[index_size++] = {p, value_size};
 			p += value_size;
 		}
+	}
+
+	if (index_size)
+	{
+		result.index_ = {result.index_data_.data(), index_size};
 	}
 
 	return result;

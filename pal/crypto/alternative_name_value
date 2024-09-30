@@ -1,22 +1,24 @@
 #pragma once // -*- C++ -*-
 
 /**
- * \file pal/crypto/alternative_name_values
+ * \file pal/crypto/alternative_name_value
  * Certificate alternative name value list
  */
 
 #include <array>
+#include <span>
 #include <string_view>
 
 namespace pal::crypto {
 
-class alternative_name_values
+/// \todo
+class alternative_name_value
 {
 public:
 
 	static constexpr size_t max_index_size = 16;
 
-	const std::array<std::string_view, max_index_size> &index () const noexcept
+	const std::span<std::string_view> &index () const noexcept
 	{
 		return index_;
 	}
@@ -30,11 +32,7 @@ public:
 
 		for (auto &entry: index_)
 		{
-			if (entry.empty())
-			{
-				return false;
-			}
-			else if (matches(value, entry))
+			if (matches(value, entry))
 			{
 				return true;
 			}
@@ -46,8 +44,9 @@ public:
 private:
 
 	// specific values are chosen to make sizeof(*this) == 4096 for no particular reason
-	std::array<std::string_view, max_index_size> index_{};
-	char data_[max_index_size * 240] = {};
+	std::span<std::string_view> index_{};
+	std::array<std::string_view, max_index_size> index_data_{};
+	char data_[max_index_size * 239] = {};
 
 	static bool matches (std::string_view value, std::string_view expected) noexcept
 	{
@@ -62,7 +61,7 @@ private:
 		return value == expected;
 	}
 
-	alternative_name_values () noexcept = default;
+	alternative_name_value () noexcept = default;
 	friend class certificate;
 };
 
