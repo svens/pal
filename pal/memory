@@ -5,7 +5,9 @@
  * Additional helper utilities for <memory> header
  */
 
-#include <cstddef>
+#include <pal/result>
+#include <pal/version>
+#include <memory>
 #include <new>
 
 namespace pal {
@@ -82,5 +84,73 @@ private:
 
 	char stack_[StackSize] = {}, *ptr_ = &stack_[0];
 };
+
+namespace __memory {
+
+template <typename... Args>
+auto alloc_result (auto &&alloc, Args &&...args)
+	-> result<decltype(alloc(std::forward<Args>(args)...))>
+{
+	try
+	{
+		if constexpr (std::is_same_v<decltype(alloc(std::forward<Args>(args)...)), void>)
+		{
+			alloc(std::forward<Args>(args)...);
+			return {};
+		}
+		else
+		{
+			if (auto ptr = alloc(std::forward<Args>(args)...))
+			{
+				return ptr;
+			}
+		}
+	}
+	catch (const std::bad_alloc &)
+	{
+	}
+
+	return make_unexpected(std::errc::not_enough_memory);
+}
+
+} // namespace __memory
+
+/// Convenience wrapper around invoking \a alloc(\a args...) that handles two special cases:
+/// - catches std::bad_alloc
+/// - checks if \a alloc retursn nullptr (if result type of alloc is not void)
+///
+/// \returns Result of \a alloc on success or unexpected{std::errc::not_enough_memory} on failure
+template <typename... Args>
+auto alloc_result (auto &&alloc, Args &&...args)
+{
+	return __memory::alloc_result(alloc, std::forward<Args>(args)...);
+}
+
+/// Wrapper for non-array T std::make_unique() that catches std::bad_alloc and
+/// returns pal::result<> with std::errc::not_enough_memory instead
+template <typename T, typename... Args>
+result<std::unique_ptr<T>> make_unique (Args &&...args)
+{
+	return alloc_result(std::make_unique<T, Args...>, std::forward<Args>(args)...);
+}
+
+/// Wrapper for non-array T std::make_shared() that catches std::bad_alloc and
+/// returns pal::result<> with std::errc::not_enough_memory instead
+template <typename T, typename... Args>
+result<std::shared_ptr<T>> make_shared (Args &&...args)
+{
+	if constexpr (os == os_type::macos && compiler == compiler_type::clang)
+	{
+		// TODO(macos+clang): fails to infer alloc type
+		return alloc_result([&]()
+		{
+			return std::make_shared<T>(std::forward<Args>(args)...);
+		});
+	}
+	else
+	{
+		return alloc_result(std::make_shared<T, Args...>, std::forward<Args>(args)...);
+	}
+}
 
 } // namespace pal
