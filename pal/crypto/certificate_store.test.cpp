@@ -19,6 +19,8 @@ TEST_CASE("crypto/certificate_store")
 	{
 		certificate_store store;
 		CHECK(store.is_null());
+		CHECK(store.empty());
+		CHECK(store.begin() == store.end());
 	}
 
 	SECTION("from_pkcs12")

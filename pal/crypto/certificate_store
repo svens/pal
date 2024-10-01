@@ -110,7 +110,11 @@ private:
 
 inline certificate_store::const_iterator certificate_store::begin () const noexcept
 {
-	return {*impl_};
+	if (impl_)
+	{
+		return {*impl_};
+	}
+	return end();
 }
 
 inline certificate_store::const_iterator certificate_store::end () const noexcept
