@@ -100,7 +100,7 @@ result<std::span<const std::byte>> decode (std::string_view pem, std::byte *buf)
 
 } // namespace
 
-result<certificate> certificate::import_pem (std::string_view pem) noexcept
+result<certificate> certificate::import_pem (const std::string_view &pem) noexcept
 {
 	return unwrap(pem).and_then([](auto pem) -> result<certificate>
 	{

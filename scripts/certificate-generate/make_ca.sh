@@ -203,3 +203,17 @@ make_certificate \
   password=ClientPassword \
   signer=intermediate \
   signer_password=IntermediatePassword
+
+# PKCS#12 {{{1
+# see https://stackoverflow.com/questions/70431528/mac-verification-failed-during-pkcs12-import-wrong-password-azure-devops
+# as workaround using openssl for Linux/Windows and libressl on MacOS
+
+cat server.key.pem client.pem intermediate.pem ca.pem server.pem \
+  | openssl pkcs12 -export -passin pass:ServerPassword -passout pass:TestPassword \
+  | xxd -i \
+  | pbcopy
+
+cat server.key.pem client.pem intermediate.pem ca.pem server.pem \
+  | openssl pkcs12 -export -passin pass:ServerPassword -passout pass:"" \
+  | xxd -i \
+  | pbcopy

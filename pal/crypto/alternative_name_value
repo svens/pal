@@ -1,0 +1,82 @@
+#pragma once // -*- C++ -*-
+
+/**
+ * \file pal/crypto/alternative_name_value
+ * Certificate alternative name value list
+ */
+
+#include <array>
+#include <span>
+#include <string_view>
+
+namespace pal::crypto {
+
+/// Concatenated content of certificate alternate names, filtered by name type:
+/// - DNS
+/// - IP
+/// - email
+/// - URI
+///
+/// Field type itself is not preserved, only value text is stored. Application
+/// that needs both, should use alternative_name instead.
+class alternative_name_value
+{
+public:
+
+	/// Maximum number of stored alternative name values.
+	static constexpr size_t max_index_size = 16;
+
+	/// Return list of stored values.
+	const std::span<std::string_view> &index () const noexcept
+	{
+		return index_;
+	}
+
+	/// Return true if any of stored content contains \a value.
+	///
+	/// Value comparison is using case sensitive equality operator as is.
+	/// Only exceptions are DNS entries, for which wildcard subdomains are
+	/// also considered.
+	bool contains (const std::string_view &value) const noexcept
+	{
+		if (value.starts_with('.') || value.starts_with('*'))
+		{
+			return false;
+		}
+
+		for (auto &entry: index_)
+		{
+			if (matches(value, entry))
+			{
+				return true;
+			}
+		}
+
+		return false;
+	}
+
+private:
+
+	// specific values are chosen to make sizeof(*this) == 4096 for no particular reason
+	std::span<std::string_view> index_{};
+	std::array<std::string_view, max_index_size> index_data_{};
+	char data_[max_index_size * 239] = {};
+
+	static bool matches (std::string_view value, std::string_view expected) noexcept
+	{
+		if (expected.starts_with("*."))
+		{
+			if (auto subdomain = value.find('.'); subdomain != value.npos)
+			{
+				value.remove_prefix(subdomain);
+				expected.remove_prefix(1);
+			}
+		}
+		return value == expected;
+	}
+
+	alternative_name_value () noexcept = default;
+	friend class certificate;
+};
+
+} // namespace pal::crypto

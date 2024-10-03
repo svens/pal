@@ -1,3 +1,5 @@
+// -*- C++ -*-
+
 #include <CommonCrypto/CommonDigest.h>
 #include <CommonCrypto/CommonHMAC.h>
 

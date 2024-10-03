@@ -1,10 +1,14 @@
+// -*- C++ -*-
+
 #include <pal/crypto/hash>
+#include <pal/crypto/certificate_store>
 #include <pal/net/ip/address_v6>
 #include <CoreFoundation/CFNumber.h>
 #include <CoreFoundation/CFString.h>
 #include <CoreFoundation/CFURL.h>
 #include <Security/SecCertificate.h>
 #include <Security/SecCertificateOIDs.h>
+#include <Security/SecImportExport.h>
 #include <Security/SecItem.h>
 #include <Security/SecKey.h>
 
@@ -46,6 +50,34 @@ unique_ref<::CFArrayRef> copy_values (::SecCertificateRef cert, ::CFTypeRef oid)
 	return make_unique((::CFArrayRef)values);
 }
 
+size_t copy_string (::CFTypeRef s, char *first, char *last) noexcept
+{
+	*first = *(last - 1) = '\0';
+	::CFStringGetCString((::CFStringRef)s, first, last - first, cstr_encoding);
+	return ::CFStringGetLength((::CFStringRef)s);
+}
+
+size_t copy_uri (::CFTypeRef u, char *first, char *last) noexcept
+{
+	return copy_string(::CFURLGetString((::CFURLRef)u), first, last);
+}
+
+size_t copy_ip (::CFTypeRef s, char *first, char *last) noexcept
+{
+	static constexpr auto v6_length = sizeof("0000:0000:0000:0000:0000:0000:0000:0000") - 1;
+
+	auto length = copy_string(s, first, last);
+	if (length == v6_length)
+	{
+		net::ip::make_address_v6(first).and_then([&](const auto &address)
+		{
+			length = address.to_chars(first, last).ptr - first;
+		});
+	}
+
+	return length;
+}
+
 std::span<const std::byte> to_span (::CFDataRef data) noexcept
 {
 	return
@@ -53,6 +85,23 @@ std::span<const std::byte> to_span (::CFDataRef data) noexcept
 		reinterpret_cast<const std::byte *>(::CFDataGetBytePtr(data)),
 		static_cast<size_t>(::CFDataGetLength(data))
 	};
+}
+
+unique_ref<::CFDataRef> from_span (const std::span<const std::byte> &data) noexcept
+{
+	return make_unique(
+		::CFDataCreateWithBytesNoCopy(
+			nullptr,
+			reinterpret_cast<const UInt8 *>(data.data()),
+			data.size(),
+			::kCFAllocatorNull
+		)
+	);
+}
+
+unique_ref<::CFStringRef> from_cstr (const char *data) noexcept
+{
+	return make_unique(::CFStringCreateWithCStringNoCopy(nullptr, data, cstr_encoding, ::kCFAllocatorNull));
 }
 
 certificate::time_type to_time (::SecCertificateRef cert, ::CFTypeRef oid) noexcept
@@ -68,7 +117,9 @@ certificate::time_type to_time (::SecCertificateRef cert, ::CFTypeRef oid) noexc
 
 } // namespace
 
-struct certificate::impl_type //{{{1
+// certificate {{{1
+
+struct certificate::impl_type
 {
 	using x509_ptr = unique_ref<::SecCertificateRef>;
 	x509_ptr x509;
@@ -88,6 +139,11 @@ struct certificate::impl_type //{{{1
 	std::string_view fingerprint{};
 
 	time_type not_before, not_after;
+
+	impl_ptr next = nullptr;
+
+	impl_type (const impl_type &) = delete;
+	impl_type &operator= (const impl_type &) = delete;
 
 	impl_type (x509_ptr &&x509) noexcept
 		: x509{std::move(x509)}
@@ -137,7 +193,7 @@ struct certificate::impl_type //{{{1
 				cn.get(),
 				common_name_buf,
 				sizeof(common_name_buf),
-				::kCFStringEncodingUTF8
+				cstr_encoding
 			);
 			return common_name_buf;
 		}
@@ -150,28 +206,54 @@ struct certificate::impl_type //{{{1
 		fingerprint_buf[sizeof(fingerprint_buf) - 1] = '\0';
 		return fingerprint_buf;
 	}
-};
 
-result<certificate> certificate::import_der (std::span<const std::byte> der) noexcept
-{
-	auto data = make_unique(
-		::CFDataCreateWithBytesNoCopy(
-			nullptr,
-			reinterpret_cast<const UInt8 *>(der.data()),
-			der.size(),
-			kCFAllocatorNull
-		)
-	);
-
-	if (auto x509 = make_unique(::SecCertificateCreateWithData(nullptr, data.get())))
+	static result<impl_ptr> make_forward_list (unique_ref<::CFArrayRef> &&chain) noexcept
 	{
-		if (auto impl = impl_ptr{new(std::nothrow) impl_type(std::move(x509))})
+		auto index = ::CFArrayGetCount(chain.get());
+		if (!index)
 		{
-			return certificate{impl};
+			return {};
 		}
-		return make_unexpected(std::errc::not_enough_memory);
+
+		auto chain_at = [&chain](::CFIndex index)
+		{
+			return make_unique(
+				(::SecCertificateRef)::CFRetain(
+					::CFArrayGetValueAtIndex(chain.get(), index)
+				)
+			);
+		};
+
+		return pal::make_shared<impl_type>(chain_at(0))
+			.and_then([&](impl_ptr &&head) -> result<impl_ptr>
+			{
+				for (auto tail = head; index > 1; tail = tail->next)
+				{
+					auto node = pal::make_shared<impl_type>(chain_at(--index));
+					if (!node)
+					{
+						return unexpected{node.error()};
+					}
+					tail->next = std::move(*node);
+				}
+				return head;
+			})
+		;
 	}
 
+	static constexpr auto to_api = [](impl_ptr &&value) -> certificate
+	{
+		return {std::move(value)};
+	};
+};
+
+result<certificate> certificate::import_der (const std::span<const std::byte> &der) noexcept
+{
+	auto data = from_span(der);
+	if (auto x509 = make_unique(::SecCertificateCreateWithData(nullptr, data.get())))
+	{
+		return pal::make_shared<impl_type>(std::move(x509)).transform(impl_type::to_api);
+	}
 	return make_unexpected(std::errc::invalid_argument);
 }
 
@@ -227,7 +309,139 @@ bool certificate::is_issued_by (const certificate &that) const noexcept
 	return std::equal(this_issuer_data, this_issuer_data + this_issuer_size, that_subject_data);
 }
 
-struct distinguished_name::impl_type //{{{1
+alternative_name_value certificate::subject_alternative_name_value () const noexcept
+{
+	auto info = copy_values(impl_->x509.get(), ::kSecOIDSubjectAltName);
+	if (!info)
+	{
+		return {};
+	}
+
+	alternative_name_value result;
+	auto *p = result.data_, * const end = p + sizeof(result.data_);
+	size_t index_size = 0;
+
+	auto count = ::CFArrayGetCount(info.get());
+	for (auto i = 0; i < count && index_size < result.max_index_size && p < end; ++i)
+	{
+		auto entry = (::CFDictionaryRef)::CFArrayGetValueAtIndex(info.get(), i);
+
+		auto key = ::CFDictionaryGetValue(entry, ::kSecPropertyKeyLabel);
+		auto value = ::CFDictionaryGetValue(entry, ::kSecPropertyKeyValue);
+		size_t value_size = 0;
+
+		if (::CFEqual(key, CFSTR("DNS Name")))
+		{
+			value_size = copy_string(value, p, end);
+		}
+		else if (::CFEqual(key, CFSTR("Email Address")))
+		{
+			value_size = copy_string(value, p, end);
+		}
+		else if (::CFEqual(key, CFSTR("IP Address")))
+		{
+			value_size = copy_ip(value, p, end);
+		}
+		else if (::CFEqual(key, CFSTR("URI")))
+		{
+			value_size = copy_uri(value, p, end);
+		}
+
+		if (value_size)
+		{
+			result.index_data_[index_size++] = {p, value_size};
+			p += value_size;
+		}
+	}
+
+	if (index_size)
+	{
+		result.index_ = {result.index_data_.data(), index_size};
+	}
+
+	return result;
+}
+
+// certificate_store / pkcs12 {{{1
+
+struct certificate_store::impl_type
+{
+	certificate::impl_ptr head;
+
+	impl_type (const certificate::impl_ptr &head) noexcept
+		: head{head}
+	{ }
+
+	static constexpr auto to_api = [](impl_ptr &&value) -> certificate_store
+	{
+		return {std::move(value)};
+	};
+};
+
+bool certificate_store::empty () const noexcept
+{
+	return !impl_ || impl_->head == nullptr;
+}
+
+result<certificate_store> certificate_store::import_pkcs12 (const std::span<const std::byte> &pkcs12, const char *password) noexcept
+{
+	auto blob = from_span(pkcs12);
+	auto passphrase = from_cstr(password ? password : "");
+
+	::CFStringRef extension = nullptr;
+	::SecExternalFormat format = ::kSecFormatPKCS12;
+	::SecExternalItemType type = ::kSecItemTypeAggregate;
+	::SecItemImportExportFlags flags = 0;
+	::SecItemImportExportKeyParameters params =
+	{
+		.version = SEC_KEY_IMPORT_EXPORT_PARAMS_VERSION,
+		.flags = ::kSecKeyImportOnlyOne,
+		.passphrase = passphrase.get(),
+		.alertTitle = nullptr,
+		.alertPrompt = nullptr,
+		.accessRef = nullptr,
+		.keyUsage = nullptr,
+		.keyAttributes = nullptr,
+	};
+	::SecKeychainRef keychain = nullptr;
+	::CFArrayRef rv = nullptr;
+
+	auto status = ::SecItemImport(
+		blob.get(),
+		extension,
+		&format,
+		&type,
+		flags,
+		&params,
+		keychain,
+		&rv
+	);
+	if (status != ::errSecSuccess)
+	{
+		return make_unexpected(std::errc::invalid_argument);
+	}
+
+	// TODO: attach private_key in identity
+
+	return certificate::impl_type::make_forward_list(make_unique(rv))
+		.and_then(pal::make_shared<impl_type, certificate::impl_ptr>)
+		.transform(impl_type::to_api)
+	;
+}
+
+certificate_store::const_iterator::const_iterator (const impl_type &store) noexcept
+	: entry_{store.head}
+{ }
+
+certificate_store::const_iterator &certificate_store::const_iterator::operator++ () noexcept
+{
+	entry_.impl_ = entry_.impl_->next;
+	return *this;
+}
+
+// distinguished_name {{{1
+
+struct distinguished_name::impl_type
 {
 	certificate::impl_ptr owner;
 	unique_ref<::CFArrayRef> name;
@@ -239,55 +453,20 @@ struct distinguished_name::impl_type //{{{1
 		, size{static_cast<size_t>(::CFArrayGetCount(this->name.get()))}
 	{ }
 
+	static constexpr auto to_api = [](impl_ptr &&value) -> distinguished_name
+	{
+		return {std::move(value)};
+	};
+
 	static result<distinguished_name> make (certificate::impl_ptr owner, ::CFTypeRef id) noexcept
 	{
-		impl_ptr list = nullptr;
-
 		if (auto name = copy_values(owner->x509.get(), id))
 		{
-			list.reset(new(std::nothrow) impl_type(owner, std::move(name)));
-			if (!list)
-			{
-				return make_unexpected(std::errc::not_enough_memory);
-			}
+			return pal::make_shared<impl_type>(owner, std::move(name)).transform(to_api);
 		}
-
-		return distinguished_name{list};
+		return distinguished_name{nullptr};
 	}
 };
-
-namespace {
-
-template <size_t N>
-void copy_string (::CFTypeRef s, char (&buf)[N]) noexcept
-{
-	buf[0] = buf[N - 1] = '\0';
-	::CFStringGetCString((::CFStringRef)s, buf, N, cstr_encoding);
-}
-
-template <size_t N>
-void copy_uri (::CFTypeRef u, char (&buf)[N]) noexcept
-{
-	copy_string(::CFURLGetString((::CFURLRef)u), buf);
-}
-
-template <size_t N>
-void copy_ip (::CFTypeRef s, char (&buf)[N]) noexcept
-{
-	copy_string(s, buf);
-
-	static constexpr auto v6_length = sizeof("0000:0000:0000:0000:0000:0000:0000:0000") - 1;
-	auto length = ::CFStringGetLength((::CFStringRef)s);
-	if (length == v6_length)
-	{
-		net::ip::make_address_v6(buf).and_then([&](const auto &address)
-		{
-			address.to_chars(buf, buf + sizeof(buf));
-		});
-	}
-}
-
-} // namespace
 
 void distinguished_name::const_iterator::load_next_entry () noexcept
 {
@@ -295,10 +474,10 @@ void distinguished_name::const_iterator::load_next_entry () noexcept
 	{
 		auto entry = (::CFDictionaryRef)::CFArrayGetValueAtIndex(owner_->name.get(), at_++);
 
-		copy_string(::CFDictionaryGetValue(entry, ::kSecPropertyKeyLabel), oid_);
+		copy_string(::CFDictionaryGetValue(entry, ::kSecPropertyKeyLabel), oid_, oid_ + sizeof(oid_));
 		entry_.oid = oid_;
 
-		copy_string(::CFDictionaryGetValue(entry, ::kSecPropertyKeyValue), value_);
+		copy_string(::CFDictionaryGetValue(entry, ::kSecPropertyKeyValue), value_, value_ + sizeof(value_));
 		entry_.value = value_;
 
 		return;
@@ -317,7 +496,9 @@ result<distinguished_name> certificate::subject_name () const noexcept
 	return distinguished_name::impl_type::make(impl_, ::kSecOIDX509V1SubjectName);
 }
 
-struct alternative_name::impl_type //{{{1
+// alternative_name {{{1
+
+struct alternative_name::impl_type
 {
 	certificate::impl_ptr owner;
 	unique_ref<::CFArrayRef> name;
@@ -329,20 +510,18 @@ struct alternative_name::impl_type //{{{1
 		, size{static_cast<size_t>(::CFArrayGetCount(this->name.get()))}
 	{ }
 
+	static constexpr auto to_api = [](impl_ptr &&value) -> alternative_name
+	{
+		return {std::move(value)};
+	};
+
 	static result<alternative_name> make (certificate::impl_ptr owner, ::CFTypeRef id) noexcept
 	{
-		impl_ptr list = nullptr;
-
 		if (auto name = copy_values(owner->x509.get(), id))
 		{
-			list.reset(new(std::nothrow) impl_type(owner, std::move(name)));
-			if (!list)
-			{
-				return make_unexpected(std::errc::not_enough_memory);
-			}
+			return pal::make_shared<impl_type>(owner, std::move(name)).transform(to_api);
 		}
-
-		return alternative_name{list};
+		return alternative_name{nullptr};
 	}
 };
 
@@ -361,25 +540,25 @@ void alternative_name::const_iterator::load_next_entry () noexcept
 
 		if (::CFEqual(label, CFSTR("DNS Name")))
 		{
-			copy_string(value, entry_value_);
+			copy_string(value, entry_value_, entry_value_ + sizeof(entry_value_));
 			entry_.emplace<dns_name>(entry_value_);
 			return;
 		}
 		else if (::CFEqual(label, CFSTR("Email Address")))
 		{
-			copy_string(value, entry_value_);
+			copy_string(value, entry_value_, entry_value_ + sizeof(entry_value_));
 			entry_.emplace<email_address>(entry_value_);
 			return;
 		}
 		else if (::CFEqual(label, CFSTR("IP Address")))
 		{
-			copy_ip(value, entry_value_);
+			copy_ip(value, entry_value_, entry_value_ + sizeof(entry_value_));
 			entry_.emplace<ip_address>(entry_value_);
 			return;
 		}
 		else if (::CFEqual(label, CFSTR("URI")))
 		{
-			copy_uri(value, entry_value_);
+			copy_uri(value, entry_value_, entry_value_ + sizeof(entry_value_));
 			entry_.emplace<uri>(entry_value_);
 			return;
 		}
@@ -399,7 +578,9 @@ result<alternative_name> certificate::subject_alternative_name () const noexcept
 	return alternative_name::impl_type::make(impl_, ::kSecOIDSubjectAltName);
 }
 
-struct key::impl_type //{{{1
+// key {{{1
+
+struct key::impl_type
 {
 	certificate::impl_ptr owner;
 	unique_ref<::SecKeyRef> pkey;
@@ -412,13 +593,14 @@ struct key::impl_type //{{{1
 		, max_block_size{::SecKeyGetBlockSize(this->pkey.get())}
 	{ }
 
+	static constexpr auto to_api = [](impl_ptr &&value) -> key
+	{
+		return {std::move(value)};
+	};
+
 	static result<key> make (certificate::impl_ptr owner, unique_ref<::SecKeyRef> pkey) noexcept
 	{
-		if (auto impl = impl_ptr{new(std::nothrow) impl_type(owner, std::move(pkey))})
-		{
-			return key{impl};
-		}
-		return make_unexpected(std::errc::not_enough_memory);
+		return pal::make_shared<impl_type>(owner, std::move(pkey)).transform(to_api);
 	}
 
 	static size_t get_size_bits (::SecKeyRef pkey) noexcept

@@ -8,6 +8,7 @@
  */
 
 #include <pal/crypto/alternative_name>
+#include <pal/crypto/alternative_name_value>
 #include <pal/crypto/distinguished_name>
 #include <pal/crypto/key>
 #include <pal/result>
@@ -18,6 +19,15 @@
 
 namespace pal::crypto {
 
+/// Wrapper for platform's native public key certificate
+///
+/// Following native implementations are used:
+/// - Linux: OpenSSL with X509
+/// - MacOS: Security framework with SecCertificateRef
+/// - Windows: WinCrypt with PCCERT_CONTEXT
+///
+/// \note Invoking any method except swap/is_null on certificate for which
+/// method is_null() returns true is undefined behaviour.
 class certificate
 {
 public:
@@ -118,8 +128,50 @@ public:
 	/// Returns subject alternative name of \a this certificate
 	result<alternative_name> subject_alternative_name () const noexcept;
 
+	/// Returns concatenated content of subject alternative name, filtered by type
+	/// - DNS
+	/// - IP
+	/// - email
+	/// - URI
+	///
+	/// Value type is not preserved, only value text is stored. Application that needs
+	/// both should use alternative names from subject_alternative_name() instead.
+	alternative_name_value subject_alternative_name_value () const noexcept;
+
 	/// Returns certificate public key
 	result<key> public_key () const noexcept;
+
+	/// \defgroup certificate_predicates predicates checking certificate properties
+	/// \{
+
+	/// Returns predicate that checks if certificate has specified \a common_name
+	static constexpr auto has_common_name (const std::string_view &common_name) noexcept
+	{
+		return [=](const certificate &cert) -> bool
+		{
+			return cert.common_name() == common_name;
+		};
+	}
+
+	/// Returns predicate that checks if certificate has specified \a fingerprint
+	static constexpr auto has_fingerprint (const std::string_view &fingerprint) noexcept
+	{
+		return [=](const certificate &cert) -> bool
+		{
+			return cert.fingerprint() == fingerprint;
+		};
+	}
+
+	/// Returns predicate that checks if certificate subject alternative name contains \a fqdn
+	static constexpr auto has_subject_alternative_name (const std::string_view &fqdn) noexcept
+	{
+		return [=](const certificate &cert) -> bool
+		{
+			return cert.subject_alternative_name_value().contains(fqdn);
+		};
+	}
+
+	/// \}
 
 private:
 
@@ -131,11 +183,12 @@ private:
 		: impl_{impl}
 	{ }
 
-	static result<certificate> import_der (std::span<const std::byte> der) noexcept;
-	static result<certificate> import_pem (std::string_view pem) noexcept;
+	static result<certificate> import_der (const std::span<const std::byte> &der) noexcept;
+	static result<certificate> import_pem (const std::string_view &pem) noexcept;
 
 	friend class alternative_name;
 	friend class distinguished_name;
+	friend class certificate_store;
 	friend class key;
 };
 
