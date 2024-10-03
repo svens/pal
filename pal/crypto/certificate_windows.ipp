@@ -88,11 +88,11 @@ struct asn_decoder
 	temporary_buffer<Size> buffer;
 	const T &value;
 
-	asn_decoder (LPCSTR type, std::span<const BYTE> asn) noexcept
+	asn_decoder (LPCSTR type, std::span<const BYTE> asn)
 		: type{type}
 		, asn{asn}
 		, buffer_size{decode(nullptr, 0)}
-		, buffer{std::nothrow, buffer_size}
+		, buffer{buffer_size}
 		, value{*reinterpret_cast<const T *>(buffer.get())}
 	{
 		decode(buffer.get(), buffer_size);
@@ -100,9 +100,9 @@ struct asn_decoder
 
 	DWORD decode (void *buf, DWORD buf_size) const noexcept
 	{
-		static constexpr DWORD decode_flags =
-			CRYPT_DECODE_NOCOPY_FLAG |
-			CRYPT_DECODE_SHARE_OID_STRING_FLAG
+		static constexpr DWORD decode_flags = 0
+			| CRYPT_DECODE_NOCOPY_FLAG
+			| CRYPT_DECODE_SHARE_OID_STRING_FLAG
 		;
 
 		DWORD size = buf_size;
@@ -234,14 +234,15 @@ struct certificate::impl_type
 		::PCCERT_CONTEXT it = nullptr;
 		while ((it = ::CertEnumCertificatesInStore(chain.get(), it)) != nullptr)
 		{
-			auto x509 = to_ptr(::CertDuplicateCertificateContext(it));
-			auto cert = impl_ptr{new(std::nothrow) impl_type(std::move(x509))};
-			if (!cert)
+			if (auto cert = pal::make_shared<impl_type>(to_ptr(::CertDuplicateCertificateContext(it))))
 			{
-				return make_unexpected(std::errc::not_enough_memory);
+				(*cert)->next = head;
+				head = std::move(cert.value());
 			}
-			cert->next = head;
-			head = cert;
+			else
+			{
+				return unexpected{cert.error()};
+			}
 		}
 
 		// reorder: keep head (leaf), reverse rest from intermediate toward issuer
@@ -259,6 +260,11 @@ struct certificate::impl_type
 
 		return head;
 	}
+
+	static constexpr auto to_api = [](impl_ptr &&value) -> certificate
+	{
+		return {std::move(value)};
+	};
 };
 
 result<certificate> certificate::import_der (const std::span<const std::byte> &der) noexcept
@@ -273,11 +279,7 @@ result<certificate> certificate::import_der (const std::span<const std::byte> &d
 
 	if (x509)
 	{
-		if (auto impl = impl_ptr{new(std::nothrow) impl_type(std::move(x509))})
-		{
-			return certificate{impl};
-		}
-		return make_unexpected(std::errc::not_enough_memory);
+		return pal::make_shared<impl_type>(std::move(x509)).transform(impl_type::to_api);
 	}
 
 	return make_unexpected(std::errc::invalid_argument);
@@ -340,57 +342,64 @@ alternative_name_value certificate::subject_alternative_name_value () const noex
 		return {};
 	}
 
-	asn_decoder<CERT_ALT_NAME_INFO, 4096> name{X509_ALTERNATE_NAME, {ext->Value.pbData, ext->Value.cbData}};
-	auto count = name.value.cAltEntry;
-
-	alternative_name_value result{};
-	auto *p = result.data_, * const end = p + sizeof(result.data_);
-	size_t index_size = 0;
-
-	for (auto i = 0u; i < count && index_size < result.max_index_size && p < end; ++i)
+	try
 	{
-		size_t value_size = 0;
+		asn_decoder<CERT_ALT_NAME_INFO, 4096> name{X509_ALTERNATE_NAME, {ext->Value.pbData, ext->Value.cbData}};
+		auto count = name.value.cAltEntry;
 
-		const auto &entry = name.value.rgAltEntry[i];
-		switch (entry.dwAltNameChoice)
+		alternative_name_value result{};
+		auto *p = result.data_, * const end = p + sizeof(result.data_);
+		size_t index_size = 0;
+
+		for (auto i = 0u; i < count && index_size < result.max_index_size && p < end; ++i)
 		{
-			case CERT_ALT_NAME_DNS_NAME:
-				value_size = copy_string(entry.pwszDNSName, p, end);
-				break;
+			size_t value_size = 0;
 
-			case CERT_ALT_NAME_RFC822_NAME:
-				value_size = copy_string(entry.pwszRfc822Name, p, end);
-				break;
+			const auto &entry = name.value.rgAltEntry[i];
+			switch (entry.dwAltNameChoice)
+			{
+				case CERT_ALT_NAME_DNS_NAME:
+					value_size = copy_string(entry.pwszDNSName, p, end);
+					break;
 
-			case CERT_ALT_NAME_IP_ADDRESS:
-				value_size = copy_ip(entry.IPAddress.pbData, entry.IPAddress.cbData, p, end);
-				break;
+				case CERT_ALT_NAME_RFC822_NAME:
+					value_size = copy_string(entry.pwszRfc822Name, p, end);
+					break;
 
-			case CERT_ALT_NAME_URL:
-				value_size = copy_string(entry.pwszURL, p, end);
-				break;
+				case CERT_ALT_NAME_IP_ADDRESS:
+					value_size = copy_ip(entry.IPAddress.pbData, entry.IPAddress.cbData, p, end);
+					break;
+
+				case CERT_ALT_NAME_URL:
+					value_size = copy_string(entry.pwszURL, p, end);
+					break;
+			}
+
+			if (value_size)
+			{
+				result.index_data_[index_size++] = {p, value_size};
+				p += value_size;
+			}
 		}
 
-		if (value_size)
+		if (index_size)
 		{
-			result.index_data_[index_size++] = {p, value_size};
-			p += value_size;
+			result.index_ = {result.index_data_.data(), index_size};
 		}
-	}
 
-	if (index_size)
+		return result;
+	}
+	catch (const std::bad_alloc &)
 	{
-		result.index_ = {result.index_data_.data(), index_size};
+		return {};
 	}
-
-	return result;
 }
 
 // certificate_store {{{1
 
 namespace {
 
-store_ptr open_store (const std::span<const std::byte> &pkcs12, const char *password)
+result<store_ptr> open_store (const std::span<const std::byte> &pkcs12, const char *password) noexcept
 {
 	::CRYPT_DATA_BLOB pfx;
 	pfx.pbData = reinterpret_cast<uint8_t *>(const_cast<std::byte *>(pkcs12.data()));
@@ -407,6 +416,11 @@ store_ptr open_store (const std::span<const std::byte> &pkcs12, const char *pass
 	);
 
 	temporary_buffer<1024> password_buf{std::nothrow, static_cast<size_t>(password_buf_size)};
+	if (!password_buf)
+	{
+		return make_unexpected(std::errc::not_enough_memory);
+	}
+
 	auto password_buf_ptr = static_cast<LPWSTR>(password_buf.get());
 	::MultiByteToWideChar(
 		CP_UTF8,
@@ -419,7 +433,13 @@ store_ptr open_store (const std::span<const std::byte> &pkcs12, const char *pass
 
 	auto result = to_ptr(::PFXImportCertStore(&pfx, password_buf_ptr, 0));
 	::SecureZeroMemory(password_buf_ptr, password_buf_size);
-	return result;
+
+	if (result)
+	{
+		return result;
+	}
+
+	return make_unexpected(std::errc::invalid_argument);
 }
 
 } // namespace
@@ -431,6 +451,11 @@ struct certificate_store::impl_type
 	impl_type (const certificate::impl_ptr &head) noexcept
 		: head{head}
 	{ }
+
+	static constexpr auto to_api = [](impl_ptr &&value) -> certificate_store
+	{
+		return {std::move(value)};
+	};
 };
 
 bool certificate_store::empty () const noexcept
@@ -440,27 +465,13 @@ bool certificate_store::empty () const noexcept
 
 result<certificate_store> certificate_store::import_pkcs12 (const std::span<const std::byte> &pkcs12, const char *password) noexcept
 {
-	auto chain = open_store(pkcs12, password);
-	if (!chain)
-	{
-		return make_unexpected(std::errc::invalid_argument);
-	}
-
-	auto list = certificate::impl_type::make_forward_list(std::move(chain));
-	if (!list)
-	{
-		return unexpected{list.error()};
-	}
-
-	auto impl = impl_ptr{new(std::nothrow) impl_type(std::move(*list))};
-	if (!impl)
-	{
-		return make_unexpected(std::errc::not_enough_memory);
-	}
-
 	// TODO: attach private key (::CryptAcquireCertificatePrivateKey)
 
-	return certificate_store{std::move(impl)};
+	return open_store(pkcs12, password)
+		.and_then(certificate::impl_type::make_forward_list)
+		.and_then(pal::make_shared<impl_type,certificate::impl_ptr>)
+		.transform(impl_type::to_api)
+	;
 }
 
 certificate_store::const_iterator::const_iterator (const impl_type &store) noexcept
@@ -481,20 +492,20 @@ struct distinguished_name::impl_type
 	asn_decoder<CERT_NAME_INFO, 3 * 1024> name;
 	const size_t size;
 
-	impl_type (certificate::impl_ptr owner, const CERT_NAME_BLOB &name) noexcept
+	impl_type (certificate::impl_ptr owner, const CERT_NAME_BLOB &name)
 		: owner{owner}
 		, name{X509_NAME, {name.pbData, name.cbData}}
 		, size{this->name.value.cRDN}
 	{ }
 
+	static constexpr auto to_api = [](impl_ptr &&value) -> distinguished_name
+	{
+		return {std::move(value)};
+	};
+
 	static result<distinguished_name> make (certificate::impl_ptr owner, const CERT_NAME_BLOB &name) noexcept
 	{
-		impl_ptr list{new(std::nothrow) impl_type{owner, name}};
-		if (!list || !list->name.buffer.get())
-		{
-			return make_unexpected(std::errc::not_enough_memory);
-		}
-		return distinguished_name{list};
+		return pal::make_shared<impl_type>(owner, name).transform(to_api);
 	}
 };
 
@@ -533,27 +544,25 @@ struct alternative_name::impl_type
 	asn_decoder<CERT_ALT_NAME_INFO, 3 * 1024> name;
 	const size_t size;
 
-	impl_type (certificate::impl_ptr owner, const CERT_EXTENSION &ext) noexcept
+	impl_type (certificate::impl_ptr owner, const CERT_EXTENSION &ext)
 		: owner{owner}
 		, name{X509_ALTERNATE_NAME, {ext.Value.pbData, ext.Value.cbData}}
 		, size{this->name.value.cAltEntry}
 	{ }
 
+	static constexpr auto to_api = [](impl_ptr &&value) -> alternative_name
+	{
+		return {std::move(value)};
+	};
+
 	static result<alternative_name> make (certificate::impl_ptr owner, LPCSTR oid) noexcept
 	{
-		impl_ptr list = nullptr;
-
 		auto &info = *owner->x509->pCertInfo;
 		if (auto ext = ::CertFindExtension(oid, info.cExtension, info.rgExtension))
 		{
-			list.reset(new(std::nothrow) impl_type(owner, *ext));
-			if (!list)
-			{
-				return make_unexpected(std::errc::not_enough_memory);
-			}
+			return pal::make_shared<impl_type>(owner, *ext).transform(to_api);
 		}
-
-		return alternative_name{list};
+		return alternative_name{nullptr};
 	}
 };
 
@@ -625,14 +634,18 @@ struct key::impl_type
 		::BCryptDestroyKey(pkey);
 	}
 
+	static constexpr auto to_api = [](impl_ptr &&value) -> key
+	{
+		return {std::move(value)};
+	};
+
 	static result<key> make (certificate::impl_ptr owner, BCRYPT_KEY_HANDLE pkey) noexcept
 	{
-		if (auto impl = impl_ptr{new(std::nothrow) impl_type(owner, pkey)})
+		return pal::make_shared<impl_type>(owner, pkey).transform(to_api).or_else([&pkey](std::error_code &&error) -> result<key>
 		{
-			return key{impl};
-		}
-		::BCryptDestroyKey(pkey);
-		return make_unexpected(std::errc::not_enough_memory);
+			::BCryptDestroyKey(pkey);
+			return unexpected{std::move(error)};
+		});
 	}
 
 	static size_t get_size_property (BCRYPT_KEY_HANDLE pkey, LPCWSTR property) noexcept

@@ -127,9 +127,9 @@ struct certificate::impl_type
 	impl_type (const impl_type &) = delete;
 	impl_type &operator= (const impl_type &) = delete;
 
-	impl_type (x509_ptr &&x509, const std::span<const std::byte> &der) noexcept
+	impl_type (x509_ptr &&x509, const std::span<const std::byte> &der)
 		: x509{std::move(x509)}
-		, bytes_buf{std::nothrow, der.size()}
+		, bytes_buf{der.size()}
 		, bytes{init_bytes(der)}
 		, serial_number{init_serial_number()}
 		, common_name{init_common_name()}
@@ -138,9 +138,9 @@ struct certificate::impl_type
 		, not_after{to_time(::X509_get_notAfter(this->x509.get()))}
 	{ }
 
-	impl_type (x509_ptr &&x509) noexcept
+	impl_type (x509_ptr &&x509)
 		: x509{std::move(x509)}
-		, bytes_buf{std::nothrow, static_cast<size_t>(::i2d_X509(this->x509.get(), nullptr))}
+		, bytes_buf{static_cast<size_t>(::i2d_X509(this->x509.get(), nullptr))}
 		, bytes{init_bytes()}
 		, serial_number{init_serial_number()}
 		, common_name{init_common_name()}
@@ -152,22 +152,16 @@ struct certificate::impl_type
 	std::span<const std::byte> init_bytes (const std::span<const std::byte> &der) noexcept
 	{
 		auto p = static_cast<std::byte *>(bytes_buf.get());
-		if (p)
-		{
-			std::uninitialized_copy(der.begin(), der.end(), p);
-		}
+		std::uninitialized_copy(der.begin(), der.end(), p);
 		return {p, der.size()};
 	}
 
 	std::span<const std::byte> init_bytes () noexcept
 	{
-		if (auto first = static_cast<std::byte *>(bytes_buf.get()))
-		{
-			auto last = first;
-			::i2d_X509(x509.get(), reinterpret_cast<uint8_t **>(&last));
-			return {first, last};
-		}
-		return {};
+		auto first = static_cast<std::byte *>(bytes_buf.get());
+		auto last = first;
+		::i2d_X509(x509.get(), reinterpret_cast<uint8_t **>(&last));
+		return {first, last};
 	}
 
 	std::span<const uint8_t> init_serial_number () noexcept
@@ -205,24 +199,26 @@ struct certificate::impl_type
 
 	static result<impl_ptr> make_forward_list (x509_ptr &&first, x509_stack_ptr &&chain) noexcept
 	{
-		auto head = impl_ptr{new(std::nothrow) impl_type{std::move(first)}};
-		if (!head)
+		return pal::make_shared<impl_type>(std::move(first)).and_then([&](impl_ptr &&head) -> result<impl_ptr>
 		{
-			return make_unexpected(std::errc::not_enough_memory);
-		}
-
-		for (auto tail = head; ::sk_X509_num(chain.get()) > 0; tail = tail->next)
-		{
-			first.reset(sk_X509_pop(chain.get()));
-			tail->next = impl_ptr{new(std::nothrow) impl_type(std::move(first))};
-			if (!tail->next)
+			for (auto tail = head; ::sk_X509_num(chain.get()) > 0; tail = tail->next)
 			{
-				return make_unexpected(std::errc::not_enough_memory);
+				first.reset(sk_X509_pop(chain.get()));
+				auto node = pal::make_shared<impl_type>(std::move(first));
+				if (!node)
+				{
+					return unexpected{node.error()};
+				}
+				tail->next = std::move(*node);
 			}
-		}
-
-		return head;
+			return head;
+		});
 	}
+
+	static constexpr auto to_api = [](impl_ptr &&value) -> certificate
+	{
+		return {std::move(value)};
+	};
 };
 
 result<certificate> certificate::import_der (const std::span<const std::byte> &der) noexcept
@@ -230,14 +226,8 @@ result<certificate> certificate::import_der (const std::span<const std::byte> &d
 	auto data = reinterpret_cast<const uint8_t *>(der.data());
 	if (auto x509 = to_ptr(::d2i_X509(nullptr, &data, static_cast<long>(der.size()))))
 	{
-		impl_ptr impl{new(std::nothrow) impl_type(std::move(x509), der)};
-		if (impl && impl->bytes.data())
-		{
-			return certificate{impl};
-		}
-		return make_unexpected(std::errc::not_enough_memory);
+		return pal::make_shared<impl_type>(std::move(x509), der).transform(impl_type::to_api);
 	}
-
 	return make_unexpected(std::errc::invalid_argument);
 }
 
@@ -333,9 +323,14 @@ struct certificate_store::impl_type
 {
 	certificate::impl_ptr head;
 
-	impl_type (const certificate::impl_ptr &head) noexcept
-		: head{head}
+	impl_type (certificate::impl_ptr &&head) noexcept
+		: head{std::move(head)}
 	{ }
+
+	static constexpr auto to_api = [](impl_ptr &&value) -> certificate_store
+	{
+		return {std::move(value)};
+	};
 };
 
 bool certificate_store::empty () const noexcept
@@ -360,22 +355,13 @@ result<certificate_store> certificate_store::import_pkcs12 (const std::span<cons
 		return make_unexpected(std::errc::invalid_argument);
 	}
 
-	auto list = certificate::impl_type::make_forward_list(to_ptr(first), to_ptr(chain));
-	if (!list)
-	{
-		return unexpected{list.error()};
-	}
-
-	auto impl = impl_ptr{new(std::nothrow) impl_type(*list)};
-	if (!impl)
-	{
-		return make_unexpected(std::errc::not_enough_memory);
-	}
-
 	// TODO: attach to first cert in list
 	std::ignore = to_ptr(first_private_key);
 
-	return certificate_store{std::move(impl)};
+	return certificate::impl_type::make_forward_list(to_ptr(first), to_ptr(chain))
+		.and_then(pal::make_shared<impl_type, certificate::impl_ptr>)
+		.transform(impl_type::to_api)
+	;
 }
 
 certificate_store::const_iterator::const_iterator (const impl_type &store) noexcept
@@ -396,26 +382,21 @@ struct distinguished_name::impl_type
 	::X509_NAME &name;
 	const size_t size;
 
-	impl_type (certificate::impl_ptr owner, ::X509_NAME *name, size_t size) noexcept
+	impl_type (const certificate::impl_ptr &owner, ::X509_NAME *name, size_t size) noexcept
 		: owner{owner}
 		, name{*name}
 		, size{size}
 	{ }
 
-	static result<distinguished_name> make (certificate::impl_ptr owner, ::X509_NAME *name) noexcept
+	static constexpr auto to_api = [](impl_ptr &&value) -> distinguished_name
 	{
-		impl_ptr list = nullptr;
+		return {std::move(value)};
+	};
 
-		if (auto size = static_cast<size_t>(::X509_NAME_entry_count(name)))
-		{
-			list.reset(new(std::nothrow) impl_type(owner, name, size));
-			if (!list)
-			{
-				return make_unexpected(std::errc::not_enough_memory);
-			}
-		}
-
-		return distinguished_name{list};
+	static result<distinguished_name> make (const certificate::impl_ptr &owner, ::X509_NAME *name) noexcept
+	{
+		auto size = static_cast<size_t>(::X509_NAME_entry_count(name));
+		return pal::make_shared<impl_type>(owner, name, size).transform(to_api);
 	}
 };
 
@@ -461,20 +442,18 @@ struct alternative_name::impl_type
 		, size{static_cast<size_t>(::sk_GENERAL_NAME_num(this->name.get()))}
 	{ }
 
+	static constexpr auto to_api = [](impl_ptr &&value) -> alternative_name
+	{
+		return {std::move(value)};
+	};
+
 	static result<alternative_name> make (certificate::impl_ptr owner, int id) noexcept
 	{
-		impl_ptr list = nullptr;
-
 		if (auto name = to_ptr(static_cast<::GENERAL_NAMES *>(::X509_get_ext_d2i(owner->x509.get(), id, nullptr, nullptr))))
 		{
-			list.reset(new(std::nothrow) impl_type(owner, std::move(name)));
-			if (!list)
-			{
-				return make_unexpected(std::errc::not_enough_memory);
-			}
+			return pal::make_shared<impl_type>(owner, std::move(name)).transform(to_api);
 		}
-
-		return alternative_name{list};
+		return alternative_name{nullptr};
 	}
 };
 
@@ -540,6 +519,11 @@ struct key::impl_type
 		, size_bits{static_cast<size_t>(::EVP_PKEY_bits(&pkey))}
 		, max_block_size{static_cast<size_t>(::EVP_PKEY_size(&pkey))}
 	{ }
+
+	static constexpr auto to_api = [](impl_ptr &&value) -> key
+	{
+		return {std::move(value)};
+	};
 };
 
 size_t key::size_bits () const noexcept
@@ -554,11 +538,7 @@ size_t key::max_block_size () const noexcept
 
 result<key> certificate::public_key () const noexcept
 {
-	if (auto impl = key::impl_ptr{new(std::nothrow) key::impl_type{impl_}})
-	{
-		return key{impl};
-	}
-	return make_unexpected(std::errc::not_enough_memory);
+	return pal::make_shared<key::impl_type>(impl_).transform(key::impl_type::to_api);
 }
 
 //}}}1

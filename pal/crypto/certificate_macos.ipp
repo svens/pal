@@ -209,35 +209,42 @@ struct certificate::impl_type
 
 	static result<impl_ptr> make_forward_list (unique_ref<::CFArrayRef> &&chain) noexcept
 	{
-		impl_ptr head;
-
 		auto index = ::CFArrayGetCount(chain.get());
-		if (index)
+		if (!index)
 		{
-			auto cert = make_unique((::SecCertificateRef)::CFArrayGetValueAtIndex(chain.get(), 0));
-			::CFRetain(cert.get());
-
-			head = impl_ptr(new(std::nothrow) impl_type{std::move(cert)});
-			if (!head)
-			{
-				return make_unexpected(std::errc::not_enough_memory);
-			}
+			return {};
 		}
 
-		for (auto tail = head;  index > 1;  tail = tail->next)
+		auto chain_at = [&chain](::CFIndex index)
 		{
-			auto cert = make_unique((::SecCertificateRef)::CFArrayGetValueAtIndex(chain.get(), --index));
-			::CFRetain(cert.get());
+			return make_unique(
+				(::SecCertificateRef)::CFRetain(
+					::CFArrayGetValueAtIndex(chain.get(), index)
+				)
+			);
+		};
 
-			tail->next = impl_ptr{new(std::nothrow) impl_type{std::move(cert)}};
-			if (!tail->next)
+		return pal::make_shared<impl_type>(chain_at(0))
+			.and_then([&](impl_ptr &&head) -> result<impl_ptr>
 			{
-				return make_unexpected(std::errc::not_enough_memory);
-			}
-		}
-
-		return head;
+				for (auto tail = head; index > 1; tail = tail->next)
+				{
+					auto node = pal::make_shared<impl_type>(chain_at(--index));
+					if (!node)
+					{
+						return unexpected{node.error()};
+					}
+					tail->next = std::move(*node);
+				}
+				return head;
+			})
+		;
 	}
+
+	static constexpr auto to_api = [](impl_ptr &&value) -> certificate
+	{
+		return {std::move(value)};
+	};
 };
 
 result<certificate> certificate::import_der (const std::span<const std::byte> &der) noexcept
@@ -245,13 +252,8 @@ result<certificate> certificate::import_der (const std::span<const std::byte> &d
 	auto data = from_span(der);
 	if (auto x509 = make_unique(::SecCertificateCreateWithData(nullptr, data.get())))
 	{
-		if (auto impl = impl_ptr{new(std::nothrow) impl_type(std::move(x509))})
-		{
-			return certificate{impl};
-		}
-		return make_unexpected(std::errc::not_enough_memory);
+		return pal::make_shared<impl_type>(std::move(x509)).transform(impl_type::to_api);
 	}
-
 	return make_unexpected(std::errc::invalid_argument);
 }
 
@@ -369,6 +371,11 @@ struct certificate_store::impl_type
 	impl_type (const certificate::impl_ptr &head) noexcept
 		: head{head}
 	{ }
+
+	static constexpr auto to_api = [](impl_ptr &&value) -> certificate_store
+	{
+		return {std::move(value)};
+	};
 };
 
 bool certificate_store::empty () const noexcept
@@ -414,21 +421,12 @@ result<certificate_store> certificate_store::import_pkcs12 (const std::span<cons
 		return make_unexpected(std::errc::invalid_argument);
 	}
 
-	auto chain = certificate::impl_type::make_forward_list(make_unique(rv));
-	if (!chain)
-	{
-		return unexpected{chain.error()};
-	}
-
-	auto impl = impl_ptr{new(std::nothrow) impl_type(*chain)};
-	if (!impl)
-	{
-		return make_unexpected(std::errc::not_enough_memory);
-	}
-
 	// TODO: attach private_key in identity
 
-	return certificate_store{std::move(impl)};
+	return certificate::impl_type::make_forward_list(make_unique(rv))
+		.and_then(pal::make_shared<impl_type, certificate::impl_ptr>)
+		.transform(impl_type::to_api)
+	;
 }
 
 certificate_store::const_iterator::const_iterator (const impl_type &store) noexcept
@@ -455,20 +453,18 @@ struct distinguished_name::impl_type
 		, size{static_cast<size_t>(::CFArrayGetCount(this->name.get()))}
 	{ }
 
+	static constexpr auto to_api = [](impl_ptr &&value) -> distinguished_name
+	{
+		return {std::move(value)};
+	};
+
 	static result<distinguished_name> make (certificate::impl_ptr owner, ::CFTypeRef id) noexcept
 	{
-		impl_ptr list = nullptr;
-
 		if (auto name = copy_values(owner->x509.get(), id))
 		{
-			list.reset(new(std::nothrow) impl_type(owner, std::move(name)));
-			if (!list)
-			{
-				return make_unexpected(std::errc::not_enough_memory);
-			}
+			return pal::make_shared<impl_type>(owner, std::move(name)).transform(to_api);
 		}
-
-		return distinguished_name{list};
+		return distinguished_name{nullptr};
 	}
 };
 
@@ -514,20 +510,18 @@ struct alternative_name::impl_type
 		, size{static_cast<size_t>(::CFArrayGetCount(this->name.get()))}
 	{ }
 
+	static constexpr auto to_api = [](impl_ptr &&value) -> alternative_name
+	{
+		return {std::move(value)};
+	};
+
 	static result<alternative_name> make (certificate::impl_ptr owner, ::CFTypeRef id) noexcept
 	{
-		impl_ptr list = nullptr;
-
 		if (auto name = copy_values(owner->x509.get(), id))
 		{
-			list.reset(new(std::nothrow) impl_type(owner, std::move(name)));
-			if (!list)
-			{
-				return make_unexpected(std::errc::not_enough_memory);
-			}
+			return pal::make_shared<impl_type>(owner, std::move(name)).transform(to_api);
 		}
-
-		return alternative_name{list};
+		return alternative_name{nullptr};
 	}
 };
 
@@ -599,13 +593,14 @@ struct key::impl_type
 		, max_block_size{::SecKeyGetBlockSize(this->pkey.get())}
 	{ }
 
+	static constexpr auto to_api = [](impl_ptr &&value) -> key
+	{
+		return {std::move(value)};
+	};
+
 	static result<key> make (certificate::impl_ptr owner, unique_ref<::SecKeyRef> pkey) noexcept
 	{
-		if (auto impl = impl_ptr{new(std::nothrow) impl_type(owner, std::move(pkey))})
-		{
-			return key{impl};
-		}
-		return make_unexpected(std::errc::not_enough_memory);
+		return pal::make_shared<impl_type>(owner, std::move(pkey)).transform(to_api);
 	}
 
 	static size_t get_size_bits (::SecKeyRef pkey) noexcept
