@@ -12,12 +12,15 @@
 
 namespace pal::crypto {
 
+/// Certificate collection.
 class certificate_store
 {
 public:
 
 	certificate_store () noexcept = default;
 
+	/// Decode certificates stored as PKCS#12 blob in \a pkcs12,
+	/// optionally protected with \a password.
 	template <typename Data>
 	static result<certificate_store> from_pkcs12 (const Data &pkcs12, const char *password = nullptr) noexcept
 	{
@@ -36,11 +39,18 @@ public:
 		return !is_null();
 	}
 
+	/// Returns true if store is_null() or has no certificates.
 	bool empty () const noexcept;
 
 	class const_iterator;
 
+	/// Return iterator to first certificate in store. If begin() ==
+	/// end(), attept to access its result is undefined behaviour.
 	const_iterator begin () const noexcept;
+
+	/// Return iterator to the element following last certificate in store.
+	/// This element acts a placeholder, attempt to access its result is
+	/// undefined behaviour.
 	const_iterator end () const noexcept;
 
 private:
@@ -56,6 +66,8 @@ private:
 	static result<certificate_store> import_pkcs12 (const std::span<const std::byte> &pkcs12, const char *password) noexcept;
 };
 
+/// Iterator that can sequentially access each certificate in store. It can be
+/// used in multipass algorithms.
 class certificate_store::const_iterator
 {
 public:
@@ -70,18 +82,23 @@ public:
 	const_iterator (const const_iterator &) = default;
 	const_iterator &operator= (const const_iterator &) = default;
 
+	/// Returns true if \a this points to same certificate as \a that.
 	bool operator== (const const_iterator &that) const noexcept
 	{
 		return entry_.impl_ == that.entry_.impl_;
 	}
 
+	/// Returns true if \a this points to different certificate as \a that.
 	bool operator!= (const const_iterator &that) const noexcept
 	{
 		return !operator==(that);
 	}
 
+	/// Move iterator to next certificate in store.
 	const_iterator &operator++ () noexcept;
 
+	/// Move iterator to next certificate in store.
+	/// \returns iterator value before increment
 	const_iterator operator++ (int) noexcept
 	{
 		auto result = *this;
@@ -89,11 +106,13 @@ public:
 		return result;
 	}
 
+	/// \returns reference to current certificate.
 	reference operator* () const noexcept
 	{
 		return entry_;
 	}
 
+	/// \returns pointer to current certificate.
 	pointer operator-> () const noexcept
 	{
 		return &entry_;
@@ -104,7 +123,6 @@ private:
 	certificate entry_{};
 
 	const_iterator (const impl_type &store) noexcept;
-
 	friend class certificate_store;
 };
 

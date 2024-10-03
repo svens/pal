@@ -19,6 +19,15 @@
 
 namespace pal::crypto {
 
+/// Wrapper for platform's native public key certificate
+///
+/// Following native implementations are used:
+/// - Linux: OpenSSL with X509
+/// - MacOS: Security framework with SecCertificateRef
+/// - Windows: WinCrypt with PCCERT_CONTEXT
+///
+/// \note Invoking any method except swap/is_null on certificate for which
+/// method is_null() returns true is undefined behaviour.
 class certificate
 {
 public:

@@ -11,18 +11,32 @@
 
 namespace pal::crypto {
 
-/// \todo
+/// Concatenated content of certificate alternate names, filtered by name type:
+/// - DNS
+/// - IP
+/// - email
+/// - URI
+///
+/// Field type itself is not preserved, only value text is stored. Application
+/// that needs both, should use alternative_name instead.
 class alternative_name_value
 {
 public:
 
+	/// Maximum number of stored alternative name values.
 	static constexpr size_t max_index_size = 16;
 
+	/// Return list of stored values.
 	const std::span<std::string_view> &index () const noexcept
 	{
 		return index_;
 	}
 
+	/// Return true if any of stored content contains \a value.
+	///
+	/// Value comparison is using case sensitive equality operator as is.
+	/// Only exceptions are DNS entries, for which wildcard subdomains are
+	/// also considered.
 	bool contains (const std::string_view &value) const noexcept
 	{
 		if (value.starts_with('.') || value.starts_with('*'))

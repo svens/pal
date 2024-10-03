@@ -10,6 +10,7 @@ namespace pal::crypto {
 // pal/crypto/certificate
 class certificate;
 
+/// Certificate public or private key instance.
 class key
 {
 public:
