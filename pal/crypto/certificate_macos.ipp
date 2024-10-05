@@ -8,6 +8,7 @@
 #include <CoreFoundation/CFURL.h>
 #include <Security/SecCertificate.h>
 #include <Security/SecCertificateOIDs.h>
+#include <Security/SecIdentity.h>
 #include <Security/SecImportExport.h>
 #include <Security/SecItem.h>
 #include <Security/SecKey.h>
@@ -140,6 +141,8 @@ struct certificate::impl_type
 
 	time_type not_before, not_after;
 
+	unique_ref<::SecKeyRef> private_key = make_unique((::SecKeyRef)nullptr);
+
 	impl_ptr next = nullptr;
 
 	impl_type (const impl_type &) = delete;
@@ -207,9 +210,9 @@ struct certificate::impl_type
 		return fingerprint_buf;
 	}
 
-	static result<impl_ptr> make_forward_list (unique_ref<::CFArrayRef> &&chain) noexcept
+	static result<impl_ptr> make_forward_list (::CFArrayRef chain) noexcept
 	{
-		auto index = ::CFArrayGetCount(chain.get());
+		auto index = ::CFArrayGetCount(chain);
 		if (!index)
 		{
 			return {};
@@ -219,7 +222,7 @@ struct certificate::impl_type
 		{
 			return make_unique(
 				(::SecCertificateRef)::CFRetain(
-					::CFArrayGetValueAtIndex(chain.get(), index)
+					::CFArrayGetValueAtIndex(chain, index)
 				)
 			);
 		};
@@ -229,12 +232,14 @@ struct certificate::impl_type
 			{
 				for (auto tail = head; index > 1; tail = tail->next)
 				{
-					auto node = pal::make_shared<impl_type>(chain_at(--index));
-					if (!node)
+					if (auto node = pal::make_shared<impl_type>(chain_at(--index)))
+					{
+						tail->next = std::move(*node);
+					}
+					else
 					{
 						return unexpected{node.error()};
 					}
-					tail->next = std::move(*node);
 				}
 				return head;
 			})
@@ -383,47 +388,60 @@ bool certificate_store::empty () const noexcept
 	return !impl_ || impl_->head == nullptr;
 }
 
+namespace {
+
+unique_ref<::CFDictionaryRef> pkcs12_import_options (const unique_ref<::CFStringRef> &passphrase) noexcept
+{
+	const void
+		*keys[] =
+		{
+			::kSecImportExportPassphrase,
+			::kSecUseDataProtectionKeychain,
+		},
+		*values[] =
+		{
+			passphrase.get(),
+			&::kCFBooleanTrue,
+		};
+	const auto count = sizeof(keys)/sizeof(keys[0]);
+	return make_unique(::CFDictionaryCreate(nullptr, keys, values, count, nullptr, nullptr));
+}
+
+} // namespace
+
 result<certificate_store> certificate_store::import_pkcs12 (const std::span<const std::byte> &pkcs12, const char *password) noexcept
 {
 	auto blob = from_span(pkcs12);
 	auto passphrase = from_cstr(password ? password : "");
+	auto options = pkcs12_import_options(passphrase);
 
-	::CFStringRef extension = nullptr;
-	::SecExternalFormat format = ::kSecFormatPKCS12;
-	::SecExternalItemType type = ::kSecItemTypeAggregate;
-	::SecItemImportExportFlags flags = 0;
-	::SecItemImportExportKeyParameters params =
-	{
-		.version = SEC_KEY_IMPORT_EXPORT_PARAMS_VERSION,
-		.flags = ::kSecKeyImportOnlyOne,
-		.passphrase = passphrase.get(),
-		.alertTitle = nullptr,
-		.alertPrompt = nullptr,
-		.accessRef = nullptr,
-		.keyUsage = nullptr,
-		.keyAttributes = nullptr,
-	};
-	::SecKeychainRef keychain = nullptr;
-	::CFArrayRef rv = nullptr;
-
-	auto status = ::SecItemImport(
-		blob.get(),
-		extension,
-		&format,
-		&type,
-		flags,
-		&params,
-		keychain,
-		&rv
-	);
-	if (status != ::errSecSuccess)
+	::CFArrayRef items = nullptr;
+	if (::SecPKCS12Import(blob.get(), options.get(), &items) != ::errSecSuccess)
 	{
 		return make_unexpected(std::errc::invalid_argument);
 	}
 
-	// TODO: attach private_key in identity
+	auto item_guard = make_unique(items);
+	auto data = (::CFDictionaryRef)::CFArrayGetValueAtIndex(items, 0);
+	auto chain = (::CFArrayRef)::CFDictionaryGetValue(data, ::kSecImportItemCertChain);
+	auto identity = (::SecIdentityRef)::CFDictionaryGetValue(data, ::kSecImportItemIdentity);
 
-	return certificate::impl_type::make_forward_list(make_unique(rv))
+	auto attach_private_key = [&identity](certificate::impl_ptr &&head) -> result<certificate::impl_ptr>
+	{
+		if (identity)
+		{
+			::SecKeyRef pkey;
+			if (::SecIdentityCopyPrivateKey(identity, &pkey) != ::errSecSuccess)
+			{
+				return make_unexpected(std::errc::invalid_argument);
+			}
+			head->private_key.reset(pkey);
+		}
+		return head;
+	};
+
+	return certificate::impl_type::make_forward_list(chain)
+		.and_then(attach_private_key)
 		.and_then(pal::make_shared<impl_type, certificate::impl_ptr>)
 		.transform(impl_type::to_api)
 	;
@@ -631,6 +649,16 @@ size_t key::max_block_size () const noexcept
 result<key> certificate::public_key () const noexcept
 {
 	return key::impl_type::make(impl_, make_unique(::SecCertificateCopyKey(impl_->x509.get())));
+}
+
+result<key> certificate::private_key () const noexcept
+{
+	if (auto pkey = impl_->private_key.get())
+	{
+		::CFRetain(pkey);
+		return key::impl_type::make(impl_, make_unique(pkey));
+	}
+	return make_unexpected(std::errc::io_error);
 }
 
 //}}}1

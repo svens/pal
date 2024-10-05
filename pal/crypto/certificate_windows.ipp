@@ -3,12 +3,12 @@
 #include <pal/crypto/hash>
 #include <pal/crypto/certificate_store>
 #include <pal/error>
+#include <pal/memory>
 #include <pal/net/ip/address_v4>
 #include <pal/net/ip/address_v6>
-#include <pal/memory>
 #include <wincrypt.h>
 #include <algorithm>
-#include <deque>
+#include <variant>
 
 namespace pal::crypto {
 
@@ -619,19 +619,33 @@ result<alternative_name> certificate::subject_alternative_name () const noexcept
 struct key::impl_type
 {
 	certificate::impl_ptr owner;
-	BCRYPT_KEY_HANDLE pkey;
+	std::variant<::BCRYPT_KEY_HANDLE, ::NCRYPT_KEY_HANDLE> pkey;
 	const size_t size_bits, max_block_size;
 
-	impl_type (certificate::impl_ptr owner, BCRYPT_KEY_HANDLE pkey) noexcept
+	impl_type (certificate::impl_ptr owner, ::BCRYPT_KEY_HANDLE pkey) noexcept
 		: owner{owner}
 		, pkey{pkey}
 		, size_bits{get_size_property(pkey, BCRYPT_KEY_LENGTH)}
 		, max_block_size{get_size_property(pkey, BCRYPT_BLOCK_LENGTH)}
 	{ }
 
+	impl_type (certificate::impl_ptr owner, NCRYPT_KEY_HANDLE pkey) noexcept
+		: owner{owner}
+		, pkey{pkey}
+		, size_bits{get_size_property(pkey, NCRYPT_LENGTH_PROPERTY)}
+		, max_block_size{get_size_property(pkey, NCRYPT_BLOCK_LENGTH_PROPERTY)}
+	{ }
+
 	~impl_type () noexcept
 	{
-		::BCryptDestroyKey(pkey);
+		if (auto public_key = std::get_if<::BCRYPT_KEY_HANDLE>(&pkey))
+		{
+			::BCryptDestroyKey(*public_key);
+		}
+		else if (auto private_key = std::get_if<::NCRYPT_KEY_HANDLE>(&pkey))
+		{
+			::NCryptFreeObject(*private_key);
+		}
 	}
 
 	static constexpr auto to_api = [](impl_ptr &&value) -> key
@@ -639,22 +653,34 @@ struct key::impl_type
 		return {std::move(value)};
 	};
 
-	static result<key> make (certificate::impl_ptr owner, BCRYPT_KEY_HANDLE pkey) noexcept
-	{
-		return pal::make_shared<impl_type>(owner, pkey).transform(to_api).or_else([&pkey](std::error_code &&error) -> result<key>
-		{
-			::BCryptDestroyKey(pkey);
-			return unexpected{std::move(error)};
-		});
-	}
-
-	static size_t get_size_property (BCRYPT_KEY_HANDLE pkey, LPCWSTR property) noexcept
+	static size_t get_size_property (::BCRYPT_KEY_HANDLE pkey, LPCWSTR property) noexcept
 	{
 		size_t result = 0;
 
 		DWORD buf;
 		ULONG buf_size;
 		auto status = ::BCryptGetProperty(pkey,
+			property,
+			reinterpret_cast<PUCHAR>(&buf),
+			sizeof(buf),
+			&buf_size,
+			0
+		);
+		if (status == ERROR_SUCCESS)
+		{
+			result = buf;
+		}
+
+		return result;
+	}
+
+	static size_t get_size_property (::NCRYPT_KEY_HANDLE pkey, LPCWSTR property) noexcept
+	{
+		size_t result = 0;
+
+		DWORD buf;
+		ULONG buf_size;
+		auto status = ::NCryptGetProperty(pkey,
 			property,
 			reinterpret_cast<PUCHAR>(&buf),
 			sizeof(buf),
@@ -692,9 +718,41 @@ result<key> certificate::public_key () const noexcept
 	);
 	if (status)
 	{
-		return key::impl_type::make(impl_, pkey);
+		return pal::make_shared<key::impl_type>(impl_, pkey)
+			.transform(key::impl_type::to_api)
+			.or_else([&pkey](std::error_code &&error) -> result<key>
+			{
+				::BCryptDestroyKey(pkey);
+				return unexpected{std::move(error)};
+			})
+		;
 	}
 	return unexpected{this_thread::last_system_error()};
+}
+
+result<key> certificate::private_key () const noexcept
+{
+	::NCRYPT_KEY_HANDLE pkey;
+	auto status = ::CryptAcquireCertificatePrivateKey(
+		impl_->x509.get(),
+		CRYPT_ACQUIRE_ONLY_NCRYPT_KEY_FLAG,
+		nullptr,
+		&pkey,
+		nullptr,
+		nullptr
+	);
+	if (status)
+	{
+		return pal::make_shared<key::impl_type>(impl_, pkey)
+			.transform(key::impl_type::to_api)
+			.or_else([&pkey](std::error_code &&error) -> result<key>
+			{
+				::NCryptFreeObject(pkey);
+				return unexpected{std::move(error)};
+			})
+		;
+	}
+	return make_unexpected(std::errc::io_error);
 }
 
 //}}}1

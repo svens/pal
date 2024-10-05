@@ -122,6 +122,8 @@ struct certificate::impl_type
 
 	time_type not_before, not_after;
 
+	pkey_ptr private_key = to_ptr(static_cast<::EVP_PKEY *>(nullptr));
+
 	impl_ptr next = nullptr;
 
 	impl_type (const impl_type &) = delete;
@@ -355,11 +357,10 @@ result<certificate_store> certificate_store::import_pkcs12 (const std::span<cons
 		return make_unexpected(std::errc::invalid_argument);
 	}
 
-	// TODO: attach to first cert in list
-	std::ignore = to_ptr(first_private_key);
-
+	auto pkey = to_ptr(first_private_key);
 	return certificate::impl_type::make_forward_list(to_ptr(first), to_ptr(chain))
 		.and_then(pal::make_shared<impl_type, certificate::impl_ptr>)
+		.and_then([&pkey](auto &&store){ store->head->private_key = std::move(pkey); })
 		.transform(impl_type::to_api)
 	;
 }
@@ -513,9 +514,9 @@ struct key::impl_type
 	const ::EVP_PKEY &pkey;
 	const size_t size_bits, max_block_size;
 
-	impl_type (certificate::impl_ptr owner) noexcept
+	impl_type (certificate::impl_ptr owner, const ::EVP_PKEY &pkey) noexcept
 		: owner{owner}
-		, pkey{*::X509_get0_pubkey(owner->x509.get())}
+		, pkey{pkey}
 		, size_bits{static_cast<size_t>(::EVP_PKEY_bits(&pkey))}
 		, max_block_size{static_cast<size_t>(::EVP_PKEY_size(&pkey))}
 	{ }
@@ -538,7 +539,17 @@ size_t key::max_block_size () const noexcept
 
 result<key> certificate::public_key () const noexcept
 {
-	return pal::make_shared<key::impl_type>(impl_).transform(key::impl_type::to_api);
+	const auto &pkey = *::X509_get0_pubkey(impl_->x509.get());
+	return pal::make_shared<key::impl_type>(impl_, pkey).transform(key::impl_type::to_api);
+}
+
+result<key> certificate::private_key () const noexcept
+{
+	if (impl_->private_key)
+	{
+		return pal::make_shared<key::impl_type>(impl_, *(impl_->private_key.get())).transform(key::impl_type::to_api);
+	}
+	return make_unexpected(std::errc::io_error);
 }
 
 //}}}1

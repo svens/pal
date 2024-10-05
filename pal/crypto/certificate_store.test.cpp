@@ -6,6 +6,8 @@
 #include <set>
 #include <vector>
 
+// In tests below, MacOS has special cases, see pal::crypto::certificate_store::from_pkcs12()
+
 namespace {
 
 using pal::crypto::certificate;
@@ -27,18 +29,16 @@ TEST_CASE("crypto/certificate_store")
 	{
 		SECTION("unprotected / no password")
 		{
-			auto store = certificate_store::from_pkcs12(test_cert::pkcs12_unprotected);
-			if constexpr (pal::os == pal::os_type::macos)
-			{
-				// MacOS refuses to import unprotected PKCS#12
-				REQUIRE_FALSE(store);
-				CHECK(store.error() == std::errc::invalid_argument);
-			}
-			else
-			{
-				REQUIRE(store);
-				CHECK_FALSE(store.value().empty());
-			}
+			auto store = certificate_store::from_pkcs12(test_cert::pkcs12_unprotected).value();
+			REQUIRE(store);
+			CHECK_FALSE(store.empty());
+		}
+
+		SECTION("protected / with password")
+		{
+			auto store = certificate_store::from_pkcs12(test_cert::pkcs12_protected, test_cert::pkcs12_password).value();
+			REQUIRE(store);
+			CHECK_FALSE(store.empty());
 		}
 
 		SECTION("unprotected / with password")
@@ -55,13 +55,6 @@ TEST_CASE("crypto/certificate_store")
 			CHECK(store.error() == std::errc::invalid_argument);
 		}
 
-		SECTION("protected / with password")
-		{
-			auto store = certificate_store::from_pkcs12(test_cert::pkcs12_protected, test_cert::pkcs12_password).value();
-			REQUIRE(store);
-			CHECK_FALSE(store.empty());
-		}
-
 		SECTION("protected / invalid password")
 		{
 			auto store = certificate_store::from_pkcs12(test_cert::pkcs12_protected, "InvalidPassword");
@@ -74,6 +67,26 @@ TEST_CASE("crypto/certificate_store")
 			auto store = certificate_store::from_pkcs12("invalid-pkcs12_protected-blob");
 			REQUIRE_FALSE(store);
 			CHECK(store.error() == std::errc::invalid_argument);
+		}
+
+		SECTION("private_key")
+		{
+			auto store = certificate_store::from_pkcs12(test_cert::pkcs12_protected, test_cert::pkcs12_password).value();
+			REQUIRE_FALSE(store.empty());
+
+			auto it = store.begin();
+			REQUIRE(it != store.end());
+			auto key = it->private_key();
+			REQUIRE(key.has_value());
+			CHECK(it->fingerprint() == test_cert::server.fingerprint);
+			CHECK(key->max_block_size() == test_cert::server.max_block_size);
+			CHECK(key->size_bits() == test_cert::server.size_bits);
+
+			REQUIRE(++it != store.end());
+			key = it->private_key();
+			REQUIRE_FALSE(key.has_value());
+			CHECK(key.error() == std::errc::io_error);
+			CHECK(it->fingerprint() != test_cert::server.fingerprint);
 		}
 	}
 
@@ -92,15 +105,31 @@ TEST_CASE("crypto/certificate_store")
 				fingerprints.insert(cert.fingerprint());
 			}
 
-			static const std::set expected =
+			auto expected = []() -> std::set<std::string_view>
 			{
-				test_cert::server.fingerprint,
-				test_cert::client.fingerprint,
-				test_cert::intermediate.fingerprint,
-				test_cert::ca.fingerprint,
+				if constexpr (pal::os != pal::os_type::macos)
+				{
+					return
+					{
+						test_cert::server.fingerprint,
+						test_cert::client.fingerprint,
+						test_cert::intermediate.fingerprint,
+						test_cert::ca.fingerprint,
+					};
+				}
+				else
+				{
+					return
+					{
+						test_cert::server.fingerprint,
+						test_cert::intermediate.fingerprint,
+						test_cert::ca.fingerprint,
+					};
+				}
 			};
 
-			CHECK(fingerprints == expected);
+
+			CHECK(fingerprints == expected());
 		}
 
 		SECTION("has_fingerprint")
@@ -119,20 +148,39 @@ TEST_CASE("crypto/certificate_store")
 				std::back_inserter(result),
 				certificate::has_common_name("pal.alt.ee")
 			);
-			REQUIRE(result.size() == 2);
-			CHECK(result[0].fingerprint() == test_cert::server.fingerprint);
-			CHECK(result[1].fingerprint() == test_cert::client.fingerprint);
+
+			if constexpr (pal::os != pal::os_type::macos)
+			{
+				REQUIRE(result.size() == 2);
+				CHECK(result[0].fingerprint() == test_cert::server.fingerprint);
+				CHECK(result[1].fingerprint() == test_cert::client.fingerprint);
+			}
+			else
+			{
+				REQUIRE(result.size() == 1);
+				CHECK(result[0].fingerprint() == test_cert::server.fingerprint);
+			}
 		}
 
 		SECTION("has_subject_alternative_name")
 		{
+			// server cert will be returned because it has DNS entry *.pal.alt.ee
 			std::copy_if(store.begin(), store.end(),
 				std::back_inserter(result),
 				certificate::has_subject_alternative_name("client.pal.alt.ee")
 			);
-			REQUIRE(result.size() == 2);
-			CHECK(result[0].fingerprint() == test_cert::server.fingerprint);
-			CHECK(result[1].fingerprint() == test_cert::client.fingerprint);
+
+			if constexpr (pal::os != pal::os_type::macos)
+			{
+				REQUIRE(result.size() == 2);
+				CHECK(result[0].fingerprint() == test_cert::server.fingerprint);
+				CHECK(result[1].fingerprint() == test_cert::client.fingerprint);
+			}
+			else
+			{
+				REQUIRE(result.size() == 1);
+				CHECK(result[0].fingerprint() == test_cert::server.fingerprint);
+			}
 
 			result.clear();
 			std::copy_if(store.begin(), store.end(),

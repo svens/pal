@@ -141,6 +141,10 @@ public:
 	/// Returns certificate public key
 	result<key> public_key () const noexcept;
 
+	/// Returns certificate private key or error with std::errc::io_error
+	/// if there is no private key attached to certificate.
+	result<key> private_key () const noexcept;
+
 	/// \defgroup certificate_predicates predicates checking certificate properties
 	/// \{
 
