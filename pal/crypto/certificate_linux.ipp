@@ -512,20 +512,37 @@ struct key::impl_type
 {
 	certificate::impl_ptr owner;
 	const ::EVP_PKEY &pkey;
+	const key_algorithm algorithm;
 	const size_t size_bits, max_block_size;
 
 	impl_type (certificate::impl_ptr owner, const ::EVP_PKEY &pkey) noexcept
 		: owner{owner}
 		, pkey{pkey}
+		, algorithm{to_key_algorithm(::EVP_PKEY_get_base_id(&pkey))}
 		, size_bits{static_cast<size_t>(::EVP_PKEY_bits(&pkey))}
 		, max_block_size{static_cast<size_t>(::EVP_PKEY_size(&pkey))}
 	{ }
+
+	static constexpr key_algorithm to_key_algorithm (int id) noexcept
+	{
+		switch (id)
+		{
+			case EVP_PKEY_RSA:
+				return key_algorithm::rsa;
+		}
+		return key_algorithm::opaque;
+	}
 
 	static constexpr auto to_api = [](impl_ptr &&value) -> key
 	{
 		return {std::move(value)};
 	};
 };
+
+key_algorithm key::algorithm () const noexcept
+{
+	return impl_->algorithm;
+}
 
 size_t key::size_bits () const noexcept
 {

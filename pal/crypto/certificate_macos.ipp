@@ -602,13 +602,18 @@ struct key::impl_type
 {
 	certificate::impl_ptr owner;
 	unique_ref<::SecKeyRef> pkey;
-	const size_t size_bits, max_block_size;
+
+	struct key_properties
+	{
+		key_algorithm algorithm;
+		size_t size_bits, max_block_size;
+	};
+	const key_properties properties;
 
 	impl_type (certificate::impl_ptr owner, unique_ref<::SecKeyRef> pkey) noexcept
 		: owner{owner}
 		, pkey{std::move(pkey)}
-		, size_bits{get_size_bits(this->pkey.get())}
-		, max_block_size{::SecKeyGetBlockSize(this->pkey.get())}
+		, properties{get_key_properties(this->pkey.get())}
 	{ }
 
 	static constexpr auto to_api = [](impl_ptr &&value) -> key
@@ -621,29 +626,48 @@ struct key::impl_type
 		return pal::make_shared<impl_type>(owner, std::move(pkey)).transform(to_api);
 	}
 
-	static size_t get_size_bits (::SecKeyRef pkey) noexcept
+	static key_properties get_key_properties (::SecKeyRef pkey) noexcept
 	{
-		size_t result = 0;
+		key_properties result
+		{
+			.algorithm = key_algorithm::opaque,
+			.size_bits = 0,
+			.max_block_size = ::SecKeyGetBlockSize(pkey),
+		};
 
-		::CFTypeRef v;
 		auto dir = make_unique(::SecKeyCopyAttributes(pkey));
+		::CFTypeRef v;
+
+		if (::CFDictionaryGetValueIfPresent(dir.get(), ::kSecAttrKeyType, &v))
+		{
+			if (::CFEqual(v, ::kSecAttrKeyTypeRSA))
+			{
+				result.algorithm = key_algorithm::rsa;
+			}
+		}
+
 		if (::CFDictionaryGetValueIfPresent(dir.get(), ::kSecAttrKeySizeInBits, &v))
 		{
-			::CFNumberGetValue(static_cast<::CFNumberRef>(v), kCFNumberSInt64Type, &result);
+			::CFNumberGetValue(static_cast<::CFNumberRef>(v), kCFNumberSInt64Type, &result.size_bits);
 		}
 
 		return result;
 	}
 };
 
+key_algorithm key::algorithm () const noexcept
+{
+	return impl_->properties.algorithm;
+}
+
 size_t key::size_bits () const noexcept
 {
-	return impl_->size_bits;
+	return impl_->properties.size_bits;
 }
 
 size_t key::max_block_size () const noexcept
 {
-	return impl_->max_block_size;
+	return impl_->properties.max_block_size;
 }
 
 result<key> certificate::public_key () const noexcept

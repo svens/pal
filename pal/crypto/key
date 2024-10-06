@@ -5,10 +5,20 @@
  * Asymmetric key
  */
 
+#include <cstddef>
+#include <memory>
+
 namespace pal::crypto {
 
 // pal/crypto/certificate
 class certificate;
+
+/// Key algorithms
+enum class key_algorithm
+{
+	opaque,	///< Unspecified algorithm type
+	rsa,	///< RSA algorithm
+};
 
 /// Certificate public or private key instance.
 class key
@@ -26,6 +36,9 @@ public:
 	{
 		return !is_null();
 	}
+
+	/// Return key algorithm
+	key_algorithm algorithm () const noexcept;
 
 	/// Returns number of bits in this key
 	size_t size_bits () const noexcept;

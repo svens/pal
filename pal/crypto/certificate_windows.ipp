@@ -620,11 +620,13 @@ struct key::impl_type
 {
 	certificate::impl_ptr owner;
 	std::variant<::BCRYPT_KEY_HANDLE, ::NCRYPT_KEY_HANDLE> pkey;
+	const key_algorithm algorithm;
 	const size_t size_bits, max_block_size;
 
 	impl_type (certificate::impl_ptr owner, ::BCRYPT_KEY_HANDLE pkey) noexcept
 		: owner{owner}
 		, pkey{pkey}
+		, algorithm{get_algorithm(pkey)}
 		, size_bits{get_size_property(pkey, BCRYPT_KEY_LENGTH)}
 		, max_block_size{get_size_property(pkey, BCRYPT_BLOCK_LENGTH)}
 	{ }
@@ -632,6 +634,7 @@ struct key::impl_type
 	impl_type (certificate::impl_ptr owner, NCRYPT_KEY_HANDLE pkey) noexcept
 		: owner{owner}
 		, pkey{pkey}
+		, algorithm{get_algorithm(pkey)}
 		, size_bits{get_size_property(pkey, NCRYPT_LENGTH_PROPERTY)}
 		, max_block_size{get_size_property(pkey, NCRYPT_BLOCK_LENGTH_PROPERTY)}
 	{ }
@@ -652,6 +655,46 @@ struct key::impl_type
 	{
 		return {std::move(value)};
 	};
+
+	static key_algorithm get_algorithm (::BCRYPT_KEY_HANDLE pkey) noexcept
+	{
+		wchar_t buf[256];
+		ULONG buf_size = sizeof(buf) - 1;
+		::BCryptGetProperty(
+			pkey,
+			BCRYPT_ALGORITHM_NAME,
+			reinterpret_cast<PUCHAR>(buf),
+			sizeof(buf),
+			&buf_size,
+			0
+		);
+		reinterpret_cast<char *>(buf)[buf_size] = '\0';
+		if (::wcscmp(buf, BCRYPT_RSA_ALGORITHM) == 0)
+		{
+			return key_algorithm::rsa;
+		}
+		return key_algorithm::opaque;
+	}
+
+	static key_algorithm get_algorithm (::NCRYPT_KEY_HANDLE pkey) noexcept
+	{
+		wchar_t buf[256];
+		ULONG buf_size = sizeof(buf) - 1;
+		::NCryptGetProperty(
+			pkey,
+			NCRYPT_ALGORITHM_GROUP_PROPERTY,
+			reinterpret_cast<PUCHAR>(buf),
+			sizeof(buf),
+			&buf_size,
+			0
+		);
+		reinterpret_cast<char *>(buf)[buf_size] = '\0';
+		if (::wcscmp(buf, NCRYPT_RSA_ALGORITHM_GROUP) == 0)
+		{
+			return key_algorithm::rsa;
+		}
+		return key_algorithm::opaque;
+	}
 
 	static size_t get_size_property (::BCRYPT_KEY_HANDLE pkey, LPCWSTR property) noexcept
 	{
@@ -695,6 +738,11 @@ struct key::impl_type
 		return result;
 	}
 };
+
+key_algorithm key::algorithm () const noexcept
+{
+	return impl_->algorithm;
+}
 
 size_t key::size_bits () const noexcept
 {
