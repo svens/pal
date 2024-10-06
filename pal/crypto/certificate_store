@@ -21,6 +21,18 @@ public:
 
 	/// Decode certificates stored as PKCS#12 blob in \a pkcs12,
 	/// optionally protected with \a password.
+	///
+	/// \note SecItemImport on MacOS: using with importKeychain == nullptr
+	///   does not return identity but only certificates. To get identity
+	///   as well, we need to specify keychain but all functions to acquire
+	///   one (SecKeychainCopyDomainDefault and friends) are deprecated.
+	/// \note This leaves us with SecPKCS12Import that on all platforms does
+	///   what it supposed to but on MacOS it additionally imports identity
+	///   into  user keychain. Only way to prevent this is to specify
+	///   options[kSecUseDataProtectionKeychain]=true, except in this case
+	///   function does not return possible unrelated certificates in PKCS#12.
+	/// \note Assuming having unrelated certificates in PFX is rare usecase
+	///   and in attempt to keep OS user keychain clean, will use this option anyway.
 	template <typename Data>
 	static result<certificate_store> from_pkcs12 (const Data &pkcs12, const char *password = nullptr) noexcept
 	{
@@ -72,15 +84,19 @@ class certificate_store::const_iterator
 {
 public:
 
+	/// \cond
 	using iterator_category = std::forward_iterator_tag;
 	using value_type = certificate;
 	using pointer = const certificate *;
 	using reference = const certificate &;
 	using difference_type = std::ptrdiff_t;
+	/// \endcond
 
+	/// \cond
 	const_iterator () = default;
 	const_iterator (const const_iterator &) = default;
 	const_iterator &operator= (const const_iterator &) = default;
+	/// \endcond
 
 	/// Returns true if \a this points to same certificate as \a that.
 	bool operator== (const const_iterator &that) const noexcept

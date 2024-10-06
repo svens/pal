@@ -80,22 +80,22 @@ It decode (const Data &input, It out) noexcept
 /// Base64 encoding/decoding.
 struct base64
 {
-	/// \copydoc encode_size
+	/// \copydoc pal::encode_size
 	static constexpr size_t encode_size (size_t size_bytes) noexcept
 	{
 		return ((size_bytes * 4 / 3) + 3) & ~3;
 	}
 
-	/// \copydoc decode_size
+	/// \copydoc pal::decode_size
 	static constexpr size_t decode_size (size_t size_bytes) noexcept
 	{
 		return size_bytes % 4 == 0 ? (size_bytes / 4 * 3) : -1;
 	}
 
-	/// \copydoc encode
+	/// \copydoc pal::encode
 	static std::byte *encode (const std::byte *first, const std::byte *last, std::byte *out) noexcept;
 
-	/// \copydoc decode
+	/// \copydoc pal::decode
 	static std::byte *decode (const std::byte *first, const std::byte *last, std::byte *out) noexcept;
 };
 
@@ -107,22 +107,22 @@ struct base64
 /// generates lowercase characters only.
 struct hex
 {
-	/// \copydoc encode_size
+	/// \copydoc pal::encode_size
 	static constexpr size_t encode_size (size_t size_bytes) noexcept
 	{
 		return size_bytes * 2;
 	}
 
-	/// \copydoc decode_size
+	/// \copydoc pal::decode_size
 	static constexpr size_t decode_size (size_t size_bytes) noexcept
 	{
 		return size_bytes % 2 == 0 ? size_bytes / 2 : -1;
 	}
 
-	/// \copydoc encode
+	/// \copydoc pal::encode
 	static std::byte *encode (const std::byte *first, const std::byte *last, std::byte *out) noexcept;
 
-	/// \copydoc decode
+	/// \copydoc pal::decode
 	static std::byte *decode (const std::byte *first, const std::byte *last, std::byte *out) noexcept;
 };
 
