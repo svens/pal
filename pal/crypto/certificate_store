@@ -84,15 +84,19 @@ class certificate_store::const_iterator
 {
 public:
 
+	/// \cond
 	using iterator_category = std::forward_iterator_tag;
 	using value_type = certificate;
 	using pointer = const certificate *;
 	using reference = const certificate &;
 	using difference_type = std::ptrdiff_t;
+	/// \endcond
 
+	/// \cond
 	const_iterator () = default;
 	const_iterator (const const_iterator &) = default;
 	const_iterator &operator= (const const_iterator &) = default;
+	/// \endcond
 
 	/// Returns true if \a this points to same certificate as \a that.
 	bool operator== (const const_iterator &that) const noexcept

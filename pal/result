@@ -5,6 +5,8 @@
  * Convenience type pal::result<T> for std::expected<T, std::error_code>
  */
 
+#if !defined(__DOXYGEN__)
+
 #include <pal/__expected>
 #include <functional>
 #include <system_error>
@@ -1151,3 +1153,5 @@ private:
 };
 
 } // namespace pal
+
+#endif // __DOXYGEN__

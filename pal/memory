@@ -2,7 +2,7 @@
 
 /**
  * \file pal/memory
- * Additional helper utilities for <memory> header
+ * Additional helper utilities for STL \<memory\> header
  */
 
 #include <pal/result>

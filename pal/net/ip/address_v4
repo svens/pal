@@ -240,7 +240,7 @@ constexpr address_v4 make_address_v4 (const address_v4::bytes_type &value) noexc
 	return address_v4{value};
 }
 
-/// \copydoc make_address_v4()
+/// \copydoc pal::net::ip::make_address_v4()
 constexpr address_v4 make_address_v4 (const address_v4::uint_type &value) noexcept
 {
 	return address_v4{value};
