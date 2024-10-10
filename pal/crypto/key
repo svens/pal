@@ -10,8 +10,8 @@
 
 namespace pal::crypto {
 
-// pal/crypto/certificate
 class certificate;
+namespace __sign { struct context; }
 
 /// Key algorithms
 enum class key_algorithm
@@ -60,6 +60,7 @@ private:
 	{ }
 
 	friend class certificate;
+	friend struct __sign::context;
 };
 
 } // namespace pal::crypto
