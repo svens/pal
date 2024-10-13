@@ -7,6 +7,7 @@
 
 #include <memory>
 #include <span>
+#include <string_view>
 #include <system_error>
 
 namespace pal::crypto::algorithm {
@@ -21,6 +22,7 @@ namespace pal::crypto::algorithm {
 #define __pal_crypto_digest_algorithm_api(Algorithm, Context, Size) \
 	struct Algorithm \
 	{ \
+		static constexpr std::string_view id = #Algorithm; \
 		static constexpr size_t digest_size = Size; \
 		\
 		struct hash \

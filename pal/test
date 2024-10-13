@@ -1,5 +1,6 @@
 #pragma once // -*- C++ -*-
 
+#include <pal/version>
 #include <catch2/interfaces/catch_interfaces_capture.hpp>
 #include <string>
 

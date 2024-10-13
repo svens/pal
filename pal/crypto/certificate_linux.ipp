@@ -1,7 +1,8 @@
 // -*- C++ -*-
 
-#include <pal/crypto/hash>
 #include <pal/crypto/certificate_store>
+#include <pal/crypto/hash>
+#include <pal/crypto/sign>
 #include <pal/net/ip/address_v4>
 #include <pal/net/ip/address_v6>
 #include <pal/memory>
@@ -84,6 +85,15 @@ using pkey_ptr = std::unique_ptr<::EVP_PKEY, decltype(&::EVP_PKEY_free)>;
 pkey_ptr to_ptr (::EVP_PKEY *p) noexcept
 {
 	return {p, &::EVP_PKEY_free};
+}
+
+// PKEY_CTX {{{1
+
+using pkey_ctx_ptr = std::unique_ptr<::EVP_PKEY_CTX, decltype(&::EVP_PKEY_CTX_free)>;
+
+pkey_ctx_ptr to_ptr (::EVP_PKEY_CTX *p) noexcept
+{
+	return {p, &::EVP_PKEY_CTX_free};
 }
 
 // GENERAL_NAMES {{{1
@@ -511,21 +521,38 @@ result<alternative_name> certificate::subject_alternative_name () const noexcept
 struct key::impl_type
 {
 	certificate::impl_ptr owner;
-	const ::EVP_PKEY &pkey;
+	::EVP_PKEY &pkey;
+	const key_algorithm algorithm;
 	const size_t size_bits, max_block_size;
 
-	impl_type (certificate::impl_ptr owner, const ::EVP_PKEY &pkey) noexcept
+	impl_type (certificate::impl_ptr owner, ::EVP_PKEY &pkey) noexcept
 		: owner{owner}
 		, pkey{pkey}
+		, algorithm{to_key_algorithm(::EVP_PKEY_get_base_id(&pkey))}
 		, size_bits{static_cast<size_t>(::EVP_PKEY_bits(&pkey))}
 		, max_block_size{static_cast<size_t>(::EVP_PKEY_size(&pkey))}
 	{ }
+
+	static constexpr key_algorithm to_key_algorithm (int id) noexcept
+	{
+		switch (id)
+		{
+			case EVP_PKEY_RSA:
+				return key_algorithm::rsa;
+		}
+		return key_algorithm::opaque;
+	}
 
 	static constexpr auto to_api = [](impl_ptr &&value) -> key
 	{
 		return {std::move(value)};
 	};
 };
+
+key_algorithm key::algorithm () const noexcept
+{
+	return impl_->algorithm;
+}
 
 size_t key::size_bits () const noexcept
 {
@@ -539,7 +566,7 @@ size_t key::max_block_size () const noexcept
 
 result<key> certificate::public_key () const noexcept
 {
-	const auto &pkey = *::X509_get0_pubkey(impl_->x509.get());
+	auto &pkey = *::X509_get0_pubkey(impl_->x509.get());
 	return pal::make_shared<key::impl_type>(impl_, pkey).transform(key::impl_type::to_api);
 }
 
@@ -551,6 +578,142 @@ result<key> certificate::private_key () const noexcept
 	}
 	return make_unexpected(std::errc::io_error);
 }
+
+// sign {{{1
+
+namespace __sign {
+
+struct context
+{
+	key::impl_ptr op_key;
+	pkey_ctx_ptr impl;
+
+	context (const key &key) noexcept
+		: op_key{key.impl_}
+		, impl{to_ptr(::EVP_PKEY_CTX_new(&op_key->pkey, nullptr))}
+	{ }
+
+	bool init (operation_type operation) noexcept
+	{
+		if (operation == operation_type::sign)
+		{
+			return true
+				&& ::EVP_PKEY_private_check(impl.get()) == 1
+				&& ::EVP_PKEY_sign_init(impl.get()) == 1
+			;
+		}
+		else if (operation == operation_type::verify)
+		{
+			return true
+				&& ::EVP_PKEY_private_check(impl.get()) != 1
+				&& ::EVP_PKEY_verify_init(impl.get()) == 1
+			;
+		}
+		return false;
+	}
+
+	bool padding (const std::string_view &id) noexcept
+	{
+		if (id == padding::pkcs1::id)
+		{
+			return ::EVP_PKEY_CTX_set_rsa_padding(impl.get(), RSA_PKCS1_PADDING) == 1;
+		}
+		else if (id == padding::pss::id)
+		{
+			return true
+				&& ::EVP_PKEY_CTX_set_rsa_padding(impl.get(), RSA_PKCS1_PSS_PADDING) == 1
+				&& ::EVP_PKEY_CTX_set_rsa_pss_saltlen(impl.get(), RSA_PSS_SALTLEN_DIGEST) == 1
+			;
+		}
+		return false;
+	}
+
+	bool digest (const std::string_view &id) noexcept
+	{
+		if (id == algorithm::sha1::id)
+		{
+			return ::EVP_PKEY_CTX_set_signature_md(impl.get(), EVP_sha1()) == 1;
+		}
+		else if (id == algorithm::sha256::id)
+		{
+			return ::EVP_PKEY_CTX_set_signature_md(impl.get(), EVP_sha256()) == 1;
+		}
+		else if (id == algorithm::sha384::id)
+		{
+			return ::EVP_PKEY_CTX_set_signature_md(impl.get(), EVP_sha384()) == 1;
+		}
+		else if (id == algorithm::sha512::id)
+		{
+			return ::EVP_PKEY_CTX_set_signature_md(impl.get(), EVP_sha512()) == 1;
+		}
+		return false;
+	}
+};
+
+result<context_ptr> make_context (const key &key,
+	operation_type operation,
+	const std::string_view &padding_algorithm,
+	const std::string_view &digest_algorithm) noexcept
+{
+	if (key.algorithm() != key_algorithm::rsa)
+	{
+		return make_unexpected(std::errc::not_supported);
+	}
+
+	static constexpr auto delete_context = [](auto *ctx) noexcept
+	{
+		delete ctx;
+	};
+	context_ptr ctx{new(std::nothrow) context{key}, delete_context};
+
+	if (!ctx || !ctx->impl)
+	{
+		return make_unexpected(std::errc::not_enough_memory);
+	}
+
+	if (ctx->init(operation)
+		&& ctx->padding(padding_algorithm)
+		&& ctx->digest(digest_algorithm))
+	{
+		return ctx;
+	}
+
+	return make_unexpected(std::errc::not_supported);
+}
+
+result<std::span<const std::byte>> sign (const context_ptr &context,
+	const std::span<const std::byte> &message,
+	const std::span<std::byte> &signature) noexcept
+{
+	auto digest_size = message.size();
+	auto digest = reinterpret_cast<const uint8_t *>(message.data());
+
+	size_t sig_size = signature.size();
+	auto sig = reinterpret_cast<uint8_t *>(signature.data());
+
+	if (::EVP_PKEY_sign(context->impl.get(), sig, &sig_size, digest, digest_size) == 1)
+	{
+		return signature.first(sig_size);
+	}
+
+	// TODO: dig deeper if with make_context() setup, can be here other errors
+	return make_unexpected(std::errc::no_buffer_space);
+}
+
+bool is_valid (const context_ptr &context,
+	const std::span<const std::byte> &message,
+	const std::span<const std::byte> &signature) noexcept
+{
+	auto digest = reinterpret_cast<const uint8_t *>(message.data());
+	auto digest_size = message.size();
+
+	auto sig = reinterpret_cast<const uint8_t *>(signature.data());
+	size_t sig_size = signature.size();
+
+	return ::EVP_PKEY_verify(context->impl.get(), sig, sig_size, digest, digest_size) == 1;
+}
+
+} // namespace __sign
 
 //}}}1
 

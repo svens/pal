@@ -1,0 +1,167 @@
+#pragma once // -*- C++ -*-
+
+/**
+ * \file pal/crypto/sign
+ * Signature provider/verifier
+ *
+ * These classes operate only on precalculated message digests. Calculating
+ * arbitrary message digests is application responsibility.
+ *
+ * Both classes can be used multiple times, but are not thread-safe.
+ */
+
+#include <pal/crypto/key>
+#include <pal/result>
+#include <pal/span>
+
+namespace pal::crypto {
+
+namespace padding {
+
+/// RSA padding mode PKCS#1
+struct pkcs1
+{
+	/// Padding algorithm \a id
+	static constexpr std::string_view id = "pkcs1";
+};
+
+/// RSA padding mode PSS (sign and verify only)
+struct pss
+{
+	/// Padding algorithm \a id
+	static constexpr std::string_view id = "pss";
+};
+
+} // padding
+
+namespace __sign {
+
+struct context;
+using context_ptr = std::unique_ptr<context, void(*)(context *) noexcept>;
+
+enum class operation_type: uint8_t
+{
+	sign,
+	verify,
+};
+
+result<context_ptr> make_context (
+	const key &key,
+	operation_type operation,
+	const std::string_view &padding_algorithm,
+	const std::string_view &digest_algorithm
+) noexcept;
+
+result<std::span<const std::byte>> sign (
+	const context_ptr &context,
+	const std::span<const std::byte> &message,
+	const std::span<std::byte> &signature
+) noexcept;
+
+bool is_valid (
+	const context_ptr &context,
+	const std::span<const std::byte> &message,
+	const std::span<const std::byte> &signature
+) noexcept;
+
+} // namespace __sign
+
+/// Signature provider with \a PaddingAlgorithm and \a DigestAlgorithm.
+///
+/// signature_provider does not calculate digest, it expects application to
+/// provide it as input for sign() operation.
+template <typename PaddingAlgorithm, typename DigestAlgorithm>
+class signature_provider
+{
+public:
+
+	/// Padding algorithm type
+	using padding_type = PaddingAlgorithm;
+
+	/// Message digest algorithm type
+	using algorithm_type = DigestAlgorithm;
+
+	/// Generate signature of \a digest into \a signature
+	/// \returns actually filled span of \a signature
+	template <typename Digest, typename Signature>
+	result<std::span<const std::byte>> sign (const Digest &digest, Signature &signature) noexcept
+	{
+		return __sign::sign(context_,
+			std::as_bytes(std::span{digest}),
+			std::as_writable_bytes(std::span{signature})
+		);
+	}
+
+	/// Create new signature provider using \a PaddingAlgorithm and \a DigestAlgorithm
+	static result<signature_provider> make (const key &key) noexcept
+	{
+		static constexpr auto operation = __sign::operation_type::sign;
+		static constexpr auto padding = PaddingAlgorithm::id;
+		static constexpr auto digest = DigestAlgorithm::id;
+		return __sign::make_context(key, operation, padding, digest).transform(to_api);
+	}
+
+private:
+
+	__sign::context_ptr context_;
+
+	signature_provider (__sign::context_ptr &&context) noexcept
+		: context_{std::move(context)}
+	{ }
+
+	static constexpr auto to_api = [](auto &&context)
+	{
+		return signature_provider{std::move(context)};
+	};
+};
+
+/// Signature verifier with \a PaddingAlgorithm and \a DigestAlgorithm.
+///
+/// signature_verifier does not calculate digest, it expects application to
+/// provide it as input for is_valid() operation.
+template <typename PaddingAlgorithm, typename DigestAlgorithm>
+class signature_verifier
+{
+public:
+
+	/// Padding algorithm type
+	using padding_type = PaddingAlgorithm;
+
+	/// Message digest algorithm type
+	using algorithm_type = DigestAlgorithm;
+
+	/// Check if \a signature is valid for \a digest. \a digest must be
+	/// precalculated by application.
+	template <typename Digest, typename Signature>
+	bool is_valid (const Digest &digest, const Signature &signature) noexcept
+	{
+		return __sign::is_valid(context_,
+			std::as_bytes(std::span{digest}),
+			std::as_bytes(std::span{signature})
+		);
+	}
+
+	/// Create new signature verifier using \a PaddingAlgorithm and \a DigestAlgorithm
+	static result<signature_verifier> make (const key &key) noexcept
+	{
+		static constexpr auto operation = __sign::operation_type::verify;
+		static constexpr auto padding = PaddingAlgorithm::id;
+		static constexpr auto digest = DigestAlgorithm::id;
+		return __sign::make_context(key, operation, padding, digest).transform(to_api);
+	}
+
+private:
+
+	__sign::context_ptr context_;
+
+	signature_verifier (__sign::context_ptr &&context) noexcept
+		: context_{std::move(context)}
+	{ }
+
+	static constexpr auto to_api = [](auto &&context)
+	{
+		return signature_verifier{std::move(context)};
+	};
+};
+
+} // namespace pal::crypto

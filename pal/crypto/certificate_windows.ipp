@@ -1,7 +1,8 @@
 // -*- C++ -*-
 
-#include <pal/crypto/hash>
 #include <pal/crypto/certificate_store>
+#include <pal/crypto/hash>
+#include <pal/crypto/sign>
 #include <pal/error>
 #include <pal/memory>
 #include <pal/net/ip/address_v4>
@@ -620,11 +621,13 @@ struct key::impl_type
 {
 	certificate::impl_ptr owner;
 	std::variant<::BCRYPT_KEY_HANDLE, ::NCRYPT_KEY_HANDLE> pkey;
+	const key_algorithm algorithm;
 	const size_t size_bits, max_block_size;
 
 	impl_type (certificate::impl_ptr owner, ::BCRYPT_KEY_HANDLE pkey) noexcept
 		: owner{owner}
 		, pkey{pkey}
+		, algorithm{get_algorithm(pkey)}
 		, size_bits{get_size_property(pkey, BCRYPT_KEY_LENGTH)}
 		, max_block_size{get_size_property(pkey, BCRYPT_BLOCK_LENGTH)}
 	{ }
@@ -632,6 +635,7 @@ struct key::impl_type
 	impl_type (certificate::impl_ptr owner, NCRYPT_KEY_HANDLE pkey) noexcept
 		: owner{owner}
 		, pkey{pkey}
+		, algorithm{get_algorithm(pkey)}
 		, size_bits{get_size_property(pkey, NCRYPT_LENGTH_PROPERTY)}
 		, max_block_size{get_size_property(pkey, NCRYPT_BLOCK_LENGTH_PROPERTY)}
 	{ }
@@ -652,6 +656,46 @@ struct key::impl_type
 	{
 		return {std::move(value)};
 	};
+
+	static key_algorithm get_algorithm (::BCRYPT_KEY_HANDLE pkey) noexcept
+	{
+		wchar_t buf[256];
+		ULONG buf_size = sizeof(buf) - 1;
+		::BCryptGetProperty(
+			pkey,
+			BCRYPT_ALGORITHM_NAME,
+			reinterpret_cast<PUCHAR>(buf),
+			sizeof(buf),
+			&buf_size,
+			0
+		);
+		reinterpret_cast<char *>(buf)[buf_size] = '\0';
+		if (::wcscmp(buf, BCRYPT_RSA_ALGORITHM) == 0)
+		{
+			return key_algorithm::rsa;
+		}
+		return key_algorithm::opaque;
+	}
+
+	static key_algorithm get_algorithm (::NCRYPT_KEY_HANDLE pkey) noexcept
+	{
+		wchar_t buf[256];
+		ULONG buf_size = sizeof(buf) - 1;
+		::NCryptGetProperty(
+			pkey,
+			NCRYPT_ALGORITHM_GROUP_PROPERTY,
+			reinterpret_cast<PUCHAR>(buf),
+			sizeof(buf),
+			&buf_size,
+			0
+		);
+		reinterpret_cast<char *>(buf)[buf_size] = '\0';
+		if (::wcscmp(buf, NCRYPT_RSA_ALGORITHM_GROUP) == 0)
+		{
+			return key_algorithm::rsa;
+		}
+		return key_algorithm::opaque;
+	}
 
 	static size_t get_size_property (::BCRYPT_KEY_HANDLE pkey, LPCWSTR property) noexcept
 	{
@@ -695,6 +739,11 @@ struct key::impl_type
 		return result;
 	}
 };
+
+key_algorithm key::algorithm () const noexcept
+{
+	return impl_->algorithm;
+}
 
 size_t key::size_bits () const noexcept
 {
@@ -754,6 +803,155 @@ result<key> certificate::private_key () const noexcept
 	}
 	return make_unexpected(std::errc::io_error);
 }
+
+// sign {{{1
+
+namespace __sign {
+
+struct context
+{
+	key::impl_ptr op_key;
+	std::variant<std::monostate, ::BCRYPT_PKCS1_PADDING_INFO, ::BCRYPT_PSS_PADDING_INFO> padding{};
+	void *padding_info = nullptr;
+	DWORD flags = 0;
+
+	context (const key &key) noexcept
+		: op_key{key.impl_}
+	{ }
+
+	bool set_operation (operation_type operation) noexcept
+	{
+		if (operation == operation_type::sign)
+		{
+			return std::holds_alternative<::NCRYPT_KEY_HANDLE>(op_key->pkey);
+		}
+		else if (operation == operation_type::verify)
+		{
+			return std::holds_alternative<::BCRYPT_KEY_HANDLE>(op_key->pkey);
+		}
+		return false;
+	}
+
+	bool set_padding (const std::string_view &padding_algorithm, const std::string_view &digest_algorithm) noexcept
+	{
+		if (padding_algorithm == padding::pkcs1::id)
+		{
+			if (auto [algorithm, _] = map_algorithm(digest_algorithm); algorithm)
+			{
+				auto &info = padding.emplace<::BCRYPT_PKCS1_PADDING_INFO>();
+				info.pszAlgId = algorithm;
+				padding_info = &info;
+				flags = BCRYPT_PAD_PKCS1;
+				return true;
+			}
+		}
+		else if (padding_algorithm == padding::pss::id)
+		{
+			if (auto [algorithm, salt_length] = map_algorithm(digest_algorithm); algorithm)
+			{
+				auto &info = padding.emplace<::BCRYPT_PSS_PADDING_INFO>();
+				info.pszAlgId = algorithm;
+				info.cbSalt = (ULONG)salt_length;
+				padding_info = &info;
+				flags = BCRYPT_PAD_PSS;
+				return true;
+			}
+		}
+		return false;
+	}
+
+	std::pair<LPCWSTR, size_t> map_algorithm (const std::string_view &digest_algorithm) noexcept
+	{
+		if (digest_algorithm == algorithm::sha1::id)
+		{
+			return {NCRYPT_SHA1_ALGORITHM, algorithm::sha1::digest_size};
+		}
+		else if (digest_algorithm == algorithm::sha256::id)
+		{
+			return {NCRYPT_SHA256_ALGORITHM, algorithm::sha256::digest_size};
+		}
+		else if (digest_algorithm == algorithm::sha384::id)
+		{
+			return {NCRYPT_SHA384_ALGORITHM, algorithm::sha384::digest_size};
+		}
+		else if (digest_algorithm == algorithm::sha512::id)
+		{
+			return {NCRYPT_SHA512_ALGORITHM, algorithm::sha512::digest_size};
+		}
+		return {nullptr, 0U};
+	}
+};
+
+result<context_ptr> make_context (const key &key,
+	operation_type operation,
+	const std::string_view &padding_algorithm,
+	const std::string_view &digest_algorithm) noexcept
+{
+	if (key.algorithm() != key_algorithm::rsa)
+	{
+		return make_unexpected(std::errc::not_supported);
+	}
+
+	static constexpr auto delete_context = [](auto *ctx) noexcept
+	{
+		delete ctx;
+	};
+	context_ptr ctx{new(std::nothrow) context{key}, delete_context};
+
+	if (!ctx)
+	{
+		return make_unexpected(std::errc::not_enough_memory);
+	}
+
+	if (ctx->set_operation(operation) && ctx->set_padding(padding_algorithm, digest_algorithm))
+	{
+		return ctx;
+	}
+
+	return make_unexpected(std::errc::not_supported);
+}
+
+result<std::span<const std::byte>> sign (const context_ptr &context,
+	const std::span<const std::byte> &message,
+	const std::span<std::byte> &signature) noexcept
+{
+	DWORD cbResult;
+	auto status = ::NCryptSignHash(
+		*std::get_if<::NCRYPT_KEY_HANDLE>(&context->op_key->pkey),
+		context->padding_info,
+		reinterpret_cast<BYTE *>(const_cast<std::byte *>(message.data())),
+		static_cast<DWORD>(message.size()),
+		reinterpret_cast<BYTE *>(signature.data()),
+		static_cast<DWORD>(signature.size()),
+		&cbResult,
+		context->flags
+	);
+
+	if (status == ERROR_SUCCESS)
+	{
+		return signature.first(cbResult);
+	}
+
+	return make_unexpected(std::errc::no_buffer_space);
+}
+
+bool is_valid (const context_ptr &context,
+	const std::span<const std::byte> &message,
+	const std::span<const std::byte> &signature) noexcept
+{
+	auto status = ::BCryptVerifySignature(
+		*std::get_if<::BCRYPT_KEY_HANDLE>(&context->op_key->pkey),
+		context->padding_info,
+		reinterpret_cast<UCHAR *>(const_cast<std::byte *>(message.data())),
+		static_cast<ULONG>(message.size()),
+		reinterpret_cast<UCHAR *>(const_cast<std::byte *>(signature.data())),
+		static_cast<ULONG>(signature.size()),
+		context->flags
+	);
+	return status == STATUS_SUCCESS;
+}
+
+} // namespace __sign
 
 //}}}1
 

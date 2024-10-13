@@ -1,5 +1,4 @@
 #include <pal/crypto/certificate_store>
-#include <pal/version>
 #include <pal/crypto/test>
 #include <catch2/catch_test_macros.hpp>
 #include <algorithm>

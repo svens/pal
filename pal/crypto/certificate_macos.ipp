@@ -1,7 +1,8 @@
 // -*- C++ -*-
 
-#include <pal/crypto/hash>
 #include <pal/crypto/certificate_store>
+#include <pal/crypto/hash>
+#include <pal/crypto/sign>
 #include <pal/net/ip/address_v6>
 #include <CoreFoundation/CFNumber.h>
 #include <CoreFoundation/CFString.h>
@@ -602,13 +603,19 @@ struct key::impl_type
 {
 	certificate::impl_ptr owner;
 	unique_ref<::SecKeyRef> pkey;
-	const size_t size_bits, max_block_size;
+
+	struct key_properties
+	{
+		key_algorithm algorithm;
+		size_t size_bits, max_block_size;
+		bool can_sign, can_verify;
+	};
+	const key_properties properties;
 
 	impl_type (certificate::impl_ptr owner, unique_ref<::SecKeyRef> pkey) noexcept
 		: owner{owner}
 		, pkey{std::move(pkey)}
-		, size_bits{get_size_bits(this->pkey.get())}
-		, max_block_size{::SecKeyGetBlockSize(this->pkey.get())}
+		, properties{get_key_properties(this->pkey.get())}
 	{ }
 
 	static constexpr auto to_api = [](impl_ptr &&value) -> key
@@ -621,29 +628,60 @@ struct key::impl_type
 		return pal::make_shared<impl_type>(owner, std::move(pkey)).transform(to_api);
 	}
 
-	static size_t get_size_bits (::SecKeyRef pkey) noexcept
+	static key_properties get_key_properties (::SecKeyRef pkey) noexcept
 	{
-		size_t result = 0;
+		key_properties result
+		{
+			.algorithm = key_algorithm::opaque,
+			.size_bits = 0,
+			.max_block_size = ::SecKeyGetBlockSize(pkey),
+			.can_sign = false,
+			.can_verify = false,
+		};
 
-		::CFTypeRef v;
 		auto dir = make_unique(::SecKeyCopyAttributes(pkey));
+		::CFTypeRef v;
+
+		if (::CFDictionaryGetValueIfPresent(dir.get(), ::kSecAttrCanSign, &v))
+		{
+			result.can_sign = ::CFBooleanGetValue(static_cast<::CFBooleanRef>(v));
+		}
+
+		if (::CFDictionaryGetValueIfPresent(dir.get(), ::kSecAttrCanVerify, &v))
+		{
+			result.can_verify = ::CFBooleanGetValue(static_cast<::CFBooleanRef>(v));
+		}
+
+		if (::CFDictionaryGetValueIfPresent(dir.get(), ::kSecAttrKeyType, &v))
+		{
+			if (::CFEqual(v, ::kSecAttrKeyTypeRSA))
+			{
+				result.algorithm = key_algorithm::rsa;
+			}
+		}
+
 		if (::CFDictionaryGetValueIfPresent(dir.get(), ::kSecAttrKeySizeInBits, &v))
 		{
-			::CFNumberGetValue(static_cast<::CFNumberRef>(v), kCFNumberSInt64Type, &result);
+			::CFNumberGetValue(static_cast<::CFNumberRef>(v), kCFNumberSInt64Type, &result.size_bits);
 		}
 
 		return result;
 	}
 };
 
+key_algorithm key::algorithm () const noexcept
+{
+	return impl_->properties.algorithm;
+}
+
 size_t key::size_bits () const noexcept
 {
-	return impl_->size_bits;
+	return impl_->properties.size_bits;
 }
 
 size_t key::max_block_size () const noexcept
 {
-	return impl_->max_block_size;
+	return impl_->properties.max_block_size;
 }
 
 result<key> certificate::public_key () const noexcept
@@ -660,6 +698,170 @@ result<key> certificate::private_key () const noexcept
 	}
 	return make_unexpected(std::errc::io_error);
 }
+
+// sign {{{1
+
+namespace __sign {
+
+struct context
+{
+	key::impl_ptr op_key;
+	::SecKeyAlgorithm algorithm;
+
+	context (const context &) = default;
+	context &operator= (const context &) = default;
+
+	context (const key &key, const ::SecKeyAlgorithm &algorithm) noexcept
+		: op_key{key.impl_}
+		, algorithm{algorithm}
+	{ }
+
+	static result<::SecKeyAlgorithm> map_algorithm (
+		const key &key,
+		operation_type operation,
+		const std::string_view padding_algorithm,
+		const std::string_view &digest_algorithm
+	) noexcept;
+};
+
+result<::SecKeyAlgorithm> context::map_algorithm (
+	const key &key,
+	operation_type operation,
+	const std::string_view padding_algorithm,
+	const std::string_view &digest_algorithm) noexcept
+{
+	::SecKeyAlgorithm algorithm = nullptr;
+
+	if (key.algorithm() == key_algorithm::rsa)
+	{
+		if (padding_algorithm == padding::pkcs1::id)
+		{
+			if (digest_algorithm == algorithm::sha1::id)
+			{
+				algorithm = ::kSecKeyAlgorithmRSASignatureDigestPKCS1v15SHA1;
+			}
+			else if (digest_algorithm == algorithm::sha256::id)
+			{
+				algorithm = ::kSecKeyAlgorithmRSASignatureDigestPKCS1v15SHA256;
+			}
+			else if (digest_algorithm == algorithm::sha384::id)
+			{
+				algorithm = ::kSecKeyAlgorithmRSASignatureDigestPKCS1v15SHA384;
+			}
+			else if (digest_algorithm == algorithm::sha512::id)
+			{
+				algorithm = ::kSecKeyAlgorithmRSASignatureDigestPKCS1v15SHA512;
+			}
+		}
+		else if (padding_algorithm == padding::pss::id)
+		{
+			if (digest_algorithm == algorithm::sha1::id)
+			{
+				algorithm = ::kSecKeyAlgorithmRSASignatureDigestPSSSHA1;
+			}
+			else if (digest_algorithm == algorithm::sha256::id)
+			{
+				algorithm = ::kSecKeyAlgorithmRSASignatureDigestPSSSHA256;
+			}
+			else if (digest_algorithm == algorithm::sha384::id)
+			{
+				algorithm = ::kSecKeyAlgorithmRSASignatureDigestPSSSHA384;
+			}
+			else if (digest_algorithm == algorithm::sha512::id)
+			{
+				algorithm = ::kSecKeyAlgorithmRSASignatureDigestPSSSHA512;
+			}
+		}
+	}
+
+	if (!algorithm)
+	{
+		return make_unexpected(std::errc::not_supported);
+	}
+
+	const auto &pkey = key.impl_->pkey.get();
+	if (operation == operation_type::sign
+		&& key.impl_->properties.can_sign
+		&& ::SecKeyIsAlgorithmSupported(pkey, ::kSecKeyOperationTypeSign, algorithm))
+	{
+		return algorithm;
+	}
+	else if (operation == operation_type::verify
+		&& key.impl_->properties.can_verify
+		&& ::SecKeyIsAlgorithmSupported(pkey, ::kSecKeyOperationTypeVerify, algorithm))
+	{
+		return algorithm;
+	}
+
+	return make_unexpected(std::errc::not_supported);
+}
+
+result<context_ptr> make_context (const key &key,
+	operation_type operation,
+	const std::string_view &padding_algorithm,
+	const std::string_view &digest_algorithm) noexcept
+{
+	return context::map_algorithm(key, operation, padding_algorithm, digest_algorithm).and_then(
+		[&key](auto &&algorithm) -> result<context_ptr>
+		{
+			if (auto ptr = new(std::nothrow) context{key, std::move(algorithm)})
+			{
+				static constexpr auto delete_context = [](auto *context) noexcept
+				{
+					delete context;
+				};
+				return {ptr, delete_context};
+			}
+			return make_unexpected(std::errc::not_enough_memory);
+		}
+	);
+}
+
+result<std::span<const std::byte>> sign (const context_ptr &context,
+	const std::span<const std::byte> &message,
+	const std::span<std::byte> &signature) noexcept
+{
+	auto sig = make_unique(
+		::SecKeyCreateSignature(
+			context->op_key->pkey.get(),
+			context->algorithm,
+			from_span(message).get(),
+			nullptr
+		)
+	);
+
+	if (sig)
+	{
+		if (size_t sig_size = ::CFDataGetLength(sig.get()); sig_size <= signature.size())
+		{
+			auto sig_ptr = ::CFDataGetBytePtr(sig.get());
+			std::uninitialized_copy(
+				sig_ptr,
+				sig_ptr + sig_size,
+				reinterpret_cast<uint8_t *>(signature.data())
+			);
+			return signature.first(sig_size);
+		}
+		return make_unexpected(std::errc::no_buffer_space);
+	}
+
+	return make_unexpected(std::errc::invalid_argument);
+}
+
+bool is_valid (const context_ptr &context,
+	const std::span<const std::byte> &message,
+	const std::span<const std::byte> &signature) noexcept
+{
+	return ::SecKeyVerifySignature(
+		context->op_key->pkey.get(),
+		context->algorithm,
+		from_span(message).get(),
+		from_span(signature).get(),
+		nullptr
+	);
+}
+
+} // namespace __sign
 
 //}}}1
 

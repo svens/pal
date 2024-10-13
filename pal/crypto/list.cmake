@@ -19,6 +19,7 @@ list(APPEND pal_sources
 	pal/crypto/oid
 	pal/crypto/random
 	pal/crypto/random.cpp
+	pal/crypto/sign
 )
 
 list(APPEND pal_test_sources
@@ -29,6 +30,8 @@ list(APPEND pal_test_sources
 	pal/crypto/certificate_store.test.cpp
 	pal/crypto/hash.test.cpp
 	pal/crypto/hmac.test.cpp
+	pal/crypto/key.test.cpp
 	pal/crypto/oid.test.cpp
 	pal/crypto/random.test.cpp
+	pal/crypto/sign.test.cpp
 )
