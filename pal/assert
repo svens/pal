@@ -7,6 +7,7 @@
 
 #include <pal/version>
 #include <stdexcept>
+#include <utility>
 
 namespace pal {
 
