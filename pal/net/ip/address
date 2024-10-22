@@ -240,14 +240,6 @@ constexpr bool operator>= (const address &a, const address &b) noexcept
 	return a.compare(b) >= 0;
 }
 
-/// Insert address \a a into \a stream
-inline std::ostream &operator<< (std::ostream &stream, const address &a)
-{
-	char text[address_v6::max_string_length] = {};
-	a.to_chars(text, text + sizeof(text));
-	return (stream << text);
-}
-
 /// Return new address parsed from human readable \a text.
 inline result<address> make_address (const std::string_view text) noexcept
 {
@@ -270,6 +262,46 @@ struct hash<pal::net::ip::address>
 	size_t operator() (const pal::net::ip::address &a) const noexcept
 	{
 		return a.hash();
+	}
+};
+
+template <>
+struct formatter<pal::net::ip::address>
+{
+	bool mask_address = false;
+
+	template <typename ParseContext>
+	constexpr typename ParseContext::iterator parse (ParseContext &ctx)
+	{
+		auto it = ctx.begin();
+		for (/**/; it != ctx.end() && *it != '}'; ++it)
+		{
+			if (*it == '#')
+			{
+				mask_address = true;
+			}
+			else
+			{
+				throw std::format_error("invalid format for pal::net::ip::address");
+			}
+		}
+		return it;
+	}
+
+	template <typename FormatContext>
+	typename FormatContext::iterator format (const pal::net::ip::address &a, FormatContext &ctx) const
+	{
+		char text[pal::net::ip::address::max_string_length + 1];
+		auto [end, _] = a.to_chars(text, text + sizeof(text));
+		if (mask_address)
+		{
+			while (end > text && end[-1] != ':' && end[-1] != '.')
+			{
+				--end;
+			}
+			*end++ = '0';
+		}
+		return std::copy(text, end, ctx.out());
 	}
 };
 

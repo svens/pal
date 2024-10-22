@@ -189,13 +189,6 @@ TEST_CASE("net/ip/address")
 		CHECK(address.to_string() == view);
 	}
 
-	SECTION("ostream")
-	{
-		std::ostringstream oss;
-		oss << address;
-		CHECK(oss.str() == view);
-	}
-
 	SECTION("hash")
 	{
 		CHECK(address.hash() != 0);
@@ -214,6 +207,17 @@ TEST_CASE("net/ip/address")
 		auto a = make_address(view);
 		REQUIRE_FALSE(a);
 		CHECK(a.error() == std::errc::invalid_argument);
+	}
+
+	SECTION("format")
+	{
+		CHECK(std::format("{}", address) == view);
+	}
+
+	SECTION("format alternative form")
+	{
+		view.erase(view.find_last_of(":.") + 1) += '0';
+		CHECK(std::format("{:#}", address) == view);
 	}
 }
 

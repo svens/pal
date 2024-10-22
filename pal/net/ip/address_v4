@@ -10,7 +10,7 @@
 #include <pal/string>
 #include <array>
 #include <charconv>
-#include <ostream>
+#include <format>
 
 namespace pal::net::ip {
 
@@ -226,14 +226,6 @@ constexpr bool operator>= (const address_v4 &a, const address_v4 &b) noexcept
 	return a.compare(b) >= 0;
 }
 
-/// Insert IPv4 address \a a into \a stream
-inline std::ostream &operator<< (std::ostream &stream, const address_v4 &a)
-{
-	char text[address_v4::max_string_length + 1] = {};
-	a.to_chars(text, text + sizeof(text));
-	return (stream << text);
-}
-
 /// Return new address from \a value.
 constexpr address_v4 make_address_v4 (const address_v4::bytes_type &value) noexcept
 {
@@ -268,6 +260,46 @@ struct hash<pal::net::ip::address_v4>
 	size_t operator() (const pal::net::ip::address_v4 &a) const noexcept
 	{
 		return a.hash();
+	}
+};
+
+template <>
+struct formatter<pal::net::ip::address_v4>
+{
+	bool mask_address = false;
+
+	template <typename ParseContext>
+	constexpr typename ParseContext::iterator parse (ParseContext &ctx)
+	{
+		auto it = ctx.begin();
+		for (/**/; it != ctx.end() && *it != '}'; ++it)
+		{
+			if (*it == '#')
+			{
+				mask_address = true;
+			}
+			else
+			{
+				throw std::format_error("invalid format for pal::net::ip::address_v4");
+			}
+		}
+		return it;
+	}
+
+	template <typename FormatContext>
+	typename FormatContext::iterator format (const pal::net::ip::address_v4 &a, FormatContext &ctx) const
+	{
+		char text[pal::net::ip::address_v4::max_string_length + 1];
+		auto [end, _] = a.to_chars(text, text + sizeof(text));
+		if (mask_address)
+		{
+			while (end > text && end[-1] != '.')
+			{
+				--end;
+			}
+			*end++ = '0';
+		}
+		return std::copy(text, end, ctx.out());
 	}
 };
 
