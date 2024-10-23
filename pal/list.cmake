@@ -22,7 +22,6 @@ list(APPEND pal_sources
 	pal/not_null
 	pal/result
 	pal/span
-	pal/string
 	pal/version
 )
 

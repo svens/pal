@@ -156,7 +156,7 @@ TEST_CASE("net/ip/address_v4")
 
 	SECTION("to_chars failure")
 	{
-		const size_t max_size = a.to_string().size(), min_size = 0;
+		const size_t max_size = view.size(), min_size = 0;
 		auto buf_size = GENERATE_COPY(range(min_size, max_size));
 		std::string buf(buf_size, '\0');
 		auto [p, ec] = a.to_chars(buf.data(), buf.data() + buf.size());
@@ -181,11 +181,6 @@ TEST_CASE("net/ip/address_v4")
 		auto [p, ec] = b.from_chars(view.data(), view.data() + view.size());
 		REQUIRE(ec == std::errc::invalid_argument);
 		CHECK(p == view.data());
-	}
-
-	SECTION("to_string")
-	{
-		CHECK(a.to_string() == view);
 	}
 
 	SECTION("make_address_v4(bytes_type)")

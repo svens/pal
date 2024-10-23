@@ -7,7 +7,6 @@
 
 #include <pal/hash>
 #include <pal/result>
-#include <pal/string>
 #include <array>
 #include <charconv>
 #include <format>
@@ -91,16 +90,6 @@ public:
 	 * Content of this is undefined.
 	 */
 	std::from_chars_result from_chars (const char *first, const char *last) noexcept;
-
-	/// Return \a this address as human readable textual representation.
-	template <typename Allocator = std::allocator<char>>
-	string<Allocator> to_string (const Allocator &allocator = Allocator()) const
-	{
-		string<Allocator> result(max_string_length + 1, '\0', allocator);
-		auto [back, _] = to_chars(result.data(), result.data() + result.size());
-		result.resize(back - result.data());
-		return result;
-	}
 
 	/// Return true if \a this is unspecified address (0.0.0.0)
 	constexpr bool is_unspecified () const noexcept
