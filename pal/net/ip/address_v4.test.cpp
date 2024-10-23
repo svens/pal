@@ -188,13 +188,6 @@ TEST_CASE("net/ip/address_v4")
 		CHECK(a.to_string() == view);
 	}
 
-	SECTION("ostream")
-	{
-		std::ostringstream oss;
-		oss << a;
-		CHECK(oss.str() == view);
-	}
-
 	SECTION("make_address_v4(bytes_type)")
 	{
 		CHECK(a == make_address_v4(bytes));
@@ -229,6 +222,17 @@ TEST_CASE("net/ip/address_v4")
 			REQUIRE(v);
 			CHECK(*v == a);
 		}
+	}
+
+	SECTION("format")
+	{
+		CHECK(std::format("{}", a) == view);
+	}
+
+	SECTION("format alternative form")
+	{
+		view.erase(view.find_last_of('.') + 1) += '0';
+		CHECK(std::format("{:#}", a) == view);
 	}
 }
 
