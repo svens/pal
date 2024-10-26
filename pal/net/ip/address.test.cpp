@@ -10,8 +10,6 @@ namespace {
 TEST_CASE("net/ip/address")
 {
 	using pal::net::ip::make_address;
-	using pal::net::ip::address_family;
-
 	using A = pal::net::ip::address;
 	using A4 = pal::net::ip::address_v4;
 	using A6 = pal::net::ip::address_v6;
@@ -19,13 +17,14 @@ TEST_CASE("net/ip/address")
 	SECTION("constexpr")
 	{
 		constexpr A a;
-		static_assert(a == A4::any());
+		static_assert(std::holds_alternative<A4>(a));
 		static_assert(a.is_unspecified());
 		static_assert(!a.is_loopback());
 
 		constexpr A b{A6::bytes_type{0,1,2,3,4,5,6,7,8,9,10,11,12,13,14,15}};
-		static_assert(!b.is_loopback());
+		static_assert(std::holds_alternative<A6>(b));
 		static_assert(!b.is_unspecified());
+		static_assert(!b.is_loopback());
 
 		constexpr A c{b};
 
@@ -38,13 +37,6 @@ TEST_CASE("net/ip/address")
 
 		static_assert(a.hash() != 0);
 		static_assert(b.hash() == c.hash());
-	}
-
-	SECTION("ctor")
-	{
-		A a;
-		CHECK(a.is_v4());
-		CHECK(a.is_unspecified());
 	}
 
 	SECTION("compare")
@@ -97,12 +89,12 @@ TEST_CASE("net/ip/address")
 		CHECK(any_v6 >= loopback_v4);
 	}
 
-	auto [view, address, family, is_unspecified, is_loopback] = GENERATE(
-		table<std::string, A, address_family, bool, bool>({
-			{ "0.0.0.0",   A4::any(),      address_family::v4, true,  false },
-			{ "127.0.0.1", A4::loopback(), address_family::v4, false, true  },
-			{ "::",        A6::any(),      address_family::v6, true,  false },
-			{ "::1",       A6::loopback(), address_family::v6, false, true  },
+	auto [view, address, is_v4, is_unspecified, is_loopback] = GENERATE(
+		table<std::string, A, bool, bool, bool>({
+			{ "0.0.0.0",   A4::any(),      true,  true,  false },
+			{ "127.0.0.1", A4::loopback(), true,  false, true  },
+			{ "::",        A6::any(),      false, true,  false },
+			{ "::1",       A6::loopback(), false, false, true  },
 		})
 	);
 	CAPTURE(view);
@@ -112,14 +104,14 @@ TEST_CASE("net/ip/address")
 		A a = address;
 		CHECK(a == address);
 
-		if (address.is_v4())
+		if (const auto *a4 = std::get_if<A4>(&a))
 		{
-			A b{address.v4()};
+			A b{*a4};
 			CHECK(a == b);
 		}
-		else
+		else if (const auto *a6 = std::get_if<A6>(&a))
 		{
-			A b{address.v6()};
+			A b{*a6};
 			CHECK(a == b);
 		}
 	}
@@ -129,41 +121,29 @@ TEST_CASE("net/ip/address")
 		A a, b;
 		a = address;
 		CHECK(a == address);
-		if (address.is_v4())
+		if (const auto *a4 = std::get_if<A4>(&a))
 		{
-			b = address.v4();
+			b = *a4;
 		}
-		else
+		else if (const auto *a6 = std::get_if<A6>(&a))
 		{
-			b = address.v6();
+			b = *a6;
 		}
 		CHECK(a == b);
 	}
 
 	SECTION("properties")
 	{
-		CHECK(address.family() == family);
-		CHECK(address.is_unspecified() == is_unspecified);
-		CHECK(address.is_loopback() == is_loopback);
-	}
-
-	SECTION("cast")
-	{
-		auto r4 = address.to_v4();
-		auto r6 = address.to_v6();
-
-		if (family == address_family::v4)
+		if (is_v4)
 		{
-			CHECK(r4);
-			REQUIRE_FALSE(r6);
-			CHECK(r6.error() == std::errc::address_not_available);
+			CHECK(std::holds_alternative<A4>(address));
 		}
 		else
 		{
-			CHECK(r6);
-			REQUIRE_FALSE(r4);
-			CHECK(r4.error() == std::errc::address_not_available);
+			CHECK(std::holds_alternative<A6>(address));
 		}
+		CHECK(address.is_unspecified() == is_unspecified);
+		CHECK(address.is_loopback() == is_loopback);
 	}
 
 	SECTION("to_chars")
@@ -176,17 +156,12 @@ TEST_CASE("net/ip/address")
 
 	SECTION("to_chars failure")
 	{
-		const size_t max_size = address.to_string().size(), min_size = 0;
+		const size_t max_size = view.size(), min_size = 0;
 		auto buf_size = GENERATE_COPY(range(min_size, max_size));
 		std::string buf(buf_size, '\0');
 		auto [p, ec] = address.to_chars(buf.data(), buf.data() + buf.size());
 		CHECK(ec == std::errc::value_too_large);
 		CHECK(p == buf.data() + buf.size());
-	}
-
-	SECTION("to_string")
-	{
-		CHECK(address.to_string() == view);
 	}
 
 	SECTION("hash")
