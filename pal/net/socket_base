@@ -1,0 +1,18 @@
+#pragma once // -*- C++ -*-
+
+/**
+ * \file pal/net/socket_base
+ * Base socket types and values
+ */
+
+#include <pal/result>
+
+namespace pal::net {
+
+/// Initialize socket library. There is no need to call it explicitly as it is
+/// also invoked internally by static initialization. Possible exception is
+/// when application layer own static initialization order depends on winsock
+/// library being loaded. It can be safely called multiple times.
+const result<void> &init () noexcept;
+
+} // namespace pal::net
