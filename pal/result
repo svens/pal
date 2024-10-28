@@ -222,6 +222,19 @@ constexpr auto transform (Result &&result, F &&f)
 	return result_t{unexpect, std::forward<Result>(result).error()};
 }
 
+template <typename Result, typename F, typename R = std::invoke_result_t<F, value_t<Result>>>
+	requires(std::is_void_v<R> && !std::is_void_v<value_t<Result>>)
+constexpr auto transform (Result &&result, F &&f)
+{
+	using result_t = pal::result<std::decay_t<R>>;
+	if (result.has_value())
+	{
+		std::invoke(std::forward<F>(f), *std::forward<Result>(result));
+		return result_t{};
+	}
+	return result_t{unexpect, std::forward<Result>(result).error()};
+}
+
 template <typename Result, typename F, typename R = std::invoke_result_t<F>>
 	requires(std::is_void_v<value_t<Result>> && !std::is_void_v<R>)
 constexpr auto transform (Result &&result, F &&f)
@@ -230,6 +243,19 @@ constexpr auto transform (Result &&result, F &&f)
 	if (result.has_value())
 	{
 		return result_t{std::invoke(std::forward<F>(f))};
+	}
+	return result_t{unexpect, std::forward<Result>(result).error()};
+}
+
+template <typename Result, typename F, typename R = std::invoke_result_t<F>>
+	requires(std::is_void_v<R> && std::is_void_v<value_t<Result>>)
+constexpr auto transform (Result &&result, F &&f)
+{
+	using result_t = pal::result<std::decay_t<R>>;
+	if (result.has_value())
+	{
+		std::invoke(std::forward<F>(f));
+		return result_t{};
 	}
 	return result_t{unexpect, std::forward<Result>(result).error()};
 }

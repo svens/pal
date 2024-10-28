@@ -523,13 +523,13 @@ TEMPLATE_TEST_CASE("result", "",
 
 	SECTION("transform") //{{{1
 	{
-		auto t_to_u = [&v1](TestType) -> OtherType
-		{
-			return v1;
-		};
-
 		SECTION("TestType -> OtherType")
 		{
+			auto t_to_u = [&v1](TestType) -> OtherType
+			{
+				return v1;
+			};
+
 			SECTION("value")
 			{
 				T x{v};
@@ -546,6 +546,29 @@ TEMPLATE_TEST_CASE("result", "",
 				CHECK(static_cast<T &>(x).transform(t_to_u).error() == e);
 				CHECK(static_cast<const T &&>(x).transform(t_to_u).error() == e);
 				CHECK(static_cast<T &&>(x).transform(t_to_u).error() == e);
+			}
+		}
+
+		SECTION("TestType -> void")
+		{
+			auto t_to_void = [](TestType){};
+
+			SECTION("value")
+			{
+				T x{v};
+				CHECK_NOTHROW(static_cast<const T &>(x).transform(t_to_void).value());
+				CHECK_NOTHROW(static_cast<T &>(x).transform(t_to_void).value());
+				CHECK_NOTHROW(static_cast<const T &&>(x).transform(t_to_void).value());
+				CHECK_NOTHROW(static_cast<T &&>(x).transform(t_to_void).value());
+			}
+
+			SECTION("error")
+			{
+				T x{u};
+				CHECK(static_cast<const T &>(x).transform(t_to_void).error() == e);
+				CHECK(static_cast<T &>(x).transform(t_to_void).error() == e);
+				CHECK(static_cast<const T &&>(x).transform(t_to_void).error() == e);
+				CHECK(static_cast<T &&>(x).transform(t_to_void).error() == e);
 			}
 		}
 	}
@@ -991,13 +1014,13 @@ TEMPLATE_TEST_CASE("result", "",
 
 	SECTION("transform") //{{{1
 	{
-		auto void_to_int = []() -> int
-		{
-			return 1;
-		};
-
 		SECTION("void -> int")
 		{
+			auto void_to_int = []() -> int
+			{
+				return 1;
+			};
+
 			SECTION("value")
 			{
 				T x;
@@ -1014,6 +1037,29 @@ TEMPLATE_TEST_CASE("result", "",
 				CHECK(static_cast<T &>(x).transform(void_to_int).error() == e);
 				CHECK(static_cast<const T &&>(x).transform(void_to_int).error() == e);
 				CHECK(static_cast<T &&>(x).transform(void_to_int).error() == e);
+			}
+		}
+
+		SECTION("void -> void")
+		{
+			auto void_to_void = [](){};
+
+			SECTION("value")
+			{
+				T x;
+				CHECK_NOTHROW(static_cast<const T &>(x).transform(void_to_void).value());
+				CHECK_NOTHROW(static_cast<T &>(x).transform(void_to_void).value());
+				CHECK_NOTHROW(static_cast<const T &&>(x).transform(void_to_void).value());
+				CHECK_NOTHROW(static_cast<T &&>(x).transform(void_to_void).value());
+			}
+
+			SECTION("error")
+			{
+				T x{u};
+				CHECK(static_cast<const T &>(x).transform(void_to_void).error() == e);
+				CHECK(static_cast<T &>(x).transform(void_to_void).error() == e);
+				CHECK(static_cast<const T &&>(x).transform(void_to_void).error() == e);
+				CHECK(static_cast<T &&>(x).transform(void_to_void).error() == e);
 			}
 		}
 	}
