@@ -1,18 +1,13 @@
 #include <pal/net/__socket>
-#include <pal/net/socket_base>
+#include <pal/net/socket>
 
 #if __pal_net_winsock
-#include <mswsock.h>
 
 namespace pal::net {
-
-namespace {
 
 ::LPFN_CONNECTEX ConnectEx{};
 ::LPFN_ACCEPTEX AcceptEx{};
 ::LPFN_GETACCEPTEXSOCKADDRS GetAcceptExSockaddrs{};
-
-} // namespace
 
 const result<void> &init () noexcept
 {
@@ -39,7 +34,7 @@ const result<void> &init () noexcept
 			return {};
 		}
 
-		static result<__socket::native_socket> load_ex_impl (void *fn, GUID id, __socket::native_socket &&socket) noexcept
+		static result<__socket::handle> load_ex_impl (void *fn, GUID id, __socket::handle &&socket) noexcept
 		{
 			DWORD bytes{};
 			auto r = ::WSAIoctl(socket->handle,
@@ -54,14 +49,14 @@ const result<void> &init () noexcept
 			);
 			if (r != SOCKET_ERROR)
 			{
-				return {std::move(socket)};
+				return socket;
 			}
 			return __socket::sys_error();
 		}
 
 		static auto load_ex (void *fn, GUID id) noexcept
 		{
-			return [=](__socket::native_socket &&socket)
+			return [=](__socket::handle &&socket)
 			{
 				return load_ex_impl(fn, id, std::move(socket));
 			};
@@ -83,7 +78,7 @@ const result<void> &init () noexcept
 		}
 	};
 
-	static lib_init init_{};
+	static const lib_init init_{};
 	return init_.status;
 }
 

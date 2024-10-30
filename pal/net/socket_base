@@ -5,14 +5,59 @@
  * Base socket types and values
  */
 
-#include <pal/result>
+#include <pal/net/__socket>
 
 namespace pal::net {
 
-/// Initialize socket library. There is no need to call it explicitly as it is
-/// also invoked internally by static initialization. Possible exception is
-/// when application layer own static initialization order depends on winsock
-/// library being loaded. It can be safely called multiple times.
-const result<void> &init () noexcept;
+/// Common socket types and constants
+class socket_base
+{
+public:
+
+	/// \{
+	/// Socket shutdown types
+	using shutdown_type = __socket::shutdown_type;
+	/// Disable further receive operations
+	static constexpr shutdown_type shutdown_receive = shutdown_type::receive;
+	/// Disable further send operations
+	static constexpr shutdown_type shutdown_send = shutdown_type::send;
+	/// Disable further send/receive operations
+	static constexpr shutdown_type shutdown_both = shutdown_type::both;
+	/// \}
+
+	/// \{
+	/// Socket state change waiting types
+	using wait_type = __socket::wait_type;
+	/// Wait for socket to become readable
+	static constexpr wait_type wait_read = wait_type::read;
+	/// Wait for socket to become writable
+	static constexpr wait_type wait_write = wait_type::write;
+	/// Wait until socket has pending error condition
+	static constexpr wait_type wait_error = wait_type::error;
+	/// \}
+
+	/// \{
+	/// Bitmask flags for send/receive functions
+	using message_flags = __socket::message_flags;
+	/// Wait for socket to become readable
+	static constexpr message_flags message_peek = MSG_PEEK;
+	/// Wait for socket to become writable
+	static constexpr message_flags message_out_of_band = MSG_OOB;
+	/// Wait until socket has pending error condition
+	static constexpr message_flags message_do_not_route = MSG_DONTROUTE;
+	/// Received message was truncated because receive buffer was too small
+	static constexpr message_flags message_truncated = MSG_TRUNC;
+	/// \}
+
+	/// Limit on length of queue of pending incoming connections
+	static constexpr int max_listen_connections = SOMAXCONN;
+
+	/// Maximum number of spans for vectored I/O
+	static constexpr size_t iov_max_size = __socket::iov_max_size;
+
+private:
+
+	~socket_base () = default;
+};
 
 } // namespace pal::net

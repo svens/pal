@@ -1,4 +1,4 @@
-#include <pal/net/socket_base>
+#include <pal/net/socket>
 #include <pal/net/test>
 #include <catch2/catch_test_macros.hpp>
 
@@ -13,6 +13,7 @@ TEST_CASE("net/init")
 	CHECK_NOTHROW(second.value());
 
 	CHECK(first == second);
+
 }
 
 } // namespace
