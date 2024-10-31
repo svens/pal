@@ -13,7 +13,6 @@ TEST_CASE("net/init")
 	CHECK_NOTHROW(second.value());
 
 	CHECK(first == second);
-
 }
 
 } // namespace

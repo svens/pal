@@ -78,9 +78,28 @@ const result<void> &init () noexcept
 		}
 	};
 
-	static const lib_init init_{};
-	return init_.status;
+	static const lib_init lib_init;
+	return lib_init.status;
 }
+
+namespace __socket {
+
+namespace {
+
+const auto &lib_init = init();
+
+} // namespace
+
+result<handle> make (int domain, int type, int protocol) noexcept
+{
+	if (auto value = ::socket(domain, type, protocol); value != native_handle::invalid)
+	{
+		return native_handle{value};
+	}
+	return sys_error();
+}
+
+} // namespace __socket
 
 } // namespace pal::net
 

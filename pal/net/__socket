@@ -159,13 +159,6 @@ struct native_handle
 
 using handle = std::unique_ptr<native_handle, native_handle::deleter>;
 
-inline result<handle> make (int domain, int type, int protocol) noexcept
-{
-	if (auto value = ::socket(domain, type, protocol); value != native_handle::invalid)
-	{
-		return native_handle{value};
-	}
-	return sys_error();
-}
+result<handle> make (int domain, int type, int protocol) noexcept;
 
 } // namespace pal::net::__socket
