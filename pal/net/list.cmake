@@ -1,4 +1,11 @@
 list(APPEND pal_sources
+	# socket
+	pal/net/__socket
+	pal/net/socket
+	pal/net/socket.posix.cpp
+	pal/net/socket.windows.cpp
+	pal/net/socket_base
+
 	# internet
 	pal/net/ip/address
 	pal/net/ip/address_v4
@@ -9,6 +16,9 @@ list(APPEND pal_sources
 
 list(APPEND pal_test_sources
 	pal/net/test
+
+	# socket
+	pal/net/socket.test.cpp
 
 	# internet
 	pal/net/ip/address.test.cpp
