@@ -2,9 +2,9 @@ list(APPEND pal_sources
 	# socket
 	pal/net/__socket
 	pal/net/socket
-	pal/net/socket.posix.cpp
-	pal/net/socket.windows.cpp
 	pal/net/socket_base
+	pal/net/socket_base.posix.cpp
+	pal/net/socket_base.windows.cpp
 
 	# internet
 	pal/net/ip/address
@@ -18,7 +18,7 @@ list(APPEND pal_test_sources
 	pal/net/test
 
 	# socket
-	pal/net/socket.test.cpp
+	pal/net/socket_base.test.cpp
 
 	# internet
 	pal/net/ip/address.test.cpp

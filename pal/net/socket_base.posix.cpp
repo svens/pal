@@ -11,18 +11,14 @@ const result<void> &init () noexcept
 	return no_error;
 }
 
-namespace __socket {
-
-result<handle> make (int domain, int type, int protocol) noexcept
+result<native_socket> open (int domain, int type, int protocol) noexcept
 {
-	if (auto value = ::socket(domain, type, protocol); value != native_handle::invalid)
+	if (auto h = ::socket(domain, type, protocol); h != __socket::invalid_handle)
 	{
-		return native_handle{value};
+		return native_socket_handle{h};
 	}
-	return sys_error();
+	return __socket::sys_error();
 }
-
-} // namespace __socket
 
 } // namespace pal::net
 

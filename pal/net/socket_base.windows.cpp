@@ -34,7 +34,7 @@ const result<void> &init () noexcept
 			return {};
 		}
 
-		static result<__socket::handle> load_ex_impl (void *fn, GUID id, __socket::handle &&socket) noexcept
+		static result<native_socket> load_ex_impl (void *fn, GUID id, native_socket &&socket) noexcept
 		{
 			DWORD bytes{};
 			auto r = ::WSAIoctl(socket->handle,
@@ -56,7 +56,7 @@ const result<void> &init () noexcept
 
 		static auto load_ex (void *fn, GUID id) noexcept
 		{
-			return [=](__socket::handle &&socket)
+			return [=](native_socket &&socket)
 			{
 				return load_ex_impl(fn, id, std::move(socket));
 			};
@@ -64,7 +64,7 @@ const result<void> &init () noexcept
 
 		static result<void> load_mswsock_extensions () noexcept
 		{
-			return __socket::make(AF_INET, SOCK_STREAM, 0)
+			return open(AF_INET, SOCK_STREAM)
 				.and_then(load_ex(&ConnectEx, WSAID_CONNECTEX))
 				.and_then(load_ex(&AcceptEx, WSAID_ACCEPTEX))
 				.and_then(load_ex(&GetAcceptExSockaddrs, WSAID_GETACCEPTEXSOCKADDRS))
@@ -82,24 +82,20 @@ const result<void> &init () noexcept
 	return lib_init.status;
 }
 
-namespace __socket {
-
 namespace {
 
 const auto &lib_init = init();
 
 } // namespace
 
-result<handle> make (int domain, int type, int protocol) noexcept
+result<native_socket> open (int domain, int type, int protocol) noexcept
 {
-	if (auto value = ::socket(domain, type, protocol); value != native_handle::invalid)
+	if (auto h = ::socket(domain, type, protocol); h != __socket::invalid_handle)
 	{
-		return native_handle{value};
+		return native_socket_handle{h};
 	}
-	return sys_error();
+	return __socket::sys_error();
 }
-
-} // namespace __socket
 
 } // namespace pal::net
 
