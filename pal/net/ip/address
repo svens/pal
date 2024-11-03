@@ -66,6 +66,46 @@ public:
 		return r;
 	}
 
+	/// Three-way comparison with address_v4 \a that
+	constexpr auto operator<=> (const address_v4 &that) const noexcept
+	{
+		if (auto v4 = std::get_if<address_v4>(this))
+		{
+			return v4->operator<=>(that);
+		}
+		return std::strong_ordering::greater;
+	}
+
+	/// Equality operator with address_v4 \a that
+	constexpr bool operator== (const address_v4 &that) const noexcept
+	{
+		if (auto v4 = std::get_if<address_v4>(this))
+		{
+			return v4->operator==(that);
+		}
+		return false;
+	}
+
+	/// Three-way comparison with address_v6 \a that
+	constexpr auto operator<=> (const address_v6 &that) const noexcept
+	{
+		if (auto v6 = std::get_if<address_v6>(this))
+		{
+			return v6->operator<=>(that);
+		}
+		return std::strong_ordering::less;
+	}
+
+	/// Equality operator with address_v6 \a that
+	constexpr bool operator== (const address_v6 &that) const noexcept
+	{
+		if (auto v6 = std::get_if<address_v6>(this))
+		{
+			return v6->operator==(that);
+		}
+		return false;
+	}
+
 	/// Return hash value for \a this.
 	constexpr uint64_t hash () const noexcept
 	{

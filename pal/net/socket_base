@@ -104,17 +104,7 @@ struct native_socket_handle
 		return this;
 	}
 
-	/// Returns true if \a a.handle == \a b.handle
-	constexpr friend bool operator== (const native_socket_handle &a, const native_socket_handle &b) noexcept
-	{
-		return a.handle == b.handle;
-	}
-
-	/// Returns true if \a a.handle != \a b.handle
-	constexpr friend bool operator!= (const native_socket_handle &a, const native_socket_handle &b) noexcept
-	{
-		return !(a == b);
-	}
+	constexpr auto operator<=> (const native_socket_handle &) const noexcept = default;
 
 	struct close
 	{

@@ -9,6 +9,7 @@
 #include <pal/result>
 #include <array>
 #include <charconv>
+#include <compare>
 #include <format>
 
 namespace pal::net::ip {
@@ -118,14 +119,7 @@ public:
 		;
 	}
 
-	/// Compare \a this to \a that. Return value has same meaning as std::memcmp.
-	constexpr int compare (const address_v4 &that) const noexcept
-	{
-		size_t i = 0;
-		for (/**/;  i != bytes_.size() && bytes_[i] == that.bytes_[i];  ++i)
-			/**/;
-		return i < bytes_.size() ? bytes_[i] - that.bytes_[i] : 0;
-	}
+	constexpr auto operator<=> (const address_v4 &) const noexcept = default;
 
 	/// Return hash value for \a this.
 	constexpr uint64_t hash () const noexcept
@@ -178,42 +172,6 @@ private:
 
 	template <typename> friend class basic_endpoint;
 };
-
-/// Return true if \a a == \a b
-constexpr bool operator== (const address_v4 &a, const address_v4 &b) noexcept
-{
-	return a.compare(b) == 0;
-}
-
-/// Return true if \a a != \a b
-constexpr bool operator!= (const address_v4 &a, const address_v4 &b) noexcept
-{
-	return a.compare(b) != 0;
-}
-
-/// Return true if \a a < \a b
-constexpr bool operator< (const address_v4 &a, const address_v4 &b) noexcept
-{
-	return a.compare(b) < 0;
-}
-
-/// Return true if \a a <= \a b
-constexpr bool operator<= (const address_v4 &a, const address_v4 &b) noexcept
-{
-	return a.compare(b) <= 0;
-}
-
-/// Return true if \a a > \a b
-constexpr bool operator> (const address_v4 &a, const address_v4 &b) noexcept
-{
-	return a.compare(b) > 0;
-}
-
-/// Return true if \a a >= \a b
-constexpr bool operator>= (const address_v4 &a, const address_v4 &b) noexcept
-{
-	return a.compare(b) >= 0;
-}
 
 /// Return new address from \a value.
 constexpr address_v4 make_address_v4 (const address_v4::bytes_type &value) noexcept
