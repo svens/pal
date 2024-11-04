@@ -1,0 +1,77 @@
+#pragma once // -*- C++ -*-
+
+/**
+ * \file pal/net/ip/tcp
+ * TCP stream-oriented protocol
+ */
+
+#include <pal/net/__socket>
+
+#if __pal_net_posix
+	#include <netinet/tcp.h>
+#endif
+
+namespace pal::net::ip {
+
+class tcp;
+
+/// Encapsulate IP version-dependent types and constants for TCP sockets
+class tcp_v
+{
+public:
+
+	/// Return value suitable passing as domain argument for socket(2)
+	constexpr int family () const noexcept
+	{
+		return family_;
+	}
+
+	/// Return value suitable passing as type argument for socket(2)
+	constexpr int type () const noexcept
+	{
+		return SOCK_STREAM;
+	}
+
+	/// Return value suitable passing as protocol argument for socket(2)
+	constexpr int protocol () const noexcept
+	{
+		return IPPROTO_TCP;
+	}
+
+	constexpr auto operator<=> (const tcp_v &) const noexcept = default;
+
+protected:
+
+	const int family_;
+
+	tcp_v () = delete;
+
+	constexpr explicit tcp_v (int family) noexcept
+		: family_{family}
+	{ }
+
+	friend class tcp;
+};
+
+/// \copy tcp_v
+class tcp: public tcp_v
+{
+public:
+
+	constexpr tcp (const tcp_v &that) noexcept
+		: tcp_v{that}
+	{ }
+
+	/// TCP/IPv4 internet protocol
+	static constexpr tcp_v v4{AF_INET};
+
+	/// TCP/IPv6 internet protocol
+	static constexpr tcp_v v6{AF_INET6};
+
+private:
+
+	using tcp_v::tcp_v;
+	friend class basic_endpoint<tcp>;
+};
+
+} // namespace pal::net::ip
