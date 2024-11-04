@@ -66,45 +66,7 @@ public:
 		return r;
 	}
 
-	/// Three-way comparison with address_v4 \a that
-	constexpr auto operator<=> (const address_v4 &that) const noexcept
-	{
-		if (auto v4 = std::get_if<address_v4>(this))
-		{
-			return v4->operator<=>(that);
-		}
-		return std::strong_ordering::greater;
-	}
-
-	/// Equality operator with address_v4 \a that
-	constexpr bool operator== (const address_v4 &that) const noexcept
-	{
-		if (auto v4 = std::get_if<address_v4>(this))
-		{
-			return v4->operator==(that);
-		}
-		return false;
-	}
-
-	/// Three-way comparison with address_v6 \a that
-	constexpr auto operator<=> (const address_v6 &that) const noexcept
-	{
-		if (auto v6 = std::get_if<address_v6>(this))
-		{
-			return v6->operator<=>(that);
-		}
-		return std::strong_ordering::less;
-	}
-
-	/// Equality operator with address_v6 \a that
-	constexpr bool operator== (const address_v6 &that) const noexcept
-	{
-		if (auto v6 = std::get_if<address_v6>(this))
-		{
-			return v6->operator==(that);
-		}
-		return false;
-	}
+	constexpr auto operator<=> (const address &) const noexcept = default;
 
 	/// Return hash value for \a this.
 	constexpr uint64_t hash () const noexcept
@@ -141,22 +103,13 @@ struct hash<pal::net::ip::address>
 template <>
 struct formatter<pal::net::ip::address>
 {
-	bool mask_address = false;
-
 	template <typename ParseContext>
 	constexpr typename ParseContext::iterator parse (ParseContext &ctx)
 	{
 		auto it = ctx.begin();
-		for (/**/; it != ctx.end() && *it != '}'; ++it)
+		if (it != ctx.end() && *it != '}')
 		{
-			if (*it == '#')
-			{
-				mask_address = true;
-			}
-			else
-			{
-				throw std::format_error("invalid format for pal::net::ip::address");
-			}
+			throw std::format_error("invalid format for pal::net::ip::address");
 		}
 		return it;
 	}
@@ -166,14 +119,6 @@ struct formatter<pal::net::ip::address>
 	{
 		char text[pal::net::ip::address::max_string_length + 1];
 		auto [end, _] = a.to_chars(text, text + sizeof(text));
-		if (mask_address)
-		{
-			while (end > text && end[-1] != ':' && end[-1] != '.')
-			{
-				--end;
-			}
-			*end++ = '0';
-		}
 		return std::copy(text, end, ctx.out());
 	}
 };

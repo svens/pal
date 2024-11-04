@@ -187,12 +187,6 @@ TEST_CASE("net/ip/address")
 	{
 		CHECK(std::format("{}", address) == view);
 	}
-
-	SECTION("format alternative form")
-	{
-		view.erase(view.find_last_of(":.") + 1) += '0';
-		CHECK(std::format("{:#}", address) == view);
-	}
 }
 
 } // namespace

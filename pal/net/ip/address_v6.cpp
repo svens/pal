@@ -8,18 +8,22 @@
 
 namespace pal::net::ip {
 
-std::to_chars_result address_v6::to_chars (char *first, char *last) const noexcept
+namespace __address_v6 {
+
+char *ntop (const uint8_t *bytes, char *first, char *last) noexcept
 {
-	if (::inet_ntop(AF_INET6, bytes_.data(), first, last - first))
+	if (::inet_ntop(AF_INET6, bytes, first, last - first))
 	{
 		while (*first)
 		{
 			first++;
 		}
-		return {first, std::errc{}};
+		return first;
 	}
-	return {last, std::errc::value_too_large};
+	return nullptr;
 }
+
+} // namespace __address_v6
 
 std::from_chars_result address_v6::from_chars (const char *first, const char *last) noexcept
 {

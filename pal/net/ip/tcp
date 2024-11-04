@@ -6,6 +6,7 @@
  */
 
 #include <pal/net/__socket>
+#include <pal/net/ip/basic_endpoint>
 
 #if __pal_net_posix
 	#include <netinet/tcp.h>
@@ -19,6 +20,9 @@ class tcp;
 class tcp_v
 {
 public:
+
+	/// TCP socket endpoint
+	using endpoint = basic_endpoint<tcp>;
 
 	/// Return value suitable passing as domain argument for socket(2)
 	constexpr int family () const noexcept
