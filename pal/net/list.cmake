@@ -13,6 +13,7 @@ list(APPEND pal_sources
 	pal/net/ip/address_v6
 	pal/net/ip/address_v6.cpp
 	pal/net/ip/basic_endpoint
+	pal/net/ip/basic_endpoint.cpp
 	pal/net/ip/tcp
 	pal/net/ip/udp
 )
