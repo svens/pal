@@ -3,7 +3,6 @@
 #include <pal/result>
 #include <pal/version>
 #include <chrono>
-#include <memory>
 
 #if __pal_os_linux || __pal_os_macos
 	#define __pal_net_posix 1
@@ -20,12 +19,11 @@
 
 namespace pal::net::__socket {
 
-constexpr size_t iov_max_size = 4;
+constexpr size_t io_vector_max_size = 4;
 
 #if __pal_net_posix //{{{1
 
 using sa_family = ::sa_family_t;
-using message_flags = int;
 using timeval = ::timeval;
 
 constexpr std::chrono::milliseconds to_chrono_ms (const timeval &tv) noexcept
@@ -49,7 +47,6 @@ inline unexpected<std::error_code> sys_error (int e = errno) noexcept
 #elif __pal_net_winsock //{{{1
 
 using sa_family = ::ADDRESS_FAMILY;
-using message_flags = ::DWORD;
 using timeval = ::DWORD;
 
 constexpr std::chrono::milliseconds to_chrono_ms (const timeval &tv) noexcept
@@ -72,93 +69,14 @@ inline unexpected<std::error_code> sys_error (int e = ::WSAGetLastError()) noexc
 	return unexpected<std::error_code>{std::in_place, e, std::system_category()};
 }
 
-constexpr auto SHUT_RD = SD_RECEIVE;
-constexpr auto SHUT_WR = SD_SEND;
-constexpr auto SHUT_RDWR = SD_BOTH;
+#define SHUT_RD SD_RECEIVE
+#define SHUT_WR SD_SEND
+#define SHUT_RDWR SD_BOTH
 
 extern ::LPFN_CONNECTEX ConnectEx;
 extern ::LPFN_ACCEPTEX AcceptEx;
 extern ::LPFN_GETACCEPTEXSOCKADDRS GetAcceptExSockaddrs;
 
 #endif //}}}1
-
-enum class shutdown_type: int
-{
-	receive = SHUT_RD,
-	send = SHUT_WR,
-	both = SHUT_RDWR,
-};
-
-enum class wait_type: int
-{
-	read = POLLIN,
-	write = POLLOUT,
-	error = POLLERR,
-};
-
-struct native_handle
-{
-	#if __pal_net_posix
-		using type = int;
-		static constexpr type invalid = -1;
-	#elif __pal_net_winsock
-		using type = ::SOCKET;
-		static constexpr type invalid = INVALID_SOCKET;
-	#endif
-
-	type handle = invalid;
-
-	constexpr native_handle () = default;
-
-	constexpr native_handle (std::nullptr_t)
-	{ }
-
-	constexpr native_handle (type handle) noexcept
-		: handle{handle}
-	{ }
-
-	constexpr explicit operator bool () const noexcept
-	{
-		return handle != invalid;
-	}
-
-	constexpr native_handle *operator-> () noexcept
-	{
-		return this;
-	}
-
-	constexpr const native_handle *operator-> () const noexcept
-	{
-		return this;
-	}
-
-	constexpr friend bool operator== (const native_handle &a, const native_handle &b) noexcept
-	{
-		return a.handle == b.handle;
-	}
-
-	constexpr friend bool operator!= (const native_handle &a, const native_handle &b) noexcept
-	{
-		return !(a == b);
-	}
-
-	struct deleter
-	{
-		using pointer = native_handle;
-
-		void operator() (pointer socket) const noexcept
-		{
-			#if __pal_net_posix
-				::close(socket->handle);
-			#elif __pal_net_winsock
-				::closesocket(socket->handle);
-			#endif
-		}
-	};
-};
-
-using handle = std::unique_ptr<native_handle, native_handle::deleter>;
-
-result<handle> make (int domain, int type, int protocol) noexcept;
 
 } // namespace pal::net::__socket

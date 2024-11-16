@@ -1,0 +1,81 @@
+#pragma once // -*- C++ -*-
+
+/**
+ * \file pal/net/ip/udp
+ * UDP stream-oriented protocol
+ */
+
+#include <pal/net/__socket>
+#include <pal/net/ip/basic_endpoint>
+
+#if __pal_net_posix
+	#include <netinet/udp.h>
+#endif
+
+namespace pal::net::ip {
+
+class udp;
+
+/// Encapsulate IP version-dependent types and constants for UDP sockets
+class udp_v
+{
+public:
+
+	/// UDP socket endpoint
+	using endpoint = basic_endpoint<udp>;
+
+	/// Return value suitable passing as domain argument for socket(2)
+	constexpr int family () const noexcept
+	{
+		return family_;
+	}
+
+	/// Return value suitable passing as type argument for socket(2)
+	constexpr int type () const noexcept
+	{
+		return SOCK_DGRAM;
+	}
+
+	/// Return value suitable passing as protocol argument for socket(2)
+	constexpr int protocol () const noexcept
+	{
+		return IPPROTO_UDP;
+	}
+
+	constexpr auto operator<=> (const udp_v &) const noexcept = default;
+
+protected:
+
+	const int family_;
+
+	udp_v () = delete;
+
+	constexpr explicit udp_v (int family) noexcept
+		: family_{family}
+	{ }
+
+	friend class udp;
+};
+
+/// \copy udp_v
+class udp: public udp_v
+{
+public:
+
+	constexpr udp (const udp_v &that) noexcept
+		: udp_v{that}
+	{ }
+
+	/// UDP/IPv4 internet protocol
+	static constexpr udp_v v4{AF_INET};
+
+	/// UDP/IPv6 internet protocol
+	static constexpr udp_v v6{AF_INET6};
+
+private:
+
+	using udp_v::udp_v;
+	friend class basic_endpoint<udp>;
+};
+
+} // namespace pal::net::ip

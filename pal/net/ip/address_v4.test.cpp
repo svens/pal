@@ -222,12 +222,6 @@ TEST_CASE("net/ip/address_v4")
 	{
 		CHECK(std::format("{}", a) == view);
 	}
-
-	SECTION("format alternative form")
-	{
-		view.erase(view.find_last_of('.') + 1) += '0';
-		CHECK(std::format("{:#}", a) == view);
-	}
 }
 
 } // namespace

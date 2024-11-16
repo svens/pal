@@ -10,9 +10,16 @@
 #include <pal/result>
 #include <array>
 #include <charconv>
+#include <compare>
 #include <format>
 
 namespace pal::net::ip {
+
+namespace __address_v6 {
+
+char *ntop (const uint8_t *bytes, char *first, char *last) noexcept;
+
+} // namespace __address_v6
 
 /// IPv6 address
 class address_v6
@@ -64,7 +71,14 @@ public:
 	 * On failure, ptr is set to \a last and ec std::errc::value_too_large.
 	 * Content of [\a first, \a last) is unspecified.
 	 */
-	std::to_chars_result to_chars (char *first, char *last) const noexcept;
+	std::to_chars_result to_chars (char *first, char *last) const noexcept
+	{
+		if (auto p = __address_v6::ntop(bytes_.data(), first, last))
+		{
+			return {p, std::errc{}};
+		}
+		return {last, std::errc::value_too_large};
+	}
 
 	/**
 	 * Parses human readable IPv6 address from range [\a first, \a last).
@@ -123,18 +137,7 @@ public:
 		;
 	}
 
-	/// Compare \a this to \a that. Return value has same meaning as std::memcmp.
-	constexpr int compare (const address_v6 &that) const noexcept
-	{
-		for (auto i = 0;  i < 16;  ++i)
-		{
-			if (int r = bytes_[i] - that.bytes_[i];  r != 0)
-			{
-				return r;
-			}
-		}
-		return 0;
-	}
+	constexpr auto operator<=> (const address_v6 &) const noexcept = default;
 
 	/// Return hash value for \a this.
 	constexpr uint64_t hash () const noexcept
@@ -158,45 +161,7 @@ public:
 private:
 
 	bytes_type bytes_;
-
-	template <typename Protocol> friend class basic_endpoint;
 };
-
-/// Return true if \a a == \a b
-constexpr bool operator== (const address_v6 &a, const address_v6 &b) noexcept
-{
-	return a.compare(b) == 0;
-}
-
-/// Return true if \a a != \a b
-constexpr bool operator!= (const address_v6 &a, const address_v6 &b) noexcept
-{
-	return a.compare(b) != 0;
-}
-
-/// Return true if \a a < \a b
-constexpr bool operator< (const address_v6 &a, const address_v6 &b) noexcept
-{
-	return a.compare(b) < 0;
-}
-
-/// Return true if \a a <= \a b
-constexpr bool operator<= (const address_v6 &a, const address_v6 &b) noexcept
-{
-	return a.compare(b) <= 0;
-}
-
-/// Return true if \a a > \a b
-constexpr bool operator> (const address_v6 &a, const address_v6 &b) noexcept
-{
-	return a.compare(b) > 0;
-}
-
-/// Return true if \a a >= \a b
-constexpr bool operator>= (const address_v6 &a, const address_v6 &b) noexcept
-{
-	return a.compare(b) >= 0;
-}
 
 /// Return new address from \a value.
 constexpr address_v6 make_address_v6 (const address_v6::bytes_type &value) noexcept
@@ -259,22 +224,13 @@ struct hash<pal::net::ip::address_v6>
 template <>
 struct formatter<pal::net::ip::address_v6>
 {
-	bool mask_address = false;
-
 	template <typename ParseContext>
 	constexpr typename ParseContext::iterator parse (ParseContext &ctx)
 	{
 		auto it = ctx.begin();
-		for (/**/; it != ctx.end() && *it != '}'; ++it)
+		if (it != ctx.end() && *it != '}')
 		{
-			if (*it == '#')
-			{
-				mask_address = true;
-			}
-			else
-			{
-				throw std::format_error("invalid format for pal::net::ip::address_v6");
-			}
+			throw std::format_error("invalid format for pal::net::ip::address_v6");
 		}
 		return it;
 	}
@@ -284,14 +240,6 @@ struct formatter<pal::net::ip::address_v6>
 	{
 		char text[pal::net::ip::address_v6::max_string_length + 1];
 		auto [end, _] = a.to_chars(text, text + sizeof(text));
-		if (mask_address)
-		{
-			while (end > text && end[-1] != ':' && end[-1] != '.')
-			{
-				--end;
-			}
-			*end++ = '0';
-		}
 		return std::copy(text, end, ctx.out());
 	}
 };
