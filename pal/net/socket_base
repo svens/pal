@@ -16,64 +16,27 @@ namespace pal::net {
 /// library being loaded. It can be safely called multiple times.
 const result<void> &init () noexcept;
 
-/// Bitmask flags for send/receive operations
-enum message_flags: int
-{
-	/// Peek at incoming message, without removing it from queue
-	peek = MSG_PEEK,
-
-	/// Process out-of-band data
-	out_of_band = MSG_OOB,
-
-	/// Bypass routing, use direct interface
-	do_not_route = MSG_DONTROUTE,
-
-	/// Received message was truncated because receive buffer was too small
-	truncated = MSG_TRUNC,
-};
-
-/// Socket state change waiting types
-enum wait_type: int
-{
-	/// Wait for socket to become readable
-	read = POLLIN,
-
-	/// Wait for socket to become writable
-	write = POLLOUT,
-
-	/// Wait until socket has pending error condition
-	error = POLLERR,
-};
-
-/// Socket shutdown types
-enum shutdown_type: int
-{
-	/// Disable further receive operations
-	receive = SHUT_RD,
-
-	/// Disable further send operations
-	send = SHUT_WR,
-
-	/// Disable further send/receive operations
-	both = SHUT_RDWR,
-};
-
 /// Wrapper for native socket handle. If application logic requires holding
 /// native socket, use native_socket instead that wraps native_socket_handle
 /// to std::unique_ptr to ensure closing handle when going out of scope.
 ///
-/// \note Do not instances of this class directly, fetch native socket only if
-/// PAL library does not provide typesafe wrapper for native OS socket API.
+/// \note Do not instantiate of this class directly, fetch native socket only
+/// if library does not provide typesafe wrapper for native OS socket API.
 struct native_socket_handle
 {
-	/// Native OS socket handle type
-	using type = __socket::handle;
+	#if __pal_net_posix || __DOXYGEN__
+		/// Native OS socket handle type
+		using value_type = int;
 
-	/// Invalid OS socket handle instance. It represents uninitialised socket.
-	static constexpr type invalid = __socket::invalid_handle;
+		/// Invalid OS socket handle instance. It represents uninitialised socket
+		static constexpr value_type invalid = -1;
+	#elif __pal_net_winsock
+		using value_type = ::SOCKET;
+		static constexpr value_type invalid = INVALID_SOCKET;
+	#endif
 
 	/// Native OS socket handle instance
-	type handle = invalid;
+	value_type handle = invalid;
 
 	constexpr native_socket_handle () = default;
 
@@ -82,7 +45,7 @@ struct native_socket_handle
 	{ }
 
 	/// Construct native_socket_handle from native OS \a handle
-	constexpr native_socket_handle (type handle) noexcept
+	constexpr native_socket_handle (value_type handle) noexcept
 		: handle{handle}
 	{ }
 
@@ -138,21 +101,47 @@ class socket_base
 {
 public:
 
-	using message_flags = net::message_flags;
-	static constexpr message_flags message_peek = message_flags::peek;
-	static constexpr message_flags message_out_of_band = message_flags::out_of_band;
-	static constexpr message_flags message_do_not_route = message_flags::do_not_route;
-	static constexpr message_flags message_truncated = message_flags::truncated;
+	/// Bitmask flags for send/receive operations
+	enum message_flags: int
+	{
+		/// Peek at incoming message, without removing it from queue
+		message_peek = MSG_PEEK,
 
-	using wait_type = net::wait_type;
-	static constexpr wait_type wait_read = wait_type::read;
-	static constexpr wait_type wait_write = wait_type::write;
-	static constexpr wait_type wait_error = wait_type::error;
+		/// Process out-of-band data
+		message_out_of_band = MSG_OOB,
 
-	using shutdown_type = net::shutdown_type;
-	static constexpr shutdown_type shutdown_receive = shutdown_type::receive;
-	static constexpr shutdown_type shutdown_send = shutdown_type::send;
-	static constexpr shutdown_type shutdown_both = shutdown_type::both;
+		/// Bypass routing, use direct interface
+		message_do_not_route = MSG_DONTROUTE,
+
+		/// Received message was truncated because receive buffer was too small
+		message_truncated = MSG_TRUNC,
+	};
+
+	/// Socket state change waiting types
+	enum wait_type: int
+	{
+		/// Wait for socket to become readable
+		wait_read = POLLIN,
+
+		/// Wait for socket to become writable
+		wait_write = POLLOUT,
+
+		/// Wait until socket has pending error condition
+		wait_error = POLLERR,
+	};
+
+	/// Socket shutdown types
+	enum shutdown_type: int
+	{
+		/// Disable further receive operations
+		shutdown_receive = SHUT_RD,
+
+		/// Disable further send operations
+		shutdown_send = SHUT_WR,
+
+		/// Disable further send/receive operations
+		shutdown_both = SHUT_RDWR,
+	};
 
 	/// Limit on length of queue of pending incoming connections
 	static constexpr int max_listen_connections = SOMAXCONN;
@@ -160,7 +149,18 @@ public:
 	/// Maximum number of spans for vectored I/O
 	static constexpr size_t io_vector_max_size = __socket::io_vector_max_size;
 
-private:
+protected:
+
+	struct impl_type;
+
+	struct impl_type_deleter
+	{
+		void operator() (impl_type *impl);
+	};
+
+	using impl_ptr = std::unique_ptr<impl_type, impl_type_deleter>;
+
+	static const native_socket &socket (const impl_ptr &impl) noexcept;
 
 	~socket_base () = default;
 };
