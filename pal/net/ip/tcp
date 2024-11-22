@@ -14,15 +14,27 @@
 
 namespace pal::net::ip {
 
-class tcp;
-
-/// Encapsulate IP version-dependent types and constants for TCP sockets
-class tcp_v
+/// Encapsulate types and constants for TCP sockets
+class tcp
 {
 public:
 
 	/// TCP socket endpoint
 	using endpoint = basic_endpoint<tcp>;
+
+	tcp () = delete;
+
+	/// TCP/IPv4 internet protocol
+	static constexpr tcp v4 () noexcept
+	{
+		return tcp{AF_INET};
+	}
+
+	/// TCP/IPv6 internet protocol
+	static constexpr tcp v6 () noexcept
+	{
+		return tcp{AF_INET6};
+	}
 
 	/// Return value suitable passing as domain argument for socket(2)
 	constexpr int family () const noexcept
@@ -42,40 +54,18 @@ public:
 		return IPPROTO_TCP;
 	}
 
-	constexpr auto operator<=> (const tcp_v &) const noexcept = default;
+	constexpr auto operator<=> (const tcp &) const noexcept = default;
 
 protected:
 
 	const int family_;
 
-	tcp_v () = delete;
-
-	constexpr explicit tcp_v (int family) noexcept
+	constexpr explicit tcp (int family) noexcept
 		: family_{family}
 	{ }
 
-	friend class tcp;
-};
-
-/// \copy tcp_v
-class tcp: public tcp_v
-{
-public:
-
-	constexpr tcp (const tcp_v &that) noexcept
-		: tcp_v{that}
-	{ }
-
-	/// TCP/IPv4 internet protocol
-	static constexpr tcp_v v4{AF_INET};
-
-	/// TCP/IPv6 internet protocol
-	static constexpr tcp_v v6{AF_INET6};
-
-private:
-
-	using tcp_v::tcp_v;
 	friend class basic_endpoint<tcp>;
+	friend class basic_socket<tcp>;
 };
 
 } // namespace pal::net::ip

@@ -26,35 +26,35 @@ TEMPLATE_TEST_CASE("net/ip/basic_endpoint", "", tcp, udp)
 		// see basic_endpoint<>
 
 		constexpr E e1;
-		static_assert(e1.protocol() == TestType::v4);
+		static_assert(e1.protocol() == TestType::v4());
 		static_assert(e1.port() == 0);
 		static_assert(e1.size() == sizeof(::sockaddr_in));
 		static_assert(e1.capacity() == capacity);
 		static_assert(e1.address() == A4::any());
 
-		constexpr E e2{TestType::v4, port};
-		static_assert(e2.protocol() == TestType::v4);
+		constexpr E e2{TestType::v4(), port};
+		static_assert(e2.protocol() == TestType::v4());
 		static_assert(e2.port() == port);
 		static_assert(e2.size() == sizeof(::sockaddr_in));
 		static_assert(e2.capacity() == capacity);
 		static_assert(e2.address() == A4::any());
 
-		constexpr E e3{TestType::v6, port};
-		CHECK(e3.protocol() == TestType::v6);
+		constexpr E e3{TestType::v6(), port};
+		CHECK(e3.protocol() == TestType::v6());
 		CHECK(e3.port() == port);
 		CHECK(e3.size() == sizeof(::sockaddr_in6));
 		static_assert(e3.capacity() == capacity);
 		CHECK(e3.address() == A6::any());
 
 		constexpr E e4{A4::loopback(), port};
-		static_assert(e4.protocol() == TestType::v4);
+		static_assert(e4.protocol() == TestType::v4());
 		static_assert(e4.port() == port);
 		static_assert(e4.size() == sizeof(::sockaddr_in));
 		static_assert(e4.capacity() == capacity);
 		static_assert(e4.address() == A4::loopback());
 
 		constexpr E e5{A6::loopback(), port};
-		CHECK(e5.protocol() == TestType::v6);
+		CHECK(e5.protocol() == TestType::v6());
 		CHECK(e5.port() == port);
 		CHECK(e5.size() == sizeof(::sockaddr_in6));
 		static_assert(e5.capacity() == capacity);
@@ -62,7 +62,7 @@ TEMPLATE_TEST_CASE("net/ip/basic_endpoint", "", tcp, udp)
 
 		constexpr A loopback_v4{A4::loopback()};
 		constexpr E e6{loopback_v4, port};
-		static_assert(e6.protocol() == TestType::v4);
+		static_assert(e6.protocol() == TestType::v4());
 		static_assert(e6.port() == port);
 		static_assert(e6.size() == sizeof(::sockaddr_in));
 		static_assert(e6.capacity() == capacity);
@@ -70,7 +70,7 @@ TEMPLATE_TEST_CASE("net/ip/basic_endpoint", "", tcp, udp)
 
 		constexpr A loopback_v6{A6::loopback()};
 		constexpr E e7{loopback_v6, port};
-		CHECK(e7.protocol() == TestType::v6);
+		CHECK(e7.protocol() == TestType::v6());
 		CHECK(e7.port() == port);
 		CHECK(e7.size() == sizeof(::sockaddr_in6));
 		static_assert(e7.capacity() == capacity);
@@ -80,7 +80,7 @@ TEMPLATE_TEST_CASE("net/ip/basic_endpoint", "", tcp, udp)
 	SECTION("ctor")
 	{
 		E e;
-		CHECK(e.protocol() == TestType::v4);
+		CHECK(e.protocol() == TestType::v4());
 		CHECK(e.address() == A4::any());
 		CHECK(e.port() == 0);
 	}
@@ -88,7 +88,7 @@ TEMPLATE_TEST_CASE("net/ip/basic_endpoint", "", tcp, udp)
 	SECTION("ctor(address_v4)")
 	{
 		E e{A4::loopback(), port};
-		CHECK(e.protocol() == TestType::v4);
+		CHECK(e.protocol() == TestType::v4());
 		CHECK(e.address() == A4::loopback());
 		CHECK(e.port() == port);
 	}
@@ -96,7 +96,7 @@ TEMPLATE_TEST_CASE("net/ip/basic_endpoint", "", tcp, udp)
 	SECTION("ctor(address_v6)")
 	{
 		E e{A6::loopback(), port};
-		CHECK(e.protocol() == TestType::v6);
+		CHECK(e.protocol() == TestType::v6());
 		CHECK(e.address() == A6::loopback());
 		CHECK(e.port() == port);
 	}
@@ -127,11 +127,11 @@ TEMPLATE_TEST_CASE("net/ip/basic_endpoint", "", tcp, udp)
 	}
 
 	auto [view, protocol, address] = GENERATE(table<std::string, TestType, A>({
-		{ "0.0.0.0:60000", TestType::v4, A4::any() },
-		{ "127.0.0.1:60000", TestType::v4, A4::loopback() },
-		{ "[::]:60000", TestType::v6, A6::any() },
-		{ "[::1]:60000", TestType::v6, A6::loopback() },
-		{ "[ffff:ffff:ffff:ffff:ffff:ffff:ffff:ffff]:60000", TestType::v6, A6{A6::bytes_type{255,255,255,255,255,255,255,255,255,255,255,255,255,255,255,255}} },
+		{ "0.0.0.0:60000", TestType::v4(), A4::any() },
+		{ "127.0.0.1:60000", TestType::v4(), A4::loopback() },
+		{ "[::]:60000", TestType::v6(), A6::any() },
+		{ "[::1]:60000", TestType::v6(), A6::loopback() },
+		{ "[ffff:ffff:ffff:ffff:ffff:ffff:ffff:ffff]:60000", TestType::v6(), A6{A6::bytes_type{255,255,255,255,255,255,255,255,255,255,255,255,255,255,255,255}} },
 	}));
 	CAPTURE(view);
 
@@ -188,7 +188,7 @@ TEMPLATE_TEST_CASE("net/ip/basic_endpoint", "", tcp, udp)
 	SECTION("size and capacity")
 	{
 		E e{protocol, port};
-		if (protocol == TestType::v4)
+		if (protocol == TestType::v4())
 		{
 			CHECK(e.size() == sizeof(::sockaddr_in));
 		}
