@@ -6,6 +6,7 @@
  */
 
 #include <pal/net/__socket>
+#include <pal/net/basic_stream_socket>
 #include <pal/net/ip/basic_endpoint>
 
 #if __pal_net_posix
@@ -21,6 +22,9 @@ public:
 
 	/// TCP socket endpoint
 	using endpoint = basic_endpoint<tcp>;
+
+	/// TCP stream socket
+	using socket = basic_stream_socket<tcp>;
 
 	tcp () = delete;
 

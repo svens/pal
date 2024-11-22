@@ -1,6 +1,10 @@
 list(APPEND pal_sources
 	# socket
 	pal/net/__socket
+	pal/net/basic_datagram_socket
+	pal/net/basic_socket
+	pal/net/basic_stream_socket
+	pal/net/internet
 	pal/net/socket
 	pal/net/socket_base
 	pal/net/socket_base.posix.cpp
@@ -22,6 +26,7 @@ list(APPEND pal_test_sources
 	pal/net/test
 
 	# socket
+	pal/net/basic_socket.test.cpp
 	pal/net/socket_base.test.cpp
 
 	# internet

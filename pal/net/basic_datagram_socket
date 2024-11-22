@@ -1,0 +1,40 @@
+#pragma once // -*- C++ -*-
+
+/**
+ * \file pal/net/basic_datagram_socket
+ * Generic datagram-oriented socket
+ */
+
+#include <pal/net/basic_socket>
+
+namespace pal::net {
+
+template <typename Protocol>
+class basic_datagram_socket: public basic_socket<Protocol>
+{
+public:
+
+	using typename basic_socket<Protocol>::protocol_type;
+	using typename basic_socket<Protocol>::endpoint_type;
+
+private:
+
+	using basic_socket<Protocol>::basic_socket;
+
+	template <typename P>
+	friend result<basic_datagram_socket<P>> make_datagram_socket (const P &) noexcept;
+};
+
+/// Create new datagram socket of \a Protocol
+template <typename Protocol>
+result<basic_datagram_socket<Protocol>> make_datagram_socket (const Protocol &protocol) noexcept
+{
+	using socket_type = basic_datagram_socket<Protocol>;
+	static const auto to_api = [](auto &&value)
+	{
+		return socket_type{std::move(value)};
+	};
+	return socket_type::open(protocol.family(), protocol.type(), protocol.protocol()).transform(to_api);
+}
+
+} // namespace pal::net

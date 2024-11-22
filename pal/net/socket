@@ -2,10 +2,11 @@
 
 /**
  * \file pal/net/socket_base
- * Include all socket-related headers
+ * Convenience header including all socket related headers
  */
 
-#include <pal/net/socket_base>
+#include <pal/net/basic_datagram_socket>
+#include <pal/net/basic_stream_socket>
 
 namespace pal::net {
 
