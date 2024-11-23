@@ -16,25 +16,16 @@ public:
 
 	using typename basic_socket<Protocol>::protocol_type;
 	using typename basic_socket<Protocol>::endpoint_type;
-
-private:
-
-	using basic_socket<Protocol>::basic_socket;
-
-	template <typename P>
-	friend result<basic_datagram_socket<P>> make_datagram_socket (const P &) noexcept;
 };
 
 /// Create new datagram socket of \a Protocol
 template <typename Protocol>
 result<basic_datagram_socket<Protocol>> make_datagram_socket (const Protocol &protocol) noexcept
 {
-	using socket_type = basic_datagram_socket<Protocol>;
-	static const auto to_impl = [](auto &&value)
-	{
-		return socket_type{std::move(value)};
-	};
-	return socket_type::open(protocol.family(), protocol.type(), protocol.protocol()).transform(to_impl);
+	return open(protocol.family(), protocol.type(), protocol.protocol())
+		.and_then(socket_base::make_impl(protocol))
+		.transform(socket_base::to_api<basic_datagram_socket<Protocol>>())
+	;
 }
 
 } // namespace pal::net

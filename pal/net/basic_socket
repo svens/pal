@@ -51,6 +51,9 @@ protected:
 	basic_socket (impl_ptr &&impl) noexcept
 		: impl_{std::move(impl)}
 	{ }
+
+	template <typename P>
+	friend constexpr auto socket_base::to_api () noexcept;
 };
 
 } // namespace pal::net

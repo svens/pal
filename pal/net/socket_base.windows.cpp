@@ -122,16 +122,13 @@ void socket_base::impl_type_deleter::operator() (impl_type *impl)
 	delete impl;
 }
 
-result<socket_base::impl_ptr> socket_base::open (int family, int type, int protocol) noexcept
+result<socket_base::impl_ptr> socket_base::make (native_socket &&handle, int family) noexcept
 {
-	return net::open(family, type, protocol).and_then([=](auto &&handle) -> result<impl_ptr>
+	if (auto socket = new(std::nothrow) impl_type{std::move(handle), family})
 	{
-		if (auto socket = new(std::nothrow) impl_type{std::move(handle), family})
-		{
-			return impl_ptr{socket};
-		}
-		return make_unexpected(std::errc::not_enough_memory);
-	});
+		return impl_ptr{socket};
+	}
+	return make_unexpected(std::errc::not_enough_memory);
 }
 
 native_socket socket_base::release (impl_ptr &&impl) noexcept

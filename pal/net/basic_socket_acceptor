@@ -57,19 +57,17 @@ private:
 	{ }
 
 	template <typename P>
-	friend result<basic_socket_acceptor<P>> make_socket_acceptor (const P &) noexcept;
+	friend constexpr auto socket_base::to_api() noexcept;
 };
 
 /// Create new datagram socket of \a AcceptableProtocol
 template <typename AcceptableProtocol>
 result<basic_socket_acceptor<AcceptableProtocol>> make_socket_acceptor (const AcceptableProtocol &protocol) noexcept
 {
-	using socket_type = basic_socket_acceptor<AcceptableProtocol>;
-	static const auto to_impl = [](auto &&value)
-	{
-		return socket_type{std::move(value)};
-	};
-	return socket_type::open(protocol.family(), protocol.type(), protocol.protocol()).transform(to_impl);
+	return open(protocol.family(), protocol.type(), protocol.protocol())
+		.and_then(socket_base::make_impl(protocol))
+		.transform(socket_base::to_api<basic_socket_acceptor<AcceptableProtocol>>())
+	;
 }
 
 } // namespace pal::net
