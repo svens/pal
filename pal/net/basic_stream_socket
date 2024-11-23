@@ -30,11 +30,11 @@ template <typename Protocol>
 result<basic_stream_socket<Protocol>> make_stream_socket (const Protocol &protocol) noexcept
 {
 	using socket_type = basic_stream_socket<Protocol>;
-	static const auto to_api = [](auto &&value)
+	static const auto to_impl = [](auto &&value)
 	{
 		return socket_type{std::move(value)};
 	};
-	return socket_type::open(protocol.family(), protocol.type(), protocol.protocol()).transform(to_api);
+	return socket_type::open(protocol.family(), protocol.type(), protocol.protocol()).transform(to_impl);
 }
 
 } // namespace pal::net

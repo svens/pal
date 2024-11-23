@@ -94,7 +94,16 @@ result<native_socket> open (int domain, int type, int protocol) noexcept
 	{
 		return native_socket_handle{h};
 	}
-	return __socket::sys_error();
+
+	// Library public API deals with Protocol types/instances, translate
+	// invalid argument(s) to std::errc::protocol_not_supported
+	auto error = ::WSAGetLastError();
+	if (error == WSAESOCKTNOSUPPORT)
+	{
+		error = WSAEPROTONOSUPPORT;
+	}
+
+	return __socket::sys_error(error);
 }
 
 struct socket_base::impl_type

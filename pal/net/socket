@@ -6,6 +6,7 @@
  */
 
 #include <pal/net/basic_datagram_socket>
+#include <pal/net/basic_socket_acceptor>
 #include <pal/net/basic_stream_socket>
 
 namespace pal::net {

@@ -1,0 +1,75 @@
+#pragma once // -*- C++ -*-
+
+/**
+ * \file pal/net/basic_socket_acceptor
+ * Incoming socket connect requests acceptor
+ */
+
+#include <pal/net/socket_base>
+
+namespace pal::net {
+
+/// Incoming socket connect requests listener and acceptor
+template <typename AcceptableProtocol>
+class basic_socket_acceptor: public socket_base
+{
+public:
+
+	/// Accepted socket protocol type
+	using protocol_type = AcceptableProtocol;
+
+	/// Protocol-specific endpoint type
+	using endpoint_type = typename AcceptableProtocol::endpoint;
+
+	/// Protocol-specific socket type
+	using socket_type = typename AcceptableProtocol::socket;
+
+	/// Return true if internal implementation is in valid state
+	explicit operator bool () const noexcept
+	{
+		return impl_ != nullptr;
+	}
+
+	/// Return acceptor protocol
+	protocol_type protocol () const noexcept
+	{
+		return protocol_type{family(impl_)};
+	}
+
+	/// Release internal implementation and return native socket handle
+	net::native_socket release () noexcept
+	{
+		return socket_base::release(std::move(impl_));
+	}
+
+	/// Return reference of native socket handle
+	const net::native_socket &native_socket () const noexcept
+	{
+		return socket(impl_);
+	}
+
+private:
+
+	impl_ptr impl_{};
+
+	basic_socket_acceptor (impl_ptr &&impl) noexcept
+		: impl_{std::move(impl)}
+	{ }
+
+	template <typename P>
+	friend result<basic_socket_acceptor<P>> make_socket_acceptor (const P &) noexcept;
+};
+
+/// Create new datagram socket of \a AcceptableProtocol
+template <typename AcceptableProtocol>
+result<basic_socket_acceptor<AcceptableProtocol>> make_socket_acceptor (const AcceptableProtocol &protocol) noexcept
+{
+	using socket_type = basic_socket_acceptor<AcceptableProtocol>;
+	static const auto to_impl = [](auto &&value)
+	{
+		return socket_type{std::move(value)};
+	};
+	return socket_type::open(protocol.family(), protocol.type(), protocol.protocol()).transform(to_impl);
+}
+
+} // namespace pal::net

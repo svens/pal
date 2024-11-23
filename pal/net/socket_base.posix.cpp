@@ -17,7 +17,26 @@ result<native_socket> open (int domain, int type, int protocol) noexcept
 	{
 		return native_socket_handle{h};
 	}
-	return __socket::sys_error();
+
+	// Library public API deals with Protocol types/instances, translate
+	// invalid argument(s) to std::errc::protocol_not_supported
+	auto error = errno;
+	if constexpr (os == os_type::linux)
+	{
+		if (error == EINVAL)
+		{
+			error = EPROTONOSUPPORT;
+		}
+	}
+	else if constexpr (os == os_type::macos)
+	{
+		if (error == EAFNOSUPPORT)
+		{
+			error = EPROTONOSUPPORT;
+		}
+	}
+
+	return __socket::sys_error(error);
 }
 
 struct socket_base::impl_type

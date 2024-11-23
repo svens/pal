@@ -37,6 +37,11 @@ struct tcp_v4
 	{
 		return pal::net::make_stream_socket(protocol_v);
 	}
+
+	static auto make_acceptor () noexcept
+	{
+		return pal::net::make_socket_acceptor(protocol_v);
+	}
 };
 
 struct tcp_v6
@@ -48,6 +53,11 @@ struct tcp_v6
 	{
 		return pal::net::make_stream_socket(protocol_v);
 	}
+
+	static auto make_acceptor () noexcept
+	{
+		return pal::net::make_socket_acceptor(protocol_v);
+	}
 };
 
 template <typename Protocol>
@@ -57,6 +67,29 @@ struct v6_only: Protocol
 
 using udp_v6_only = v6_only<udp_v6>;
 using tcp_v6_only = v6_only<tcp_v6>;
+
+struct invalid_protocol
+{
+	using socket = pal::net::basic_socket<invalid_protocol>;
+	using endpoint = int;
+
+	static constexpr int invalid_value = (std::numeric_limits<int>::max)();
+
+	constexpr int family () const noexcept
+	{
+		return invalid_value;
+	}
+
+	constexpr int type () const noexcept
+	{
+		return invalid_value;
+	}
+
+	constexpr int protocol () const noexcept
+	{
+		return invalid_value;
+	}
+};
 
 template <typename T>
 constexpr bool is_udp_v = false
