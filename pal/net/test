@@ -1,7 +1,151 @@
 #pragma once // -*- C++ -*-
 
 #include <pal/test>
+#include <pal/net/internet>
+#include <pal/net/socket>
 
 namespace pal_test {
+
+template <typename Socket>
+void close_native_handle (const Socket &socket) noexcept
+{
+	pal::net::native_socket_handle::close{}(socket.native_socket().get());
+}
+
+struct udp_v4
+{
+	static constexpr auto protocol_v = pal::net::ip::udp::v4();
+	static constexpr auto loopback_v = pal::net::ip::address_v4::loopback();
+
+	template <typename T> using with = std::pair<udp_v4, T>;
+
+	static auto make_socket () noexcept
+	{
+		return pal::net::make_datagram_socket(protocol_v);
+	}
+};
+
+struct udp_v6
+{
+	static constexpr auto protocol_v = pal::net::ip::udp::v6();
+	static constexpr auto loopback_v = pal::net::ip::address_v6::loopback();
+
+	template <typename T> using with = std::pair<udp_v6, T>;
+
+	static auto make_socket () noexcept
+	{
+		return pal::net::make_datagram_socket(protocol_v);
+	}
+};
+
+struct tcp_v4
+{
+	static constexpr auto protocol_v = pal::net::ip::tcp::v4();
+	static constexpr auto loopback_v = pal::net::ip::address_v4::loopback();
+
+	template <typename T> using with = std::pair<tcp_v4, T>;
+
+	static auto make_socket () noexcept
+	{
+		return pal::net::make_stream_socket(protocol_v);
+	}
+
+	static auto make_acceptor () noexcept
+	{
+		return pal::net::make_socket_acceptor(protocol_v);
+	}
+};
+
+struct tcp_v6
+{
+	static constexpr auto protocol_v = pal::net::ip::tcp::v6();
+	static constexpr auto loopback_v = pal::net::ip::address_v6::loopback();
+
+	template <typename T> using with = std::pair<tcp_v6, T>;
+
+	static auto make_socket () noexcept
+	{
+		return pal::net::make_stream_socket(protocol_v);
+	}
+
+	static auto make_acceptor () noexcept
+	{
+		return pal::net::make_socket_acceptor(protocol_v);
+	}
+};
+
+template <typename Protocol>
+struct v6_only: Protocol
+{
+	template <typename T> using with = std::pair<v6_only<Protocol>, T>;
+
+	static auto make_socket ()
+	{
+		auto socket = Protocol::make_socket();
+		if (socket)
+		{
+			auto set_option = socket->set_option(pal::net::ip::v6_only(true));
+			if (!set_option)
+			{
+				socket = pal::unexpected{set_option.error()};
+			}
+		}
+		return socket;
+	}
+};
+
+using udp_v6_only = v6_only<udp_v6>;
+using tcp_v6_only = v6_only<tcp_v6>;
+
+struct invalid_protocol
+{
+	using socket = pal::net::basic_socket<invalid_protocol>;
+	using endpoint = int;
+
+	static constexpr int invalid_value = (std::numeric_limits<int>::max)();
+
+	constexpr int family () const noexcept
+	{
+		return invalid_value;
+	}
+
+	constexpr int type () const noexcept
+	{
+		return invalid_value;
+	}
+
+	constexpr int protocol () const noexcept
+	{
+		return invalid_value;
+	}
+};
+
+template <typename T>
+constexpr bool is_udp_v = false
+	|| std::is_same_v<T, udp_v4>
+	|| std::is_same_v<T, udp_v6>
+	|| std::is_same_v<T, udp_v6_only>
+;
+
+template <typename T>
+constexpr bool is_tcp_v = false
+	|| std::is_same_v<T, tcp_v4>
+	|| std::is_same_v<T, tcp_v6>
+	|| std::is_same_v<T, tcp_v6_only>
+;
+
+template <typename T>
+constexpr bool is_v4_v = false
+	|| std::is_same_v<T, udp_v4>
+	|| std::is_same_v<T, tcp_v4>
+;
+
+template <typename T>
+constexpr bool is_v6_v = false
+	|| std::is_same_v<T, udp_v6>
+	|| std::is_same_v<T, udp_v6_only>
+	|| std::is_same_v<T, tcp_v6>
+	|| std::is_same_v<T, tcp_v6_only>
+;
 
 } // namespace pal_test

@@ -6,6 +6,7 @@
  */
 
 #include <pal/net/__socket>
+#include <pal/net/basic_datagram_socket>
 #include <pal/net/ip/basic_endpoint>
 
 #if __pal_net_posix
@@ -14,15 +15,30 @@
 
 namespace pal::net::ip {
 
-class udp;
-
-/// Encapsulate IP version-dependent types and constants for UDP sockets
-class udp_v
+/// Encapsulate types and constants for UDP sockets
+class udp
 {
 public:
 
 	/// UDP socket endpoint
 	using endpoint = basic_endpoint<udp>;
+
+	/// UDP datagram socket
+	using socket = basic_datagram_socket<udp>;
+
+	udp () = delete;
+
+	/// UDP/IPv4 internet protocol
+	static constexpr udp v4 () noexcept
+	{
+		return udp{AF_INET};
+	}
+
+	/// UDP/IPv6 internet protocol
+	static constexpr udp v6 () noexcept
+	{
+		return udp{AF_INET6};
+	}
 
 	/// Return value suitable passing as domain argument for socket(2)
 	constexpr int family () const noexcept
@@ -42,40 +58,18 @@ public:
 		return IPPROTO_UDP;
 	}
 
-	constexpr auto operator<=> (const udp_v &) const noexcept = default;
+	constexpr auto operator<=> (const udp &) const noexcept = default;
 
 protected:
 
 	const int family_;
 
-	udp_v () = delete;
-
-	constexpr explicit udp_v (int family) noexcept
+	constexpr explicit udp (int family) noexcept
 		: family_{family}
 	{ }
 
-	friend class udp;
-};
-
-/// \copy udp_v
-class udp: public udp_v
-{
-public:
-
-	constexpr udp (const udp_v &that) noexcept
-		: udp_v{that}
-	{ }
-
-	/// UDP/IPv4 internet protocol
-	static constexpr udp_v v4{AF_INET};
-
-	/// UDP/IPv6 internet protocol
-	static constexpr udp_v v6{AF_INET6};
-
-private:
-
-	using udp_v::udp_v;
 	friend class basic_endpoint<udp>;
+	friend class basic_socket<udp>;
 };
 
 } // namespace pal::net::ip

@@ -78,7 +78,7 @@ struct native_socket_handle
 			#if __pal_net_posix
 				while (true)
 				{
-					if (::close(socket->handle) == 0 || errno == EINTR)
+					if (::close(socket->handle) == 0 || errno != EINTR)
 					{
 						return;
 					}
@@ -93,8 +93,8 @@ struct native_socket_handle
 /// Wrap native_socket_handle to std::unique_ptr
 using native_socket = std::unique_ptr<native_socket_handle, native_socket_handle::close>;
 
-/// Open and return new socket
-result<native_socket> open (int domain, int type, int protocol = 0) noexcept;
+/// Open and return new native socket
+result<native_socket> open (int family, int type, int protocol) noexcept;
 
 /// Common socket types and constants
 class socket_base
@@ -149,6 +149,30 @@ public:
 	/// Maximum number of spans for vectored I/O
 	static constexpr size_t io_vector_max_size = __socket::io_vector_max_size;
 
+	/// \internal
+	///
+	/// Returns factory lambda that creates internal implementation.
+	template <typename Protocol>
+	static constexpr auto make_impl (const Protocol &protocol) noexcept
+	{
+		return [family = protocol.family()](auto &&handle)
+		{
+			return make(std::move(handle), family);
+		};
+	}
+
+	/// \internal
+	///
+	/// Returns lambda that wraps internal implementation to public API class
+	template <typename Api>
+	static constexpr auto to_api () noexcept
+	{
+		return [](auto &&impl)
+		{
+			return Api{std::move(impl)};
+		};
+	}
+
 protected:
 
 	struct impl_type;
@@ -160,7 +184,12 @@ protected:
 
 	using impl_ptr = std::unique_ptr<impl_type, impl_type_deleter>;
 
+	static result<impl_ptr> make (native_socket &&handle, int family) noexcept;
+	static native_socket release (impl_ptr &&impl) noexcept;
 	static const native_socket &socket (const impl_ptr &impl) noexcept;
+	static int family (const impl_ptr &impl) noexcept;
+	static result<void> get_option (const impl_ptr &impl, int level, int name, void *data, size_t data_size) noexcept;
+	static result<void> set_option (const impl_ptr &impl, int level, int name, const void *data, size_t data_size) noexcept;
 
 	~socket_base () = default;
 };

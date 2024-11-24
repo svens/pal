@@ -1,0 +1,83 @@
+#pragma once // -*- C++ -*-
+
+/**
+ * \file pal/net/basic_socket
+ * Generic socket base class
+ */
+
+#include <pal/net/socket_base>
+
+namespace pal::net {
+
+template <typename Protocol>
+class basic_socket: public socket_base
+{
+public:
+
+	/// Socket protocol
+	using protocol_type = Protocol;
+
+	/// Protocol-specific endpoint type
+	using endpoint_type = typename Protocol::endpoint;
+
+	/// Return true if internal implementation has valid value
+	explicit operator bool () const noexcept
+	{
+		return impl_ != nullptr;
+	}
+
+	/// Returns socket protocol
+	protocol_type protocol () const noexcept
+	{
+		return protocol_type{socket_base::family(impl_)};
+	}
+
+	/// Release internal socket implementation and return native socket handle
+	net::native_socket release () noexcept
+	{
+		return socket_base::release(std::move(impl_));
+	}
+
+	/// Return reference of native socket handle
+	const net::native_socket &native_socket () const noexcept
+	{
+		return socket_base::socket(impl_);
+	}
+
+	/// Get socket \a option
+	template <typename GettableSocketOption>
+	result<void> get_option (GettableSocketOption &option) const noexcept
+	{
+		return socket_base::get_option(impl_,
+			option.level(protocol()),
+			option.name(protocol()),
+			option.data(protocol()),
+			option.size(protocol())
+		);
+	}
+
+	/// Set socket \a option
+	template <typename SettableSocketOption>
+	result<void> set_option (const SettableSocketOption &option) noexcept
+	{
+		return socket_base::set_option(impl_,
+			option.level(protocol()),
+			option.name(protocol()),
+			option.data(protocol()),
+			option.size(protocol())
+		);
+	}
+
+protected:
+
+	impl_ptr impl_{};
+
+	basic_socket (impl_ptr &&impl) noexcept
+		: impl_{std::move(impl)}
+	{ }
+
+	template <typename P>
+	friend constexpr auto socket_base::to_api () noexcept;
+};
+
+} // namespace pal::net

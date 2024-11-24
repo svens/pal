@@ -6,7 +6,10 @@
  */
 
 #include <pal/net/__socket>
+#include <pal/net/basic_socket_acceptor>
+#include <pal/net/basic_stream_socket>
 #include <pal/net/ip/basic_endpoint>
+#include <pal/net/socket_option>
 
 #if __pal_net_posix
 	#include <netinet/tcp.h>
@@ -14,15 +17,33 @@
 
 namespace pal::net::ip {
 
-class tcp;
-
-/// Encapsulate IP version-dependent types and constants for TCP sockets
-class tcp_v
+/// Encapsulate types and constants for TCP sockets
+class tcp
 {
 public:
 
 	/// TCP socket endpoint
 	using endpoint = basic_endpoint<tcp>;
+
+	/// TCP stream socket
+	using socket = basic_stream_socket<tcp>;
+
+	/// TCP socket acceptor
+	using acceptor = basic_socket_acceptor<tcp>;
+
+	tcp () = delete;
+
+	/// TCP/IPv4 internet protocol
+	static constexpr tcp v4 () noexcept
+	{
+		return tcp{AF_INET};
+	}
+
+	/// TCP/IPv6 internet protocol
+	static constexpr tcp v6 () noexcept
+	{
+		return tcp{AF_INET6};
+	}
 
 	/// Return value suitable passing as domain argument for socket(2)
 	constexpr int family () const noexcept
@@ -42,40 +63,27 @@ public:
 		return IPPROTO_TCP;
 	}
 
-	constexpr auto operator<=> (const tcp_v &) const noexcept = default;
+	constexpr auto operator<=> (const tcp &) const noexcept = default;
+
+	/// \ingroup socket_option
+	/// Determines whether a TCP socket will avoid coalescing of small
+	/// segments (i.e. disable Nagle's algorithm)
+	using no_delay = socket_option<bool,
+		socket_option_level{IPPROTO_TCP},
+		socket_option_name{TCP_NODELAY}
+	>;
 
 protected:
 
 	const int family_;
 
-	tcp_v () = delete;
-
-	constexpr explicit tcp_v (int family) noexcept
+	constexpr explicit tcp (int family) noexcept
 		: family_{family}
 	{ }
 
-	friend class tcp;
-};
-
-/// \copy tcp_v
-class tcp: public tcp_v
-{
-public:
-
-	constexpr tcp (const tcp_v &that) noexcept
-		: tcp_v{that}
-	{ }
-
-	/// TCP/IPv4 internet protocol
-	static constexpr tcp_v v4{AF_INET};
-
-	/// TCP/IPv6 internet protocol
-	static constexpr tcp_v v6{AF_INET6};
-
-private:
-
-	using tcp_v::tcp_v;
 	friend class basic_endpoint<tcp>;
+	friend class basic_socket<tcp>;
+	friend class basic_socket_acceptor<tcp>;
 };
 
 } // namespace pal::net::ip
