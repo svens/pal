@@ -147,6 +147,56 @@ int socket_base::family (const impl_ptr &impl) noexcept
 	return impl->family;
 }
 
+namespace {
+
+int socket_option_precheck (const native_socket &socket, int name) noexcept
+{
+	if (socket->handle == native_socket_handle::invalid)
+	{
+		return WSAEBADF;
+	}
+	else if (name == -1)
+	{
+		return WSAENOPROTOOPT;
+	}
+	return 0;
+}
+
+} // namespace
+
+result<void> socket_base::get_option (const impl_ptr &impl, int level, int name, void *data, size_t data_size) noexcept
+{
+	if (auto e = socket_option_precheck(impl->socket, name))
+	{
+		return __socket::sys_error(e);
+	}
+
+	auto p = static_cast<char *>(data);
+	auto size = static_cast<int>(data_size);
+	if (::getsockopt(impl->socket->handle, level, name, p, &size) > -1)
+	{
+		return {};
+	}
+
+	return __socket::sys_error();
+}
+
+result<void> socket_base::set_option (const impl_ptr &impl, int level, int name, const void *data, size_t data_size) noexcept
+{
+	if (auto e = socket_option_precheck(impl->socket, name))
+	{
+		return __socket::sys_error(e);
+	}
+
+	auto p = static_cast<const char *>(data);
+	auto size = static_cast<int>(data_size);
+	if (::setsockopt(impl->socket->handle, level, name, p, size) > -1)
+	{
+		return {};
+	}
+	return __socket::sys_error();
+}
+
 } // namespace pal::net
 
 #endif // __pal_net_winsock

@@ -9,6 +9,7 @@
 #include <pal/net/basic_socket_acceptor>
 #include <pal/net/basic_stream_socket>
 #include <pal/net/ip/basic_endpoint>
+#include <pal/net/socket_option>
 
 #if __pal_net_posix
 	#include <netinet/tcp.h>
@@ -63,6 +64,14 @@ public:
 	}
 
 	constexpr auto operator<=> (const tcp &) const noexcept = default;
+
+	/// \ingroup socket_option
+	/// Determines whether a TCP socket will avoid coalescing of small
+	/// segments (i.e. disable Nagle's algorithm)
+	using no_delay = socket_option<bool,
+		socket_option_level{IPPROTO_TCP},
+		socket_option_name{TCP_NODELAY}
+	>;
 
 protected:
 

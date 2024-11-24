@@ -1,0 +1,21 @@
+#pragma once // -*- C++ -*-
+
+/**
+ * \file pal/net/ip/socket_option
+ * Internet protocol specific socket options
+ */
+
+#include <pal/net/socket_option>
+
+namespace pal::net::ip {
+
+/// \ingroup socket_option
+/// Determines whether socket created for an IPv6 protocol is restricted to
+/// IPv6 communication only. Initial value for this option depends on
+/// operating system.
+using v6_only = socket_option<bool,
+	socket_option_level{IPPROTO_IPV6},
+	socket_option_name{IPV6_V6ONLY}
+>;
+
+} // namespace pal::net::ip

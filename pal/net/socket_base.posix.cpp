@@ -80,6 +80,25 @@ int socket_base::family (const impl_ptr &impl) noexcept
 	return impl->family;
 }
 
+result<void> socket_base::get_option (const impl_ptr &impl, int level, int name, void *data, size_t data_size) noexcept
+{
+	socklen_t size = data_size;
+	if (::getsockopt(impl->socket->handle, level, name, data, &size) > -1)
+	{
+		return {};
+	}
+	return __socket::sys_error();
+}
+
+result<void> socket_base::set_option (const impl_ptr &impl, int level, int name, const void *data, size_t data_size) noexcept
+{
+	if (::setsockopt(impl->socket->handle, level, name, data, data_size) > -1)
+	{
+		return {};
+	}
+	return __socket::sys_error();
+}
+
 } // namespace pal::net
 
 #endif // __pal_net_posix

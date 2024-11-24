@@ -78,7 +78,7 @@ struct native_socket_handle
 			#if __pal_net_posix
 				while (true)
 				{
-					if (::close(socket->handle) == 0 || errno == EINTR)
+					if (::close(socket->handle) == 0 || errno != EINTR)
 					{
 						return;
 					}
@@ -188,6 +188,8 @@ protected:
 	static native_socket release (impl_ptr &&impl) noexcept;
 	static const native_socket &socket (const impl_ptr &impl) noexcept;
 	static int family (const impl_ptr &impl) noexcept;
+	static result<void> get_option (const impl_ptr &impl, int level, int name, void *data, size_t data_size) noexcept;
+	static result<void> set_option (const impl_ptr &impl, int level, int name, const void *data, size_t data_size) noexcept;
 
 	~socket_base () = default;
 };

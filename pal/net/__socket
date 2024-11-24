@@ -79,4 +79,14 @@ extern ::LPFN_GETACCEPTEXSOCKADDRS GetAcceptExSockaddrs;
 
 #endif //}}}1
 
+constexpr int reuse_port =
+#if defined(SO_REUSEPORT_LB)
+	SO_REUSEPORT_LB
+#elif defined(SO_REUSEPORT)
+	SO_REUSEPORT
+#else
+	-1
+#endif
+;
+
 } // namespace pal::net::__socket
