@@ -45,14 +45,6 @@ TEMPLATE_TEST_CASE("net/basic_socket_acceptor", "[!nonportable]",
 		CHECK(native->handle == s_orig_handle);
 	}
 
-	SECTION("make_acceptor: not_enough_memory")
-	{
-		pal_test::bad_alloc_once x;
-		auto a1 = TestType::make_acceptor();
-		REQUIRE(!a1);
-		CHECK(a1.error() == std::errc::not_enough_memory);
-	}
-
 	SECTION("local_endpoint")
 	{
 		// see SECTION("bind")

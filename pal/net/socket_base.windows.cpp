@@ -90,11 +90,11 @@ const auto &lib_init = init();
 
 } // namespace
 
-result<native_socket> open (int domain, int type, int protocol) noexcept
+result<native_socket> open (int family, int type, int protocol) noexcept
 {
-	if (auto h = ::socket(domain, type, protocol); h != native_socket_handle::invalid)
+	if (auto h = ::socket(family, type, protocol); h != native_socket_handle::invalid)
 	{
-		return native_socket_handle{h};
+		return native_socket_handle{h, family};
 	}
 
 	// Library public API deals with Protocol types/instances, translate
@@ -108,50 +108,14 @@ result<native_socket> open (int domain, int type, int protocol) noexcept
 	return __socket::sys_error(error);
 }
 
-struct socket_base::impl_type
+void native_socket_handle::close::operator() (pointer socket) const noexcept
 {
-	native_socket socket;
-	int family;
-
-	impl_type (native_socket &&socket, int family) noexcept
-		: socket{std::move(socket)}
-		, family{family}
-	{ }
-};
-
-void socket_base::impl_type_deleter::operator() (impl_type *impl)
-{
-	delete impl;
+	::closesocket(socket->handle);
 }
 
-result<socket_base::impl_ptr> socket_base::make (native_socket &&handle, int family) noexcept
+result<void> native_socket_handle::bind (const void *endpoint, size_t endpoint_size) const noexcept
 {
-	if (auto socket = new(std::nothrow) impl_type{std::move(handle), family})
-	{
-		return impl_ptr{socket};
-	}
-	return make_unexpected(std::errc::not_enough_memory);
-}
-
-native_socket socket_base::release (impl_ptr &&impl) noexcept
-{
-	auto s = std::move(impl);
-	return std::move(s->socket);
-}
-
-const native_socket &socket_base::socket (const impl_ptr &impl) noexcept
-{
-	return impl->socket;
-}
-
-int socket_base::family (const impl_ptr &impl) noexcept
-{
-	return impl->family;
-}
-
-result<void> socket_base::bind (const impl_ptr &impl, const void *endpoint, size_t endpoint_size) noexcept
-{
-	if (::bind(impl->socket->handle, static_cast<const sockaddr *>(endpoint), static_cast<int>(endpoint_size)) == 0)
+	if (::bind(handle, static_cast<const sockaddr *>(endpoint), static_cast<int>(endpoint_size)) == 0)
 	{
 		return {};
 	}
@@ -160,7 +124,7 @@ result<void> socket_base::bind (const impl_ptr &impl, const void *endpoint, size
 
 namespace {
 
-bool make_family_specific_any (int family, void *endpoint, int *endpoint_size) noexcept
+bool make_any (int family, void *endpoint, int *endpoint_size) noexcept
 {
 	int size = 0;
 	if (family == AF_INET)
@@ -185,10 +149,10 @@ bool make_family_specific_any (int family, void *endpoint, int *endpoint_size) n
 
 } // namespace
 
-result<void> socket_base::local_endpoint (const impl_ptr &impl, void *endpoint, size_t *endpoint_size) noexcept
+result<void> native_socket_handle::local_endpoint (void *endpoint, size_t *endpoint_size) const noexcept
 {
 	auto size = static_cast<int>(*endpoint_size);
-	if (::getsockname(impl->socket->handle, static_cast<sockaddr *>(endpoint), &size) == 0)
+	if (::getsockname(handle, static_cast<sockaddr *>(endpoint), &size) == 0)
 	{
 		*endpoint_size = size;
 		return {};
@@ -199,7 +163,7 @@ result<void> socket_base::local_endpoint (const impl_ptr &impl, void *endpoint, 
 	auto e = ::WSAGetLastError();
 	if (e == WSAEINVAL)
 	{
-		if (make_family_specific_any(impl->family, endpoint, &size))
+		if (make_any(family, endpoint, &size))
 		{
 			*endpoint_size = size;
 			return {};
@@ -211,9 +175,9 @@ result<void> socket_base::local_endpoint (const impl_ptr &impl, void *endpoint, 
 
 namespace {
 
-int socket_option_precheck (const native_socket &socket, int name) noexcept
+int socket_option_precheck (native_socket_handle::value_type handle, int name) noexcept
 {
-	if (socket->handle == native_socket_handle::invalid)
+	if (handle == native_socket_handle::invalid)
 	{
 		return WSAEBADF;
 	}
@@ -226,16 +190,16 @@ int socket_option_precheck (const native_socket &socket, int name) noexcept
 
 } // namespace
 
-result<void> socket_base::get_option (const impl_ptr &impl, int level, int name, void *data, size_t data_size) noexcept
+result<void> native_socket_handle::get_option (int level, int name, void *data, size_t data_size) const noexcept
 {
-	if (auto e = socket_option_precheck(impl->socket, name))
+	if (auto e = socket_option_precheck(handle, name))
 	{
 		return __socket::sys_error(e);
 	}
 
 	auto p = static_cast<char *>(data);
 	auto size = static_cast<int>(data_size);
-	if (::getsockopt(impl->socket->handle, level, name, p, &size) > -1)
+	if (::getsockopt(handle, level, name, p, &size) > -1)
 	{
 		return {};
 	}
@@ -243,16 +207,16 @@ result<void> socket_base::get_option (const impl_ptr &impl, int level, int name,
 	return __socket::sys_error();
 }
 
-result<void> socket_base::set_option (const impl_ptr &impl, int level, int name, const void *data, size_t data_size) noexcept
+result<void> native_socket_handle::set_option (int level, int name, const void *data, size_t data_size) const noexcept
 {
-	if (auto e = socket_option_precheck(impl->socket, name))
+	if (auto e = socket_option_precheck(handle, name))
 	{
 		return __socket::sys_error(e);
 	}
 
 	auto p = static_cast<const char *>(data);
 	auto size = static_cast<int>(data_size);
-	if (::setsockopt(impl->socket->handle, level, name, p, size) > -1)
+	if (::setsockopt(handle, level, name, p, size) > -1)
 	{
 		return {};
 	}

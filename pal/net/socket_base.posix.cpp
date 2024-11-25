@@ -16,7 +16,7 @@ result<native_socket> open (int family, int type, int protocol) noexcept
 {
 	if (auto h = ::socket(family, type, protocol); h != native_socket_handle::invalid)
 	{
-		return native_socket_handle{h};
+		return native_socket_handle{h, family};
 	}
 
 	// Library public API deals with Protocol types/instances, translate
@@ -40,60 +40,30 @@ result<native_socket> open (int family, int type, int protocol) noexcept
 	return __socket::sys_error(error);
 }
 
-struct socket_base::impl_type
+void native_socket_handle::close::operator() (pointer socket) const noexcept
 {
-	native_socket socket;
-	int family;
-
-	impl_type (native_socket &&socket, int family) noexcept
-		: socket{std::move(socket)}
-		, family{family}
-	{ }
-};
-
-void socket_base::impl_type_deleter::operator() (impl_type *impl)
-{
-	delete impl;
-}
-
-result<socket_base::impl_ptr> socket_base::make (native_socket &&handle, int family) noexcept
-{
-	if (auto socket = new(std::nothrow) impl_type{std::move(handle), family})
+	while (true)
 	{
-		return impl_ptr{socket};
+		if (::close(socket->handle) == 0 || errno != EINTR)
+		{
+			return;
+		}
 	}
-	return make_unexpected(std::errc::not_enough_memory);
 }
 
-native_socket socket_base::release (impl_ptr &&impl) noexcept
+result<void> native_socket_handle::bind (const void *endpoint, size_t endpoint_size) const noexcept
 {
-	auto s = std::move(impl);
-	return std::move(s->socket);
-}
-
-const native_socket &socket_base::socket (const impl_ptr &impl) noexcept
-{
-	return impl->socket;
-}
-
-int socket_base::family (const impl_ptr &impl) noexcept
-{
-	return impl->family;
-}
-
-result<void> socket_base::bind (const impl_ptr &impl, const void *endpoint, size_t endpoint_size) noexcept
-{
-	if (::bind(impl->socket->handle, static_cast<const sockaddr *>(endpoint), endpoint_size) == 0)
+	if (::bind(handle, static_cast<const sockaddr *>(endpoint), endpoint_size) == 0)
 	{
 		return {};
 	}
 	return __socket::sys_error();
 }
 
-result<void> socket_base::local_endpoint (const impl_ptr &impl, void *endpoint, size_t *endpoint_size) noexcept
+result<void> native_socket_handle::local_endpoint (void *endpoint, size_t *endpoint_size) const noexcept
 {
 	auto size = static_cast<socklen_t>(*endpoint_size);
-	if (::getsockname(impl->socket->handle, static_cast<sockaddr *>(endpoint), &size) == 0)
+	if (::getsockname(handle, static_cast<sockaddr *>(endpoint), &size) == 0)
 	{
 		*endpoint_size = size;
 		return {};
@@ -101,19 +71,19 @@ result<void> socket_base::local_endpoint (const impl_ptr &impl, void *endpoint, 
 	return __socket::sys_error();
 }
 
-result<void> socket_base::get_option (const impl_ptr &impl, int level, int name, void *data, size_t data_size) noexcept
+result<void> native_socket_handle::get_option (int level, int name, void *data, size_t data_size) const noexcept
 {
 	socklen_t size = data_size;
-	if (::getsockopt(impl->socket->handle, level, name, data, &size) > -1)
+	if (::getsockopt(handle, level, name, data, &size) > -1)
 	{
 		return {};
 	}
 	return __socket::sys_error();
 }
 
-result<void> socket_base::set_option (const impl_ptr &impl, int level, int name, const void *data, size_t data_size) noexcept
+result<void> native_socket_handle::set_option (int level, int name, const void *data, size_t data_size) const noexcept
 {
-	if (::setsockopt(impl->socket->handle, level, name, data, data_size) > -1)
+	if (::setsockopt(handle, level, name, data, data_size) > -1)
 	{
 		return {};
 	}

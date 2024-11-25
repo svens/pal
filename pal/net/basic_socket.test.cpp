@@ -48,14 +48,6 @@ TEMPLATE_TEST_CASE("net/basic_socket", "[!nonportable]",
 		CHECK(native->handle == s_orig_handle);
 	}
 
-	SECTION("make_socket: not_enough_memory")
-	{
-		pal_test::bad_alloc_once x;
-		auto s1 = TestType::make_socket();
-		REQUIRE(!s1);
-		CHECK(s1.error() == std::errc::not_enough_memory);
-	}
-
 	SECTION("local_endpoint")
 	{
 		// see SECTION("bind")

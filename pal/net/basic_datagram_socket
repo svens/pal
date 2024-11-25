@@ -23,7 +23,6 @@ template <typename Protocol>
 result<basic_datagram_socket<Protocol>> make_datagram_socket (const Protocol &protocol) noexcept
 {
 	return open(protocol.family(), protocol.type(), protocol.protocol())
-		.and_then(socket_base::make_impl(protocol))
 		.transform(socket_base::to_api<basic_datagram_socket<Protocol>>())
 	;
 }

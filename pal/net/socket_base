@@ -37,6 +37,7 @@ struct native_socket_handle
 
 	/// Native OS socket handle instance
 	value_type handle = invalid;
+	int family = 0;
 
 	constexpr native_socket_handle () = default;
 
@@ -45,8 +46,9 @@ struct native_socket_handle
 	{ }
 
 	/// Construct native_socket_handle from native OS \a handle
-	constexpr native_socket_handle (value_type handle) noexcept
+	constexpr native_socket_handle (value_type handle, int family) noexcept
 		: handle{handle}
+		, family{family}
 	{ }
 
 	/// Returns true if \a handle is initialised.
@@ -69,24 +71,15 @@ struct native_socket_handle
 
 	constexpr auto operator<=> (const native_socket_handle &) const noexcept = default;
 
+	result<void> bind (const void *endpoint, size_t endpoint_size) const noexcept;
+	result<void> local_endpoint (void *endpoint, size_t *endpoint_size) const noexcept;
+	result<void> get_option (int level, int name, void *data, size_t data_size) const noexcept;
+	result<void> set_option (int level, int name, const void *data, size_t data_size) const noexcept;
+
 	struct close
 	{
 		using pointer = native_socket_handle;
-
-		void operator() (pointer socket) const noexcept
-		{
-			#if __pal_net_posix
-				while (true)
-				{
-					if (::close(socket->handle) == 0 || errno != EINTR)
-					{
-						return;
-					}
-				}
-			#elif __pal_net_winsock
-				::closesocket(socket->handle);
-			#endif
-		}
+		void operator() (pointer socket) const noexcept;
 	};
 };
 
@@ -151,47 +144,17 @@ public:
 
 	/// \internal
 	///
-	/// Returns factory lambda that creates internal implementation.
-	template <typename Protocol>
-	static constexpr auto make_impl (const Protocol &protocol) noexcept
-	{
-		return [family = protocol.family()](auto &&handle)
-		{
-			return make(std::move(handle), family);
-		};
-	}
-
-	/// \internal
-	///
-	/// Returns lambda that wraps internal implementation to public API class
-	template <typename Api>
+	/// Return lambda that wraps socket implementation to public API class
+	template <typename Socket>
 	static constexpr auto to_api () noexcept
 	{
-		return [](auto &&impl)
+		return [](auto &&socket)
 		{
-			return Api{std::move(impl)};
+			return Socket{std::move(socket)};
 		};
 	}
 
 protected:
-
-	struct impl_type;
-
-	struct impl_type_deleter
-	{
-		void operator() (impl_type *impl);
-	};
-
-	using impl_ptr = std::unique_ptr<impl_type, impl_type_deleter>;
-
-	static result<impl_ptr> make (native_socket &&handle, int family) noexcept;
-	static native_socket release (impl_ptr &&impl) noexcept;
-	static const native_socket &socket (const impl_ptr &impl) noexcept;
-	static int family (const impl_ptr &impl) noexcept;
-	static result<void> bind (const impl_ptr &impl, const void *endpoint, size_t endpoint_size) noexcept;
-	static result<void> local_endpoint (const impl_ptr &impl, void *endpoint, size_t *endpoint_size) noexcept;
-	static result<void> get_option (const impl_ptr &impl, int level, int name, void *data, size_t data_size) noexcept;
-	static result<void> set_option (const impl_ptr &impl, int level, int name, const void *data, size_t data_size) noexcept;
 
 	~socket_base () = default;
 };
