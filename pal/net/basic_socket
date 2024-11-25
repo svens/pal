@@ -44,6 +44,24 @@ public:
 		return socket_base::socket(impl_);
 	}
 
+	/// Return local endpoint to which this socket is bound
+	result<endpoint_type> local_endpoint () const noexcept
+	{
+		endpoint_type endpoint;
+		auto size = endpoint.capacity();
+		return socket_base::local_endpoint(impl_, endpoint.data(), &size).and_then([&]() -> result<endpoint_type>
+		{
+			endpoint.resize(size);
+			return endpoint;
+		});
+	}
+
+	/// Bind this socket to local \a endpoint
+	result<void> bind (const endpoint_type &endpoint) noexcept
+	{
+		return socket_base::bind(impl_, endpoint.data(), endpoint.size());
+	}
+
 	/// Get socket \a option
 	template <typename GettableSocketOption>
 	result<void> get_option (GettableSocketOption &option) const noexcept

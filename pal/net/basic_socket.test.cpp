@@ -14,6 +14,9 @@ TEMPLATE_TEST_CASE("net/basic_socket", "[!nonportable]",
 	udp_v6_only,
 	tcp_v6_only)
 {
+	using protocol_t = std::remove_cvref_t<decltype(TestType::protocol_v)>;
+	using endpoint_t = typename protocol_t::endpoint;
+
 	auto s = TestType::make_socket().value();
 	REQUIRE(s);
 	CHECK(s.native_socket()->handle != pal::net::native_socket_handle::invalid);
@@ -51,6 +54,52 @@ TEMPLATE_TEST_CASE("net/basic_socket", "[!nonportable]",
 		auto s1 = TestType::make_socket();
 		REQUIRE(!s1);
 		CHECK(s1.error() == std::errc::not_enough_memory);
+	}
+
+	SECTION("local_endpoint")
+	{
+		// see SECTION("bind")
+		SUCCEED();
+
+		SECTION("unbound")
+		{
+			auto local_endpoint = s.local_endpoint();
+			REQUIRE(local_endpoint);
+			CHECK(has_expected_family<TestType>(local_endpoint->address()));
+			CHECK(local_endpoint->address().is_unspecified());
+			CHECK(local_endpoint->port() == 0);
+		}
+
+		SECTION("bad file descriptor")
+		{
+			close_native_handle(s);
+			auto local_endpoint = s.local_endpoint();
+			REQUIRE_FALSE(local_endpoint);
+			CHECK(local_endpoint.error() == std::errc::bad_file_descriptor);
+		}
+	}
+
+	SECTION("bind")
+	{
+		endpoint_t endpoint{TestType::loopback_v, 0};
+		REQUIRE(bind_next_available_port(s, endpoint));
+		CHECK(s.local_endpoint().value() == endpoint);
+
+		SECTION("address in use")
+		{
+			auto s1 = TestType::make_socket().value();
+			auto bind = s1.bind(endpoint);
+			REQUIRE_FALSE(bind);
+			CHECK(bind.error() == std::errc::address_in_use);
+		}
+
+		SECTION("bad file descriptor")
+		{
+			close_native_handle(s);
+			auto bind = s.bind(endpoint);
+			REQUIRE_FALSE(bind);
+			CHECK(bind.error() == std::errc::bad_file_descriptor);
+		}
 	}
 }
 

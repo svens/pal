@@ -196,7 +196,7 @@ std::error_code expected_nonportable_error () noexcept
 			constexpr int WSAEINVAL = EINVAL;
 		#endif
 
-		if (pal_test::is_udp_v<Protocol>)
+		if (is_udp_v<Protocol>)
 		{
 			if constexpr (false
 				|| std::is_same_v<Option, keepalive>
@@ -213,7 +213,7 @@ std::error_code expected_nonportable_error () noexcept
 				return {WSAEINVAL, std::system_category()};
 			}
 		}
-		else if (pal_test::is_tcp_v<Protocol>)
+		else if (is_tcp_v<Protocol>)
 		{
 			if constexpr (false
 				|| std::is_same_v<Option, broadcast>

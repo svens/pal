@@ -1,7 +1,8 @@
 #include <pal/net/__socket>
-#include <pal/net/socket>
 
 #if __pal_net_posix
+
+#include <pal/net/socket>
 
 namespace pal::net {
 
@@ -78,6 +79,26 @@ const native_socket &socket_base::socket (const impl_ptr &impl) noexcept
 int socket_base::family (const impl_ptr &impl) noexcept
 {
 	return impl->family;
+}
+
+result<void> socket_base::bind (const impl_ptr &impl, const void *endpoint, size_t endpoint_size) noexcept
+{
+	if (::bind(impl->socket->handle, static_cast<const sockaddr *>(endpoint), endpoint_size) == 0)
+	{
+		return {};
+	}
+	return __socket::sys_error();
+}
+
+result<void> socket_base::local_endpoint (const impl_ptr &impl, void *endpoint, size_t *endpoint_size) noexcept
+{
+	auto size = static_cast<socklen_t>(*endpoint_size);
+	if (::getsockname(impl->socket->handle, static_cast<sockaddr *>(endpoint), &size) == 0)
+	{
+		*endpoint_size = size;
+		return {};
+	}
+	return __socket::sys_error();
 }
 
 result<void> socket_base::get_option (const impl_ptr &impl, int level, int name, void *data, size_t data_size) noexcept

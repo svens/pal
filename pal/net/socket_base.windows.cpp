@@ -1,7 +1,9 @@
 #include <pal/net/__socket>
-#include <pal/net/socket>
 
 #if __pal_net_winsock
+
+#include <pal/net/socket>
+#include <ws2tcpip.h>
 
 namespace pal::net {
 
@@ -145,6 +147,66 @@ const native_socket &socket_base::socket (const impl_ptr &impl) noexcept
 int socket_base::family (const impl_ptr &impl) noexcept
 {
 	return impl->family;
+}
+
+result<void> socket_base::bind (const impl_ptr &impl, const void *endpoint, size_t endpoint_size) noexcept
+{
+	if (::bind(impl->socket->handle, static_cast<const sockaddr *>(endpoint), static_cast<int>(endpoint_size)) == 0)
+	{
+		return {};
+	}
+	return __socket::sys_error();
+}
+
+namespace {
+
+bool make_family_specific_any (int family, void *endpoint, int *endpoint_size) noexcept
+{
+	int size = 0;
+	if (family == AF_INET)
+	{
+		size = sizeof(::sockaddr_in);
+	}
+	else if (family == AF_INET6)
+	{
+		size = sizeof(::sockaddr_in6);
+	}
+
+	if (size && size <= *endpoint_size)
+	{
+		*endpoint_size = size;
+		std::fill_n(static_cast<std::byte *>(endpoint), size, std::byte{});
+		static_cast<sockaddr *>(endpoint)->sa_family = static_cast<__socket::sa_family>(family);
+		return true;
+	}
+
+	return false;
+}
+
+} // namespace
+
+result<void> socket_base::local_endpoint (const impl_ptr &impl, void *endpoint, size_t *endpoint_size) noexcept
+{
+	auto size = static_cast<int>(*endpoint_size);
+	if (::getsockname(impl->socket->handle, static_cast<sockaddr *>(endpoint), &size) == 0)
+	{
+		*endpoint_size = size;
+		return {};
+	}
+
+	// querying unbound socket name returns WSAEINVAL
+	// align with Posix API that succeeds with family-specific "any"
+	auto e = ::WSAGetLastError();
+	if (e == WSAEINVAL)
+	{
+		if (make_family_specific_any(impl->family, endpoint, &size))
+		{
+			*endpoint_size = size;
+			return {};
+		}
+	}
+
+	return __socket::sys_error(e);
 }
 
 namespace {

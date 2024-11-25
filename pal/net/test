@@ -3,14 +3,9 @@
 #include <pal/test>
 #include <pal/net/internet>
 #include <pal/net/socket>
+#include <random>
 
 namespace pal_test {
-
-template <typename Socket>
-void close_native_handle (const Socket &socket) noexcept
-{
-	pal::net::native_socket_handle::close{}(socket.native_socket().get());
-}
 
 struct udp_v4
 {
@@ -147,5 +142,62 @@ constexpr bool is_v6_v = false
 	|| std::is_same_v<T, tcp_v6>
 	|| std::is_same_v<T, tcp_v6_only>
 ;
+
+template <typename T>
+constexpr bool has_expected_family (const pal::net::ip::address &address) noexcept
+{
+	using expected_type = std::conditional_t<is_v4_v<T>
+		, pal::net::ip::address_v4
+		, pal::net::ip::address_v6
+	>;
+	return std::holds_alternative<expected_type>(address);
+}
+
+template <typename Socket>
+void close_native_handle (const Socket &socket) noexcept
+{
+	pal::net::native_socket_handle::close{}(socket.native_socket().get());
+}
+
+// For random order repeated tests:
+// - can't use hardcoded port numbers for binding due possible TIMED_WAIT state
+// - using random ranges instead and on failure try to find next one
+// - UDP and TCP have separate next_port() ranges
+
+constexpr pal::net::ip::port_type min_port = 1024, max_port = 65535;
+
+inline pal::net::ip::port_type base_port () noexcept
+{
+	std::random_device dev;
+	std::default_random_engine eng(dev());
+	std::uniform_int_distribution<pal::net::ip::port_type> dist(min_port, max_port);
+	return dist(eng);
+}
+
+template <typename Protocol>
+pal::net::ip::port_type next_port (const Protocol &) noexcept
+{
+	static auto port = base_port();
+	if (port < min_port || port > max_port)
+	{
+		port = min_port;
+	}
+	return port++;
+}
+
+template <typename Socket>
+bool bind_next_available_port (Socket &socket, typename Socket::endpoint_type &endpoint) noexcept
+{
+	constexpr size_t max_tries = max_port - min_port;
+	for (auto tries_left = max_tries; tries_left; --tries_left)
+	{
+		endpoint.port(next_port(endpoint.protocol()));
+		if (socket.bind(endpoint))
+		{
+			return true;
+		}
+	}
+	return false;
+}
 
 } // namespace pal_test
