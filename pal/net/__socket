@@ -23,6 +23,9 @@ constexpr size_t io_vector_max_size = 4;
 
 #if __pal_net_posix //{{{1
 
+using handle_type = int;
+static constexpr handle_type invalid_handle = -1;
+
 using sa_family = ::sa_family_t;
 using timeval = ::timeval;
 
@@ -45,6 +48,9 @@ inline unexpected<std::error_code> sys_error (int e = errno) noexcept
 }
 
 #elif __pal_net_winsock //{{{1
+
+using handle_type = ::SOCKET;
+static constexpr handle_type invalid_handle = INVALID_SOCKET;
 
 using sa_family = ::ADDRESS_FAMILY;
 using timeval = ::DWORD;

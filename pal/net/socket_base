@@ -24,19 +24,16 @@ const result<void> &init () noexcept;
 /// if library does not provide typesafe wrapper for native OS socket API.
 struct native_socket_handle
 {
-	#if __pal_net_posix || __DOXYGEN__
-		/// Native OS socket handle type
-		using value_type = int;
+	/// Native OS socket handle type
+	using value_type = __socket::handle_type;
 
-		/// Invalid OS socket handle instance. It represents uninitialised socket
-		static constexpr value_type invalid = -1;
-	#elif __pal_net_winsock
-		using value_type = ::SOCKET;
-		static constexpr value_type invalid = INVALID_SOCKET;
-	#endif
+	/// Invalid OS socket handle instance. It represents uninitialised socket
+	static constexpr value_type invalid = __socket::invalid_handle;
 
 	/// Native OS socket handle instance
 	value_type handle = invalid;
+
+	/// Socket family (valid only if handle is initialized)
 	int family = 0;
 
 	constexpr native_socket_handle () = default;
