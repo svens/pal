@@ -95,4 +95,14 @@ constexpr int reuse_port =
 #endif
 ;
 
+enum option_level: int
+{
+	lib = -1,
+};
+
+enum option_name: int
+{
+	non_blocking_io,
+};
+
 } // namespace pal::net::__socket

@@ -95,11 +95,13 @@ public:
 	}
 };
 
-/// Socket option level
-enum socket_option_level: int;
+/// Socket option level. Transport stack provides actual values
+/// (SOL_SOCKET, IPPROTO_TCP, etc)
+using socket_option_level = __socket::option_level;
 
-/// Socket option name
-enum socket_option_name: int;
+/// Socket option name. Transport stack provides actual values
+/// (SO_BROADCAST, etc)
+using socket_option_name = __socket::option_name;
 
 /// Generic socket option \a Name of type \a T on \a Level
 template <typename T, socket_option_level Level, socket_option_name Name>
@@ -131,6 +133,14 @@ struct socket_option: socket_option_storage<T>
 
 /// \defgroup socket_option Socket options
 /// \{
+
+/// Non-blocking I/O; if no data available for read/accept, or if write operation
+/// would block, corresponding syscall returns std::errc::resource_unavailable_try_again or
+/// std::errc::operation_would_block
+using non_blocking_io = socket_option<bool,
+      socket_option_level::lib,
+      socket_option_name::non_blocking_io
+>;
 
 /// Determines whether socket permits sending broadcast messages, if supported
 /// by protocol

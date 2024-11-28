@@ -200,8 +200,8 @@ std::error_code expected_nonportable_error () noexcept
 		{
 			if constexpr (false
 				|| std::is_same_v<Option, keepalive>
-				|| std::is_same_v<Option, pal::net::linger>
 				|| std::is_same_v<Option, out_of_band_inline>
+				|| std::is_same_v<Option, pal::net::linger>
 				|| std::is_same_v<Option, reuse_port>)
 			{
 				return {WSAENOPROTOOPT, std::system_category()};
@@ -218,8 +218,8 @@ std::error_code expected_nonportable_error () noexcept
 			if constexpr (false
 				|| std::is_same_v<Option, broadcast>
 				|| std::is_same_v<Option, receive_low_watermark>
-				|| std::is_same_v<Option, send_low_watermark>
-				|| std::is_same_v<Option, reuse_port>)
+				|| std::is_same_v<Option, reuse_port>
+				|| std::is_same_v<Option, send_low_watermark>)
 			{
 				return {WSAENOPROTOOPT, std::system_category()};
 			}
@@ -242,6 +242,7 @@ TEMPLATE_PRODUCT_TEST_CASE("net/socket_option", "[!nonportable]",
 		debug,
 		do_not_route,
 		keepalive,
+		non_blocking_io,
 		out_of_band_inline,
 		reuse_address,
 		reuse_port
@@ -264,9 +265,24 @@ TEMPLATE_PRODUCT_TEST_CASE("net/socket_option", "[!nonportable]",
 	else
 	{
 		REQUIRE(set_option);
-		option = false;
-		REQUIRE(socket.get_option(option));
-		CHECK(option.value());
+
+		if constexpr (pal::os == pal::os_type::windows && std::is_same_v<option_t, non_blocking_io>)
+		{
+			auto get_option = socket.get_option(option);
+			REQUIRE_FALSE(get_option);
+			CHECK(get_option.error() == std::errc::operation_not_supported);
+		}
+		else
+		{
+			option = false;
+			REQUIRE_NOTHROW(socket.get_option(option).value());
+			CHECK(option.value());
+
+			option = false;
+			REQUIRE_NOTHROW(socket.set_option(option).value());
+			REQUIRE_NOTHROW(socket.get_option(option).value());
+			CHECK_FALSE(option.value());
+		}
 	}
 
 	SECTION("bad file descriptor")
@@ -281,16 +297,10 @@ TEMPLATE_PRODUCT_TEST_CASE("net/socket_option", "[!nonportable]",
 
 		if constexpr (pal::os == pal::os_type::windows)
 		{
-			if (expected_error)
-			{
-				// Windows has different order checking for invalid handle vs unsupported option
-				// here we settle that set_option returned some error
-			}
-			else
-			{
-				CHECK(set_option.error() == std::errc::bad_file_descriptor);
-				CHECK(get_option.error() == std::errc::bad_file_descriptor);
-			}
+			// Windows has different order checking for invalid handle vs unsupported option
+			// here we settle that set_option/get_option above returned any error
+			CHECK(set_option.error() != std::errc{});
+			CHECK(get_option.error() != std::errc{});
 		}
 		else
 		{

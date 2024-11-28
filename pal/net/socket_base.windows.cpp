@@ -175,7 +175,7 @@ result<void> native_socket_handle::local_endpoint (void *endpoint, size_t *endpo
 
 namespace {
 
-int socket_option_precheck (native_socket_handle::value_type handle, int name) noexcept
+int socket_option_precheck (__socket::handle_type handle, int name) noexcept
 {
 	if (handle == native_socket_handle::invalid)
 	{
@@ -188,6 +188,21 @@ int socket_option_precheck (native_socket_handle::value_type handle, int name) n
 	return 0;
 }
 
+result<void> get_native_non_blocking (__socket::handle_type, int &) noexcept
+{
+	return __socket::sys_error(WSAEOPNOTSUPP);
+}
+
+result<void> set_native_non_blocking (__socket::handle_type handle, bool mode) noexcept
+{
+	unsigned long arg = mode ? 1 : 0;
+	if (::ioctlsocket(handle, FIONBIO, &arg) == 0)
+	{
+		return {};
+	}
+	return __socket::sys_error();
+}
+
 } // namespace
 
 result<void> native_socket_handle::get_option (int level, int name, void *data, size_t data_size) const noexcept
@@ -195,6 +210,14 @@ result<void> native_socket_handle::get_option (int level, int name, void *data, 
 	if (auto e = socket_option_precheck(handle, name))
 	{
 		return __socket::sys_error(e);
+	}
+	else if (level == __socket::option_level::lib)
+	{
+		switch (name)
+		{
+			case __socket::option_name::non_blocking_io:
+				return get_native_non_blocking(handle, *static_cast<int *>(data));
+		}
 	}
 
 	auto p = static_cast<char *>(data);
@@ -212,6 +235,14 @@ result<void> native_socket_handle::set_option (int level, int name, const void *
 	if (auto e = socket_option_precheck(handle, name))
 	{
 		return __socket::sys_error(e);
+	}
+	else if (level == __socket::option_level::lib)
+	{
+		switch (name)
+		{
+			case __socket::option_name::non_blocking_io:
+				return set_native_non_blocking(handle, *static_cast<const int *>(data));
+		}
 	}
 
 	auto p = static_cast<const char *>(data);
