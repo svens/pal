@@ -45,28 +45,6 @@ TEMPLATE_TEST_CASE("net/basic_socket_acceptor", "[!nonportable]",
 		CHECK(native->handle == s_orig_handle);
 	}
 
-	SECTION("local_endpoint")
-	{
-		// see SECTION("bind")
-		SUCCEED();
-
-		SECTION("unbound")
-		{
-			auto local_endpoint = a.local_endpoint().value();
-			CHECK(has_expected_family<TestType>(local_endpoint.address()));
-			CHECK(local_endpoint.address().is_unspecified());
-			CHECK(local_endpoint.port() == 0);
-		}
-
-		SECTION("bad file descriptor")
-		{
-			close_native_handle(a);
-			auto local_endpoint = a.local_endpoint();
-			REQUIRE_FALSE(local_endpoint);
-			CHECK(local_endpoint.error() == std::errc::bad_file_descriptor);
-		}
-	}
-
 	SECTION("bind")
 	{
 		endpoint_t endpoint{TestType::loopback_v, 0};
@@ -87,6 +65,125 @@ TEMPLATE_TEST_CASE("net/basic_socket_acceptor", "[!nonportable]",
 			auto bind = a.bind(endpoint);
 			REQUIRE_FALSE(bind);
 			CHECK(bind.error() == std::errc::bad_file_descriptor);
+		}
+	}
+
+	SECTION("listen")
+	{
+		SECTION("success")
+		{
+			endpoint_t endpoint{TestType::loopback_v, 0};
+			REQUIRE(bind_next_available_port(a, endpoint));
+			REQUIRE_NOTHROW(a.listen().value());
+		}
+
+		SECTION("unbound")
+		{
+			auto local_endpoint = a.local_endpoint().value();
+			CHECK(local_endpoint.port() == 0);
+
+			REQUIRE_NOTHROW(a.listen().value());
+			local_endpoint = a.local_endpoint().value();
+			CHECK(local_endpoint.port() != 0);
+		}
+
+		SECTION("bad file descriptor")
+		{
+			close_native_handle(a);
+			auto listen = a.listen();
+			REQUIRE_FALSE(listen);
+			CHECK(listen.error() == std::errc::bad_file_descriptor);
+		}
+	}
+
+	SECTION("accept")
+	{
+		endpoint_t endpoint{TestType::loopback_v, 0};
+		REQUIRE(bind_next_available_port(a, endpoint));
+		REQUIRE_NOTHROW(a.listen().value());
+
+		SECTION("success")
+		{
+			auto s1 = TestType::make_socket().value();
+			REQUIRE_NOTHROW(s1.connect(endpoint).value());
+			CHECK(s1.remote_endpoint().value() == endpoint);
+
+			auto s2 = a.accept().value();
+			CHECK(s2.local_endpoint().value() == endpoint);
+		}
+
+		SECTION("no connect")
+		{
+			REQUIRE_NOTHROW(a.set_option(pal::net::non_blocking_io{true}).value());
+			auto accept = a.accept();
+			REQUIRE_FALSE(accept);
+			CHECK(accept.error() == std::errc::operation_would_block);
+		}
+
+		SECTION("bad file descriptor")
+		{
+			close_native_handle(a);
+			auto accept = a.accept();
+			REQUIRE_FALSE(accept);
+			CHECK(accept.error() == std::errc::bad_file_descriptor);
+		}
+	}
+
+	SECTION("accept with endpoint")
+	{
+		endpoint_t endpoint{TestType::loopback_v, 0};
+		REQUIRE(bind_next_available_port(a, endpoint));
+		REQUIRE_NOTHROW(a.listen().value());
+
+		SECTION("success")
+		{
+			auto s1 = TestType::make_socket().value();
+			REQUIRE_NOTHROW(s1.connect(endpoint).value());
+			CHECK(s1.remote_endpoint().value() == endpoint);
+
+			endpoint_t s2_endpoint;
+			auto s2 = a.accept(s2_endpoint).value();
+			CHECK(s2.local_endpoint().value() == endpoint);
+			CHECK(s2.remote_endpoint().value() == s2_endpoint);
+			CHECK(s1.local_endpoint().value() == s2_endpoint);
+		}
+
+		SECTION("no connect")
+		{
+			REQUIRE_NOTHROW(a.set_option(pal::net::non_blocking_io{true}).value());
+			auto accept = a.accept(endpoint);
+			REQUIRE_FALSE(accept);
+			CHECK(accept.error() == std::errc::operation_would_block);
+		}
+
+		SECTION("bad file descriptor")
+		{
+			close_native_handle(a);
+			auto accept = a.accept(endpoint);
+			REQUIRE_FALSE(accept);
+			CHECK(accept.error() == std::errc::bad_file_descriptor);
+		}
+	}
+
+	SECTION("local_endpoint")
+	{
+		// see SECTION("bind")
+		SUCCEED();
+
+		SECTION("unbound")
+		{
+			auto local_endpoint = a.local_endpoint().value();
+			CHECK(has_expected_family<TestType>(local_endpoint.address()));
+			CHECK(local_endpoint.address().is_unspecified());
+			CHECK(local_endpoint.port() == 0);
+		}
+
+		SECTION("bad file descriptor")
+		{
+			close_native_handle(a);
+			auto local_endpoint = a.local_endpoint();
+			REQUIRE_FALSE(local_endpoint);
+			CHECK(local_endpoint.error() == std::errc::bad_file_descriptor);
 		}
 	}
 

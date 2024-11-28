@@ -44,6 +44,18 @@ public:
 		return socket_;
 	}
 
+	/// Bind this socket to local \a endpoint
+	result<void> bind (const endpoint_type &endpoint) noexcept
+	{
+		return socket_->bind(endpoint.data(), endpoint.size());
+	}
+
+	/// Connect socket to specified remote \a endpoint
+	result<void> connect (const endpoint_type &endpoint) noexcept
+	{
+		return socket_->connect(endpoint.data(), endpoint.size());
+	}
+
 	/// Return local endpoint to which this socket is bound
 	result<endpoint_type> local_endpoint () const noexcept
 	{
@@ -56,10 +68,16 @@ public:
 		});
 	}
 
-	/// Bind this socket to local \a endpoint
-	result<void> bind (const endpoint_type &endpoint) noexcept
+	/// Return remote endpoint to which this socket is connected to
+	result<endpoint_type> remote_endpoint () const noexcept
 	{
-		return socket_->bind(endpoint.data(), endpoint.size());
+		endpoint_type endpoint;
+		auto size = endpoint.capacity();
+		return socket_->remote_endpoint(endpoint.data(), &size).and_then([&]() -> result<endpoint_type>
+		{
+			endpoint.resize(size);
+			return endpoint;
+		});
 	}
 
 	/// Get socket \a option
@@ -92,6 +110,10 @@ protected:
 
 	basic_socket (net::native_socket &&socket) noexcept
 		: socket_{std::move(socket)}
+	{ }
+
+	basic_socket (net::native_socket_handle &&socket) noexcept
+		: socket_{socket}
 	{ }
 
 	template <typename P>

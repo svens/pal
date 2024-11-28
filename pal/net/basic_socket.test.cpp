@@ -48,6 +48,69 @@ TEMPLATE_TEST_CASE("net/basic_socket", "[!nonportable]",
 		CHECK(native->handle == s_orig_handle);
 	}
 
+	SECTION("bind")
+	{
+		endpoint_t endpoint{TestType::loopback_v, 0};
+		REQUIRE(bind_next_available_port(s, endpoint));
+		CHECK(s.local_endpoint().value() == endpoint);
+
+		SECTION("address in use")
+		{
+			auto s1 = TestType::make_socket().value();
+			auto bind = s1.bind(endpoint);
+			REQUIRE_FALSE(bind);
+			CHECK(bind.error() == std::errc::address_in_use);
+		}
+
+		SECTION("bad file descriptor")
+		{
+			close_native_handle(s);
+			auto bind = s.bind(endpoint);
+			REQUIRE_FALSE(bind);
+			CHECK(bind.error() == std::errc::bad_file_descriptor);
+		}
+	}
+
+	SECTION("connect")
+	{
+		endpoint_t endpoint{TestType::loopback_v, 0};
+
+		if constexpr (is_tcp_v<TestType>)
+		{
+			auto a = TestType::make_acceptor().value();
+			REQUIRE(bind_next_available_port(a, endpoint));
+			REQUIRE_NOTHROW(a.listen().value());
+
+			SECTION("success")
+			{
+				REQUIRE_NOTHROW(s.connect(endpoint).value());
+				CHECK(s.remote_endpoint() == endpoint);
+			}
+
+			SECTION("no listener")
+			{
+				close_native_handle(a);
+				auto connect = s.connect(endpoint);
+				REQUIRE_FALSE(connect);
+				CHECK(connect.error() == std::errc::connection_refused);
+			}
+		}
+		else if constexpr (is_udp_v<TestType>)
+		{
+			endpoint.port(next_port(TestType::protocol_v));
+			REQUIRE_NOTHROW(s.connect(endpoint).value());
+			CHECK(s.remote_endpoint().value() == endpoint);
+		}
+
+		SECTION("bad file descriptor")
+		{
+			close_native_handle(s);
+			auto connect = s.connect(endpoint);
+			REQUIRE_FALSE(connect);
+			CHECK(connect.error() == std::errc::bad_file_descriptor);
+		}
+	}
+
 	SECTION("local_endpoint")
 	{
 		// see SECTION("bind")
@@ -71,26 +134,24 @@ TEMPLATE_TEST_CASE("net/basic_socket", "[!nonportable]",
 		}
 	}
 
-	SECTION("bind")
+	SECTION("remote_endpoint")
 	{
-		endpoint_t endpoint{TestType::loopback_v, 0};
-		REQUIRE(bind_next_available_port(s, endpoint));
-		CHECK(s.local_endpoint().value() == endpoint);
+		// see SECTION("connect")
+		SUCCEED();
 
-		SECTION("address in use")
+		SECTION("not connected")
 		{
-			auto s1 = TestType::make_socket().value();
-			auto bind = s1.bind(endpoint);
-			REQUIRE_FALSE(bind);
-			CHECK(bind.error() == std::errc::address_in_use);
+			auto remote_endpoint = s.remote_endpoint();
+			REQUIRE_FALSE(remote_endpoint);
+			CHECK(remote_endpoint.error() == std::errc::not_connected);
 		}
 
 		SECTION("bad file descriptor")
 		{
 			close_native_handle(s);
-			auto bind = s.bind(endpoint);
-			REQUIRE_FALSE(bind);
-			CHECK(bind.error() == std::errc::bad_file_descriptor);
+			auto remote_endpoint = s.remote_endpoint();
+			REQUIRE_FALSE(remote_endpoint);
+			CHECK(remote_endpoint.error() == std::errc::bad_file_descriptor);
 		}
 	}
 }

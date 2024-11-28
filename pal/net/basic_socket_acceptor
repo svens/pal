@@ -48,6 +48,39 @@ public:
 		return socket_;
 	}
 
+	/// Bind this socket to local \a endpoint
+	result<void> bind (const endpoint_type &endpoint) noexcept
+	{
+		return socket_->bind(endpoint.data(), endpoint.size());
+	}
+
+	/// Mark acceptor as ready to accept connections. \a backlog parameter
+	/// sets the maximum length for the queue of pending connection
+	/// requests
+	result<void> listen (int backlog = max_listen_connections) noexcept
+	{
+		return socket_->listen(backlog);
+	}
+
+	/// Extract socket from queue of pending connections of this acceptor.
+	/// If there are no pending connections, block until new connection arrives.
+	result<socket_type> accept () noexcept
+	{
+		return socket_->accept(nullptr, nullptr).transform(to_api<socket_type>());
+	}
+
+	/// \copydoc accept()
+	/// Store newly accepted connection's remote endpoint into \a endpoint
+	result<socket_type> accept (endpoint_type &endpoint) noexcept
+	{
+		auto size = endpoint.capacity();
+		return socket_->accept(endpoint.data(), &size).and_then([&](auto &&handle) -> result<socket_type>
+		{
+			endpoint.resize(size);
+			return to_api<socket_type>()(std::move(handle));
+		});
+	}
+
 	/// Return local endpoint to which this socket is bound
 	result<endpoint_type> local_endpoint () const noexcept
 	{
@@ -58,12 +91,6 @@ public:
 			endpoint.resize(size);
 			return endpoint;
 		});
-	}
-
-	/// Bind this socket to local \a endpoint
-	result<void> bind (const endpoint_type &endpoint) noexcept
-	{
-		return socket_->bind(endpoint.data(), endpoint.size());
 	}
 
 	/// Get socket \a option

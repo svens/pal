@@ -147,7 +147,101 @@ bool make_any (int family, void *endpoint, int *endpoint_size) noexcept
 	return false;
 }
 
+__socket::handle_type init (__socket::handle_type h, int type) noexcept
+{
+	::SetFileCompletionNotificationModes(
+		reinterpret_cast<::HANDLE>(h),
+		FILE_SKIP_COMPLETION_PORT_ON_SUCCESS |
+		FILE_SKIP_SET_EVENT_ON_HANDLE
+	);
+
+	if (type == SOCK_DGRAM)
+	{
+		bool new_behaviour = false;
+		DWORD ignored;
+		::WSAIoctl(
+			h,
+			SIO_UDP_CONNRESET,
+			&new_behaviour,
+			sizeof(new_behaviour),
+			nullptr,
+			0,
+			&ignored,
+			nullptr,
+			nullptr
+		);
+	}
+
+	return h;
+}
+
 } // namespace
+
+result<void> native_socket_handle::listen (int backlog) const noexcept
+{
+	int e = 0;
+
+	// If socket is not bound yet:
+	// - Posix: it is done automatically
+	// - Windows: returns error. Align with Posix -- bind and retry listen once
+
+	for (auto i = 0; i < 2; ++i)
+	{
+		if (::listen(handle, backlog) == 0)
+		{
+			return {};
+		}
+
+		e = ::WSAGetLastError();
+		if (e == WSAEINVAL)
+		{
+			sockaddr_storage ss{};
+			int ss_size = sizeof(ss);
+			if (!make_any(family, &ss, &ss_size))
+			{
+				break;
+			}
+			else if (::bind(handle, reinterpret_cast<sockaddr *>(&ss), ss_size) == 0)
+			{
+				continue;
+			}
+		}
+
+		break;
+	}
+
+	return __socket::sys_error(e);
+}
+
+result<native_socket_handle> native_socket_handle::accept (void *endpoint, size_t *endpoint_size) const noexcept
+{
+	int size = 0, *size_p = nullptr;
+	if (endpoint_size)
+	{
+		size = static_cast<int>(*endpoint_size);
+		size_p = &size;
+	}
+
+	auto h = ::accept(handle, static_cast<sockaddr *>(endpoint), size_p);
+	if (h != invalid)
+	{
+		if (endpoint_size)
+		{
+			*endpoint_size = size;
+		}
+		return native_socket_handle{init(h, SOCK_STREAM), family};
+	}
+	return __socket::sys_error();
+}
+
+result<void> native_socket_handle::connect (const void *endpoint, size_t endpoint_size) const noexcept
+{
+	if (::connect(handle, static_cast<const sockaddr *>(endpoint), static_cast<int>(endpoint_size)) == 0)
+	{
+		return {};
+	}
+	return __socket::sys_error();
+}
 
 result<void> native_socket_handle::local_endpoint (void *endpoint, size_t *endpoint_size) const noexcept
 {
@@ -171,6 +265,17 @@ result<void> native_socket_handle::local_endpoint (void *endpoint, size_t *endpo
 	}
 
 	return __socket::sys_error(e);
+}
+
+result<void> native_socket_handle::remote_endpoint (void *endpoint, size_t *endpoint_size) const noexcept
+{
+	auto size = static_cast<int>(*endpoint_size);
+	if (::getpeername(handle, static_cast<sockaddr *>(endpoint), &size) == 0)
+	{
+		*endpoint_size = size;
+		return {};
+	}
+	return __socket::sys_error();
 }
 
 namespace {

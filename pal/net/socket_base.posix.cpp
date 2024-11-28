@@ -61,10 +61,72 @@ result<void> native_socket_handle::bind (const void *endpoint, size_t endpoint_s
 	return __socket::sys_error();
 }
 
+result<void> native_socket_handle::listen (int backlog) const noexcept
+{
+	if (::listen(handle, backlog) == 0)
+	{
+		return {};
+	}
+	return __socket::sys_error();
+}
+
+namespace {
+
+#if !defined(SO_NOSIGPIPE)
+	constexpr int SO_NOSIGPIPE = -1;
+#endif
+
+__socket::handle_type init (__socket::handle_type h) noexcept
+{
+	if constexpr (SO_NOSIGPIPE != -1)
+	{
+		int optval = 1;
+		::setsockopt(h, SOL_SOCKET, SO_NOSIGPIPE, &optval, sizeof(optval));
+	}
+	return h;
+}
+
+} // namespace
+
+result<native_socket_handle> native_socket_handle::accept (void *endpoint, size_t *endpoint_size) const noexcept
+{
+	socklen_t size = endpoint_size ? *endpoint_size : 0;
+	auto h = ::accept(handle, static_cast<sockaddr *>(endpoint), &size);
+	if (h > invalid)
+	{
+		if (endpoint_size)
+		{
+			*endpoint_size = size;
+		}
+		return native_socket_handle{init(h), family};
+	}
+	return __socket::sys_error();
+}
+
+result<void> native_socket_handle::connect (const void *endpoint, size_t endpoint_size) const noexcept
+{
+	if (::connect(handle, static_cast<const sockaddr *>(endpoint), endpoint_size) == 0)
+	{
+		return {};
+	}
+	return __socket::sys_error();
+}
+
 result<void> native_socket_handle::local_endpoint (void *endpoint, size_t *endpoint_size) const noexcept
 {
 	auto size = static_cast<socklen_t>(*endpoint_size);
 	if (::getsockname(handle, static_cast<sockaddr *>(endpoint), &size) == 0)
+	{
+		*endpoint_size = size;
+		return {};
+	}
+	return __socket::sys_error();
+}
+
+result<void> native_socket_handle::remote_endpoint (void *endpoint, size_t *endpoint_size) const noexcept
+{
+	auto size = static_cast<socklen_t>(*endpoint_size);
+	if (::getpeername(handle, static_cast<sockaddr *>(endpoint), &size) == 0)
 	{
 		*endpoint_size = size;
 		return {};
