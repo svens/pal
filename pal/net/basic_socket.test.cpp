@@ -111,6 +111,36 @@ TEMPLATE_TEST_CASE("net/basic_socket", "[!nonportable]",
 		}
 	}
 
+	SECTION("shutdown")
+	{
+		// see:
+		// - pal/net/ip/tcp.test.cpp
+		// - pal/net/ip/udp.test.cpp
+		SUCCEED();
+
+		SECTION("not connected")
+		{
+			auto shutdown = s.shutdown(s.shutdown_both);
+			if constexpr (pal::os == pal::os_type::windows && pal_test::is_udp_v<TestType>)
+			{
+				REQUIRE(shutdown);
+			}
+			else
+			{
+				REQUIRE_FALSE(shutdown);
+				CHECK(shutdown.error() == std::errc::not_connected);
+			}
+		}
+
+		SECTION("bad file descriptor")
+		{
+			close_native_handle(s);
+			auto shutdown = s.shutdown(s.shutdown_both);
+			REQUIRE_FALSE(shutdown);
+			CHECK(shutdown.error() == std::errc::bad_file_descriptor);
+		}
+	}
+
 	SECTION("local_endpoint")
 	{
 		// see SECTION("bind")

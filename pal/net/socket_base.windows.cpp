@@ -243,6 +243,15 @@ result<void> native_socket_handle::connect (const void *endpoint, size_t endpoin
 	return __socket::sys_error();
 }
 
+result<void> native_socket_handle::shutdown (int what) const noexcept
+{
+	if (::shutdown(handle, what) == 0)
+	{
+		return {};
+	}
+	return __socket::sys_error();
+}
+
 result<void> native_socket_handle::local_endpoint (void *endpoint, size_t *endpoint_size) const noexcept
 {
 	auto size = static_cast<int>(*endpoint_size);

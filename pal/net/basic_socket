@@ -56,6 +56,12 @@ public:
 		return socket_->connect(endpoint.data(), endpoint.size());
 	}
 
+	/// Shut down all or part of full-duplex connection for the socket
+	result<void> shutdown (shutdown_type what) noexcept
+	{
+		return socket_->shutdown(what);
+	}
+
 	/// Return local endpoint to which this socket is bound
 	result<endpoint_type> local_endpoint () const noexcept
 	{
