@@ -4,6 +4,7 @@
 
 #include <pal/net/socket>
 #include <fcntl.h>
+#include <sys/ioctl.h>
 
 namespace pal::net {
 
@@ -117,6 +118,16 @@ result<void> native_socket_handle::shutdown (int what) const noexcept
 	if (::shutdown(handle, what) == 0)
 	{
 		return {};
+	}
+	return __socket::sys_error();
+}
+
+result<size_t> native_socket_handle::available () const noexcept
+{
+	int value{};
+	if (::ioctl(handle, FIONREAD, &value) > -1)
+	{
+		return static_cast<size_t>(value);
 	}
 	return __socket::sys_error();
 }

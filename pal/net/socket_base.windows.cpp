@@ -252,6 +252,16 @@ result<void> native_socket_handle::shutdown (int what) const noexcept
 	return __socket::sys_error();
 }
 
+result<size_t> native_socket_handle::available () const noexcept
+{
+	unsigned long value{};
+	if (::ioctlsocket(handle, FIONREAD, &value) > -1)
+	{
+		return value;
+	}
+	return __socket::sys_error();
+}
+
 result<void> native_socket_handle::local_endpoint (void *endpoint, size_t *endpoint_size) const noexcept
 {
 	auto size = static_cast<int>(*endpoint_size);

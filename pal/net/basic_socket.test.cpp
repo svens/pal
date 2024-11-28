@@ -141,6 +141,21 @@ TEMPLATE_TEST_CASE("net/basic_socket", "[!nonportable]",
 		}
 	}
 
+	SECTION("available")
+	{
+		auto available = s.available();
+		REQUIRE(available);
+		CHECK(available.value() == 0);
+
+		SECTION("bad file descriptor")
+		{
+			close_native_handle(s);
+			available = s.available();
+			REQUIRE_FALSE(available);
+			CHECK(available.error() == std::errc::bad_file_descriptor);
+		}
+	}
+
 	SECTION("local_endpoint")
 	{
 		// see SECTION("bind")
