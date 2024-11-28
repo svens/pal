@@ -31,4 +31,38 @@ TEST_CASE("net/ip/tcp")
 	}
 }
 
+using namespace pal_test;
+
+TEMPLATE_TEST_CASE("net/ip/tcp", "", tcp_v4, tcp_v6, tcp_v6_only)
+{
+	using protocol_t = std::remove_cvref_t<decltype(TestType::protocol_v)>;
+	using endpoint_t = typename protocol_t::endpoint;
+
+	auto acceptor = TestType::make_acceptor().value();
+	endpoint_t endpoint{TestType::loopback_v, 0};
+	REQUIRE(bind_next_available_port(acceptor, endpoint));
+	REQUIRE_NOTHROW(acceptor.listen().value());
+
+	auto receiver = TestType::make_socket().value();
+	REQUIRE_NOTHROW(receiver.connect(endpoint).value());
+	auto sender = acceptor.accept().value();
+
+	SECTION("make_datagram_socket with endpoint")
+	{
+		SECTION("success")
+		{
+			endpoint.port(next_port(TestType::protocol_v));
+			auto socket = pal::net::make_stream_socket(TestType::protocol_v, endpoint).value();
+			CHECK(socket.local_endpoint().value() == endpoint);
+		}
+
+		SECTION("address in use")
+		{
+			auto socket = pal::net::make_stream_socket(TestType::protocol_v, endpoint);
+			REQUIRE_FALSE(socket);
+			CHECK(socket.error() == std::errc::address_in_use);
+		}
+	}
+}
+
 } // namespace

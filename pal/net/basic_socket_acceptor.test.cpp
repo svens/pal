@@ -250,6 +250,29 @@ TEMPLATE_TEST_CASE("net/basic_socket_acceptor", "[!nonportable]",
 			}
 		}
 	}
+
+	SECTION("make_socket_acceptor with endpoint")
+	{
+		endpoint_t endpoint{TestType::loopback_v, 0};
+
+		SECTION("success")
+		{
+			// bind with existing acceptor and assume next port is available
+			REQUIRE(bind_next_available_port(a, endpoint));
+			endpoint.port(next_port(TestType::protocol_v));
+
+			auto acceptor = pal::net::make_socket_acceptor(TestType::protocol_v, endpoint).value();
+			CHECK(acceptor.local_endpoint().value() == endpoint);
+		}
+
+		SECTION("address in use")
+		{
+			REQUIRE(bind_next_available_port(a, endpoint));
+			auto acceptor = pal::net::make_socket_acceptor(TestType::protocol_v, endpoint);
+			REQUIRE_FALSE(acceptor);
+			CHECK(acceptor.error() == std::errc::address_in_use);
+		}
+	}
 }
 
 TEMPLATE_TEST_CASE("net/basic_socket_acceptor", "[!nonportable]",

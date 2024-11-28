@@ -138,4 +138,28 @@ result<basic_socket_acceptor<AcceptableProtocol>> make_socket_acceptor (const Ac
 	;
 }
 
+/// Create new socket acceptor of \a Protocol and bind to \a endpoint
+template <typename Protocol>
+result<basic_socket_acceptor<Protocol>> make_socket_acceptor (
+	const Protocol &protocol,
+	const typename Protocol::endpoint &endpoint) noexcept
+{
+	if (auto socket = make_socket_acceptor(protocol); !socket)
+	{
+		return unexpected{socket.error()};
+	}
+	else if (auto bind = socket->bind(endpoint); !bind)
+	{
+		return unexpected{bind.error()};
+	}
+	else if (auto listen = socket->listen(); !listen)
+	{
+		return unexpected{listen.error()};
+	}
+	else
+	{
+		return socket;
+	}
+}
+
 } // namespace pal::net

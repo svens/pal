@@ -27,4 +27,24 @@ result<basic_stream_socket<Protocol>> make_stream_socket (const Protocol &protoc
 	;
 }
 
+/// Create new stream socket of \a Protocol and bind to \a endpoint
+template <typename Protocol>
+result<basic_stream_socket<Protocol>> make_stream_socket (
+	const Protocol &protocol,
+	const typename Protocol::endpoint &endpoint) noexcept
+{
+	if (auto socket = make_stream_socket(protocol); !socket)
+	{
+		return unexpected{socket.error()};
+	}
+	else if (auto bind = socket->bind(endpoint); !bind)
+	{
+		return unexpected{bind.error()};
+	}
+	else
+	{
+		return socket;
+	}
+}
+
 } // namespace pal::net

@@ -31,4 +31,33 @@ TEST_CASE("net/ip/udp")
 	}
 }
 
+using namespace pal_test;
+
+TEMPLATE_TEST_CASE("net/ip/udp", "", udp_v4, udp_v6, udp_v6_only)
+{
+	using protocol_t = std::remove_cvref_t<decltype(TestType::protocol_v)>;
+	using endpoint_t = typename protocol_t::endpoint;
+
+	auto receiver = TestType::make_socket().value();
+	endpoint_t endpoint{TestType::loopback_v, 0};
+	REQUIRE(bind_next_available_port(receiver, endpoint));
+
+	SECTION("make_datagram_socket with endpoint")
+	{
+		SECTION("success")
+		{
+			std::ignore = receiver.release();
+			auto socket = pal::net::make_datagram_socket(TestType::protocol_v, endpoint).value();
+			CHECK(socket.local_endpoint().value() == endpoint);
+		}
+
+		SECTION("address in use")
+		{
+			auto socket = pal::net::make_datagram_socket(TestType::protocol_v, endpoint);
+			REQUIRE_FALSE(socket);
+			CHECK(socket.error() == std::errc::address_in_use);
+		}
+	}
+}
+
 } // namespace
