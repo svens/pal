@@ -87,6 +87,23 @@ __socket::handle_type init (__socket::handle_type h) noexcept
 	return h;
 }
 
+constexpr bool is_blocking_error (int error) noexcept
+{
+	if constexpr (EAGAIN != EWOULDBLOCK)
+	{
+		return error == EAGAIN || error == EWOULDBLOCK;
+	}
+	else
+	{
+		return error == EAGAIN;
+	}
+}
+
+constexpr bool is_connection_error (int error) noexcept
+{
+	return error == EDESTADDRREQ || error == EPIPE;
+}
+
 } // namespace
 
 result<native_socket_handle> native_socket_handle::accept (void *endpoint, size_t *endpoint_size) const noexcept
@@ -118,6 +135,40 @@ result<void> native_socket_handle::shutdown (int what) const noexcept
 	if (::shutdown(handle, what) == 0)
 	{
 		return {};
+	}
+	return __socket::sys_error();
+}
+
+result<size_t> native_socket_handle::send (const __socket::message &message) noexcept
+{
+	if (auto r = ::sendmsg(handle, &message, message.msg_flags | MSG_NOSIGNAL); r > -1)
+	{
+		return static_cast<size_t>(r);
+	}
+	else if (is_blocking_error(errno))
+	{
+		// unify with Windows
+		return __socket::sys_error(ETIMEDOUT);
+	}
+	else if (is_connection_error(errno))
+	{
+		// unify with Windows for sendmsg() with no recipient
+		// (adjusting Windows for Linux would be more expensive, requiring additional syscall
+		return __socket::sys_error(ENOTCONN);
+	}
+	return __socket::sys_error();
+}
+
+result<size_t> native_socket_handle::receive (__socket::message &message) noexcept
+{
+	if (auto r = ::recvmsg(handle, &message, message.msg_flags | MSG_NOSIGNAL); r > -1)
+	{
+		return static_cast<size_t>(r);
+	}
+	else if (is_blocking_error(errno))
+	{
+		// unify with Windows
+		return __socket::sys_error(ETIMEDOUT);
 	}
 	return __socket::sys_error();
 }

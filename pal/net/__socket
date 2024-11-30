@@ -1,7 +1,9 @@
 #pragma once // -*- C++ -*-
 
+#include <pal/span>
 #include <pal/result>
 #include <pal/version>
+#include <array>
 #include <chrono>
 
 #if __pal_os_linux || __pal_os_macos
@@ -47,6 +49,46 @@ inline unexpected<std::error_code> sys_error (int e = errno) noexcept
 	return unexpected<std::error_code>{std::in_place, e, std::generic_category()};
 }
 
+struct message: ::msghdr
+{
+	std::array<::iovec, io_vector_max_size> iov{};
+
+	template <typename SpanSequence>
+	bool set (const SpanSequence &spans) noexcept
+	{
+		msg_iovlen = 0;
+		msg_iov = iov.data();
+		auto it = span_sequence_begin(spans);
+		const auto end = span_sequence_end(spans);
+		while (it != end && static_cast<size_t>(msg_iovlen) != iov.size())
+		{
+			auto &s = *it++;
+			iov[msg_iovlen++] =
+			{
+				.iov_base = const_cast<void *>(static_cast<const void *>(s.data())),
+				.iov_len = s.size_bytes(),
+			};
+		}
+		return (it == end && static_cast<size_t>(msg_iovlen) <= iov.size());
+	}
+
+	void reset () noexcept
+	{
+		msg_iovlen = 0;
+	}
+
+	void name (const void *name, size_t name_size) noexcept
+	{
+		msg_name = const_cast<void *>(name);
+		msg_namelen = name_size;
+	}
+
+	void flags (int flags) noexcept
+	{
+		msg_flags = flags;
+	}
+};
+
 #elif __pal_net_winsock //{{{1
 
 using handle_type = ::SOCKET;
@@ -74,6 +116,53 @@ inline unexpected<std::error_code> sys_error (int e = ::WSAGetLastError()) noexc
 	}
 	return unexpected<std::error_code>{std::in_place, e, std::system_category()};
 }
+
+struct message
+{
+	sockaddr *msg_name{};
+	INT msg_namelen{};
+	DWORD msg_flags{};
+	DWORD msg_iovlen{};
+
+	union
+	{
+		std::array<::WSABUF, io_vector_max_size> msg_iov{};
+	};
+
+	template <typename SpanSequence>
+	bool set (const SpanSequence &spans) noexcept
+	{
+		msg_iovlen = 0;
+		auto it = span_sequence_begin(spans);
+		const auto end = span_sequence_end(spans);
+		while (it != end && static_cast<size_t>(msg_iovlen) != msg_iov.size())
+		{
+			auto &s = *it++;
+			msg_iov[msg_iovlen++] =
+			{
+				.len = static_cast<ULONG>(s.size_bytes()),
+				.buf = const_cast<CHAR *>(reinterpret_cast<const CHAR *>(s.data())),
+			};
+		}
+		return (it == end && static_cast<size_t>(msg_iovlen) <= msg_iov.size());
+	}
+
+	void reset () noexcept
+	{
+		msg_iovlen = 0;
+	}
+
+	void name (const void *name, size_t name_size) noexcept
+	{
+		msg_name = static_cast<sockaddr *>(const_cast<void *>(name));
+		msg_namelen = static_cast<INT>(name_size);
+	}
+
+	void flags (int flags) noexcept
+	{
+		msg_flags = flags;
+	}
+};
 
 #define SHUT_RD SD_RECEIVE
 #define SHUT_WR SD_SEND

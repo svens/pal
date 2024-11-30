@@ -280,7 +280,14 @@ TEMPLATE_TEST_CASE("net/basic_socket_acceptor", "[!nonportable]",
 {
 	SECTION("make_socket_acceptor")
 	{
-		auto a = pal::net::make_socket_acceptor(TestType());
+		auto a = pal::net::make_socket_acceptor(TestType{});
+		REQUIRE_FALSE(a);
+		CHECK(a.error() == std::errc::protocol_not_supported);
+	}
+
+	SECTION("make_stream_socket with endpoint")
+	{
+		auto a = pal::net::make_socket_acceptor(TestType{}, typename TestType::endpoint{});
 		REQUIRE_FALSE(a);
 		CHECK(a.error() == std::errc::protocol_not_supported);
 	}

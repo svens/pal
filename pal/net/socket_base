@@ -73,8 +73,11 @@ struct native_socket_handle
 	result<native_socket_handle> accept (void *endpoint, size_t *endpoint_size) const noexcept;
 	result<void> connect (const void *endpoint, size_t endpoint_size) const noexcept;
 	result<void> shutdown (int what) const noexcept;
-	result<size_t> available () const noexcept;
 
+	result<size_t> send (const __socket::message &message) noexcept;
+	result<size_t> receive (__socket::message &message) noexcept;
+
+	result<size_t> available () const noexcept;
 	result<void> local_endpoint (void *endpoint, size_t *endpoint_size) const noexcept;
 	result<void> remote_endpoint (void *endpoint, size_t *endpoint_size) const noexcept;
 

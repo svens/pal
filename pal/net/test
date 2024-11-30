@@ -3,7 +3,9 @@
 #include <pal/test>
 #include <pal/net/internet>
 #include <pal/net/socket>
+#include <array>
 #include <random>
+#include <type_traits>
 
 namespace pal_test {
 
@@ -95,7 +97,19 @@ using tcp_v6_only = v6_only<tcp_v6>;
 struct invalid_protocol
 {
 	using socket = pal::net::basic_socket<invalid_protocol>;
-	using endpoint = int;
+
+	struct endpoint
+	{
+		const void *data () const noexcept
+		{
+			return nullptr;
+		}
+
+		size_t size () const noexcept
+		{
+			return 0;
+		}
+	};
 
 	static constexpr int invalid_value = (std::numeric_limits<int>::max)();
 
@@ -198,6 +212,45 @@ bool bind_next_available_port (Socket &socket, typename Socket::endpoint_type &e
 		}
 	}
 	return false;
+}
+
+//
+// I/O tests' shared data and buffers
+//
+
+constexpr std::string_view send_view = "hello, world";
+constexpr std::string_view send_bufs[] = { "hello", ", ", "world" };
+constexpr std::array send_msg =
+{
+	std::span{send_bufs[0]},
+	std::span{send_bufs[1]},
+	std::span{send_bufs[2]},
+};
+constexpr std::array send_msg_list_too_long =
+{
+	std::span{send_bufs[0]},
+	std::span{send_bufs[0]},
+	std::span{send_bufs[0]},
+	std::span{send_bufs[0]},
+	std::span{send_bufs[0]},
+};
+static_assert(send_msg_list_too_long.size() > pal::net::socket_base::io_vector_max_size);
+
+inline char recv_buf[1024];
+constexpr std::span<char> recv_msg{recv_buf};
+constexpr std::array recv_msg_list_too_long =
+{
+	recv_msg,
+	recv_msg,
+	recv_msg,
+	recv_msg,
+	recv_msg,
+};
+static_assert(recv_msg_list_too_long.size() > pal::net::socket_base::io_vector_max_size);
+
+constexpr std::string_view recv_view (size_t size) noexcept
+{
+	return {recv_buf, size};
 }
 
 } // namespace pal_test

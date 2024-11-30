@@ -9,6 +9,8 @@
 
 namespace pal::net {
 
+/// Stream socket that can be used to exchange data with peer over a
+/// sequenced, reliable and bi-directional connection-oriented byte stream.
 template <typename Protocol>
 class basic_stream_socket: public basic_socket<Protocol>
 {
@@ -16,6 +18,32 @@ public:
 
 	using typename basic_socket<Protocol>::protocol_type;
 	using typename basic_socket<Protocol>::endpoint_type;
+
+	/// Read data from socket into \a spans. Returns number of bytes received.
+	template <typename MutableSpanSequence>
+	result<size_t> receive (const MutableSpanSequence &spans,
+		socket_base::message_flags flags = {}) noexcept
+	{
+		if (__socket::message message{}; message.set(spans))
+		{
+			message.flags(flags);
+			return this->socket_->receive(message);
+		}
+		return make_unexpected(std::errc::argument_list_too_long);
+	}
+
+	/// Send data from \a spans using this socket. Returns number of bytes sent.
+	template <typename ConstSpanSequence>
+	result<size_t> send (const ConstSpanSequence &spans,
+		socket_base::message_flags flags = {}) noexcept
+	{
+		if (__socket::message message{}; message.set(spans))
+		{
+			message.flags(flags);
+			return this->socket_->send(message);
+		}
+		return make_unexpected(std::errc::argument_list_too_long);
+	}
 };
 
 /// Create new stream socket of \a Protocol

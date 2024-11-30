@@ -252,6 +252,98 @@ result<void> native_socket_handle::shutdown (int what) const noexcept
 	return __socket::sys_error();
 }
 
+result<size_t> native_socket_handle::send (const __socket::message &message) noexcept
+{
+	int result;
+	DWORD sent = 0;
+
+	if (message.msg_name)
+	{
+		result = ::WSASendTo(
+			handle,
+			const_cast<WSABUF *>(message.msg_iov.data()),
+			message.msg_iovlen,
+			&sent,
+			message.msg_flags,
+			message.msg_name,
+			message.msg_namelen,
+			nullptr,
+			nullptr
+		);
+	}
+	else
+	{
+		result = ::WSASend(
+			handle,
+			const_cast<WSABUF *>(message.msg_iov.data()),
+			message.msg_iovlen,
+			&sent,
+			message.msg_flags,
+			nullptr,
+			nullptr
+		);
+	}
+
+	if (result != SOCKET_ERROR)
+	{
+		return sent;
+	}
+
+	auto e = ::WSAGetLastError();
+	if (e == WSAESHUTDOWN)
+	{
+		// unify with Posix
+		e = WSAENOTCONN;
+	}
+	return __socket::sys_error(e);
+}
+
+result<size_t> native_socket_handle::receive (__socket::message &message) noexcept
+{
+	int result;
+	DWORD received = 0;
+
+	if (message.msg_name)
+	{
+		result = ::WSARecvFrom(
+			handle,
+			message.msg_iov.data(),
+			message.msg_iovlen,
+			&received,
+			&message.msg_flags,
+			message.msg_name,
+			&message.msg_namelen,
+			nullptr,
+			nullptr
+		);
+	}
+	else
+	{
+		result = ::WSARecv(
+			handle,
+			message.msg_iov.data(),
+			message.msg_iovlen,
+			&received,
+			&message.msg_flags,
+			nullptr,
+			nullptr
+		);
+	}
+
+	if (result != SOCKET_ERROR)
+	{
+		return received;
+	}
+
+	auto e = ::WSAGetLastError();
+	if (e == WSAESHUTDOWN)
+	{
+		// unify with Posix
+		return 0u;
+	}
+	return __socket::sys_error(e);
+}
+
 result<size_t> native_socket_handle::available () const noexcept
 {
 	unsigned long value{};
