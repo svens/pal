@@ -79,7 +79,7 @@ result<basic_stream_socket<Protocol>> make_stream_socket (
 template <typename Protocol>
 result<basic_stream_socket<Protocol>> make_stream_socket (
 	const Protocol &protocol,
-	native_socket_handle::value_type handle) noexcept
+	socket_base::native_handle_type handle) noexcept
 {
 	static constexpr auto to_api = socket_base::to_api<basic_stream_socket<Protocol>>();
 	return to_api(native_socket{native_socket_handle{handle, protocol.family()}});

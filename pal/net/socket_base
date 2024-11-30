@@ -102,6 +102,9 @@ class socket_base
 {
 public:
 
+	/// Native socket handle type
+	using native_handle_type = native_socket_handle::value_type;
+
 	/// Bitmask flags for send/receive operations
 	enum message_flags: int
 	{

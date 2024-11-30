@@ -166,7 +166,7 @@ result<basic_socket_acceptor<AcceptableProtocol>> make_socket_acceptor (
 template <typename AcceptableProtocol>
 result<basic_socket_acceptor<AcceptableProtocol>> make_socket_acceptor (
 	const AcceptableProtocol &protocol,
-	native_socket_handle::value_type handle) noexcept
+	socket_base::native_handle_type handle) noexcept
 {
 	static constexpr auto to_api = socket_base::to_api<basic_socket_acceptor<AcceptableProtocol>>();
 	return to_api(native_socket{native_socket_handle{handle, protocol.family()}});
