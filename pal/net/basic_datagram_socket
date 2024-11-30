@@ -121,4 +121,14 @@ result<basic_datagram_socket<Protocol>> make_datagram_socket (
 	}
 }
 
+/// Create new datagram socket for \a protocol using existing \a handle
+template <typename Protocol>
+result<basic_datagram_socket<Protocol>> make_datagram_socket (
+	const Protocol &protocol,
+	native_socket_handle::value_type handle) noexcept
+{
+	static constexpr auto to_api = socket_base::to_api<basic_datagram_socket<Protocol>>();
+	return to_api(native_socket{native_socket_handle{handle, protocol.family()}});
+}
+
 } // namespace pal::net

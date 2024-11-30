@@ -238,6 +238,14 @@ TEMPLATE_TEST_CASE("net/ip/udp", "", udp_v4, udp_v6, udp_v6_only)
 			CHECK(socket.error() == std::errc::address_in_use);
 		}
 	}
+
+	SECTION("make_datagram_socket with handle")
+	{
+		auto handle = sender.release().release().handle;
+		auto s = pal::net::make_datagram_socket(TestType::protocol_v, handle).value();
+		CHECK(s.native_socket()->handle == handle);
+		CHECK(s.protocol() == TestType::protocol_v);
+	}
 }
 
 TEMPLATE_TEST_CASE("net/ip/udp", "", invalid_protocol)

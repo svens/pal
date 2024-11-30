@@ -273,6 +273,14 @@ TEMPLATE_TEST_CASE("net/basic_socket_acceptor", "[!nonportable]",
 			CHECK(acceptor.error() == std::errc::address_in_use);
 		}
 	}
+
+	SECTION("make_socket_acceptor with handle")
+	{
+		auto handle = a.release().release().handle;
+		auto a1 = pal::net::make_socket_acceptor(TestType::protocol_v, handle).value();
+		CHECK(a1.native_socket()->handle == handle);
+		CHECK(a1.protocol() == TestType::protocol_v);
+	}
 }
 
 TEMPLATE_TEST_CASE("net/basic_socket_acceptor", "[!nonportable]",

@@ -139,10 +139,10 @@ result<basic_socket_acceptor<AcceptableProtocol>> make_socket_acceptor (const Ac
 }
 
 /// Create new socket acceptor of \a Protocol and bind to \a endpoint
-template <typename Protocol>
-result<basic_socket_acceptor<Protocol>> make_socket_acceptor (
-	const Protocol &protocol,
-	const typename Protocol::endpoint &endpoint) noexcept
+template <typename AcceptableProtocol>
+result<basic_socket_acceptor<AcceptableProtocol>> make_socket_acceptor (
+	const AcceptableProtocol &protocol,
+	const typename AcceptableProtocol::endpoint &endpoint) noexcept
 {
 	if (auto socket = make_socket_acceptor(protocol); !socket)
 	{
@@ -160,6 +160,16 @@ result<basic_socket_acceptor<Protocol>> make_socket_acceptor (
 	{
 		return socket;
 	}
+}
+
+/// Create new socket acceptor for \a protocol using existing \a handle
+template <typename AcceptableProtocol>
+result<basic_socket_acceptor<AcceptableProtocol>> make_socket_acceptor (
+	const AcceptableProtocol &protocol,
+	native_socket_handle::value_type handle) noexcept
+{
+	static constexpr auto to_api = socket_base::to_api<basic_socket_acceptor<AcceptableProtocol>>();
+	return to_api(native_socket{native_socket_handle{handle, protocol.family()}});
 }
 
 } // namespace pal::net

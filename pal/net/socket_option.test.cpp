@@ -452,7 +452,6 @@ TEMPLATE_PRODUCT_TEST_CASE("net/socket_option", "[!nonportable]",
 	REQUIRE(get_option);
 	CHECK(option.timeout() == 1s);
 
-
 	SECTION("bad file descriptor")
 	{
 		close_native_handle(socket);

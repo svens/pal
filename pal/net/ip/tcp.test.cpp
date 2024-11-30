@@ -192,6 +192,14 @@ TEMPLATE_TEST_CASE("net/ip/tcp", "", tcp_v4, tcp_v6, tcp_v6_only)
 			CHECK(socket.error() == std::errc::address_in_use);
 		}
 	}
+
+	SECTION("make_stream_socket with handle")
+	{
+		auto handle = sender.release().release().handle;
+		auto s = pal::net::make_stream_socket(TestType::protocol_v, handle).value();
+		CHECK(s.native_socket()->handle == handle);
+		CHECK(s.protocol() == TestType::protocol_v);
+	}
 }
 
 TEMPLATE_TEST_CASE("net/ip/tcp", "", invalid_protocol)
