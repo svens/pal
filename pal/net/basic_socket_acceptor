@@ -27,32 +27,77 @@ public:
 	/// Return true if internal implementation is in valid state
 	explicit operator bool () const noexcept
 	{
-		return impl_ != nullptr;
+		return socket_.operator bool();
 	}
 
 	/// Return acceptor protocol
 	protocol_type protocol () const noexcept
 	{
-		return protocol_type{socket_base::family(impl_)};
+		return protocol_type{socket_->family};
 	}
 
 	/// Release internal implementation and return native socket handle
 	net::native_socket release () noexcept
 	{
-		return socket_base::release(std::move(impl_));
+		return std::move(socket_);
 	}
 
 	/// Return reference of native socket handle
 	const net::native_socket &native_socket () const noexcept
 	{
-		return socket_base::socket(impl_);
+		return socket_;
+	}
+
+	/// Bind this socket to local \a endpoint
+	result<void> bind (const endpoint_type &endpoint) noexcept
+	{
+		return socket_->bind(endpoint.data(), endpoint.size());
+	}
+
+	/// Mark acceptor as ready to accept connections. \a backlog parameter
+	/// sets the maximum length for the queue of pending connection
+	/// requests
+	result<void> listen (int backlog = max_listen_connections) noexcept
+	{
+		return socket_->listen(backlog);
+	}
+
+	/// Extract socket from queue of pending connections of this acceptor.
+	/// If there are no pending connections, block until new connection arrives.
+	result<socket_type> accept () noexcept
+	{
+		return socket_->accept(nullptr, nullptr).transform(to_api<socket_type>());
+	}
+
+	/// \copydoc accept()
+	/// Store newly accepted connection's remote endpoint into \a endpoint
+	result<socket_type> accept (endpoint_type &endpoint) noexcept
+	{
+		auto size = endpoint.capacity();
+		return socket_->accept(endpoint.data(), &size).and_then([&](auto &&handle) -> result<socket_type>
+		{
+			endpoint.resize(size);
+			return to_api<socket_type>()(std::move(handle));
+		});
+	}
+
+	/// Return local endpoint to which this socket is bound
+	result<endpoint_type> local_endpoint () const noexcept
+	{
+		endpoint_type endpoint;
+		auto size = endpoint.capacity();
+		return socket_->local_endpoint(endpoint.data(), &size).and_then([&]() -> result<endpoint_type>
+		{
+			endpoint.resize(size);
+			return endpoint;
+		});
 	}
 
 	/// Get socket \a option
 	template <typename GettableSocketOption>
 	result<void> get_option (GettableSocketOption &option) const noexcept
 	{
-		return socket_base::get_option(impl_,
+		return socket_->get_option(
 			option.level(protocol()),
 			option.name(protocol()),
 			option.data(protocol()),
@@ -64,7 +109,7 @@ public:
 	template <typename SettableSocketOption>
 	result<void> set_option (const SettableSocketOption &option) noexcept
 	{
-		return socket_base::set_option(impl_,
+		return socket_->set_option(
 			option.level(protocol()),
 			option.name(protocol()),
 			option.data(protocol()),
@@ -74,10 +119,10 @@ public:
 
 private:
 
-	impl_ptr impl_{};
+	net::native_socket socket_;
 
-	basic_socket_acceptor (impl_ptr &&impl) noexcept
-		: impl_{std::move(impl)}
+	basic_socket_acceptor (net::native_socket &&socket) noexcept
+		: socket_{std::move(socket)}
 	{ }
 
 	template <typename P>
@@ -89,9 +134,42 @@ template <typename AcceptableProtocol>
 result<basic_socket_acceptor<AcceptableProtocol>> make_socket_acceptor (const AcceptableProtocol &protocol) noexcept
 {
 	return open(protocol.family(), protocol.type(), protocol.protocol())
-		.and_then(socket_base::make_impl(protocol))
 		.transform(socket_base::to_api<basic_socket_acceptor<AcceptableProtocol>>())
 	;
+}
+
+/// Create new socket acceptor of \a Protocol and bind to \a endpoint
+template <typename AcceptableProtocol>
+result<basic_socket_acceptor<AcceptableProtocol>> make_socket_acceptor (
+	const AcceptableProtocol &protocol,
+	const typename AcceptableProtocol::endpoint &endpoint) noexcept
+{
+	if (auto socket = make_socket_acceptor(protocol); !socket)
+	{
+		return unexpected{socket.error()};
+	}
+	else if (auto bind = socket->bind(endpoint); !bind)
+	{
+		return unexpected{bind.error()};
+	}
+	else if (auto listen = socket->listen(); !listen)
+	{
+		return unexpected{listen.error()};
+	}
+	else
+	{
+		return socket;
+	}
+}
+
+/// Create new socket acceptor for \a protocol using existing \a handle
+template <typename AcceptableProtocol>
+result<basic_socket_acceptor<AcceptableProtocol>> make_socket_acceptor (
+	const AcceptableProtocol &protocol,
+	socket_base::native_handle_type handle) noexcept
+{
+	static constexpr auto to_api = socket_base::to_api<basic_socket_acceptor<AcceptableProtocol>>();
+	return to_api(native_socket{native_socket_handle{handle, protocol.family()}});
 }
 
 } // namespace pal::net

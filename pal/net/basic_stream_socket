@@ -9,6 +9,8 @@
 
 namespace pal::net {
 
+/// Stream socket that can be used to exchange data with peer over a
+/// sequenced, reliable and bi-directional connection-oriented byte stream.
 template <typename Protocol>
 class basic_stream_socket: public basic_socket<Protocol>
 {
@@ -16,6 +18,32 @@ public:
 
 	using typename basic_socket<Protocol>::protocol_type;
 	using typename basic_socket<Protocol>::endpoint_type;
+
+	/// Read data from socket into \a spans. Returns number of bytes received.
+	template <typename MutableSpanSequence>
+	result<size_t> receive (const MutableSpanSequence &spans,
+		socket_base::message_flags flags = {}) noexcept
+	{
+		if (__socket::message message{}; message.set(spans))
+		{
+			message.flags(flags);
+			return this->socket_->receive(message);
+		}
+		return make_unexpected(std::errc::argument_list_too_long);
+	}
+
+	/// Send data from \a spans using this socket. Returns number of bytes sent.
+	template <typename ConstSpanSequence>
+	result<size_t> send (const ConstSpanSequence &spans,
+		socket_base::message_flags flags = {}) noexcept
+	{
+		if (__socket::message message{}; message.set(spans))
+		{
+			message.flags(flags);
+			return this->socket_->send(message);
+		}
+		return make_unexpected(std::errc::argument_list_too_long);
+	}
 };
 
 /// Create new stream socket of \a Protocol
@@ -23,9 +51,38 @@ template <typename Protocol>
 result<basic_stream_socket<Protocol>> make_stream_socket (const Protocol &protocol) noexcept
 {
 	return open(protocol.family(), protocol.type(), protocol.protocol())
-		.and_then(socket_base::make_impl(protocol))
 		.transform(socket_base::to_api<basic_stream_socket<Protocol>>())
 	;
+}
+
+/// Create new stream socket of \a Protocol and bind to \a endpoint
+template <typename Protocol>
+result<basic_stream_socket<Protocol>> make_stream_socket (
+	const Protocol &protocol,
+	const typename Protocol::endpoint &endpoint) noexcept
+{
+	if (auto socket = make_stream_socket(protocol); !socket)
+	{
+		return unexpected{socket.error()};
+	}
+	else if (auto bind = socket->bind(endpoint); !bind)
+	{
+		return unexpected{bind.error()};
+	}
+	else
+	{
+		return socket;
+	}
+}
+
+/// Create new stream socket for \a protocol using existing \a handle
+template <typename Protocol>
+result<basic_stream_socket<Protocol>> make_stream_socket (
+	const Protocol &protocol,
+	socket_base::native_handle_type handle) noexcept
+{
+	static constexpr auto to_api = socket_base::to_api<basic_stream_socket<Protocol>>();
+	return to_api(native_socket{native_socket_handle{handle, protocol.family()}});
 }
 
 } // namespace pal::net

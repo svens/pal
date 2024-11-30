@@ -11,6 +11,9 @@ TEMPLATE_TEST_CASE("net/basic_socket_acceptor", "[!nonportable]",
 	tcp_v6,
 	tcp_v6_only)
 {
+	using protocol_t = std::remove_cvref_t<decltype(TestType::protocol_v)>;
+	using endpoint_t = typename protocol_t::endpoint;
+
 	auto a = TestType::make_acceptor().value();
 	REQUIRE(a);
 	CHECK(a.native_socket()->handle != pal::net::native_socket_handle::invalid);
@@ -42,12 +45,146 @@ TEMPLATE_TEST_CASE("net/basic_socket_acceptor", "[!nonportable]",
 		CHECK(native->handle == s_orig_handle);
 	}
 
-	SECTION("make_acceptor: not_enough_memory")
+	SECTION("bind")
 	{
-		pal_test::bad_alloc_once x;
-		auto a1 = TestType::make_acceptor();
-		REQUIRE(!a1);
-		CHECK(a1.error() == std::errc::not_enough_memory);
+		endpoint_t endpoint{TestType::loopback_v, 0};
+		REQUIRE(bind_next_available_port(a, endpoint));
+		CHECK(a.local_endpoint().value() == endpoint);
+
+		SECTION("address in use")
+		{
+			auto a1 = TestType::make_acceptor().value();
+			auto bind = a1.bind(endpoint);
+			REQUIRE_FALSE(bind);
+			CHECK(bind.error() == std::errc::address_in_use);
+		}
+
+		SECTION("bad file descriptor")
+		{
+			close_native_handle(a);
+			auto bind = a.bind(endpoint);
+			REQUIRE_FALSE(bind);
+			CHECK(bind.error() == std::errc::bad_file_descriptor);
+		}
+	}
+
+	SECTION("listen")
+	{
+		SECTION("success")
+		{
+			endpoint_t endpoint{TestType::loopback_v, 0};
+			REQUIRE(bind_next_available_port(a, endpoint));
+			REQUIRE_NOTHROW(a.listen().value());
+		}
+
+		SECTION("unbound")
+		{
+			auto local_endpoint = a.local_endpoint().value();
+			CHECK(local_endpoint.port() == 0);
+
+			REQUIRE_NOTHROW(a.listen().value());
+			local_endpoint = a.local_endpoint().value();
+			CHECK(local_endpoint.port() != 0);
+		}
+
+		SECTION("bad file descriptor")
+		{
+			close_native_handle(a);
+			auto listen = a.listen();
+			REQUIRE_FALSE(listen);
+			CHECK(listen.error() == std::errc::bad_file_descriptor);
+		}
+	}
+
+	SECTION("accept")
+	{
+		endpoint_t endpoint{TestType::loopback_v, 0};
+		REQUIRE(bind_next_available_port(a, endpoint));
+		REQUIRE_NOTHROW(a.listen().value());
+
+		SECTION("success")
+		{
+			auto s1 = TestType::make_socket().value();
+			REQUIRE_NOTHROW(s1.connect(endpoint).value());
+			CHECK(s1.remote_endpoint().value() == endpoint);
+
+			auto s2 = a.accept().value();
+			CHECK(s2.local_endpoint().value() == endpoint);
+		}
+
+		SECTION("no connect")
+		{
+			REQUIRE_NOTHROW(a.set_option(pal::net::non_blocking_io{true}).value());
+			auto accept = a.accept();
+			REQUIRE_FALSE(accept);
+			CHECK(accept.error() == std::errc::operation_would_block);
+		}
+
+		SECTION("bad file descriptor")
+		{
+			close_native_handle(a);
+			auto accept = a.accept();
+			REQUIRE_FALSE(accept);
+			CHECK(accept.error() == std::errc::bad_file_descriptor);
+		}
+	}
+
+	SECTION("accept with endpoint")
+	{
+		endpoint_t endpoint{TestType::loopback_v, 0};
+		REQUIRE(bind_next_available_port(a, endpoint));
+		REQUIRE_NOTHROW(a.listen().value());
+
+		SECTION("success")
+		{
+			auto s1 = TestType::make_socket().value();
+			REQUIRE_NOTHROW(s1.connect(endpoint).value());
+			CHECK(s1.remote_endpoint().value() == endpoint);
+
+			endpoint_t s2_endpoint;
+			auto s2 = a.accept(s2_endpoint).value();
+			CHECK(s2.local_endpoint().value() == endpoint);
+			CHECK(s2.remote_endpoint().value() == s2_endpoint);
+			CHECK(s1.local_endpoint().value() == s2_endpoint);
+		}
+
+		SECTION("no connect")
+		{
+			REQUIRE_NOTHROW(a.set_option(pal::net::non_blocking_io{true}).value());
+			auto accept = a.accept(endpoint);
+			REQUIRE_FALSE(accept);
+			CHECK(accept.error() == std::errc::operation_would_block);
+		}
+
+		SECTION("bad file descriptor")
+		{
+			close_native_handle(a);
+			auto accept = a.accept(endpoint);
+			REQUIRE_FALSE(accept);
+			CHECK(accept.error() == std::errc::bad_file_descriptor);
+		}
+	}
+
+	SECTION("local_endpoint")
+	{
+		// see SECTION("bind")
+		SUCCEED();
+
+		SECTION("unbound")
+		{
+			auto local_endpoint = a.local_endpoint().value();
+			CHECK(has_expected_family<TestType>(local_endpoint.address()));
+			CHECK(local_endpoint.address().is_unspecified());
+			CHECK(local_endpoint.port() == 0);
+		}
+
+		SECTION("bad file descriptor")
+		{
+			close_native_handle(a);
+			auto local_endpoint = a.local_endpoint();
+			REQUIRE_FALSE(local_endpoint);
+			CHECK(local_endpoint.error() == std::errc::bad_file_descriptor);
+		}
 	}
 
 	SECTION("reuse address")
@@ -113,6 +250,37 @@ TEMPLATE_TEST_CASE("net/basic_socket_acceptor", "[!nonportable]",
 			}
 		}
 	}
+
+	SECTION("make_socket_acceptor with endpoint")
+	{
+		endpoint_t endpoint{TestType::loopback_v, 0};
+
+		SECTION("success")
+		{
+			// bind with existing acceptor and assume next port is available
+			REQUIRE(bind_next_available_port(a, endpoint));
+			endpoint.port(next_port(TestType::protocol_v));
+
+			auto acceptor = pal::net::make_socket_acceptor(TestType::protocol_v, endpoint).value();
+			CHECK(acceptor.local_endpoint().value() == endpoint);
+		}
+
+		SECTION("address in use")
+		{
+			REQUIRE(bind_next_available_port(a, endpoint));
+			auto acceptor = pal::net::make_socket_acceptor(TestType::protocol_v, endpoint);
+			REQUIRE_FALSE(acceptor);
+			CHECK(acceptor.error() == std::errc::address_in_use);
+		}
+	}
+
+	SECTION("make_socket_acceptor with handle")
+	{
+		auto handle = a.release().release().handle;
+		auto a1 = pal::net::make_socket_acceptor(TestType::protocol_v, handle).value();
+		CHECK(a1.native_socket()->handle == handle);
+		CHECK(a1.protocol() == TestType::protocol_v);
+	}
 }
 
 TEMPLATE_TEST_CASE("net/basic_socket_acceptor", "[!nonportable]",
@@ -120,7 +288,14 @@ TEMPLATE_TEST_CASE("net/basic_socket_acceptor", "[!nonportable]",
 {
 	SECTION("make_socket_acceptor")
 	{
-		auto a = pal::net::make_socket_acceptor(TestType());
+		auto a = pal::net::make_socket_acceptor(TestType{});
+		REQUIRE_FALSE(a);
+		CHECK(a.error() == std::errc::protocol_not_supported);
+	}
+
+	SECTION("make_stream_socket with endpoint")
+	{
+		auto a = pal::net::make_socket_acceptor(TestType{}, typename TestType::endpoint{});
 		REQUIRE_FALSE(a);
 		CHECK(a.error() == std::errc::protocol_not_supported);
 	}

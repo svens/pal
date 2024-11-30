@@ -9,6 +9,12 @@
 
 namespace pal::net {
 
+/// Datagram socket that can be used to send and receive discrete messages of
+/// fixed maximum length
+///
+/// \note Vector I/O supports up to \a socket_base::io_vector_max_size spans.
+/// If send/receive requests exceed this value, corresponding methods will
+/// return std::errc::argument_list_too_long
 template <typename Protocol>
 class basic_datagram_socket: public basic_socket<Protocol>
 {
@@ -16,6 +22,74 @@ public:
 
 	using typename basic_socket<Protocol>::protocol_type;
 	using typename basic_socket<Protocol>::endpoint_type;
+
+	/// Read data from socket into \a spans. Source endpoint is stored
+	/// into \a sender. Returns number of bytes received.
+	template <typename MutableSpanSequence>
+	result<size_t> receive_from (const MutableSpanSequence &spans,
+		endpoint_type &sender,
+		socket_base::message_flags flags = {}) noexcept
+	{
+		if (__socket::message message{}; message.set(spans))
+		{
+			message.flags(flags);
+			message.name(sender.data(), sender.capacity());
+			return this->socket_->receive(message).and_then([&](auto bytes) -> result<size_t>
+			{
+				sender.resize(message.msg_namelen);
+				return bytes;
+			});
+		}
+		return make_unexpected(std::errc::argument_list_too_long);
+	}
+
+	/// Send data from \a spans using this socket to \a recipient
+	/// endpoint. Returns number of bytes sent.
+	template <typename ConstSpanSequence>
+	result<size_t> send_to (const ConstSpanSequence &spans,
+		const endpoint_type &recipient,
+		socket_base::message_flags flags = {}) noexcept
+	{
+		if (__socket::message message{}; message.set(spans))
+		{
+			message.flags(flags);
+			message.name(recipient.data(), recipient.size());
+			return this->socket_->send(message);
+		}
+		return make_unexpected(std::errc::argument_list_too_long);
+	}
+
+	/// Read data from socket into \a spans. Source endpoint is stored
+	/// into \a sender. Returns number of bytes received.
+	///
+	/// \note This method can be used with connectionless or connected
+	/// mode. In connectionless mode, application does not retrieve
+	/// datagram source endpoint.
+	template <typename MutableSpanSequence>
+	result<size_t> receive (const MutableSpanSequence &spans,
+		socket_base::message_flags flags = {}) noexcept
+	{
+		if (__socket::message message{}; message.set(spans))
+		{
+			message.flags(flags);
+			return this->socket_->receive(message);
+		}
+		return make_unexpected(std::errc::argument_list_too_long);
+	}
+
+	/// Send data from \a spans using this socket to previously connected endpoint.
+	/// Returns number of bytes sent.
+	template <typename ConstSpanSequence>
+	result<size_t> send (const ConstSpanSequence &spans,
+		socket_base::message_flags flags = {}) noexcept
+	{
+		if (__socket::message message{}; message.set(spans))
+		{
+			message.flags(flags);
+			return this->socket_->send(message);
+		}
+		return make_unexpected(std::errc::argument_list_too_long);
+	}
 };
 
 /// Create new datagram socket of \a Protocol
@@ -23,9 +97,38 @@ template <typename Protocol>
 result<basic_datagram_socket<Protocol>> make_datagram_socket (const Protocol &protocol) noexcept
 {
 	return open(protocol.family(), protocol.type(), protocol.protocol())
-		.and_then(socket_base::make_impl(protocol))
 		.transform(socket_base::to_api<basic_datagram_socket<Protocol>>())
 	;
+}
+
+/// Create new datagram socket of \a Protocol and bind to \a endpoint
+template <typename Protocol>
+result<basic_datagram_socket<Protocol>> make_datagram_socket (
+	const Protocol &protocol,
+	const typename Protocol::endpoint &endpoint) noexcept
+{
+	if (auto socket = make_datagram_socket(protocol); !socket)
+	{
+		return unexpected{socket.error()};
+	}
+	else if (auto bind = socket->bind(endpoint); !bind)
+	{
+		return unexpected{bind.error()};
+	}
+	else
+	{
+		return socket;
+	}
+}
+
+/// Create new datagram socket for \a protocol using existing \a handle
+template <typename Protocol>
+result<basic_datagram_socket<Protocol>> make_datagram_socket (
+	const Protocol &protocol,
+	socket_base::native_handle_type handle) noexcept
+{
+	static constexpr auto to_api = socket_base::to_api<basic_datagram_socket<Protocol>>();
+	return to_api(native_socket{native_socket_handle{handle, protocol.family()}});
 }
 
 } // namespace pal::net

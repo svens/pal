@@ -1,7 +1,9 @@
 #include <pal/net/__socket>
-#include <pal/net/socket>
 
 #if __pal_net_winsock
+
+#include <pal/net/socket>
+#include <ws2tcpip.h>
 
 namespace pal::net {
 
@@ -88,11 +90,11 @@ const auto &lib_init = init();
 
 } // namespace
 
-result<native_socket> open (int domain, int type, int protocol) noexcept
+result<native_socket> open (int family, int type, int protocol) noexcept
 {
-	if (auto h = ::socket(domain, type, protocol); h != native_socket_handle::invalid)
+	if (auto h = ::socket(family, type, protocol); h != native_socket_handle::invalid)
 	{
-		return native_socket_handle{h};
+		return native_socket_handle{h, family};
 	}
 
 	// Library public API deals with Protocol types/instances, translate
@@ -106,52 +108,292 @@ result<native_socket> open (int domain, int type, int protocol) noexcept
 	return __socket::sys_error(error);
 }
 
-struct socket_base::impl_type
+void native_socket_handle::close::operator() (pointer socket) const noexcept
 {
-	native_socket socket;
-	int family;
-
-	impl_type (native_socket &&socket, int family) noexcept
-		: socket{std::move(socket)}
-		, family{family}
-	{ }
-};
-
-void socket_base::impl_type_deleter::operator() (impl_type *impl)
-{
-	delete impl;
+	::closesocket(socket->handle);
 }
 
-result<socket_base::impl_ptr> socket_base::make (native_socket &&handle, int family) noexcept
+result<void> native_socket_handle::bind (const void *endpoint, size_t endpoint_size) const noexcept
 {
-	if (auto socket = new(std::nothrow) impl_type{std::move(handle), family})
+	if (::bind(handle, static_cast<const sockaddr *>(endpoint), static_cast<int>(endpoint_size)) == 0)
 	{
-		return impl_ptr{socket};
+		return {};
 	}
-	return make_unexpected(std::errc::not_enough_memory);
-}
-
-native_socket socket_base::release (impl_ptr &&impl) noexcept
-{
-	auto s = std::move(impl);
-	return std::move(s->socket);
-}
-
-const native_socket &socket_base::socket (const impl_ptr &impl) noexcept
-{
-	return impl->socket;
-}
-
-int socket_base::family (const impl_ptr &impl) noexcept
-{
-	return impl->family;
+	return __socket::sys_error();
 }
 
 namespace {
 
-int socket_option_precheck (const native_socket &socket, int name) noexcept
+bool make_any (int family, void *endpoint, int *endpoint_size) noexcept
 {
-	if (socket->handle == native_socket_handle::invalid)
+	int size = 0;
+	if (family == AF_INET)
+	{
+		size = sizeof(::sockaddr_in);
+	}
+	else if (family == AF_INET6)
+	{
+		size = sizeof(::sockaddr_in6);
+	}
+
+	if (size && size <= *endpoint_size)
+	{
+		*endpoint_size = size;
+		std::fill_n(static_cast<std::byte *>(endpoint), size, std::byte{});
+		static_cast<sockaddr *>(endpoint)->sa_family = static_cast<__socket::sa_family>(family);
+		return true;
+	}
+
+	return false;
+}
+
+__socket::handle_type init (__socket::handle_type h, int type) noexcept
+{
+	::SetFileCompletionNotificationModes(
+		reinterpret_cast<::HANDLE>(h),
+		FILE_SKIP_COMPLETION_PORT_ON_SUCCESS |
+		FILE_SKIP_SET_EVENT_ON_HANDLE
+	);
+
+	if (type == SOCK_DGRAM)
+	{
+		bool new_behaviour = false;
+		DWORD ignored;
+		::WSAIoctl(
+			h,
+			SIO_UDP_CONNRESET,
+			&new_behaviour,
+			sizeof(new_behaviour),
+			nullptr,
+			0,
+			&ignored,
+			nullptr,
+			nullptr
+		);
+	}
+
+	return h;
+}
+
+} // namespace
+
+result<void> native_socket_handle::listen (int backlog) const noexcept
+{
+	int e = 0;
+
+	// If socket is not bound yet:
+	// - Posix: it is done automatically
+	// - Windows: returns error. Align with Posix -- bind and retry listen once
+
+	for (auto i = 0; i < 2; ++i)
+	{
+		if (::listen(handle, backlog) == 0)
+		{
+			return {};
+		}
+
+		e = ::WSAGetLastError();
+		if (e == WSAEINVAL)
+		{
+			sockaddr_storage ss{};
+			int ss_size = sizeof(ss);
+			if (!make_any(family, &ss, &ss_size))
+			{
+				break;
+			}
+			else if (::bind(handle, reinterpret_cast<sockaddr *>(&ss), ss_size) == 0)
+			{
+				continue;
+			}
+		}
+
+		break;
+	}
+
+	return __socket::sys_error(e);
+}
+
+result<native_socket_handle> native_socket_handle::accept (void *endpoint, size_t *endpoint_size) const noexcept
+{
+	int size = 0, *size_p = nullptr;
+	if (endpoint_size)
+	{
+		size = static_cast<int>(*endpoint_size);
+		size_p = &size;
+	}
+
+	auto h = ::accept(handle, static_cast<sockaddr *>(endpoint), size_p);
+	if (h != invalid)
+	{
+		if (endpoint_size)
+		{
+			*endpoint_size = size;
+		}
+		return native_socket_handle{init(h, SOCK_STREAM), family};
+	}
+	return __socket::sys_error();
+}
+
+result<void> native_socket_handle::connect (const void *endpoint, size_t endpoint_size) const noexcept
+{
+	if (::connect(handle, static_cast<const sockaddr *>(endpoint), static_cast<int>(endpoint_size)) == 0)
+	{
+		return {};
+	}
+	return __socket::sys_error();
+}
+
+result<void> native_socket_handle::shutdown (int what) const noexcept
+{
+	if (::shutdown(handle, what) == 0)
+	{
+		return {};
+	}
+	return __socket::sys_error();
+}
+
+result<size_t> native_socket_handle::send (const __socket::message &message) noexcept
+{
+	int result;
+	DWORD sent = 0;
+
+	if (message.msg_name)
+	{
+		result = ::WSASendTo(
+			handle,
+			const_cast<WSABUF *>(message.msg_iov.data()),
+			message.msg_iovlen,
+			&sent,
+			message.msg_flags,
+			message.msg_name,
+			message.msg_namelen,
+			nullptr,
+			nullptr
+		);
+	}
+	else
+	{
+		result = ::WSASend(
+			handle,
+			const_cast<WSABUF *>(message.msg_iov.data()),
+			message.msg_iovlen,
+			&sent,
+			message.msg_flags,
+			nullptr,
+			nullptr
+		);
+	}
+
+	if (result != SOCKET_ERROR)
+	{
+		return sent;
+	}
+
+	auto e = ::WSAGetLastError();
+	if (e == WSAESHUTDOWN)
+	{
+		// unify with Posix
+		e = WSAENOTCONN;
+	}
+	return __socket::sys_error(e);
+}
+
+result<size_t> native_socket_handle::receive (__socket::message &message) noexcept
+{
+	int result;
+	DWORD received = 0;
+
+	if (message.msg_name)
+	{
+		result = ::WSARecvFrom(
+			handle,
+			message.msg_iov.data(),
+			message.msg_iovlen,
+			&received,
+			&message.msg_flags,
+			message.msg_name,
+			&message.msg_namelen,
+			nullptr,
+			nullptr
+		);
+	}
+	else
+	{
+		result = ::WSARecv(
+			handle,
+			message.msg_iov.data(),
+			message.msg_iovlen,
+			&received,
+			&message.msg_flags,
+			nullptr,
+			nullptr
+		);
+	}
+
+	if (result != SOCKET_ERROR)
+	{
+		return received;
+	}
+
+	auto e = ::WSAGetLastError();
+	if (e == WSAESHUTDOWN)
+	{
+		// unify with Posix
+		return 0u;
+	}
+	return __socket::sys_error(e);
+}
+
+result<size_t> native_socket_handle::available () const noexcept
+{
+	unsigned long value{};
+	if (::ioctlsocket(handle, FIONREAD, &value) > -1)
+	{
+		return value;
+	}
+	return __socket::sys_error();
+}
+
+result<void> native_socket_handle::local_endpoint (void *endpoint, size_t *endpoint_size) const noexcept
+{
+	auto size = static_cast<int>(*endpoint_size);
+	if (::getsockname(handle, static_cast<sockaddr *>(endpoint), &size) == 0)
+	{
+		*endpoint_size = size;
+		return {};
+	}
+
+	// querying unbound socket name returns WSAEINVAL
+	// align with Posix API that succeeds with family-specific "any"
+	auto e = ::WSAGetLastError();
+	if (e == WSAEINVAL)
+	{
+		if (make_any(family, endpoint, &size))
+		{
+			*endpoint_size = size;
+			return {};
+		}
+	}
+
+	return __socket::sys_error(e);
+}
+
+result<void> native_socket_handle::remote_endpoint (void *endpoint, size_t *endpoint_size) const noexcept
+{
+	auto size = static_cast<int>(*endpoint_size);
+	if (::getpeername(handle, static_cast<sockaddr *>(endpoint), &size) == 0)
+	{
+		*endpoint_size = size;
+		return {};
+	}
+	return __socket::sys_error();
+}
+
+namespace {
+
+int socket_option_precheck (__socket::handle_type handle, int name) noexcept
+{
+	if (handle == native_socket_handle::invalid)
 	{
 		return WSAEBADF;
 	}
@@ -162,18 +404,41 @@ int socket_option_precheck (const native_socket &socket, int name) noexcept
 	return 0;
 }
 
+result<void> get_native_non_blocking (__socket::handle_type, int &) noexcept
+{
+	return __socket::sys_error(WSAEOPNOTSUPP);
+}
+
+result<void> set_native_non_blocking (__socket::handle_type handle, bool mode) noexcept
+{
+	unsigned long arg = mode ? 1 : 0;
+	if (::ioctlsocket(handle, FIONBIO, &arg) == 0)
+	{
+		return {};
+	}
+	return __socket::sys_error();
+}
+
 } // namespace
 
-result<void> socket_base::get_option (const impl_ptr &impl, int level, int name, void *data, size_t data_size) noexcept
+result<void> native_socket_handle::get_option (int level, int name, void *data, size_t data_size) const noexcept
 {
-	if (auto e = socket_option_precheck(impl->socket, name))
+	if (auto e = socket_option_precheck(handle, name))
 	{
 		return __socket::sys_error(e);
+	}
+	else if (level == __socket::option_level::lib)
+	{
+		switch (name)
+		{
+			case __socket::option_name::non_blocking_io:
+				return get_native_non_blocking(handle, *static_cast<int *>(data));
+		}
 	}
 
 	auto p = static_cast<char *>(data);
 	auto size = static_cast<int>(data_size);
-	if (::getsockopt(impl->socket->handle, level, name, p, &size) > -1)
+	if (::getsockopt(handle, level, name, p, &size) > -1)
 	{
 		return {};
 	}
@@ -181,16 +446,24 @@ result<void> socket_base::get_option (const impl_ptr &impl, int level, int name,
 	return __socket::sys_error();
 }
 
-result<void> socket_base::set_option (const impl_ptr &impl, int level, int name, const void *data, size_t data_size) noexcept
+result<void> native_socket_handle::set_option (int level, int name, const void *data, size_t data_size) const noexcept
 {
-	if (auto e = socket_option_precheck(impl->socket, name))
+	if (auto e = socket_option_precheck(handle, name))
 	{
 		return __socket::sys_error(e);
+	}
+	else if (level == __socket::option_level::lib)
+	{
+		switch (name)
+		{
+			case __socket::option_name::non_blocking_io:
+				return set_native_non_blocking(handle, *static_cast<const int *>(data));
+		}
 	}
 
 	auto p = static_cast<const char *>(data);
 	auto size = static_cast<int>(data_size);
-	if (::setsockopt(impl->socket->handle, level, name, p, size) > -1)
+	if (::setsockopt(handle, level, name, p, size) > -1)
 	{
 		return {};
 	}

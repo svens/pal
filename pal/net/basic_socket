@@ -23,32 +23,81 @@ public:
 	/// Return true if internal implementation has valid value
 	explicit operator bool () const noexcept
 	{
-		return impl_ != nullptr;
+		return socket_.operator bool();
 	}
 
 	/// Returns socket protocol
 	protocol_type protocol () const noexcept
 	{
-		return protocol_type{socket_base::family(impl_)};
+		return protocol_type{socket_->family};
 	}
 
 	/// Release internal socket implementation and return native socket handle
 	net::native_socket release () noexcept
 	{
-		return socket_base::release(std::move(impl_));
+		return std::move(socket_);
 	}
 
 	/// Return reference of native socket handle
 	const net::native_socket &native_socket () const noexcept
 	{
-		return socket_base::socket(impl_);
+		return socket_;
+	}
+
+	/// Bind this socket to local \a endpoint
+	result<void> bind (const endpoint_type &endpoint) noexcept
+	{
+		return socket_->bind(endpoint.data(), endpoint.size());
+	}
+
+	/// Connect socket to specified remote \a endpoint
+	result<void> connect (const endpoint_type &endpoint) noexcept
+	{
+		return socket_->connect(endpoint.data(), endpoint.size());
+	}
+
+	/// Shut down all or part of full-duplex connection for the socket
+	result<void> shutdown (shutdown_type what) noexcept
+	{
+		return socket_->shutdown(what);
+	}
+
+	/// Return number of bytes available that can be read without blocking
+	/// \note MacOS returns number of bytes plus size of source endpoint
+	result<size_t> available () const noexcept
+	{
+		return socket_->available();
+	}
+
+	/// Return local endpoint to which this socket is bound
+	result<endpoint_type> local_endpoint () const noexcept
+	{
+		endpoint_type endpoint;
+		auto size = endpoint.capacity();
+		return socket_->local_endpoint(endpoint.data(), &size).and_then([&]() -> result<endpoint_type>
+		{
+			endpoint.resize(size);
+			return endpoint;
+		});
+	}
+
+	/// Return remote endpoint to which this socket is connected to
+	result<endpoint_type> remote_endpoint () const noexcept
+	{
+		endpoint_type endpoint;
+		auto size = endpoint.capacity();
+		return socket_->remote_endpoint(endpoint.data(), &size).and_then([&]() -> result<endpoint_type>
+		{
+			endpoint.resize(size);
+			return endpoint;
+		});
 	}
 
 	/// Get socket \a option
 	template <typename GettableSocketOption>
 	result<void> get_option (GettableSocketOption &option) const noexcept
 	{
-		return socket_base::get_option(impl_,
+		return socket_->get_option(
 			option.level(protocol()),
 			option.name(protocol()),
 			option.data(protocol()),
@@ -60,7 +109,7 @@ public:
 	template <typename SettableSocketOption>
 	result<void> set_option (const SettableSocketOption &option) noexcept
 	{
-		return socket_base::set_option(impl_,
+		return socket_->set_option(
 			option.level(protocol()),
 			option.name(protocol()),
 			option.data(protocol()),
@@ -70,10 +119,14 @@ public:
 
 protected:
 
-	impl_ptr impl_{};
+	net::native_socket socket_;
 
-	basic_socket (impl_ptr &&impl) noexcept
-		: impl_{std::move(impl)}
+	basic_socket (net::native_socket &&socket) noexcept
+		: socket_{std::move(socket)}
+	{ }
+
+	basic_socket (net::native_socket_handle &&socket) noexcept
+		: socket_{socket}
 	{ }
 
 	template <typename P>
