@@ -20,6 +20,8 @@ list(APPEND pal_sources
 	pal/net/ip/address_v6.cpp
 	pal/net/ip/basic_endpoint
 	pal/net/ip/basic_endpoint.cpp
+	pal/net/ip/basic_resolver
+	pal/net/ip/basic_resolver.cpp
 	pal/net/ip/host_name
 	pal/net/ip/host_name.cpp
 	pal/net/ip/socket_option
@@ -41,6 +43,7 @@ list(APPEND pal_test_sources
 	pal/net/ip/address_v4.test.cpp
 	pal/net/ip/address_v6.test.cpp
 	pal/net/ip/basic_endpoint.test.cpp
+	pal/net/ip/basic_resolver.test.cpp
 	pal/net/ip/host_name.test.cpp
 	pal/net/ip/tcp.test.cpp
 	pal/net/ip/udp.test.cpp

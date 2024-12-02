@@ -8,6 +8,7 @@
 #include <pal/net/__socket>
 #include <pal/net/basic_datagram_socket>
 #include <pal/net/ip/basic_endpoint>
+#include <pal/net/ip/basic_resolver>
 
 #if __pal_net_posix
 	#include <netinet/udp.h>
@@ -22,6 +23,9 @@ public:
 
 	/// UDP socket endpoint
 	using endpoint = basic_endpoint<udp>;
+
+	/// UDP host and service name resolver
+	using resolver = basic_resolver<udp>;
 
 	/// UDP datagram socket
 	using socket = basic_datagram_socket<udp>;
