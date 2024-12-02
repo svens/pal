@@ -1,0 +1,405 @@
+#pragma once // -*- C++ -*-
+
+/**
+ * \file pal/net/ip/basic_resolver
+ * Host/service name resolution
+ */
+
+#include <pal/result>
+#include <string_view>
+
+#include <pal/net/__socket>
+#if __pal_net_posix
+	#include <netdb.h>
+#elif __pal_net_winsock
+	#include <ws2tcpip.h>
+#endif
+
+namespace pal::net::ip {
+
+template <typename InternetProtocol> class basic_resolver_results_iterator;
+template <typename InternetProtocol> class basic_resolver_results;
+template <typename InternetProtocol> class basic_resolver;
+
+/// Resolver error codes
+enum class resolver_errc: int
+{
+	/// Host not found
+	host_not_found = EAI_NONAME,
+
+	/// Service not found
+	service_not_found = EAI_SERVICE,
+
+	/// Temporary name resolution error
+	try_again = EAI_AGAIN,
+};
+
+/// Name resolution error category
+const std::error_category &resolver_category () noexcept;
+
+/// Return error code with \a ec and resolver_category()
+inline std::error_code make_error_code (resolver_errc ec) noexcept
+{
+	return {static_cast<int>(ec), resolver_category()};
+}
+
+namespace __resolver {
+
+struct address_info_list
+{
+	char host_buf[NI_MAXHOST] = {}, service_buf[NI_MAXSERV] = {};
+	std::string_view host{}, service{};
+
+	union
+	{
+		char data[1] = {};
+		::sockaddr_in v4;
+		::sockaddr_in6 v6;
+	};
+	::addrinfo info{};
+
+	std::unique_ptr<::addrinfo, void(*)(::addrinfo *)> head{nullptr, ::freeaddrinfo};
+	size_t size{};
+
+	int get_address_info (std::string_view h, std::string_view s, int flags, int family, int type, int protocol) noexcept;
+	int get_name_info (const void *name, size_t namelen, int type) noexcept;
+};
+using address_info_list_ptr = std::unique_ptr<address_info_list>;
+
+inline const address_info_list null{};
+
+} // namespace __resolver
+
+/// Single element in the results returned by name resolution operation
+template <typename InternetProtocol>
+class basic_resolver_entry
+{
+public:
+
+	/// Protocol type
+	using protocol_type = InternetProtocol;
+
+	/// Endpoint type
+	using endpoint_type = typename InternetProtocol::endpoint;
+
+	/// Return endpoint associated with resolver entry
+	const endpoint_type &endpoint () const noexcept
+	{
+		return *reinterpret_cast<const endpoint_type *>(current_->ai_addr);
+	}
+
+	/// \copydoc endpoint()
+	operator endpoint_type () const noexcept
+	{
+		return endpoint();
+	}
+
+	/// Return host name associated with resolver entry
+	std::string_view host_name () const noexcept
+	{
+		return list_->host;
+	}
+
+	/// Return service name associated with resolver entry
+	std::string_view service_name () const noexcept
+	{
+		return list_->service;
+	}
+
+private:
+
+	const __resolver::address_info_list *list_;
+	const ::addrinfo *current_;
+
+	basic_resolver_entry (const __resolver::address_info_list *list, const ::addrinfo *current) noexcept
+		: list_{list}
+		, current_{current}
+	{ }
+
+	friend class basic_resolver_results_iterator<InternetProtocol>;
+};
+
+/// Resolver result entries iterator. All operations are well-defined only if
+/// iterator points to valid result entry.
+template <typename InternetProtocol>
+class basic_resolver_results_iterator
+{
+public:
+
+	/// Return reference of current entry iterator points to
+	const basic_resolver_entry<InternetProtocol> &operator* () const noexcept
+	{
+		return entry_;
+	}
+
+	/// Return address of current entry iterator points to
+	const basic_resolver_entry<InternetProtocol> *operator-> () const noexcept
+	{
+		return &entry_;
+	}
+
+	/// Iterator pre-increment. Returns reference to self after moving
+	/// iterator to next entry.
+	basic_resolver_results_iterator &operator++ () noexcept
+	{
+		entry_.current_ = entry_.current_->ai_next;
+		return *this;
+	}
+
+	/// Iterator post-increment. Returns iterator with current entry prior
+	/// to moving this iterator to next entry.
+	basic_resolver_results_iterator operator++ (int) noexcept
+	{
+		auto tmp = *this;
+		++*this;
+		return tmp;
+	}
+
+	/// Return true if \a a and \a b point to same entry
+	friend bool operator== (
+		const basic_resolver_results_iterator &a,
+		const basic_resolver_results_iterator &b) noexcept
+	{
+		return a.current() == b.current();
+	}
+
+	/// Return true if \a a and \a b point to different entries
+	friend bool operator!= (
+		const basic_resolver_results_iterator &a,
+		const basic_resolver_results_iterator &b) noexcept
+	{
+		return !(a == b);
+	}
+
+private:
+
+	basic_resolver_entry<InternetProtocol> entry_;
+
+	basic_resolver_results_iterator (const __resolver::address_info_list *list) noexcept
+		: entry_{list, list->head.get()}
+	{ }
+
+	const ::addrinfo *current () const noexcept
+	{
+		return entry_.current_;
+	}
+
+	friend class basic_resolver_results<InternetProtocol>;
+};
+
+/// Sequence of basic_resolver_entry elements resulting from single name
+/// resolution operation.
+template <typename InternetProtocol>
+class basic_resolver_results
+{
+public:
+
+	/// Protocol type
+	using protocol_type = InternetProtocol;
+
+	/// Endpoint type
+	using endpoint_type = typename InternetProtocol::endpoint;
+
+	/// Single entry for resolve() operation
+	using value_type = basic_resolver_entry<InternetProtocol>;
+
+	/// Const reference to value type
+	using const_reference = const value_type &;
+
+	/// Mutable reference to value type
+	using reference = value_type &;
+
+	/// Const iterator over resolve operation result set
+	using const_iterator = basic_resolver_results_iterator<InternetProtocol>;
+
+	/// Iterator over resolve operation result set
+	using iterator = const_iterator;
+
+	using difference_type = ptrdiff_t;
+	using size_type = size_t;
+
+	/// Number of entries in \a *this
+	size_type size () const noexcept
+	{
+		return list_->size;
+	}
+
+	/// Maximum number of entries that can be stored in \a *this
+	constexpr size_type max_size () const noexcept
+	{
+		return (std::numeric_limits<size_type>::max)();
+	}
+
+	/// Return true if \a *this contains no entries
+	bool empty () const noexcept
+	{
+		return size() == 0;
+	}
+
+	/// Return starting iterator that enumerates over all the entries
+	/// stored in \a *this
+	const_iterator begin () const noexcept
+	{
+		return {list_.get()};
+	}
+
+	/// \copydoc begin()
+	const_iterator cbegin () const noexcept
+	{
+		return begin();
+	}
+
+	/// Return starting iterator that enumerates over all the entries
+	/// stored in \a *this
+	const_iterator end () const noexcept
+	{
+		return {&__resolver::null};
+	}
+
+	/// \copydoc end()
+	const_iterator cend () const noexcept
+	{
+		return end();
+	}
+
+private:
+
+	__resolver::address_info_list_ptr list_;
+
+	basic_resolver_results (__resolver::address_info_list_ptr &&list) noexcept
+		: list_{std::move(list)}
+	{ }
+
+	friend class basic_resolver<InternetProtocol>;
+};
+
+/// Base type and constants for name resolution implementation class(es).
+class resolver_base
+{
+public:
+
+	/// \defgroup resolver_flags Resolver flags
+	/// \{
+
+	using flags = int;
+
+	/// Return endpoints intended for locally bound socket endpoints
+	static constexpr flags passive = AI_PASSIVE;
+
+	/// Determine the canonical name of the host
+	static constexpr flags canonical_name = AI_CANONNAME;
+
+	/// Host name is specified as numeric string defining IPv4 or IPv6 address
+	static constexpr flags numeric_host = AI_NUMERICHOST;
+
+	/// Service name is specified as numeric string defining port number
+	static constexpr flags numeric_service = AI_NUMERICSERV;
+
+	/// If the protocol is specified as IPv6 protocol but no IPv6
+	/// addresses were found, return IPv4-mapped IPv6 addresses
+	static constexpr flags v4_mapped = AI_V4MAPPED;
+
+	/// If used with \a v4_mapped, return all matching IPv6 and IPv4 addresses
+	static constexpr flags all_matching = AI_ALL;
+
+	/// Only return IPv4/IPv6 addresses for which corresponding family
+	/// non-loopback address is configured
+	static constexpr flags address_configured = AI_ADDRCONFIG;
+
+	/// \}
+
+protected:
+
+	~resolver_base () = default;
+
+	static result<__resolver::address_info_list_ptr> resolve (
+		std::string_view host,
+		std::string_view service,
+		resolver_base::flags flags,
+		int family,
+		int type,
+		int protocol
+	) noexcept;
+
+	static result<__resolver::address_info_list_ptr> resolve (
+		const void *name,
+		size_t namelen,
+		int type
+	) noexcept;
+};
+
+/// basic_resolver provides name resolution service. Name resolution is the
+/// translation of a host and service name into sequence of endpoints, or the
+/// translation of endpoint into it's corresponding host and service name.
+template <typename InternetProtocol>
+class basic_resolver: public resolver_base
+{
+public:
+
+	/// Protocol type
+	using protocol_type = InternetProtocol;
+
+	/// Endpoint type
+	using endpoint_type = typename InternetProtocol::endpoint;
+
+	/// Resolution result set
+	using results_type = basic_resolver_results<InternetProtocol>;
+
+	/// Translate \a host and/or \a service name using specified \a flags.
+	/// Return non-empty set of basic_resolver_entry elements on success.
+	result<results_type> resolve (
+		std::string_view host,
+		std::string_view service,
+		resolver_base::flags flags = {}) noexcept
+	{
+		static constexpr auto hint = endpoint_type{}.protocol();
+		return resolver_base::resolve(host, service, flags, AF_UNSPEC, hint.type(), hint.protocol())
+			.transform(to_api)
+		;
+	}
+
+	/// Translate \a host and/or \a service name using specified \a flags.
+	/// Return non-empty set of basic_resolver_entry elements on success.
+	result<results_type> resolve (
+		const protocol_type &protocol,
+		std::string_view host,
+		std::string_view service,
+		resolver_base::flags flags = {}) noexcept
+	{
+		return resolver_base::resolve(host, service, flags, protocol.family(), protocol.type(), protocol.protocol())
+			.transform(to_api)
+		;
+	}
+
+	/// Translate \a endpoint to host and service names.
+	result<results_type> resolve (const endpoint_type &endpoint) noexcept
+	{
+		return resolver_base::resolve(endpoint.data(), endpoint.size(), endpoint.protocol().type())
+			.transform(to_api)
+		;
+	}
+
+private:
+
+	static constexpr auto to_api = [](__resolver::address_info_list_ptr &&result)
+	{
+		return results_type{std::move(result)};
+	};
+};
+
+} // namespace pal::net::ip
+
+namespace pal {
+
+/// Return unexpected result with \a ec and resolver_category
+inline unexpected<std::error_code> make_unexpected (net::ip::resolver_errc ec) noexcept
+{
+	return unexpected{net::ip::make_error_code(ec)};
+}
+
+} // namespace pal
+
+template <>
+struct std::is_error_code_enum<pal::net::ip::resolver_errc>
+	: true_type
+{ };

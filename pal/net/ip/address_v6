@@ -178,7 +178,7 @@ inline result<address_v6> make_address_v6 (const std::string_view &text) noexcep
 	{
 		return result;
 	}
-	return pal::make_unexpected(ec);
+	return make_unexpected(ec);
 }
 
 /// Tag type to invoke conversion between IPv6 and IPv4-mapped IPv6 addresses.
@@ -195,7 +195,7 @@ inline result<address_v4> make_address_v4 (v4_mapped_t, const address_v6 &a) noe
 		const auto &v6b = a.to_bytes();
 		return address_v4::bytes_type{v6b[12], v6b[13], v6b[14], v6b[15]};
 	}
-	return pal::make_unexpected(std::errc::invalid_argument);
+	return make_unexpected(std::errc::invalid_argument);
 }
 
 /// Return new IPv4-mapped IPv6 address from IPv4 address \a a.

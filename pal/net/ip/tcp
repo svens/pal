@@ -9,6 +9,7 @@
 #include <pal/net/basic_socket_acceptor>
 #include <pal/net/basic_stream_socket>
 #include <pal/net/ip/basic_endpoint>
+#include <pal/net/ip/basic_resolver>
 #include <pal/net/socket_option>
 
 #if __pal_net_posix
@@ -24,6 +25,9 @@ public:
 
 	/// TCP socket endpoint
 	using endpoint = basic_endpoint<tcp>;
+
+	/// TCP host and service name resolver
+	using resolver = basic_resolver<tcp>;
 
 	/// TCP stream socket
 	using socket = basic_stream_socket<tcp>;

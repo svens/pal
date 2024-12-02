@@ -84,7 +84,7 @@ inline result<address> make_address (const std::string_view text) noexcept
 	{
 		return result;
 	}
-	return pal::make_unexpected(ec);
+	return make_unexpected(ec);
 }
 
 } // namespace pal::net::ip

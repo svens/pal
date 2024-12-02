@@ -205,7 +205,7 @@ inline result<address_v4> make_address_v4 (const std::string_view &text) noexcep
 	{
 		return result;
 	}
-	return pal::make_unexpected(ec);
+	return make_unexpected(ec);
 }
 
 } // namespace pal::net::ip
