@@ -23,7 +23,7 @@ extern const int version_major, version_minor, version_patch;
 #define __pal_build_debug 0
 #define __pal_build_release 0
 
-#if NDEBUG && !defined(_DEBUG)
+#if defined(NDEBUG) && !defined(_DEBUG)
 	#undef __pal_build_release
 	#define __pal_build_release 1
 #else

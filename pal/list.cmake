@@ -6,6 +6,7 @@ configure_file(
 list(APPEND pal_sources ${CMAKE_CURRENT_BINARY_DIR}/version.cpp)
 
 list(APPEND pal_sources
+	pal/__diagnostic
 	pal/__expected
 	pal/__platform_sdk
 	pal/assert
@@ -28,6 +29,7 @@ list(APPEND pal_sources
 list(APPEND pal_test_sources
 	pal/test
 	pal/test.cpp
+	pal/__diagnostic.test.cpp
 	pal/assert.test.cpp
 	pal/byte_order.test.cpp
 	pal/conv.bench.cpp
