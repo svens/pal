@@ -1,0 +1,19 @@
+#pragma once // -*- C++ -*-
+
+#define __pal_pragma(x) _Pragma(#x)
+
+#if defined(__clang__) || defined(__GNUC__)
+	#define __pal_diagnostic(x) __pal_pragma(GCC diagnostic x)
+	#define __pal_diagnostic_suppress(x) __pal_diagnostic(ignored x)
+	#define __pal_diagnostic_warning(gcc,msvc) gcc
+	#define __pal_diagnostic_not_implemented "-Wunused-parameter"
+#elif defined(_MSC_BUILD)
+	#define __pal_diagnostic(x) __pal_pragma(warning(x))
+	#define __pal_diagnostic_suppress(x) __pal_diagnostic(disable: x)
+	#define __pal_diagnostic_warning(gcc,msvc) msvc
+	#define __pal_diagnostic_not_implemented 4100
+#endif
+
+#define __pal_aligned_struct_padding __pal_diagnostic_warning(__pal_diagnostic_not_implemented, 4324)
+#define __pal_unused_function __pal_diagnostic_warning("-Wunused-function", 4505)
+#define __pal_unused_parameter __pal_diagnostic_warning("-Wunused-parameter", 4100)

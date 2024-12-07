@@ -1,0 +1,141 @@
+#pragma once // -*- C++ -*-
+
+/**
+ * \file pal/intrusive_mpsc_queue
+ * Intrusive lockfree multiple producers single consumer queue (MPSC FIFO)
+ */
+
+#include <pal/__diagnostic>
+#include <pal/not_null>
+#include <atomic>
+
+namespace pal {
+
+/// Intrusive MPSC queue hook.
+/// \see intrusive_mpsc_queue
+template <typename T>
+using intrusive_mpsc_queue_hook = volatile T *;
+
+/// \cond
+template <auto Next> class intrusive_mpsc_queue;
+/// \endcond
+
+/// Intrusive multiple producers single consumer queue (MPSC FIFO).
+///
+/// Elements of this container must provide member address \a Next that stores
+/// opaque data managed by container. Any given time specific hook can be used
+/// only to store element in single container. Same hook can be used to store
+/// element in different containers at different times. If application needs to
+/// store element in multiple containers same time, it needs to provide
+/// multiple hooks, one per owner.
+///
+/// Being intrusive, container itself does not deal with node allocation. It is
+/// application's responsibility to handle node management and make sure that
+/// while in container, element is kept alive and it's hook is not interfered
+/// with. Also, pushing and popping elements into/from container does not copy
+/// them, just hooks/unhooks using specified member \a Next.
+///
+/// Usage:
+/// \code
+/// class foo
+/// {
+///   pal::intrusive_mpsc_queue_hook<foo> next;
+///   int a;
+///   char b;
+/// };
+/// pal::intrusive_mpsc_queue<&foo::next> q;
+///
+/// foo f;
+/// q.push(&f);
+///
+/// auto fp = q.try_pop(); // fp == &f
+/// \endcode
+///
+/// \note Method push() is thread safe but not other methods.
+///
+template <typename T, typename Hook, Hook T::*Next>
+class intrusive_mpsc_queue<Next>
+{
+public:
+
+	/// Element type of container.
+	using value_type = T;
+
+	intrusive_mpsc_queue () noexcept = default;
+	~intrusive_mpsc_queue () noexcept = default;
+
+	intrusive_mpsc_queue (const intrusive_mpsc_queue &) = delete;
+	intrusive_mpsc_queue &operator= (const intrusive_mpsc_queue &) = delete;
+
+	/// Push new \a node to back of queue.
+	void push (not_null<value_type *> node) noexcept
+	{
+		node->*Next = nullptr;
+		auto back = tail_.exchange(node, std::memory_order_release);
+		back->*Next = node;
+	}
+
+	/// Pop next node from head of queue. If empty, return nullptr.
+	value_type *try_pop () noexcept
+	{
+		auto front = head_, next = const_cast<value_type *>(front->*Next);
+		if (front == sentry_)
+		{
+			if (!next)
+			{
+				return nullptr;
+			}
+			front = head_ = next;
+			next = const_cast<value_type *>(next->*Next);
+		}
+
+		if (next)
+		{
+			head_ = next;
+			return front;
+		}
+
+		if (front != tail_.load(std::memory_order_acquire))
+		{
+			return nullptr;
+		}
+
+		push(sentry_);
+
+		next = const_cast<value_type *>(front->*Next);
+		if (next)
+		{
+			head_ = next;
+			return front;
+		}
+
+		return nullptr;
+	}
+
+	/// Return true if queue has no elements. This method return reliably
+	/// valid result only on consumer side
+	bool empty () const noexcept
+	{
+		return tail_.load(std::memory_order_acquire) == sentry_;
+	}
+
+private:
+
+	value_type * const sentry_ = reinterpret_cast<value_type *>(&stub_);
+	char stub_[sizeof(value_type)] = {};
+
+	__pal_diagnostic(push)
+	__pal_diagnostic_suppress(__pal_aligned_struct_padding)
+
+	// Better approach would be std::hardware_destructive_interference_size
+	// but it has build host specific value, not necessarily same as target host
+	// i.e. can't use it in public ABI
+	static constexpr size_t cache_line_size = 128;
+
+	alignas(cache_line_size) std::atomic<value_type *> tail_{sentry_};
+	alignas(cache_line_size) value_type *head_{sentry_};
+
+	__pal_diagnostic(pop)
+};
+
+} // namespace pal
