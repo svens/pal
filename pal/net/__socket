@@ -6,14 +6,17 @@
 #include <array>
 #include <chrono>
 
+#define __pal_net_posix 0
+#define __pal_net_winsock 0
+
 #if __pal_os_linux || __pal_os_macos
+	#undef __pal_net_posix
 	#define __pal_net_posix 1
-	#define __pal_net_winsock 0
 	#include <poll.h>
 	#include <sys/socket.h>
 	#include <unistd.h>
 #elif __pal_os_windows
-	#define __pal_net_posix 0
+	#undef __pal_net_winsock
 	#define __pal_net_winsock 1
 	#include <winsock2.h>
 	#include <mswsock.h>

@@ -170,7 +170,7 @@ constexpr bool has_expected_family (const pal::net::ip::address &address) noexce
 template <typename Socket>
 void close_native_handle (const Socket &socket) noexcept
 {
-	pal::net::native_socket_handle::close{}(socket.native_socket().get());
+	pal::net::native_socket_close{}(socket.native_socket().get());
 }
 
 // For random order repeated tests:

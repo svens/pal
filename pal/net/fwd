@@ -1,0 +1,57 @@
+#pragma once // -*- C++ -*-
+
+/**
+ * \file pal/net/fwd
+ */
+
+#include <memory>
+
+namespace pal::net {
+
+// pal/net/socket_base
+struct native_socket_handle;
+struct native_socket_close;
+using native_socket = std::unique_ptr<native_socket_handle, native_socket_close>;
+class socket_base;
+
+// pal/net/basic_socket
+template <typename Protocol> class basic_socket;
+
+// pal/net/basic_datagram_socket
+template <typename Protocol> class basic_datagram_socket;
+
+// pal/net/basic_stream_socket
+template <typename Protocol> class basic_stream_socket;
+
+// pal/net/basic_socket_acceptor
+template <typename Protocol> class basic_socket_acceptor;
+
+namespace ip {
+
+// pal/net/ip/address
+class address;
+
+// pal/net/ip/address_v4
+class address_v4;
+
+// pal/net/ip/address_v6
+class address_v6;
+
+// pal/net/ip/basic_endpoint
+template <typename InternetProtocol> class basic_endpoint;
+
+// pal/net/ip/basic_resolver
+template <typename InternetProtocol> class basic_resolver_entry;
+template <typename InternetProtocol> class basic_resolver_results_iterator;
+template <typename InternetProtocol> class basic_resolver_results;
+template <typename InternetProtocol> class basic_resolver;
+
+// pal/net/ip/tcp
+class tcp;
+
+// pal/net/ip/udp
+class udp;
+
+} // namespace ip
+
+} // namespace pal::net

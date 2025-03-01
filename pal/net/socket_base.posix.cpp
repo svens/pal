@@ -42,7 +42,7 @@ result<native_socket> open (int family, int type, int protocol) noexcept
 	return __socket::sys_error(error);
 }
 
-void native_socket_handle::close::operator() (pointer socket) const noexcept
+void native_socket_close::operator() (pointer socket) const noexcept
 {
 	while (true)
 	{

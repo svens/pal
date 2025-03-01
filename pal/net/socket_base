@@ -83,16 +83,17 @@ struct native_socket_handle
 
 	result<void> get_option (int level, int name, void *data, size_t data_size) const noexcept;
 	result<void> set_option (int level, int name, const void *data, size_t data_size) const noexcept;
+};
 
-	struct close
-	{
-		using pointer = native_socket_handle;
-		void operator() (pointer socket) const noexcept;
-	};
+/// \internal
+struct native_socket_close
+{
+	using pointer = native_socket_handle;
+	void operator() (pointer socket) const noexcept;
 };
 
 /// Wrap native_socket_handle to std::unique_ptr
-using native_socket = std::unique_ptr<native_socket_handle, native_socket_handle::close>;
+using native_socket = std::unique_ptr<native_socket_handle, native_socket_close>;
 
 /// Open and return new native socket
 result<native_socket> open (int family, int type, int protocol) noexcept;

@@ -5,6 +5,7 @@ list(APPEND pal_sources
 	pal/net/basic_socket
 	pal/net/basic_socket_acceptor
 	pal/net/basic_stream_socket
+	pal/net/fwd
 	pal/net/internet
 	pal/net/socket
 	pal/net/socket_base
