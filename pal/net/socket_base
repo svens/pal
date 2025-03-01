@@ -171,4 +171,16 @@ protected:
 	~socket_base () = default;
 };
 
+/// Tag type denoting socket read operation
+struct socket_read_tag {};
+
+/// Socket read operation
+constexpr socket_read_tag socket_read;
+
+/// Tag type denoting socket write operation
+struct socket_write_tag {};
+
+/// Socket write operation
+constexpr socket_write_tag socket_write;
+
 } // namespace pal::net

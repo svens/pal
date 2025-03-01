@@ -1,0 +1,15 @@
+#pragma once // -*- C++ -*-
+
+/**
+ * \file pal/async/fwd
+ */
+
+namespace pal::async {
+
+class event_loop;
+
+template <typename T> class handle;
+
+class task;
+
+} // namespace pal::async

@@ -1,0 +1,166 @@
+#pragma once // -*- C++ -*-
+
+/**
+ * \file pal/async/datagram_socket
+ */
+
+#include <pal/async/__impl>
+#include <pal/async/fwd>
+#include <pal/async/task>
+#include <pal/net/basic_datagram_socket>
+
+namespace pal::async {
+
+template <typename Protocol>
+class handle<net::basic_datagram_socket<Protocol>>
+{
+public:
+
+	using value_type = net::basic_datagram_socket<Protocol>;
+	using protocol_type = typename value_type::protocol_type;
+	using endpoint_type = typename value_type::endpoint_type;
+
+	net::basic_datagram_socket<Protocol> &socket () noexcept
+	{
+		return socket_;
+	}
+
+	const net::basic_datagram_socket<Protocol> &socket () const noexcept
+	{
+		return socket_;
+	}
+
+	void cork (const net::socket_read_tag &) noexcept
+	{
+		impl_->receive.corked = true;
+	}
+
+	void uncork (const net::socket_read_tag &) noexcept
+	{
+		impl_->receive.corked = false;
+		impl_->try_receive_pending();
+	}
+
+	void cork (const net::socket_write_tag &) noexcept
+	{
+		impl_->send.corked = true;
+	}
+
+	void uncork (const net::socket_write_tag &) noexcept
+	{
+		impl_->send.corked = false;
+		impl_->try_send_pending();
+	}
+
+	template <typename MutableSpanSequence, typename CompletionHandler>
+	void receive_from (not_null<task *> task,
+		const MutableSpanSequence &spans,
+		endpoint_type &sender,
+		net::socket_base::message_flags flags,
+		CompletionHandler &&completion_handler) noexcept
+	{
+		auto &io = task->emplace<__impl::receive>(std::move(completion_handler), spans);
+		if (impl_->can_start(task, io))
+		{
+			io.message.name(sender.data(), sender.capacity());
+			io.message.flags(flags);
+			impl_->start(task, io, impl_->receive);
+		}
+	}
+
+	template <typename MutableSpanSequence, typename CompletionHandler>
+	void receive_from (not_null<task *> task,
+		const MutableSpanSequence &spans,
+		endpoint_type &sender,
+		CompletionHandler &&completion_handler) noexcept
+	{
+		static constexpr net::socket_base::message_flags flags{};
+		receive_from(task, spans, sender, flags, std::move(completion_handler));
+	}
+
+	template <typename MutableSpanSequence, typename CompletionHandler>
+	void receive (not_null<task *> task,
+		const MutableSpanSequence &spans,
+		net::socket_base::message_flags flags,
+		CompletionHandler &&completion_handler) noexcept
+	{
+		auto &io = task->emplace<__impl::receive>(std::move(completion_handler), spans);
+		if (impl_->can_start(task, io))
+		{
+			io.message.flags(flags);
+			impl_->start(task, io, impl_->receive);
+		}
+	}
+
+	template <typename MutableSpanSequence, typename CompletionHandler>
+	void receive (not_null<task *> task,
+		const MutableSpanSequence &spans,
+		CompletionHandler &&completion_handler) noexcept
+	{
+		static constexpr net::socket_base::message_flags flags{};
+		receive(task, spans, flags, std::move(completion_handler));
+	}
+
+	template <typename ConstSpanSequence, typename CompletionHandler>
+	void send_to (not_null<task *> task,
+		const ConstSpanSequence &spans,
+		const endpoint_type &recipient,
+		net::socket_base::message_flags flags,
+		CompletionHandler &&completion_handler) noexcept
+	{
+		auto &io = task->emplace<__impl::send>(std::move(completion_handler), spans);
+		if (impl_->can_start(task, io))
+		{
+			io.message.name(recipient.data(), recipient.size());
+			io.message.flags(flags);
+			impl_->start(task, io, impl_->send);
+		}
+	}
+
+	template <typename ConstSpanSequence, typename CompletionHandler>
+	void send_to (not_null<task *> task,
+		const ConstSpanSequence &spans,
+		const endpoint_type &recipient,
+		CompletionHandler &&completion_handler) noexcept
+	{
+		static constexpr net::socket_base::message_flags flags{};
+		send_to(task, spans, recipient, flags, std::move(completion_handler));
+	}
+
+	template <typename ConstSpanSequence, typename CompletionHandler>
+	void send (not_null<task *> task,
+		const ConstSpanSequence &spans,
+		net::socket_base::message_flags flags,
+		CompletionHandler &&completion_handler) noexcept
+	{
+		auto &io = task->emplace<__impl::send>(std::move(completion_handler), spans);
+		if (impl_->can_start(task, io))
+		{
+			io.message.flags(flags);
+			impl_->start(task, io, impl_->send);
+		}
+	}
+
+	template <typename ConstSpanSequence, typename CompletionHandler>
+	void send (not_null<task *> task,
+		const ConstSpanSequence &spans,
+		CompletionHandler &&completion_handler) noexcept
+	{
+		static constexpr net::socket_base::message_flags flags{};
+		send(task, spans, flags, std::move(completion_handler));
+	}
+
+protected:
+
+	__impl::socket_ptr impl_;
+	net::basic_datagram_socket<Protocol> socket_;
+
+	handle (__impl::socket_ptr &&impl, net::basic_datagram_socket<Protocol> &&socket) noexcept
+		: impl_{std::move(impl)}
+		, socket_{std::move(socket)}
+	{ }
+
+	friend class event_loop;
+};
+
+} // namespace pal::async

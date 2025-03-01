@@ -1,0 +1,88 @@
+#pragma once // -*- C++ -*-
+
+/**
+ * \file pal/async/task
+ */
+
+#include <pal/intrusive_queue>
+
+namespace pal::async {
+
+class task
+{
+public:
+
+	intrusive_queue_hook<task> next{};
+
+	const void *data () const noexcept
+	{
+		return impl_;
+	}
+
+	void *data () noexcept
+	{
+		return impl_;
+	}
+
+	size_t size () const noexcept
+	{
+		return impl_size_;
+	}
+
+private:
+
+	std::byte storage_[256] = {};
+	void *impl_ = nullptr;
+	size_t impl_size_ = 0;
+
+	struct handler_api
+	{
+		virtual ~handler_api () noexcept = default;
+		virtual void completed (task *) noexcept = 0;
+	};
+
+	template <typename T, typename F>
+	struct handler_impl: handler_api
+	{
+		T impl;
+		F on_completion;
+
+		template <typename... Args>
+		handler_impl (F &&on_completion, Args &&...args) noexcept
+			: impl{std::forward<Args>(args)...}
+			, on_completion{std::move(on_completion)}
+		{ }
+
+		void completed (task *task) noexcept final override
+		{
+			impl.completed(task, on_completion);
+		}
+	};
+
+	template <typename T, typename F, typename... Args>
+	T &emplace (F &&on_completion, Args &&...args)
+	{
+		using impl_type = handler_impl<T, F>;
+		static_assert(sizeof(impl_type) <= sizeof(storage_));
+		auto p = new(storage_) impl_type{std::move(on_completion), std::forward<Args>(args)...};
+		impl_ = &p->impl;
+		impl_size_ = sizeof(p->impl);
+		return p->impl;
+	}
+
+	void completed () noexcept
+	{
+		auto *handler = reinterpret_cast<handler_api *>(storage_);
+		handler->completed(this);
+		handler->~handler_api();
+		impl_ = nullptr;
+		impl_size_ = 0;
+	}
+
+	friend class event_loop;
+	template <typename T> friend class handle;
+};
+
+using task_queue = intrusive_queue<&task::next>;
+
+} // namespace pal::async

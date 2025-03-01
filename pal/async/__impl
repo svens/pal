@@ -1,0 +1,174 @@
+#pragma once // -*- C++ -*-
+
+#include <pal/version>
+
+#define __pal_async_epoll 0
+#define __pal_async_iocp 0
+#define __pal_async_kqueue 0
+
+#if __pal_os_linux
+	#undef __pal_async_epoll
+	#define __pal_async_epoll 1
+#elif __pal_os_macos
+	#undef __pal_async_kqueue
+	#define __pal_async_kqueue 1
+#elif __pal_os_windows
+	#undef __pal_async_iocp
+	#define __pal_async_iocp 1
+#endif
+
+#include <pal/async/task>
+#include <pal/net/socket_base>
+#include <chrono>
+#include <memory>
+
+namespace pal::async::__impl {
+
+using clock_type = std::chrono::steady_clock;
+
+struct event_loop;
+using event_loop_ptr = std::unique_ptr<event_loop>;
+
+struct socket;
+using socket_ptr = std::unique_ptr<socket>;
+
+struct event_loop // {{{1
+{
+	static constexpr size_t max_poll_events = 256;
+
+	#if __pal_async_epoll || __pal_async_kqueue
+		int handle;
+	#elif __pal_async_iocp
+		HANDLE handle;
+	#endif
+
+	task_queue completed{};
+
+	event_loop (std::error_code &error) noexcept;
+	~event_loop () noexcept;
+
+	result<socket_ptr> add_socket (const net::native_socket &native_socket_handle) noexcept;
+
+	void poll (const std::chrono::milliseconds &duration) noexcept;
+};
+
+struct task_base //{{{1
+{
+	#if __pal_async_iocp
+		::WSAOVERLAPPED overlapped{};
+		task *owner = nullptr;
+		int kind = 0;
+	#endif
+};
+
+struct io_task: task_base ///{{{1
+{
+	static constexpr int kind_value = __LINE__;
+
+	net::__socket::message message{};
+	pal::result<size_t> result{};
+
+	template <typename SpanSequence>
+	io_task (const SpanSequence &spans) noexcept
+	{
+		if (!message.set(spans))
+		{
+			result = make_unexpected(std::errc::invalid_argument);
+		}
+	}
+
+	template <typename F>
+	void completed (task *task, F &callback) noexcept
+	{
+		if constexpr (requires{callback(task, std::move(result), message.msg_flags);})
+		{
+			callback(task, std::move(result), message.msg_flags);
+		}
+		else
+		{
+			callback(task, std::move(result));
+		}
+	}
+};
+
+struct socket //{{{1
+{
+	event_loop &loop;
+
+	// actual owner is async::handle<> that ensures handle will be closed
+	net::native_socket_handle::value_type handle{};
+
+	struct
+	{
+		task_queue pending{};
+		bool corked = false;
+	} send{}, receive{};
+
+	~socket () noexcept
+	{
+		auto error = make_unexpected(std::errc::bad_file_descriptor);
+		cancel(send.pending, error);
+		cancel(receive.pending, error);
+	}
+
+	bool can_start (task *task, auto &io) noexcept
+	{
+		if (io.result.has_value())
+		{
+			if constexpr (os == os_type::windows)
+			{
+				io.owner = task;
+				io.kind = io.kind_value;
+			}
+			return true;
+		}
+		loop.completed.push(task);
+		return false;
+	}
+
+	void start (task *task, auto &io, auto &queue) noexcept
+	{
+		if (queue.corked || !queue.pending.empty())
+		{
+			queue.pending.push(task);
+		}
+		else if (!io.execute(*this))
+		{
+			if constexpr (os != os_type::windows)
+			{
+				queue.pending.push(task);
+			}
+			// else: pending task ownership goes to IOCP
+		}
+		else
+		{
+			loop.completed.push(task);
+		}
+	}
+
+	void try_send_pending () noexcept;
+	void try_receive_pending () noexcept;
+
+	void cancel (task_queue &pending, const unexpected<std::error_code> &error) noexcept
+	{
+		while (auto *task = pending.try_pop())
+		{
+			static_cast<io_task *>(task->data())->result = error;
+			loop.completed.push(task);
+		}
+	}
+};
+
+struct receive: io_task
+{
+	bool execute (socket &socket) noexcept;
+};
+
+struct send: io_task
+{
+	bool execute (socket &socket) noexcept;
+};
+
+// }}}1
+
+} // namespace pal::async::__impl

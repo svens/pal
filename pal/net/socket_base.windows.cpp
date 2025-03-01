@@ -88,42 +88,6 @@ namespace {
 
 const auto &lib_init = init();
 
-} // namespace
-
-result<native_socket> open (int family, int type, int protocol) noexcept
-{
-	if (auto h = ::socket(family, type, protocol); h != native_socket_handle::invalid)
-	{
-		return native_socket_handle{h, family};
-	}
-
-	// Library public API deals with Protocol types/instances, translate
-	// invalid argument(s) to std::errc::protocol_not_supported
-	auto error = ::WSAGetLastError();
-	if (error == WSAESOCKTNOSUPPORT)
-	{
-		error = WSAEPROTONOSUPPORT;
-	}
-
-	return __socket::sys_error(error);
-}
-
-void native_socket_close::operator() (pointer socket) const noexcept
-{
-	::closesocket(socket->handle);
-}
-
-result<void> native_socket_handle::bind (const void *endpoint, size_t endpoint_size) const noexcept
-{
-	if (::bind(handle, static_cast<const sockaddr *>(endpoint), static_cast<int>(endpoint_size)) == 0)
-	{
-		return {};
-	}
-	return __socket::sys_error();
-}
-
-namespace {
-
 bool make_any (int family, void *endpoint, int *endpoint_size) noexcept
 {
 	int size = 0;
@@ -176,6 +140,38 @@ __socket::handle_type init (__socket::handle_type h, int type) noexcept
 }
 
 } // namespace
+
+result<native_socket> open (int family, int type, int protocol) noexcept
+{
+	if (auto h = ::socket(family, type, protocol); h != native_socket_handle::invalid)
+	{
+		return native_socket_handle{init(h, type), family};
+	}
+
+	// Library public API deals with Protocol types/instances, translate
+	// invalid argument(s) to std::errc::protocol_not_supported
+	auto error = ::WSAGetLastError();
+	if (error == WSAESOCKTNOSUPPORT)
+	{
+		error = WSAEPROTONOSUPPORT;
+	}
+
+	return __socket::sys_error(error);
+}
+
+void native_socket_close::operator() (pointer socket) const noexcept
+{
+	::closesocket(socket->handle);
+}
+
+result<void> native_socket_handle::bind (const void *endpoint, size_t endpoint_size) const noexcept
+{
+	if (::bind(handle, static_cast<const sockaddr *>(endpoint), static_cast<int>(endpoint_size)) == 0)
+	{
+		return {};
+	}
+	return __socket::sys_error();
+}
 
 result<void> native_socket_handle::listen (int backlog) const noexcept
 {

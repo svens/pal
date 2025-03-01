@@ -1,0 +1,105 @@
+#pragma once // -*- C++ -*-
+
+/**
+ * \file pal/async/event_loop
+ * TODO
+ */
+
+#include <pal/async/__impl>
+#include <pal/async/fwd>
+#include <pal/result>
+#include <chrono>
+
+namespace pal::async {
+
+class event_loop
+{
+public:
+
+	/// Clock type used in polling and deferred posting methods
+	using clock_type = std::chrono::steady_clock;
+
+	/// Return current time point. This method returns reference to
+	/// internal attribute that is updated only during invocation of run()
+	/// or one of its variants.
+	const clock_type::time_point &now () const noexcept
+	{
+		return now_;
+	}
+
+	/// todo
+	template <typename T>
+	result<handle<T>> make_handle (T &&value) noexcept
+	{
+		if constexpr (requires{value.connect({});})
+		{
+			return impl_->add_socket(value.native_socket()).and_then([&](auto &&socket) -> result<handle<T>>
+			{
+				return handle<T>{std::move(socket), std::move(value)};
+			});
+		}
+		else if constexpr (requires{value.accept();})
+		{
+			// add_acceptor
+		}
+		else
+		{
+			return handle<T>{std::move(value)};
+		}
+	}
+
+	/// Run completion handler for all completed asynchronous tasks.
+	///
+	/// If there are no completed tasks available, suspends calling thread
+	/// up to \a poll_duration until any pending task is completed.
+	void run_for (const clock_type::duration &poll_duration) noexcept
+	{
+		run(std::chrono::duration_cast<std::chrono::milliseconds>(poll_duration));
+	}
+
+	/// \copybrief run_for()
+	///
+	/// If there are no completed tasks available, returns immediately.
+	void run_once () noexcept
+	{
+		run(std::chrono::milliseconds::zero());
+	}
+
+	/// \copybrief run_for()
+	///
+	/// If there are no completed tasks available, suspends calling thread
+	/// until any pending task is completed.
+	void run () noexcept
+	{
+		run((std::chrono::milliseconds::max)());
+	}
+
+private:
+
+	__impl::event_loop_ptr impl_;
+	clock_type::time_point now_ = clock_type::now();
+
+	event_loop (__impl::event_loop_ptr &&impl) noexcept
+		: impl_{std::move(impl)}
+	{ }
+
+	void run (std::chrono::milliseconds duration) noexcept;
+	void notify_completions () noexcept;
+
+	friend result<event_loop> make_loop () noexcept;
+};
+
+inline result<event_loop> make_loop () noexcept
+{
+	auto error = std::make_error_code(std::errc::not_enough_memory);
+	if (auto impl = new(std::nothrow) __impl::event_loop{error})
+	{
+		if (!error)
+		{
+			return event_loop{__impl::event_loop_ptr{impl}};
+		}
+	}
+	return unexpected{error};
+}
+
+} // namespace pal::async

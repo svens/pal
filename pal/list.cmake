@@ -47,5 +47,6 @@ list(APPEND pal_test_sources
 	pal/span.test.cpp
 )
 
+include(pal/async/list.cmake)
 include(pal/crypto/list.cmake)
 include(pal/net/list.cmake)
