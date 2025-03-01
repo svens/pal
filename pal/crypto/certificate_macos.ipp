@@ -13,6 +13,7 @@
 #include <Security/SecImportExport.h>
 #include <Security/SecItem.h>
 #include <Security/SecKey.h>
+#include <algorithm>
 
 namespace pal::crypto {
 

@@ -29,10 +29,10 @@ jobs:
       run: |
         case "${{matrix.host}}-${{matrix.toolchain}}" in
           *-gcc)
-            export CC=gcc-13 CXX=g++-13
+            export CC=gcc-14 CXX=g++-14
             ;;
           ubuntu-clang)
-            export CC=clang-15 CXX=clang++-15
+            export CC=clang-18 CXX=clang++-18
             ;;
         esac
         case "${{matrix.host}}" in
@@ -43,7 +43,7 @@ jobs:
           ubuntu)
             sudo add-apt-repository --yes ppa:ubuntu-toolchain-r/test
             sudo apt-get update --yes
-            sudo apt-get install --yes g++-13 ninja-build
+            sudo apt-get install --yes g++-14 ninja-build
             cmake . -G Ninja -DCMAKE_BUILD_TYPE=${{matrix.build_type}}
             ;;
           windows)
@@ -70,12 +70,12 @@ jobs:
       run: |
         sudo add-apt-repository --yes ppa:ubuntu-toolchain-r/test
         sudo apt-get update --yes
-        sudo apt-get install --yes g++-13 ninja-build
+        sudo apt-get install --yes g++-14 ninja-build
         curl -Ls https://github.com/linux-test-project/lcov/releases/download/v1.15/lcov-1.15.tar.gz \
           | gunzip -c \
           | tar xvf -
         sudo make -C lcov-1.15 install
-        CC=gcc-13 CXX=g++-13 COV=gcov-13 cmake . -G Ninja -DCMAKE_BUILD_TYPE=Coverage
+        CC=gcc-14 CXX=g++-14 COV=gcov-14 cmake . -G Ninja -DCMAKE_BUILD_TYPE=Coverage
 
     - name: Generate test coverage
       run: cmake --build . --target pal_test-cov
