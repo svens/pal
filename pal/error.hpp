@@ -1,0 +1,54 @@
+#pragma once
+
+/**
+ * \file pal/error.hpp
+ * PAL errors
+ */
+
+#include <system_error>
+
+namespace pal
+{
+
+#define __pal_errc(Impl) \
+	Impl(__0, "internal placeholder for not an error") \
+	Impl(cancelled, "cancelled")
+
+/// PAL errors
+enum class errc : int
+{
+#define __pal_errc_enum(Code, Message) Code,
+	__pal_errc(__pal_errc_enum)
+#undef __pal_errc_enum
+};
+
+/// Return PAL error category. The \c name() virtual function returns "pal".
+const std::error_category &error_category () noexcept;
+
+/// Make \c std::error_code from error code \a ec
+inline std::error_code make_error_code (errc ec) noexcept
+{
+	return {static_cast<int>(ec), error_category()};
+}
+
+namespace this_thread
+{
+
+/// Return last thread-specific system error
+/// - Linux/MacOS: errno + std::generic_category
+/// - Windows: GetLastError() + std::system_category
+std::error_code last_system_error () noexcept;
+
+} // namespace this_thread
+
+} // namespace pal
+
+namespace std
+{
+
+template <>
+struct is_error_code_enum<pal::errc>: true_type
+{
+};
+
+} // namespace std

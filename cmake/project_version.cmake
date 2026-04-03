@@ -1,0 +1,36 @@
+find_package(Git)
+if(GIT_FOUND)
+	execute_process(
+		COMMAND ${GIT_EXECUTABLE} describe --match "v[0-9]*.[0-9]*.[0-9]*" --always --tags --dirty
+		WORKING_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR}
+		OUTPUT_VARIABLE PROJECT_VERSION
+	)
+endif()
+
+if(PROJECT_VERSION)
+	# v{VERSION}-{N}-g{HASH} -> {VERSION}-{HASH}
+	string(STRIP ${PROJECT_VERSION} PROJECT_VERSION)
+	string(REGEX
+		REPLACE "^v?([0-9]*.[0-9]*.[0-9]*)-[0-9]+-g([0-9a-f]*)" "\\1-\\2"
+		PROJECT_VERSION
+		${PROJECT_VERSION}
+	)
+	string(REGEX
+		REPLACE "^v(.*)" "\\1"
+		PROJECT_VERSION
+		${PROJECT_VERSION}
+	)
+	string(REGEX REPLACE "[\.-]" ";" PROJECT_VERSION_LIST ${PROJECT_VERSION})
+else()
+	set(PROJECT_VERSION "0.0.0")
+	set(PROJECT_VERSION_LIST 0;0;0)
+endif()
+
+list(LENGTH PROJECT_VERSION_LIST _version_components)
+if(${_version_components} LESS 3)
+	set(PROJECT_VERSION_LIST 0;0;0;${PROJECT_VERSION_LIST})
+endif()
+
+list(GET PROJECT_VERSION_LIST 0 PROJECT_VERSION_MAJOR)
+list(GET PROJECT_VERSION_LIST 1 PROJECT_VERSION_MINOR)
+list(GET PROJECT_VERSION_LIST 2 PROJECT_VERSION_PATCH)

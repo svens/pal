@@ -1,0 +1,116 @@
+{
+	"version": 6,
+	"configurePresets": [
+		{
+			"name": "default",
+			"hidden": true,
+			"generator": "Ninja",
+			"binaryDir": "${sourceDir}/.build/${presetName}",
+			"cacheVariables": {
+				"CMAKE_EXPORT_COMPILE_COMMANDS": "ON"
+			}
+		},
+		{
+			"name": "gcc-debug",
+			"inherits": "default",
+			"cacheVariables": {
+				"CMAKE_CXX_COMPILER": "g++",
+				"CMAKE_BUILD_TYPE": "Debug"
+			}
+		},
+		{
+			"name": "gcc-release",
+			"inherits": "default",
+			"cacheVariables": {
+				"CMAKE_CXX_COMPILER": "g++",
+				"CMAKE_BUILD_TYPE": "Release"
+			}
+		},
+		{
+			"name": "clang-debug",
+			"inherits": "default",
+			"cacheVariables": {
+				"CMAKE_CXX_COMPILER": "clang++",
+				"CMAKE_BUILD_TYPE": "Debug"
+			}
+		},
+		{
+			"name": "clang-release",
+			"inherits": "default",
+			"cacheVariables": {
+				"CMAKE_CXX_COMPILER": "clang++",
+				"CMAKE_BUILD_TYPE": "Release"
+			}
+		}
+	],
+	"buildPresets": [
+		{
+			"name": "gcc-debug",
+			"configurePreset": "gcc-debug"
+		},
+		{
+			"name": "gcc-release",
+			"configurePreset": "gcc-release"
+		},
+		{
+			"name": "clang-debug",
+			"configurePreset": "clang-debug"
+		},
+		{
+			"name": "clang-release",
+			"configurePreset": "clang-release"
+		}
+	],
+	"testPresets": [
+		{
+			"name": "gcc-debug",
+			"configurePreset": "gcc-debug"
+		},
+		{
+			"name": "gcc-release",
+			"configurePreset": "gcc-release"
+		},
+		{
+			"name": "clang-debug",
+			"configurePreset": "clang-debug"
+		},
+		{
+			"name": "clang-release",
+			"configurePreset": "clang-release"
+		}
+	],
+	"workflowPresets": [
+		{
+			"name": "gcc-debug",
+			"steps": [
+				{ "type": "configure", "name": "gcc-debug" },
+				{ "type": "build", "name": "gcc-debug" },
+				{ "type": "test", "name": "gcc-debug" }
+			]
+		},
+		{
+			"name": "gcc-release",
+			"steps": [
+				{ "type": "configure", "name": "gcc-release" },
+				{ "type": "build", "name": "gcc-release" },
+				{ "type": "test", "name": "gcc-release" }
+			]
+		},
+		{
+			"name": "clang-debug",
+			"steps": [
+				{ "type": "configure", "name": "clang-debug" },
+				{ "type": "build", "name": "clang-debug" },
+				{ "type": "test", "name": "clang-debug" }
+			]
+		},
+		{
+			"name": "clang-release",
+			"steps": [
+				{ "type": "configure", "name": "clang-release" },
+				{ "type": "build", "name": "clang-release" },
+				{ "type": "test", "name": "clang-release" }
+			]
+		}
+	]
+}

@@ -1,0 +1,142 @@
+ColumnLimit: 120
+
+# Indentation
+AccessModifierOffset: -8
+ConstructorInitializerIndentWidth: 8
+ContinuationIndentWidth: 8
+IndentAccessModifiers: false
+IndentCaseLabels: true
+IndentPPDirectives: BeforeHash
+IndentWidth: 8
+TabWidth: 8
+UseTab: Always
+
+# Braces
+BreakBeforeBraces: Allman
+
+# Line breaking
+AlignAfterOpenBracket: AlwaysBreak
+AlignEscapedNewlines: DontAlign
+AlignOperands: DontAlign
+BreakBeforeBinaryOperators: NonAssignment
+BreakBeforeCloseBracketFunction: true
+BreakBeforeTemplateCloser: true
+BreakConstructorInitializers: BeforeComma
+BreakInheritanceList: BeforeComma
+BreakTemplateDeclarations: Yes
+PackConstructorInitializers: Never
+
+# Packing
+BinPackArguments: false
+BinPackParameters: OnePerLine
+
+# Short constructs
+AllowShortEnumsOnASingleLine: false
+AllowShortFunctionsOnASingleLine: None
+AllowShortLambdasOnASingleLine: None
+
+# Spaces
+EmptyLineAfterAccessModifier: Always
+SpaceBeforeInheritanceColon: false
+SpaceBeforeParens: Custom
+SpaceBeforeParensOptions:
+  AfterControlStatements: true
+  AfterForeachMacros: true
+  AfterFunctionDeclarationName: true
+  AfterFunctionDefinitionName: true
+  AfterIfMacros: true
+  AfterOverloadedOperator: true
+SpaceBeforeRangeBasedForLoopColon: false
+
+# Macros
+SkipMacroDefinitionBody: true
+
+# Includes
+SortIncludes: Never
+
+# TODO: clang-format limitations (revisit with future versions)
+#
+# 1. Preprocessor directives can't be indented to surrounding code scope
+#    Wanted:
+#      void foo ()
+#      {
+#              #if __cond
+#              {
+#                      bar();
+#              }
+#              #endif
+#      }
+#    Gets:
+#      void foo ()
+#      {
+#      #if __cond
+#              {
+#                      bar();
+#              }
+#      #endif
+#      }
+#
+# 2. Binary expression chains can't force one-operand-per-line
+#    Wanted:
+#      constexpr bool v =
+#              std::is_constructible_v<U, UF>
+#              && !std::is_constructible_v<T, result<U> &>
+#              && !std::is_constructible_v<T, result<U>>
+#    Gets (when first two fit in column limit):
+#      constexpr bool v =
+#              std::is_constructible_v<U, UF> && !std::is_constructible_v<T, result<U> &>
+#              && !std::is_constructible_v<T, result<U>>
+#
+# 3. Trailing semicolon can't be placed on its own line
+#    Wanted:
+#      auto y = condition
+#              ? true_value
+#              : false_value
+#      ;
+#    Gets:
+#      auto y = condition
+#              ? true_value
+#              : false_value;
+#
+# 4. Nested designated initializers break after '='
+#    Wanted:
+#      auto nested = Outer{
+#              .inner = Inner{
+#                      .value = 42,
+#              },
+#      };
+#    Gets:
+#      auto nested = Outer{
+#              .inner =
+#                      Inner{
+#                              .value = 42,
+#                      },
+#      };
+#
+# 5. Data array row structure not preserved (repacked to column limit)
+#    Wanted:
+#      uint8_t data[] = {
+#              0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF,
+#              0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF,
+#      };
+#    Gets: repacked to fit column limit (use // clang-format off)
+#
+# 6. Lambda capture vs function name: can't have different space rules
+#    Wanted: foo () but [](int x)
+#    Gets:   foo () and [] (int x)
+#    (AfterFunctionDefinitionName applies to both)
+#
+# 7. Requires expression braces: Allman style not applied
+#    Wanted:
+#      concept hashable = requires(T a)
+#      {
+#              { std::hash<T>{}(a) } -> std::convertible_to<std::size_t>;
+#      };
+#    Gets:
+#      concept hashable = requires(T a) {
+#              { std::hash<T>{}(a) } -> std::convertible_to<std::size_t>;
+#      };
+#
+# 8. Enum base type colon: no option to remove space
+#    Wanted: enum errc: int
+#    Gets:   enum errc : int
