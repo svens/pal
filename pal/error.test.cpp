@@ -34,8 +34,9 @@ TEST_CASE("error")
 
 	SECTION("unknown")
 	{
-		std::error_code ec =
-			static_cast<pal::errc>((std::numeric_limits<std::underlying_type_t<pal::errc>>::max)());
+		std::error_code ec = static_cast<pal::errc>(
+			(std::numeric_limits<std::underlying_type_t<pal::errc>>::max)()
+		);
 		CHECK(ec.message() == "unknown");
 		CHECK(ec.category() == pal::error_category());
 		CHECK(ec.category().name() == std::string{"pal"});

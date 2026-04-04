@@ -28,5 +28,4 @@ if(PROJECT_IS_TOP_LEVEL)
 		add_executable(pal_bench ${pal_bench_sources})
 		target_link_libraries(pal_bench PRIVATE cxx_bench pal::pal)
 	endif()
-
 endif()
