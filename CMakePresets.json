@@ -41,6 +41,15 @@
 				"CMAKE_CXX_COMPILER": "clang++",
 				"CMAKE_BUILD_TYPE": "Release"
 			}
+		},
+		{
+			"name": "gcc-coverage",
+			"inherits": "default",
+			"cacheVariables": {
+				"CMAKE_CXX_COMPILER": "g++",
+				"CMAKE_BUILD_TYPE": "Debug",
+				"CMAKE_CXX_FLAGS": "--coverage"
+			}
 		}
 	],
 	"buildPresets": [
@@ -59,6 +68,10 @@
 		{
 			"name": "clang-release",
 			"configurePreset": "clang-release"
+		},
+		{
+			"name": "gcc-coverage",
+			"configurePreset": "gcc-coverage"
 		}
 	],
 	"testPresets": [
@@ -77,6 +90,10 @@
 		{
 			"name": "clang-release",
 			"configurePreset": "clang-release"
+		},
+		{
+			"name": "gcc-coverage",
+			"configurePreset": "gcc-coverage"
 		}
 	],
 	"workflowPresets": [
@@ -110,6 +127,14 @@
 				{ "type": "configure", "name": "clang-release" },
 				{ "type": "build", "name": "clang-release" },
 				{ "type": "test", "name": "clang-release" }
+			]
+		},
+		{
+			"name": "gcc-coverage",
+			"steps": [
+				{ "type": "configure", "name": "gcc-coverage" },
+				{ "type": "build", "name": "gcc-coverage" },
+				{ "type": "test", "name": "gcc-coverage" }
 			]
 		}
 	]

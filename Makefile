@@ -1,28 +1,44 @@
-## Build and test all
+#help|all|Build and test all
 all: gcc-debug gcc-release clang-debug clang-release
 
-## Build and test gcc-debug
+#help|gcc-debug|Build and test gcc-debug
 gcc-debug:
 	cmake --workflow --preset $@
 
-## Build and test gcc-release
+#help|gcc-release|Build and test gcc-release
 gcc-release:
 	cmake --workflow --preset $@
 
-## Build and test clang-debug
+#help|clang-debug|Build and test clang-debug
 clang-debug:
 	cmake --workflow --preset $@
 
-## Build and test clang-release
+#help|clang-release|Build and test clang-release
 clang-release:
 	cmake --workflow --preset $@
 
-## Format sources
+#help|coverage|Generate coverage report
+coverage:
+	cmake --workflow --preset gcc-coverage
+	@mkdir -p .build/gcc-coverage/coverage
+	gcovr .build/gcc-coverage \
+		--filter pal/ \
+		-e '.*\.test\.cpp$$' \
+		-e '.*\.bench\.cpp$$' \
+		-e '.*/test\.(cpp|hpp)$$' \
+		--html-details .build/gcc-coverage/coverage/index.html
+	@echo "Coverage report: .build/gcc-coverage/coverage/index.html"
+
+#help|format|Format sources
 format:
 	find pal -name '*.hpp' -o -name '*.cpp' | xargs clang-format -i
 
-## Show available targets
-help:
-	@awk '/^## /{desc=substr($$0,4)} /^[a-zA-Z_-]+:/{if(desc){sub(/:$$/,"",$$1);printf "  %-16s %s\n",$$1,desc;desc=""}}' $(MAKEFILE_LIST)
+#help|format-check|Check formatting (dry-run)
+format-check:
+	find pal -name '*.hpp' -o -name '*.cpp' | xargs clang-format --dry-run --Werror
 
-.PHONY: all gcc-debug gcc-release clang-debug clang-release format help
+#help|help|Show available targets
+help:
+	@grep '^#help|' $(MAKEFILE_LIST) | awk -F'|' '{printf "  %-16s %s\n", $$2, $$3}'
+
+.PHONY: all gcc-debug gcc-release clang-debug clang-release coverage format format-check help
