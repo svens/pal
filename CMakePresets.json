@@ -50,6 +50,15 @@
 				"CMAKE_BUILD_TYPE": "Debug",
 				"CMAKE_CXX_FLAGS": "--coverage"
 			}
+		},
+		{
+			"name": "gcc-sanitize",
+			"inherits": "default",
+			"cacheVariables": {
+				"CMAKE_CXX_COMPILER": "g++",
+				"CMAKE_BUILD_TYPE": "Debug",
+				"CMAKE_CXX_FLAGS": "-fsanitize=address,undefined -fno-omit-frame-pointer"
+			}
 		}
 	],
 	"buildPresets": [
@@ -72,6 +81,10 @@
 		{
 			"name": "gcc-coverage",
 			"configurePreset": "gcc-coverage"
+		},
+		{
+			"name": "gcc-sanitize",
+			"configurePreset": "gcc-sanitize"
 		}
 	],
 	"testPresets": [
@@ -94,6 +107,10 @@
 		{
 			"name": "gcc-coverage",
 			"configurePreset": "gcc-coverage"
+		},
+		{
+			"name": "gcc-sanitize",
+			"configurePreset": "gcc-sanitize"
 		}
 	],
 	"workflowPresets": [
@@ -135,6 +152,14 @@
 				{ "type": "configure", "name": "gcc-coverage" },
 				{ "type": "build", "name": "gcc-coverage" },
 				{ "type": "test", "name": "gcc-coverage" }
+			]
+		},
+		{
+			"name": "gcc-sanitize",
+			"steps": [
+				{ "type": "configure", "name": "gcc-sanitize" },
+				{ "type": "build", "name": "gcc-sanitize" },
+				{ "type": "test", "name": "gcc-sanitize" }
 			]
 		}
 	]

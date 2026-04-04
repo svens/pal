@@ -1,23 +1,40 @@
-#help|all|Build and test all
+.PHONY: all # Build and test all
 all: gcc-debug gcc-release clang-debug clang-release
 
-#help|gcc-debug|Build and test gcc-debug
+.PHONY: gcc-debug # Build and test gcc-debug
 gcc-debug:
 	cmake --workflow --preset $@
 
-#help|gcc-release|Build and test gcc-release
+.PHONY: gcc-release # Build and test gcc-release
 gcc-release:
 	cmake --workflow --preset $@
 
-#help|clang-debug|Build and test clang-debug
+.PHONY: clang-debug # Build and test clang-debug
 clang-debug:
 	cmake --workflow --preset $@
 
-#help|clang-release|Build and test clang-release
+.PHONY: clang-release # Build and test clang-release
 clang-release:
 	cmake --workflow --preset $@
 
-#help|coverage|Generate coverage report
+.PHONY: sanitize # Build and test with ASan/UBSan
+sanitize:
+	cmake --workflow --preset gcc-sanitize
+
+.PHONY: tidy # Run clang-tidy
+tidy:
+	cmake --preset clang-debug
+	cmake --build --preset clang-debug --target tidy
+
+.PHONY: format # Format sources
+format:
+	find pal -name '*.hpp' -o -name '*.cpp' | xargs clang-format -i
+
+.PHONY: format-check # Check formatting (dry-run)
+format-check:
+	find pal -name '*.hpp' -o -name '*.cpp' | xargs clang-format --dry-run --Werror
+
+.PHONY: coverage # Generate coverage report
 coverage:
 	cmake --workflow --preset gcc-coverage
 	@mkdir -p .build/gcc-coverage/coverage
@@ -29,21 +46,6 @@ coverage:
 		--html-details .build/gcc-coverage/coverage/index.html
 	@echo "Coverage report: .build/gcc-coverage/coverage/index.html"
 
-#help|tidy|Run clang-tidy
-tidy:
-	cmake --preset clang-debug
-	cmake --build --preset clang-debug --target tidy
-
-#help|format|Format sources
-format:
-	find pal -name '*.hpp' -o -name '*.cpp' | xargs clang-format -i
-
-#help|format-check|Check formatting (dry-run)
-format-check:
-	find pal -name '*.hpp' -o -name '*.cpp' | xargs clang-format --dry-run --Werror
-
-#help|help|Show available targets
+.PHONY: help # Show available targets
 help:
-	@grep '^#help|' $(MAKEFILE_LIST) | awk -F'|' '{printf "  %-16s %s\n", $$2, $$3}'
-
-.PHONY: all gcc-debug gcc-release clang-debug clang-release coverage tidy format format-check help
+	@grep '^\.PHONY: .* # ' $(MAKEFILE_LIST) | awk -F' # ' '{sub(/\.PHONY: /,"",$$1); printf "  %-16s %s\n", $$1, $$2}'
