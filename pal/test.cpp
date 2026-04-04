@@ -1,4 +1,4 @@
-#if !defined(_CRT_SECURE_NO_WARNINGS)
+#ifndef _CRT_SECURE_NO_WARNINGS
 	#define _CRT_SECURE_NO_WARNINGS
 #endif
 #include <cstdlib>
@@ -6,6 +6,9 @@
 #include <pal/test.hpp>
 #include <pal/version.hpp>
 #include <catch2/catch_session.hpp>
+
+namespace
+{
 
 #if __pal_os_windows && __pal_build_debug
 
@@ -30,13 +33,15 @@ void set_report_hook ()
 
 #endif
 
+} // namespace
+
 int main (int argc, char *argv[])
 {
 	set_report_hook();
 	return Catch::Session().run(argc, argv);
 }
 
-bool pal_test::on_ci_impl ()
+bool pal_test::on_ci_impl () noexcept
 {
 	static const bool has_env = (std::getenv("CI") != nullptr);
 	return has_env;
@@ -64,10 +69,10 @@ void *operator new (size_t size, const std::nothrow_t &) noexcept
 
 void operator delete (void *ptr) noexcept
 {
-	return std::free(ptr);
+	std::free(ptr);
 }
 
 void operator delete (void *ptr, size_t) noexcept
 {
-	return std::free(ptr);
+	std::free(ptr);
 }

@@ -12,7 +12,7 @@ inline std::string case_name ()
 	return Catch::getResultCapture().getCurrentTestName();
 }
 
-bool on_ci_impl ();
+bool on_ci_impl () noexcept;
 inline const bool on_ci = on_ci_impl();
 
 struct bad_alloc_once

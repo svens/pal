@@ -31,12 +31,12 @@ const std::error_category &error_category () noexcept
 {
 	struct error_category_impl: std::error_category
 	{
-		const char *name () const noexcept final
+		[[nodiscard]] const char *name () const noexcept final
 		{
 			return "pal";
 		}
 
-		std::string message (int ec) const final
+		[[nodiscard]] std::string message (int ec) const final
 		{
 			return std::string{as_view(static_cast<errc>(ec))};
 		}

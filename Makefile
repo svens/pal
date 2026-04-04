@@ -29,6 +29,11 @@ coverage:
 		--html-details .build/gcc-coverage/coverage/index.html
 	@echo "Coverage report: .build/gcc-coverage/coverage/index.html"
 
+#help|tidy|Run clang-tidy
+tidy:
+	cmake --preset clang-debug
+	cmake --build --preset clang-debug --target tidy
+
 #help|format|Format sources
 format:
 	find pal -name '*.hpp' -o -name '*.cpp' | xargs clang-format -i
@@ -41,4 +46,4 @@ format-check:
 help:
 	@grep '^#help|' $(MAKEFILE_LIST) | awk -F'|' '{printf "  %-16s %s\n", $$2, $$3}'
 
-.PHONY: all gcc-debug gcc-release clang-debug clang-release coverage format format-check help
+.PHONY: all gcc-debug gcc-release clang-debug clang-release coverage tidy format format-check help

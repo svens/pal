@@ -14,6 +14,7 @@ target_include_directories(pal PUBLIC $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_D
 target_link_libraries(pal PRIVATE cxx_warnings)
 
 if(PROJECT_IS_TOP_LEVEL)
+	include(cmake/tidy.cmake)
 	include(cmake/test.cmake)
 
 	if(pal_test_sources)

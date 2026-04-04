@@ -2,10 +2,8 @@
 
 #include <cstddef>
 #include <cstdint>
-
-#if __has_include(<version>)
-	#include <version>
-#endif
+#include <string_view>
+#include <version>
 
 namespace pal
 {
@@ -14,7 +12,7 @@ namespace pal
 // project version
 //
 
-extern const char version[];
+extern const std::string_view version;
 extern const int version_major, version_minor, version_patch;
 
 //
@@ -54,13 +52,13 @@ constexpr build_type build =
 #define __pal_compiler_gcc 0
 #define __pal_compiler_msvc 0
 
-#if defined(__clang__)
+#ifdef __clang__
 	#undef __pal_compiler_clang
 	#define __pal_compiler_clang 1
-#elif defined(__GNUC__)
+#elifdef __GNUC__
 	#undef __pal_compiler_gcc
 	#define __pal_compiler_gcc 1
-#elif defined(_MSC_BUILD)
+#elifdef _MSC_BUILD
 	#undef __pal_compiler_msvc
 	#define __pal_compiler_msvc 1
 #else
@@ -92,10 +90,10 @@ constexpr compiler_type compiler =
 #define __pal_os_macos 0
 #define __pal_os_windows 0
 
-#if defined(__linux__)
+#ifdef __linux__
 	#undef __pal_os_linux
 	#define __pal_os_linux 1
-#elif defined(__APPLE__)
+#elifdef __APPLE__
 	#undef __pal_os_macos
 	#define __pal_os_macos 1
 #elif defined(_WIN32) || defined(_WIN64)

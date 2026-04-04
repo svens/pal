@@ -20,7 +20,7 @@ TEST_CASE("error")
 
 	SECTION("errc")
 	{
-		std::error_code ec = GENERATE(values({__pal_errc(__pal_errc_value)}));
+		const std::error_code ec = GENERATE(values({__pal_errc(__pal_errc_value)}));
 		CAPTURE(ec);
 
 		SECTION("message")
@@ -34,7 +34,8 @@ TEST_CASE("error")
 
 	SECTION("unknown")
 	{
-		std::error_code ec = static_cast<pal::errc>(
+		const std::error_code ec = static_cast<pal::errc>(
+			// NOLINTNEXTLINE(readability-redundant-parentheses) -- Windows max macro
 			(std::numeric_limits<std::underlying_type_t<pal::errc>>::max)()
 		);
 		CHECK(ec.message() == "unknown");
@@ -46,7 +47,7 @@ TEST_CASE("error")
 	{
 #if __pal_os_linux || __pal_os_macos
 		errno = ENOMEM;
-		auto &expected_category = std::generic_category();
+		const auto &expected_category = std::generic_category();
 #elif __pal_os_windows
 		SetLastError(ENOMEM);
 		auto &expected_category = std::system_category();

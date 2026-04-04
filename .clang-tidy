@@ -1,0 +1,16 @@
+Checks: >
+  -*,
+  bugprone-*,
+  misc-*,
+  modernize-*,
+  performance-*,
+  readability-*,
+  -bugprone-reserved-identifier,
+  -misc-include-cleaner,
+  -modernize-use-trailing-return-type,
+  -performance-enum-size,
+  -readability-identifier-length,
+  -readability-named-parameter,
+
+WarningsAsErrors: '*'
+HeaderFilterRegex: 'pal/.*\.hpp$'
