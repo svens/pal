@@ -6,6 +6,7 @@ configure_file(
 list(APPEND pal_sources ${CMAKE_CURRENT_BINARY_DIR}/version.cpp)
 
 list(APPEND pal_sources
+	pal/byte_order.hpp
 	pal/error.hpp
 	pal/error.cpp
 	pal/result.hpp
@@ -15,6 +16,7 @@ list(APPEND pal_sources
 list(APPEND pal_test_sources
 	pal/test.hpp
 	pal/test.cpp
+	pal/byte_order.test.cpp
 	pal/error.test.cpp
 	pal/result.test.cpp
 )

@@ -28,11 +28,11 @@ tidy:
 
 .PHONY: format # Format sources
 format:
-	find pal -name '*.hpp' -o -name '*.cpp' | xargs clang-format -i
+	clang-format -i pal/*pp pal/**/*pp
 
 .PHONY: format-check # Check formatting (dry-run)
 format-check:
-	find pal -name '*.hpp' -o -name '*.cpp' | xargs clang-format --dry-run --Werror
+	clang-format --dry-run --Werror pal/*pp pal/**/*pp
 
 .PHONY: coverage # Generate coverage report
 coverage:
