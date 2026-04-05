@@ -46,6 +46,18 @@ coverage:
 		--html-details .build/gcc-coverage/coverage/index.html
 	@echo "Coverage report: .build/gcc-coverage/coverage/index.html"
 
+.PHONY: bench-before # Run benchmarks (before) -> .build/bench-before.xml
+bench-before: check-bench-filter gcc-release
+	.build/gcc-release/pal_test $(FILTER) -r XML -o .build/bench-before.xml
+
+.PHONY: bench-after # Run benchmarks (after) -> .build/bench-after.xml
+bench-after: check-bench-filter gcc-release
+	.build/gcc-release/pal_test $(FILTER) -r XML -o .build/bench-after.xml
+
+.PHONY: check-bench-filter
+check-bench-filter:
+	$(if $(FILTER),,$(error FILTER is required, e.g. make bench-before FILTER=hash))
+
 .PHONY: help # Show available targets
 help:
 	@grep '^\.PHONY: .* # ' $(MAKEFILE_LIST) | awk -F' # ' '{sub(/\.PHONY: /,"",$$1); printf "  %-16s %s\n", $$1, $$2}'

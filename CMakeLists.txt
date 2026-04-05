@@ -17,16 +17,7 @@ if(PROJECT_IS_TOP_LEVEL)
 	include(cmake/tidy.cmake)
 	include(cmake/test.cmake)
 
-	if(pal_test_sources)
-		add_executable(pal_test ${pal_test_sources})
-		target_link_libraries(pal_test PRIVATE cxx_test pal::pal)
-		catch_discover_tests(pal_test
-			EXTRA_ARGS --skip-benchmarks
-		)
-	endif()
-
-	if(pal_bench_sources)
-		add_executable(pal_bench ${pal_bench_sources})
-		target_link_libraries(pal_bench PRIVATE cxx_bench pal::pal)
-	endif()
+	add_executable(pal_test ${pal_test_sources})
+	target_link_libraries(pal_test PRIVATE cxx_test pal::pal)
+	catch_discover_tests(pal_test EXTRA_ARGS --skip-benchmarks)
 endif()

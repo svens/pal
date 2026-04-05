@@ -16,7 +16,3 @@ target_include_directories(cxx_test SYSTEM INTERFACE ${Catch2_SOURCE_DIR}/src)
 target_compile_definitions(cxx_test INTERFACE CATCH_CONFIG_NO_COUNTER)
 target_link_libraries(cxx_test INTERFACE cxx_warnings Catch2::Catch2)
 
-add_library(cxx_bench INTERFACE)
-target_include_directories(cxx_bench SYSTEM INTERFACE ${Catch2_SOURCE_DIR}/src)
-target_compile_definitions(cxx_bench INTERFACE CATCH_CONFIG_NO_COUNTER)
-target_link_libraries(cxx_bench INTERFACE cxx_warnings Catch2::Catch2WithMain)
