@@ -43,6 +43,7 @@ coverage:
 		-e '.*\.test\.cpp$$' \
 		-e '.*\.bench\.cpp$$' \
 		-e '.*/test\.(cpp|hpp)$$' \
+		--merge-mode-functions separate \
 		--html-details .build/gcc-coverage/coverage/index.html
 	@echo "Coverage report: .build/gcc-coverage/coverage/index.html"
 

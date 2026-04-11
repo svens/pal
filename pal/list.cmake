@@ -11,6 +11,7 @@ list(APPEND pal_sources
 	pal/error.cpp
 	pal/hash.hpp
 	pal/result.hpp
+	pal/span.hpp
 	pal/version.hpp
 )
 
@@ -22,4 +23,5 @@ list(APPEND pal_test_sources
 	pal/hash.bench.cpp
 	pal/hash.test.cpp
 	pal/result.test.cpp
+	pal/span.test.cpp
 )
