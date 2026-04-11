@@ -62,16 +62,16 @@ public:
 	intrusive_stack (const intrusive_stack &) = delete;
 	intrusive_stack &operator= (const intrusive_stack &) = delete;
 
-	/// Construct stack by moving contents of \a other. Leaves \a other empty.
-	intrusive_stack (intrusive_stack &&other) noexcept
-		: top_(std::exchange(other.top_, nullptr))
+	/// Construct stack by moving contents of \a that. Leaves \a that empty.
+	intrusive_stack (intrusive_stack &&that) noexcept
+		: top_(std::exchange(that.top_, nullptr))
 	{
 	}
 
-	/// Move contents of \a other into this stack. Leaves \a other empty.
-	intrusive_stack &operator= (intrusive_stack &&other) noexcept
+	/// Move contents of \a that into this stack. Leaves \a that empty.
+	intrusive_stack &operator= (intrusive_stack &&that) noexcept
 	{
-		top_ = std::exchange(other.top_, nullptr);
+		top_ = std::exchange(that.top_, nullptr);
 		return *this;
 	}
 
