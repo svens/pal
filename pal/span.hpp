@@ -55,8 +55,7 @@ constexpr auto span_sequence_end (SpanSequence &spans) noexcept -> decltype(std:
 /// Return iterator to first span in const \a spans.
 template <typename SpanSequence>
 	requires(!__span::is_span_v<SpanSequence>)
-constexpr auto span_sequence_begin (const SpanSequence &spans) noexcept
-	-> decltype(std::begin(spans))
+constexpr auto span_sequence_begin (const SpanSequence &spans) noexcept -> decltype(std::begin(spans))
 {
 	return std::begin(spans);
 }

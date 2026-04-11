@@ -62,10 +62,7 @@ TEMPLATE_TEST_CASE("byte_order", "", uint8_t, uint16_t, uint32_t, uint64_t)
 {
 	using limits = std::numeric_limits<TestType>;
 	auto value = GENERATE(
-		(limits::min)(),
-		(limits::lowest)(),
-		(limits::max)(),
-		static_cast<TestType>((limits::max)() / 2)
+		(limits::min)(), (limits::lowest)(), (limits::max)(), static_cast<TestType>((limits::max)() / 2)
 	);
 	CAPTURE(value);
 

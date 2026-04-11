@@ -23,13 +23,9 @@ TEST_CASE("result")
 
 	SECTION("result is expected")
 	{
-		static_assert(
-			std::is_same_v<pal::result<int>, std::expected<int, std::error_code>>
-		);
+		static_assert(std::is_same_v<pal::result<int>, std::expected<int, std::error_code>>);
 
-		static_assert(
-			std::is_same_v<pal::result<void>, std::expected<void, std::error_code>>
-		);
+		static_assert(std::is_same_v<pal::result<void>, std::expected<void, std::error_code>>);
 	}
 }
 
