@@ -2,9 +2,8 @@ enable_testing()
 
 include(FetchContent)
 FetchContent_Declare(Catch2
-	GIT_REPOSITORY https://github.com/catchorg/Catch2.git
-	GIT_TAG v3.13.0
-	GIT_SHALLOW ON
+	URL https://github.com/catchorg/Catch2/archive/refs/tags/v3.14.0.tar.gz
+	URL_HASH SHA256=ba2a939efead3c833c499cf487e185762f419a71d30158cd1b43c6079c586490
 )
 FetchContent_MakeAvailable(Catch2)
 FetchContent_GetProperties(Catch2 SOURCE_DIR Catch2_SOURCE_DIR)

@@ -1,0 +1,17 @@
+function(pal_system_libs_add)
+	cmake_parse_arguments(ARG "" "" "DARWIN;LINUX;WINDOWS" ${ARGN})
+
+	if(APPLE)
+		set(_libs ${ARG_DARWIN})
+	elseif(WIN32)
+		set(_libs ${ARG_WINDOWS})
+	elseif(UNIX)
+		set(_libs ${ARG_LINUX})
+	endif()
+
+	if(_libs)
+		list(APPEND pal_system_libs ${_libs})
+		list(REMOVE_DUPLICATES pal_system_libs)
+		set(pal_system_libs ${pal_system_libs} PARENT_SCOPE)
+	endif()
+endfunction()

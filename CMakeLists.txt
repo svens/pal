@@ -5,13 +5,14 @@ include(cmake/project_version.cmake)
 message(STATUS "${PROJECT_NAME} ${PROJECT_VERSION}")
 
 include(cmake/cxx.cmake)
+include(cmake/system_libs.cmake)
 
 include(pal/list.cmake)
 add_library(pal ${pal_sources})
 add_library(pal::pal ALIAS pal)
 
 target_include_directories(pal PUBLIC $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}>)
-target_link_libraries(pal PRIVATE cxx_warnings)
+target_link_libraries(pal PRIVATE cxx_warnings ${pal_system_libs})
 
 if(PROJECT_IS_TOP_LEVEL)
 	include(cmake/tidy.cmake)

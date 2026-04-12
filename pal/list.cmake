@@ -1,3 +1,7 @@
+pal_system_libs_add(
+	WINDOWS ws2_32
+)
+
 configure_file(
 	pal/version.cpp.in
 	version.cpp
