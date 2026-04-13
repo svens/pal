@@ -43,12 +43,12 @@
 			}
 		},
 		{
-			"name": "linux-gcc-coverage",
+			"name": "linux-clang-coverage",
 			"inherits": "default",
 			"cacheVariables": {
-				"CMAKE_CXX_COMPILER": "g++",
+				"CMAKE_CXX_COMPILER": "clang++",
 				"CMAKE_BUILD_TYPE": "Debug",
-				"CMAKE_CXX_FLAGS": "--coverage"
+				"CMAKE_CXX_FLAGS": "-fprofile-instr-generate -fcoverage-mapping"
 			}
 		},
 		{
@@ -102,12 +102,12 @@
 			}
 		},
 		{
-			"name": "macos-gcc-coverage",
+			"name": "macos-clang-coverage",
 			"inherits": "default",
 			"cacheVariables": {
-				"CMAKE_CXX_COMPILER": "g++",
+				"CMAKE_CXX_COMPILER": "clang++",
 				"CMAKE_BUILD_TYPE": "Debug",
-				"CMAKE_CXX_FLAGS": "--coverage"
+				"CMAKE_CXX_FLAGS": "-fprofile-instr-generate -fcoverage-mapping"
 			}
 		},
 		{
@@ -143,8 +143,8 @@
 			"configurePreset": "linux-clang-release"
 		},
 		{
-			"name": "linux-gcc-coverage",
-			"configurePreset": "linux-gcc-coverage"
+			"name": "linux-clang-coverage",
+			"configurePreset": "linux-clang-coverage"
 		},
 		{
 			"name": "linux-gcc-sanitize",
@@ -171,8 +171,8 @@
 			"configurePreset": "macos-gcc-release"
 		},
 		{
-			"name": "macos-gcc-coverage",
-			"configurePreset": "macos-gcc-coverage"
+			"name": "macos-clang-coverage",
+			"configurePreset": "macos-clang-coverage"
 		},
 		{
 			"name": "windows-msvc-debug",
@@ -201,8 +201,11 @@
 			"configurePreset": "linux-clang-release"
 		},
 		{
-			"name": "linux-gcc-coverage",
-			"configurePreset": "linux-gcc-coverage"
+			"name": "linux-clang-coverage",
+			"configurePreset": "linux-clang-coverage",
+			"environment": {
+				"LLVM_PROFILE_FILE": "${sourceDir}/.build/${presetName}/pal_test-%p.profraw"
+			}
 		},
 		{
 			"name": "linux-gcc-sanitize",
@@ -229,8 +232,11 @@
 			"configurePreset": "macos-gcc-release"
 		},
 		{
-			"name": "macos-gcc-coverage",
-			"configurePreset": "macos-gcc-coverage"
+			"name": "macos-clang-coverage",
+			"configurePreset": "macos-clang-coverage",
+			"environment": {
+				"LLVM_PROFILE_FILE": "${sourceDir}/.build/${presetName}/pal_test-%p.profraw"
+			}
 		},
 		{
 			"name": "windows-msvc-debug",
@@ -275,11 +281,11 @@
 			]
 		},
 		{
-			"name": "linux-gcc-coverage",
+			"name": "linux-clang-coverage",
 			"steps": [
-				{ "type": "configure", "name": "linux-gcc-coverage" },
-				{ "type": "build", "name": "linux-gcc-coverage" },
-				{ "type": "test", "name": "linux-gcc-coverage" }
+				{ "type": "configure", "name": "linux-clang-coverage" },
+				{ "type": "build", "name": "linux-clang-coverage" },
+				{ "type": "test", "name": "linux-clang-coverage" }
 			]
 		},
 		{
@@ -331,11 +337,11 @@
 			]
 		},
 		{
-			"name": "macos-gcc-coverage",
+			"name": "macos-clang-coverage",
 			"steps": [
-				{ "type": "configure", "name": "macos-gcc-coverage" },
-				{ "type": "build", "name": "macos-gcc-coverage" },
-				{ "type": "test", "name": "macos-gcc-coverage" }
+				{ "type": "configure", "name": "macos-clang-coverage" },
+				{ "type": "build", "name": "macos-clang-coverage" },
+				{ "type": "test", "name": "macos-clang-coverage" }
 			]
 		},
 		{
