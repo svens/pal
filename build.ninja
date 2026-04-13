@@ -1,0 +1,32 @@
+ninja_required_version = 1.1
+
+rule action
+  command = cmake -P cmake/actions/$name.cmake
+  description = $name
+  pool = console
+
+build all: action
+  name = all
+
+build coverage: action
+  name = coverage
+
+build format-check: action
+  name = format-check
+
+build format: action
+  name = format
+
+build help: action
+  name = help
+
+build ninja: action
+  name = ninja
+
+build sanitize: action
+  name = sanitize
+
+build tidy: action
+  name = tidy
+
+default all

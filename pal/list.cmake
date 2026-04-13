@@ -1,14 +1,3 @@
-pal_system_libs_add(
-	WINDOWS ws2_32
-)
-
-configure_file(
-	pal/version.cpp.in
-	version.cpp
-	@ONLY
-)
-list(APPEND pal_sources ${CMAKE_CURRENT_BINARY_DIR}/version.cpp)
-
 list(APPEND pal_sources
 	pal/byte_order.hpp
 	pal/error.hpp

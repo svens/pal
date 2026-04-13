@@ -8,6 +8,17 @@ include(cmake/cxx.cmake)
 include(cmake/system_libs.cmake)
 
 include(pal/list.cmake)
+pal_system_libs_add(
+	WINDOWS ws2_32
+)
+configure_file(
+	pal/version.cpp.in
+	version.cpp
+	@ONLY
+)
+list(APPEND pal_sources
+	${CMAKE_CURRENT_BINARY_DIR}/version.cpp
+)
 add_library(pal ${pal_sources})
 add_library(pal::pal ALIAS pal)
 

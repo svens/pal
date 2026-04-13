@@ -8,4 +8,9 @@ if(RUN_CLANG_TIDY)
 		WORKING_DIRECTORY ${CMAKE_SOURCE_DIR}
 		VERBATIM
 	)
+else()
+	add_custom_target(tidy
+		COMMAND ${CMAKE_COMMAND} -E echo "run-clang-tidy not found"
+		COMMAND ${CMAKE_COMMAND} -E false
+	)
 endif()
