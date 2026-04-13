@@ -105,7 +105,7 @@ public:
 		if (auto it = head_)
 		{
 			head_ = it->*Next;
-			if (!head_)
+			if (head_ == nullptr)
 			{
 				tail_ = &head_;
 			}
@@ -119,7 +119,7 @@ public:
 	{
 		auto it = head_;
 		head_ = it->*Next;
-		if (!head_)
+		if (head_ == nullptr)
 		{
 			tail_ = &head_;
 		}

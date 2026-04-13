@@ -1,0 +1,7 @@
+InheritParentConfig: true
+Checks: >-
+  -bugprone-use-after-move,
+  -readability-function-cognitive-complexity,
+  -misc-non-private-member-variables-in-classes,
+  -readability-container-data-pointer,
+  -readability-isolate-declaration,

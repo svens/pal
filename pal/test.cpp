@@ -47,6 +47,7 @@ bool pal_test::on_ci_impl () noexcept
 	return has_env;
 }
 
+// NOLINTNEXTLINE(readability-inconsistent-declaration-parameter-name)
 void *operator new (size_t size)
 {
 	if (pal_test::bad_alloc_once::fail)
@@ -57,6 +58,7 @@ void *operator new (size_t size)
 	return std::malloc(size);
 }
 
+// NOLINTNEXTLINE(readability-inconsistent-declaration-parameter-name)
 void *operator new (size_t size, const std::nothrow_t &) noexcept
 {
 	if (pal_test::bad_alloc_once::fail)
@@ -67,11 +69,13 @@ void *operator new (size_t size, const std::nothrow_t &) noexcept
 	return std::malloc(size);
 }
 
+// NOLINTNEXTLINE(readability-inconsistent-declaration-parameter-name)
 void operator delete (void *ptr) noexcept
 {
 	std::free(ptr);
 }
 
+// NOLINTNEXTLINE(readability-inconsistent-declaration-parameter-name)
 void operator delete (void *ptr, size_t) noexcept
 {
 	std::free(ptr);

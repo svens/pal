@@ -37,7 +37,7 @@ TEST_CASE("intrusive_queue")
 
 	SECTION("move: constructor from empty")
 	{
-		foo::queue q{std::move(queue)};
+		auto q{std::move(queue)};
 		CHECK(q.empty());
 	}
 
