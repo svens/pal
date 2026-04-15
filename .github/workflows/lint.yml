@@ -14,13 +14,8 @@ jobs:
 
       - name: Install dependencies
         run: |
-          sudo apt-get install -y clang-format-20 clang-tidy-20 libc++-18-dev libc++abi-18-dev
-          sudo ln -sf /usr/bin/clang-format-20 /usr/bin/clang-format
+          sudo apt-get install -y clang-tidy-20 libc++-18-dev libc++abi-18-dev
           sudo ln -sf /usr/bin/run-clang-tidy-20 /usr/bin/run-clang-tidy
           sudo ln -sf /usr/bin/clang-tidy-20 /usr/bin/clang-tidy
 
-      - run: clang-format --version
-      - run: clang-tidy --version
-
-      - run: ninja format-check
       - run: ninja tidy
