@@ -2,7 +2,7 @@ name: Sanitize
 
 on:
   push:
-    branches: [main, github_actions]
+    branches: [main]
   pull_request:
 
 jobs:
