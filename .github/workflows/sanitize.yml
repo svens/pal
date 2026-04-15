@@ -8,11 +8,11 @@ on:
 jobs:
   sanitize:
     name: ${{ matrix.os }}
-    runs-on: ${{ matrix.os }}
+    runs-on: ${{ matrix.os }}-latest
     strategy:
       fail-fast: false
       matrix:
-        os: [ubuntu-latest, macos-latest]
+        os: [ubuntu, macos]
 
     steps:
       - uses: actions/checkout@v4
