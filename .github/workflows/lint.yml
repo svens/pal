@@ -2,7 +2,7 @@ name: Lint
 
 on:
   push:
-    branches: [main]
+    branches: [main, github_actions]
   pull_request:
 
 jobs:
@@ -17,10 +17,12 @@ jobs:
           wget -qO- https://apt.llvm.org/llvm-snapshot.gpg.key | sudo tee /etc/apt/trusted.gpg.d/apt.llvm.org.asc
           echo "deb http://apt.llvm.org/noble/ llvm-toolchain-noble-22 main" | sudo tee /etc/apt/sources.list.d/llvm.list
           sudo apt-get update
-          sudo apt-get install -y clang-format-22 clang-tidy-22 libc++-18-dev libc++abi-18-dev
-          sudo ln -sf /usr/bin/clang-format-22 /usr/bin/clang-format
-          sudo ln -sf /usr/bin/clang-tidy-22 /usr/bin/clang-tidy
-          sudo ln -sf /usr/bin/run-clang-tidy-22 /usr/bin/run-clang-tidy
+          sudo apt-get install -y clang-22 clang-format-22 clang-tidy-22 libc++-22-dev libc++abi-22-dev
+          sudo update-alternatives --install /usr/bin/clang clang /usr/bin/clang-22 100
+          sudo update-alternatives --install /usr/bin/clang++ clang++ /usr/bin/clang++-22 100
+          sudo update-alternatives --install /usr/bin/clang-format clang-format /usr/bin/clang-format-22 100
+          sudo update-alternatives --install /usr/bin/clang-tidy clang-tidy /usr/bin/clang-tidy-22 100
+          sudo update-alternatives --install /usr/bin/run-clang-tidy run-clang-tidy /usr/bin/run-clang-tidy-22 100
 
       - run: ninja format-check
       - run: ninja tidy
