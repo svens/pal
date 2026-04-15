@@ -8,6 +8,9 @@ rule action
 build all: action
   name = all
 
+build coverage-html: action
+  name = coverage-html
+
 build coverage: action
   name = coverage
 

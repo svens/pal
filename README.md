@@ -17,6 +17,5 @@ C++23 platform abstraction library providing cross-platform utilities for networ
 
     ninja help              # show available targets
     ninja                   # build and test all compiler/config combinations (platform-specific)
-    ninja coverage          # build, test, and generate HTML coverage report
 
 Each target delegates to `cmake -P cmake/actions/<target>.cmake`.

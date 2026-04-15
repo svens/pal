@@ -1,4 +1,4 @@
-## Build, test, and generate HTML coverage report
+## Build, test, and generate coverage report
 get_filename_component(project_root "${CMAKE_CURRENT_LIST_DIR}/../.." ABSOLUTE)
 
 find_program(llvm_profdata llvm-profdata)
@@ -47,15 +47,9 @@ if(result)
     message(FATAL_ERROR "llvm-profdata failed")
 endif()
 
-set(report_dir "${build_dir}/coverage")
-file(MAKE_DIRECTORY "${report_dir}")
-
 execute_process(
-    COMMAND ${llvm_cov} show "${build_dir}/pal_test"
+    COMMAND ${llvm_cov} report "${build_dir}/pal_test"
         "-instr-profile=${build_dir}/coverage.profdata"
-        -format=html
-        "-output-dir=${report_dir}"
-        -show-instantiation-summary
         --Xdemangler=c++filt
         --Xdemangler=-n
         "-ignore-filename-regex=.*(test|bench)\\.cpp$"
@@ -67,5 +61,3 @@ execute_process(
 if(result)
     message(FATAL_ERROR "llvm-cov failed")
 endif()
-
-message(STATUS "Coverage report: .build/${preset}/coverage/index.html")
