@@ -4,6 +4,7 @@ on:
   push:
     branches: [main]
   pull_request:
+  workflow_dispatch:
 
 jobs:
   linux:
@@ -12,7 +13,7 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       - name: Install dependencies
-        run: sudo apt-get install -y ninja-build
+        run: sudo apt-get install -y ninja-build libc++-18-dev libc++abi-18-dev
       - run: ninja all
 
   macos:

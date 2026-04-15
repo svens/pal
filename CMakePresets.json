@@ -31,7 +31,8 @@
 			"inherits": "default",
 			"cacheVariables": {
 				"CMAKE_CXX_COMPILER": "clang++",
-				"CMAKE_BUILD_TYPE": "Debug"
+				"CMAKE_BUILD_TYPE": "Debug",
+				"CMAKE_CXX_FLAGS": "-stdlib=libc++"
 			}
 		},
 		{
@@ -39,7 +40,8 @@
 			"inherits": "default",
 			"cacheVariables": {
 				"CMAKE_CXX_COMPILER": "clang++",
-				"CMAKE_BUILD_TYPE": "Release"
+				"CMAKE_BUILD_TYPE": "Release",
+				"CMAKE_CXX_FLAGS": "-stdlib=libc++"
 			}
 		},
 		{
@@ -48,7 +50,7 @@
 			"cacheVariables": {
 				"CMAKE_CXX_COMPILER": "clang++",
 				"CMAKE_BUILD_TYPE": "Debug",
-				"CMAKE_CXX_FLAGS": "-fprofile-instr-generate -fcoverage-mapping"
+				"CMAKE_CXX_FLAGS": "-stdlib=libc++ -fprofile-instr-generate -fcoverage-mapping"
 			}
 		},
 		{
