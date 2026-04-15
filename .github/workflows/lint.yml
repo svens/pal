@@ -19,5 +19,8 @@ jobs:
           sudo ln -sf /usr/bin/run-clang-tidy-20 /usr/bin/run-clang-tidy
           sudo ln -sf /usr/bin/clang-tidy-20 /usr/bin/clang-tidy
 
+      - run: clang-format --version
+      - run: clang-tidy --version
+
       - run: ninja format-check
       - run: ninja tidy
