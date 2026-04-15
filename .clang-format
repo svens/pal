@@ -28,7 +28,7 @@ PackConstructorInitializers: Never
 
 # Packing
 BinPackArguments: false
-BinPackParameters: false
+BinPackParameters: OnePerLine
 
 # Short constructs
 AllowShortEnumsOnASingleLine: false
