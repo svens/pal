@@ -1,0 +1,19 @@
+name: Sanitize
+
+on:
+  push:
+    branches: [main, github_actions]
+  pull_request:
+
+jobs:
+  sanitize:
+    name: ${{ matrix.os }}
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, macos-latest]
+
+    steps:
+      - uses: actions/checkout@v4
+      - run: ninja sanitize
