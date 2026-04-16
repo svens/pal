@@ -2,6 +2,8 @@
 
 C++23 platform abstraction library providing cross-platform utilities for networking, cryptography, and system-level operations.
 
+[![CI](https://github.com/svens/pal/actions/workflows/ci.yml/badge.svg)](https://github.com/svens/pal/actions/workflows/ci.yml)
+
 ## Directory structure
 
     .                       Root of source tree
