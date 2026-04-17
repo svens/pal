@@ -8,6 +8,9 @@
 namespace pal::net
 {
 
+using __socket::from_sys;
+using __socket::to_sys;
+
 ::LPFN_CONNECTEX ConnectEx{};
 ::LPFN_ACCEPTEX AcceptEx{};
 ::LPFN_GETACCEPTEXSOCKADDRS GetAcceptExSockaddrs{};
@@ -42,7 +45,7 @@ const result<void> &init () noexcept
 		{
 			DWORD bytes{};
 			auto r = ::WSAIoctl(
-				socket.handle(),
+				to_sys(socket.handle()),
 				SIO_GET_EXTENSION_FUNCTION_POINTER,
 				&id,
 				sizeof(id),
@@ -95,7 +98,7 @@ const auto &lib_init = init();
 
 result<native_socket> open (int family, int type, int protocol) noexcept
 {
-	if (auto h = ::socket(family, type, protocol); h != native_socket::invalid)
+	if (auto h = from_sys(::socket(family, type, protocol)); h != __socket::handle_type::invalid)
 	{
 		return native_socket{h, family};
 	}
@@ -113,12 +116,12 @@ result<native_socket> open (int family, int type, int protocol) noexcept
 
 void native_socket::close (handle_type h) noexcept
 {
-	::closesocket(h);
+	::closesocket(to_sys(h));
 }
 
 result<void> native_socket::bind (const void *endpoint, size_t endpoint_size) const noexcept
 {
-	if (::bind(handle_, static_cast<const sockaddr *>(endpoint), static_cast<int>(endpoint_size)) == 0)
+	if (::bind(to_sys(handle_), static_cast<const sockaddr *>(endpoint), static_cast<int>(endpoint_size)) == 0)
 	{
 		return {};
 	}
@@ -154,7 +157,8 @@ bool make_any (int family, void *endpoint, int *endpoint_size) noexcept
 __socket::handle_type init (__socket::handle_type h, int type) noexcept
 {
 	::SetFileCompletionNotificationModes(
-		reinterpret_cast<::HANDLE>(h), FILE_SKIP_COMPLETION_PORT_ON_SUCCESS | FILE_SKIP_SET_EVENT_ON_HANDLE
+		reinterpret_cast<::HANDLE>(to_sys(h)),
+		FILE_SKIP_COMPLETION_PORT_ON_SUCCESS | FILE_SKIP_SET_EVENT_ON_HANDLE
 	);
 
 	if (type == SOCK_DGRAM)
@@ -162,7 +166,7 @@ __socket::handle_type init (__socket::handle_type h, int type) noexcept
 		bool new_behaviour = false;
 		DWORD ignored;
 		::WSAIoctl(
-			h,
+			to_sys(h),
 			SIO_UDP_CONNRESET,
 			&new_behaviour,
 			sizeof(new_behaviour),
@@ -189,7 +193,7 @@ result<void> native_socket::listen (int backlog) const noexcept
 
 	for (auto i = 0; i < 2; ++i)
 	{
-		if (::listen(handle_, backlog) == 0)
+		if (::listen(to_sys(handle_), backlog) == 0)
 		{
 			return {};
 		}
@@ -203,7 +207,7 @@ result<void> native_socket::listen (int backlog) const noexcept
 			{
 				break;
 			}
-			else if (::bind(handle_, reinterpret_cast<sockaddr *>(&ss), ss_size) == 0)
+			else if (::bind(to_sys(handle_), reinterpret_cast<sockaddr *>(&ss), ss_size) == 0)
 			{
 				continue;
 			}
@@ -224,8 +228,8 @@ result<native_socket> native_socket::accept (void *endpoint, size_t *endpoint_si
 		size_p = &size;
 	}
 
-	auto h = ::accept(handle_, static_cast<sockaddr *>(endpoint), size_p);
-	if (h != invalid)
+	auto h = from_sys(::accept(to_sys(handle_), static_cast<sockaddr *>(endpoint), size_p));
+	if (h != handle_type::invalid)
 	{
 		if (endpoint_size != nullptr)
 		{
@@ -238,7 +242,7 @@ result<native_socket> native_socket::accept (void *endpoint, size_t *endpoint_si
 
 result<void> native_socket::connect (const void *endpoint, size_t endpoint_size) const noexcept
 {
-	if (::connect(handle_, static_cast<const sockaddr *>(endpoint), static_cast<int>(endpoint_size)) == 0)
+	if (::connect(to_sys(handle_), static_cast<const sockaddr *>(endpoint), static_cast<int>(endpoint_size)) == 0)
 	{
 		return {};
 	}
@@ -247,7 +251,7 @@ result<void> native_socket::connect (const void *endpoint, size_t endpoint_size)
 
 result<void> native_socket::shutdown (int what) const noexcept
 {
-	if (::shutdown(handle_, what) == 0)
+	if (::shutdown(to_sys(handle_), what) == 0)
 	{
 		return {};
 	}
@@ -262,7 +266,7 @@ result<size_t> native_socket::send (const __socket::message &message) const noex
 	if (message.msg_name)
 	{
 		result = ::WSASendTo(
-			handle_,
+			to_sys(handle_),
 			const_cast<WSABUF *>(message.msg_iov.data()),
 			message.msg_iovlen,
 			&sent,
@@ -276,7 +280,7 @@ result<size_t> native_socket::send (const __socket::message &message) const noex
 	else
 	{
 		result = ::WSASend(
-			handle_,
+			to_sys(handle_),
 			const_cast<WSABUF *>(message.msg_iov.data()),
 			message.msg_iovlen,
 			&sent,
@@ -308,7 +312,7 @@ result<size_t> native_socket::receive (__socket::message &message) const noexcep
 	if (message.msg_name)
 	{
 		result = ::WSARecvFrom(
-			handle_,
+			to_sys(handle_),
 			message.msg_iov.data(),
 			message.msg_iovlen,
 			&received,
@@ -322,7 +326,7 @@ result<size_t> native_socket::receive (__socket::message &message) const noexcep
 	else
 	{
 		result = ::WSARecv(
-			handle_,
+			to_sys(handle_),
 			message.msg_iov.data(),
 			message.msg_iovlen,
 			&received,
@@ -349,7 +353,7 @@ result<size_t> native_socket::receive (__socket::message &message) const noexcep
 result<size_t> native_socket::available () const noexcept
 {
 	unsigned long value{};
-	if (::ioctlsocket(handle_, FIONREAD, &value) > -1)
+	if (::ioctlsocket(to_sys(handle_), FIONREAD, &value) > -1)
 	{
 		return value;
 	}
@@ -359,7 +363,7 @@ result<size_t> native_socket::available () const noexcept
 result<void> native_socket::local_endpoint (void *endpoint, size_t *endpoint_size) const noexcept
 {
 	auto size = static_cast<int>(*endpoint_size);
-	if (::getsockname(handle_, static_cast<sockaddr *>(endpoint), &size) == 0)
+	if (::getsockname(to_sys(handle_), static_cast<sockaddr *>(endpoint), &size) == 0)
 	{
 		*endpoint_size = size;
 		return {};
@@ -383,7 +387,7 @@ result<void> native_socket::local_endpoint (void *endpoint, size_t *endpoint_siz
 result<void> native_socket::remote_endpoint (void *endpoint, size_t *endpoint_size) const noexcept
 {
 	auto size = static_cast<int>(*endpoint_size);
-	if (::getpeername(handle_, static_cast<sockaddr *>(endpoint), &size) == 0)
+	if (::getpeername(to_sys(handle_), static_cast<sockaddr *>(endpoint), &size) == 0)
 	{
 		*endpoint_size = size;
 		return {};
@@ -396,7 +400,7 @@ namespace
 
 int socket_option_precheck (__socket::handle_type handle, int name) noexcept
 {
-	if (handle == native_socket::invalid)
+	if (handle == __socket::handle_type::invalid)
 	{
 		return WSAEBADF;
 	}
@@ -415,7 +419,7 @@ result<void> get_native_non_blocking (__socket::handle_type, int &) noexcept
 result<void> set_native_non_blocking (__socket::handle_type handle, bool mode) noexcept
 {
 	unsigned long arg = mode ? 1 : 0;
-	if (::ioctlsocket(handle, FIONBIO, &arg) == 0)
+	if (::ioctlsocket(to_sys(handle), FIONBIO, &arg) == 0)
 	{
 		return {};
 	}
@@ -443,7 +447,7 @@ result<void> native_socket::get_option (int level, int name, void *data, size_t 
 
 	auto p = static_cast<char *>(data);
 	auto size = static_cast<int>(data_size);
-	if (::getsockopt(handle_, level, name, p, &size) > -1)
+	if (::getsockopt(to_sys(handle_), level, name, p, &size) > -1)
 	{
 		return {};
 	}
@@ -470,7 +474,7 @@ result<void> native_socket::set_option (int level, int name, const void *data, s
 
 	auto p = static_cast<const char *>(data);
 	auto size = static_cast<int>(data_size);
-	if (::setsockopt(handle_, level, name, p, size) > -1)
+	if (::setsockopt(to_sys(handle_), level, name, p, size) > -1)
 	{
 		return {};
 	}

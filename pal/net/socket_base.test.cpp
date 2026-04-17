@@ -21,7 +21,7 @@ TEST_CASE("net/native_socket")
 	{
 		const pal::net::native_socket s;
 		CHECK(!s);
-		CHECK(s.handle() == pal::net::native_socket::invalid);
+		CHECK(s.handle() == pal::net::native_socket::handle_type::invalid);
 	}
 
 	SECTION("move_construct")
@@ -32,7 +32,7 @@ TEST_CASE("net/native_socket")
 
 		pal::net::native_socket s2{std::move(s1)};
 		CHECK(!s1);
-		CHECK(s1.handle() == pal::net::native_socket::invalid);
+		CHECK(s1.handle() == pal::net::native_socket::handle_type::invalid);
 		CHECK(s2);
 		CHECK(s2.handle() == h);
 	}
@@ -46,7 +46,7 @@ TEST_CASE("net/native_socket")
 		pal::net::native_socket s2;
 		s2 = std::move(s1);
 		CHECK(!s1);
-		CHECK(s1.handle() == pal::net::native_socket::invalid);
+		CHECK(s1.handle() == pal::net::native_socket::handle_type::invalid);
 		CHECK(s2);
 		CHECK(s2.handle() == h);
 	}
@@ -59,7 +59,7 @@ TEST_CASE("net/native_socket")
 
 		auto released = s.release();
 		CHECK(!s);
-		CHECK(s.handle() == pal::net::native_socket::invalid);
+		CHECK(s.handle() == pal::net::native_socket::handle_type::invalid);
 		CHECK(released == h);
 		pal::net::native_socket::close(released);
 	}

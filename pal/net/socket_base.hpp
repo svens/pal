@@ -28,9 +28,6 @@ public:
 	/// Native OS socket handle type
 	using handle_type = __socket::handle_type;
 
-	/// Invalid OS socket handle value
-	static constexpr handle_type invalid = __socket::invalid_handle;
-
 	native_socket () = default;
 
 	~native_socket () noexcept
@@ -39,7 +36,6 @@ public:
 	}
 
 	/// Construct native_socket from native OS \a handle and address \a family
-	// NOLINTNEXTLINE(bugprone-easily-swappable-parameters)
 	native_socket (handle_type handle, int family) noexcept
 		: handle_{handle}
 		, family_{family}
@@ -47,14 +43,14 @@ public:
 	}
 
 	native_socket (native_socket &&that) noexcept
-		: handle_{std::exchange(that.handle_, invalid)}
+		: handle_{std::exchange(that.handle_, handle_type::invalid)}
 		, family_{that.family_}
 	{
 	}
 
 	native_socket &operator= (native_socket &&that) noexcept
 	{
-		close(std::exchange(handle_, std::exchange(that.handle_, invalid)));
+		close(std::exchange(handle_, std::exchange(that.handle_, handle_type::invalid)));
 		family_ = that.family_;
 		return *this;
 	}
@@ -62,7 +58,7 @@ public:
 	/// Returns true if this instance holds a valid OS socket handle
 	explicit operator bool () const noexcept
 	{
-		return handle_ != invalid;
+		return handle_ != handle_type::invalid;
 	}
 
 	/// Return native OS socket handle value
@@ -80,7 +76,7 @@ public:
 	/// Release ownership of the native OS socket handle, returning its value
 	[[nodiscard]] handle_type release () noexcept
 	{
-		return std::exchange(handle_, invalid);
+		return std::exchange(handle_, handle_type::invalid);
 	}
 
 	static void close (handle_type h) noexcept;
@@ -103,7 +99,7 @@ public:
 
 private:
 
-	handle_type handle_ = invalid;
+	handle_type handle_ = handle_type::invalid;
 	int family_ = 0;
 };
 

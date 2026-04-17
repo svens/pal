@@ -9,6 +9,9 @@
 namespace pal::net
 {
 
+using __socket::from_sys;
+using __socket::to_sys;
+
 const result<void> &init () noexcept
 {
 	static const result<void> no_error;
@@ -17,7 +20,7 @@ const result<void> &init () noexcept
 
 result<native_socket> open (int family, int type, int protocol) noexcept
 {
-	if (auto h = ::socket(family, type, protocol); h != native_socket::invalid)
+	if (auto h = from_sys(::socket(family, type, protocol)); h != __socket::handle_type::invalid)
 	{
 		return native_socket{h, family};
 	}
@@ -45,14 +48,14 @@ result<native_socket> open (int family, int type, int protocol) noexcept
 
 void native_socket::close (handle_type h) noexcept
 {
-	while (::close(h) != 0 && errno == EINTR)
+	while (::close(to_sys(h)) != 0 && errno == EINTR)
 	{
 	}
 }
 
 result<void> native_socket::bind (const void *endpoint, size_t endpoint_size) const noexcept
 {
-	if (::bind(handle_, static_cast<const sockaddr *>(endpoint), endpoint_size) == 0)
+	if (::bind(to_sys(handle_), static_cast<const sockaddr *>(endpoint), endpoint_size) == 0)
 	{
 		return {};
 	}
@@ -61,7 +64,7 @@ result<void> native_socket::bind (const void *endpoint, size_t endpoint_size) co
 
 result<void> native_socket::listen (int backlog) const noexcept
 {
-	if (::listen(handle_, backlog) == 0)
+	if (::listen(to_sys(handle_), backlog) == 0)
 	{
 		return {};
 	}
@@ -80,7 +83,7 @@ __socket::handle_type init (__socket::handle_type h) noexcept
 	if constexpr (SO_NOSIGPIPE != -1)
 	{
 		int optval = 1;
-		::setsockopt(h, SOL_SOCKET, SO_NOSIGPIPE, &optval, sizeof(optval));
+		::setsockopt(to_sys(h), SOL_SOCKET, SO_NOSIGPIPE, &optval, sizeof(optval));
 	}
 	return h;
 }
@@ -107,8 +110,8 @@ constexpr bool is_connection_error (int error) noexcept
 result<native_socket> native_socket::accept (void *endpoint, size_t *endpoint_size) const noexcept
 {
 	socklen_t size = (endpoint_size != nullptr) ? *endpoint_size : 0;
-	auto h = ::accept(handle_, static_cast<sockaddr *>(endpoint), &size);
-	if (h > invalid)
+	auto h = from_sys(::accept(to_sys(handle_), static_cast<sockaddr *>(endpoint), &size));
+	if (h > handle_type::invalid)
 	{
 		if (endpoint_size != nullptr)
 		{
@@ -121,7 +124,7 @@ result<native_socket> native_socket::accept (void *endpoint, size_t *endpoint_si
 
 result<void> native_socket::connect (const void *endpoint, size_t endpoint_size) const noexcept
 {
-	if (::connect(handle_, static_cast<const sockaddr *>(endpoint), endpoint_size) == 0)
+	if (::connect(to_sys(handle_), static_cast<const sockaddr *>(endpoint), endpoint_size) == 0)
 	{
 		return {};
 	}
@@ -130,7 +133,7 @@ result<void> native_socket::connect (const void *endpoint, size_t endpoint_size)
 
 result<void> native_socket::shutdown (int what) const noexcept
 {
-	if (::shutdown(handle_, what) == 0)
+	if (::shutdown(to_sys(handle_), what) == 0)
 	{
 		return {};
 	}
@@ -139,7 +142,7 @@ result<void> native_socket::shutdown (int what) const noexcept
 
 result<size_t> native_socket::send (const __socket::message &message) const noexcept
 {
-	if (auto r = ::sendmsg(handle_, &message, message.msg_flags | MSG_NOSIGNAL); r > -1)
+	if (auto r = ::sendmsg(to_sys(handle_), &message, message.msg_flags | MSG_NOSIGNAL); r > -1)
 	{
 		return static_cast<size_t>(r);
 	}
@@ -159,7 +162,7 @@ result<size_t> native_socket::send (const __socket::message &message) const noex
 
 result<size_t> native_socket::receive (__socket::message &message) const noexcept
 {
-	if (auto r = ::recvmsg(handle_, &message, message.msg_flags | MSG_NOSIGNAL); r > -1)
+	if (auto r = ::recvmsg(to_sys(handle_), &message, message.msg_flags | MSG_NOSIGNAL); r > -1)
 	{
 		return static_cast<size_t>(r);
 	}
@@ -174,7 +177,7 @@ result<size_t> native_socket::receive (__socket::message &message) const noexcep
 result<size_t> native_socket::available () const noexcept
 {
 	int value{};
-	if (::ioctl(handle_, FIONREAD, &value) > -1)
+	if (::ioctl(to_sys(handle_), FIONREAD, &value) > -1)
 	{
 		return static_cast<size_t>(value);
 	}
@@ -184,7 +187,7 @@ result<size_t> native_socket::available () const noexcept
 result<void> native_socket::local_endpoint (void *endpoint, size_t *endpoint_size) const noexcept
 {
 	auto size = static_cast<socklen_t>(*endpoint_size);
-	if (::getsockname(handle_, static_cast<sockaddr *>(endpoint), &size) == 0)
+	if (::getsockname(to_sys(handle_), static_cast<sockaddr *>(endpoint), &size) == 0)
 	{
 		*endpoint_size = size;
 		return {};
@@ -195,7 +198,7 @@ result<void> native_socket::local_endpoint (void *endpoint, size_t *endpoint_siz
 result<void> native_socket::remote_endpoint (void *endpoint, size_t *endpoint_size) const noexcept
 {
 	auto size = static_cast<socklen_t>(*endpoint_size);
-	if (::getpeername(handle_, static_cast<sockaddr *>(endpoint), &size) == 0)
+	if (::getpeername(to_sys(handle_), static_cast<sockaddr *>(endpoint), &size) == 0)
 	{
 		*endpoint_size = size;
 		return {};
@@ -208,7 +211,7 @@ namespace
 
 result<void> get_native_non_blocking (__socket::handle_type handle, int &mode) noexcept
 {
-	auto flags = ::fcntl(handle, F_GETFL, 0);
+	auto flags = ::fcntl(to_sys(handle), F_GETFL, 0);
 	if (flags > -1)
 	{
 		mode = ((flags & O_NONBLOCK) == O_NONBLOCK) ? 1 : 0;
@@ -217,10 +220,9 @@ result<void> get_native_non_blocking (__socket::handle_type handle, int &mode) n
 	return __socket::sys_error();
 }
 
-// NOLINTNEXTLINE(bugprone-easily-swappable-parameters)
 result<void> set_native_non_blocking (__socket::handle_type handle, int mode) noexcept
 {
-	auto flags = ::fcntl(handle, F_GETFL, 0);
+	auto flags = ::fcntl(to_sys(handle), F_GETFL, 0);
 	if (flags > -1)
 	{
 		if (mode != 0)
@@ -231,7 +233,7 @@ result<void> set_native_non_blocking (__socket::handle_type handle, int mode) no
 		{
 			flags &= ~O_NONBLOCK;
 		}
-		if (::fcntl(handle, F_SETFL, flags) > -1)
+		if (::fcntl(to_sys(handle), F_SETFL, flags) > -1)
 		{
 			return {};
 		}
@@ -255,7 +257,7 @@ result<void> native_socket::get_option (int level, int name, void *data, size_t 
 	}
 
 	socklen_t size = data_size;
-	if (::getsockopt(handle_, level, name, data, &size) > -1)
+	if (::getsockopt(to_sys(handle_), level, name, data, &size) > -1)
 	{
 		return {};
 	}
@@ -275,7 +277,7 @@ result<void> native_socket::set_option (int level, int name, const void *data, s
 		}
 	}
 
-	if (::setsockopt(handle_, level, name, data, data_size) > -1)
+	if (::setsockopt(to_sys(handle_), level, name, data, data_size) > -1)
 	{
 		return {};
 	}

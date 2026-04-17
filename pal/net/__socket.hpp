@@ -10,6 +10,7 @@
 #include <pal/version.hpp>
 #include <array>
 #include <chrono>
+#include <type_traits>
 
 #if __pal_os_linux || __pal_os_macos
 	#define __pal_net_posix 1
@@ -31,8 +32,10 @@ constexpr size_t io_vector_max_size = 4;
 
 #if __pal_net_posix //{{{1
 
-using handle_type = int;
-constexpr handle_type invalid_handle = -1;
+enum class handle_type : int
+{
+	invalid = -1,
+};
 
 using sa_family = ::sa_family_t;
 using timeval = ::timeval;
@@ -99,8 +102,10 @@ struct message: ::msghdr
 
 #elif __pal_net_winsock //{{{1
 
-using handle_type = ::SOCKET;
-constexpr handle_type invalid_handle = INVALID_SOCKET;
+enum class handle_type : ::SOCKET
+{
+	invalid = INVALID_SOCKET,
+};
 
 using sa_family = ::ADDRESS_FAMILY;
 using timeval = ::DWORD;
@@ -177,6 +182,16 @@ extern ::LPFN_ACCEPTEX AcceptEx;
 extern ::LPFN_GETACCEPTEXSOCKADDRS GetAcceptExSockaddrs;
 
 #endif //}}}1
+
+constexpr auto to_sys (handle_type h) noexcept
+{
+	return static_cast<std::underlying_type_t<handle_type>>(h);
+}
+
+constexpr auto from_sys (std::underlying_type_t<handle_type> h) noexcept
+{
+	return static_cast<handle_type>(h);
+}
 
 constexpr int reuse_port =
 #ifdef SO_REUSEPORT_LB
