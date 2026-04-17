@@ -13,7 +13,9 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       - name: Install dependencies
-        run: sudo apt-get install -y libc++-18-dev libc++abi-18-dev
+        run: |
+          sudo apt-get install -y g++-14 libc++-18-dev libc++abi-18-dev
+          sudo update-alternatives --install /usr/bin/g++ g++ /usr/bin/g++-14 14
       - run: ninja all
 
   macos:

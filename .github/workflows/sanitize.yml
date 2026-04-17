@@ -16,4 +16,9 @@ jobs:
 
     steps:
       - uses: actions/checkout@v4
+      - name: Install dependencies
+        if: matrix.os == 'ubuntu'
+        run: |
+          sudo apt-get install -y g++-14
+          sudo update-alternatives --install /usr/bin/g++ g++ /usr/bin/g++-14 14
       - run: ninja sanitize

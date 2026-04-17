@@ -5,6 +5,7 @@ Checks: >
   modernize-*,
   performance-*,
   readability-*,
+  -bugprone-derived-method-shadowing-base-method,
   -bugprone-reserved-identifier,
   -misc-include-cleaner,
   -modernize-use-trailing-return-type,

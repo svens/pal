@@ -173,9 +173,11 @@ struct message
 };
 // NOLINTEND(misc-non-private-member-variables-in-classes)
 
-	#define SHUT_RD SD_RECEIVE
-	#define SHUT_WR SD_SEND
-	#define SHUT_RDWR SD_BOTH
+// clang-format off
+#define SHUT_RD SD_RECEIVE
+#define SHUT_WR SD_SEND
+#define SHUT_RDWR SD_BOTH
+// clang-format on
 
 extern ::LPFN_CONNECTEX ConnectEx;
 extern ::LPFN_ACCEPTEX AcceptEx;
