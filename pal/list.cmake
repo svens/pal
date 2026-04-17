@@ -22,3 +22,5 @@ list(APPEND pal_test_sources
 	pal/result.test.cpp
 	pal/span.test.cpp
 )
+
+include(pal/net/list.cmake)
