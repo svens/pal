@@ -2,8 +2,10 @@
 
 #if __pal_net_winsock
 
-	#include <pal/net/socket_base.hpp>
-	#include <ws2tcpip.h>
+// clang-format off
+#include <pal/net/socket_base.hpp>
+#include <ws2tcpip.h>
+// clang-format on
 
 namespace pal::net
 {

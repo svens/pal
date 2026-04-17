@@ -2,9 +2,11 @@
 
 #if __pal_net_posix
 
-	#include <pal/net/socket_base.hpp>
-	#include <fcntl.h>
-	#include <sys/ioctl.h>
+// clang-format off
+#include <pal/net/socket_base.hpp>
+#include <fcntl.h>
+#include <sys/ioctl.h>
+// clang-format on
 
 namespace pal::net
 {
@@ -74,9 +76,11 @@ result<void> native_socket::listen (int backlog) const noexcept
 namespace
 {
 
-	#ifndef SO_NOSIGPIPE
-constexpr int SO_NOSIGPIPE = -1;
-	#endif
+// clang-format off
+#ifndef SO_NOSIGPIPE
+	constexpr int SO_NOSIGPIPE = -1;
+#endif
+// clang-format on
 
 __socket::handle_type init (__socket::handle_type h) noexcept
 {
