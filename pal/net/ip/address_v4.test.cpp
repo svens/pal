@@ -223,6 +223,12 @@ TEST_CASE("net/ip/address_v4")
 	{
 		CHECK(std::format("{}", a) == view);
 	}
+
+	SECTION("masked")
+	{
+		auto expected = view.substr(0, view.rfind('.') + 1) + "0";
+		CHECK(std::format("{}", pal::masked{a}) == expected);
+	}
 }
 
 } // namespace

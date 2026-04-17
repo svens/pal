@@ -6,6 +6,7 @@
  */
 
 #include <pal/hash.hpp>
+#include <pal/masked_formatter.hpp>
 #include <pal/result.hpp>
 #include <array>
 #include <charconv>
@@ -245,3 +246,25 @@ struct formatter<pal::net::ip::address_v4>
 };
 
 } // namespace std
+
+namespace pal
+{
+
+template <>
+struct masked_formatter<net::ip::address_v4>
+{
+	template <typename FormatContext>
+	static FormatContext::iterator format (const net::ip::address_v4 &a, FormatContext &ctx)
+	{
+		const auto &b = a.to_bytes();
+		return std::format_to(
+			ctx.out(),
+			"{}.{}.{}.0",
+			static_cast<unsigned>(b[0]),
+			static_cast<unsigned>(b[1]),
+			static_cast<unsigned>(b[2])
+		);
+	}
+};
+
+} // namespace pal
