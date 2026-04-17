@@ -1,12 +1,21 @@
 list(APPEND pal_sources
+	# socket
 	pal/net/__socket.hpp
 	pal/net/socket_base.hpp
 	pal/net/socket_base.posix.cpp
 	pal/net/socket_base.windows.cpp
 	pal/net/socket_option.hpp
+
+	# internet
+	pal/net/ip/address_v4.hpp
+	pal/net/ip/address_v4.cpp
 )
 
 list(APPEND pal_test_sources
+	# socket
 	pal/net/socket_base.test.cpp
 	pal/net/socket_option.test.cpp
+
+	# internet
+	pal/net/ip/address_v4.test.cpp
 )
