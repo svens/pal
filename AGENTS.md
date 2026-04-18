@@ -1,5 +1,6 @@
 See README.md for project overview and directory structure.
 
 - Run `ninja help` to discover available targets.
-- After making changes, run `ninja` (all), `ninja tidy`, and `ninja format`.
-  Do not run build outputs directly — always use ninja targets.
+- During the edit/build/test loop, use `ninja --quiet smoke` for fast feedback
+  (builds and tests one platform preset). Only run `ninja`, `ninja tidy`, and
+  `ninja format` once smoke is passing.

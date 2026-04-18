@@ -29,6 +29,9 @@ build ninja: action
 build sanitize: action
   name = sanitize
 
+build smoke: action
+  name = smoke
+
 build tidy: action
   name = tidy
 
