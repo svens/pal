@@ -7,6 +7,7 @@ list(APPEND pal_sources
 	pal/net/socket_option.hpp
 
 	# internet
+	pal/net/ip/address.hpp
 	pal/net/ip/address_v4.hpp
 	pal/net/ip/address_v4.cpp
 	pal/net/ip/address_v6.hpp
@@ -19,6 +20,7 @@ list(APPEND pal_test_sources
 	pal/net/socket_option.test.cpp
 
 	# internet
+	pal/net/ip/address.test.cpp
 	pal/net/ip/address_v4.test.cpp
 	pal/net/ip/address_v6.test.cpp
 )
