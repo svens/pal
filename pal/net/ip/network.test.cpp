@@ -119,6 +119,7 @@ TEST_CASE("net/ip/network")
 	SECTION("move ctor")
 	{
 		N src{net};
+		// NOLINTNEXTLINE(performance-move-const-arg)
 		N n{std::move(src)};
 		CHECK(n == net);
 	}
@@ -145,6 +146,7 @@ TEST_CASE("net/ip/network")
 	{
 		N src{net};
 		N n;
+		// NOLINTNEXTLINE(performance-move-const-arg)
 		n = std::move(src);
 		CHECK(n == net);
 	}
