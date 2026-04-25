@@ -174,14 +174,33 @@ TEST_CASE("net/ip/address_v4")
 		CHECK(a == b);
 	}
 
+	SECTION("from_chars streaming")
+	{
+		const auto input = view + "/24";
+		A b;
+		auto [p, ec] = b.from_chars(input.data(), input.data() + input.size());
+		REQUIRE(ec == std::errc{});
+		CHECK(*p == '/');
+		CHECK(b == a);
+	}
+
 	SECTION("from_chars failure")
 	{
-		view.back() = 'x';
-
+		const auto bad = 'x' + view;
 		A b;
-		auto [p, ec] = b.from_chars(view.data(), view.data() + view.size());
-		REQUIRE(ec == std::errc::invalid_argument);
-		CHECK(p == view.data());
+		const auto r = b.from_chars(bad.data(), bad.data() + bad.size());
+		REQUIRE(r.ec == std::errc::invalid_argument);
+		CHECK(r.ptr == bad.data());
+	}
+
+	SECTION("from_chars invalid address")
+	{
+		// valid chars consumed but inet_pton rejects — ptr advances past them
+		const std::string bad = "999.0.0.0";
+		A b;
+		const auto r = b.from_chars(bad.data(), bad.data() + bad.size());
+		CHECK(r.ec == std::errc::invalid_argument);
+		CHECK(r.ptr == bad.data() + bad.size());
 	}
 
 	SECTION("make_address_v4(bytes_type)")
@@ -203,20 +222,8 @@ TEST_CASE("net/ip/address_v4")
 
 	SECTION("make_address_v4(string_view) failure")
 	{
-		auto s = view + 'x';
-		auto v = make_address_v4(std::string_view{s});
-
-		if (s != "255.255.255.255x")
-		{
-			REQUIRE_FALSE(v);
-			CHECK(v.error() == std::make_error_code(std::errc::invalid_argument));
-		}
-		else
-		{
-			// "255.255.255.255x": valid content within max_string_length is salvaged
-			REQUIRE(v);
-			CHECK(*v == a);
-		}
+		const auto s = view + 'x';
+		CHECK_FALSE(make_address_v4(std::string_view{s}));
 	}
 
 	SECTION("format")

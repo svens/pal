@@ -93,14 +93,7 @@ public:
 	 *
 	 * On failure, ptr is set to \a last and ec std::errc::value_too_large.
 	 */
-	[[nodiscard]] std::to_chars_result to_chars (char *first, char *last) const noexcept
-	{
-		if (auto *p = __address_v4::ntop(bytes_.data(), first, last))
-		{
-			return {.ptr = p, .ec = std::errc{}};
-		}
-		return {.ptr = last, .ec = std::errc::value_too_large};
-	}
+	[[nodiscard]] std::to_chars_result to_chars (char *first, char *last) const noexcept;
 
 	/**
 	 * Parse human readable IPv4 address from range [\a first, \a last).
@@ -108,7 +101,7 @@ public:
 	 * On success, returns std::from_chars_result with ptr pointing to
 	 * first character not matching the IPv4 address text.
 	 *
-	 * On failure, ptr is set to \a first and ec std::errc::invalid_argument.
+	 * On failure, ptr is set to first non-legal character and ec std::errc::invalid_argument.
 	 */
 	[[nodiscard]] std::from_chars_result from_chars (const char *first, const char *last) noexcept;
 
@@ -200,12 +193,12 @@ inline constexpr address_v4 address_v4::broadcast{address_v4::bytes_type{255, 25
 [[nodiscard]] inline result<address_v4> make_address_v4 (std::string_view text) noexcept
 {
 	address_v4 addr;
-	auto [_, ec] = addr.from_chars(text.data(), text.data() + text.size());
-	if (ec == std::errc{})
+	const auto r = addr.from_chars(text.data(), text.data() + text.size());
+	if (r.ec == std::errc{} && r.ptr == text.data() + text.size())
 	{
 		return addr;
 	}
-	return make_unexpected(ec);
+	return make_unexpected(std::errc::invalid_argument);
 }
 
 } // namespace pal::net::ip

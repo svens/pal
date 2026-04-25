@@ -102,7 +102,7 @@ public:
 	 * On success, returns std::from_chars_result with ptr pointing to
 	 * first character not matching the address text.
 	 *
-	 * On failure, ptr is set to \a first and ec std::errc::invalid_argument.
+	 * On failure, ptr is set to first non-legal character and ec std::errc::invalid_argument.
 	 */
 	[[nodiscard]] std::from_chars_result from_chars (const char *first, const char *last) noexcept;
 
@@ -215,12 +215,12 @@ make_address_v6 (const address_v6::bytes_type &bytes, address_v6::scope_id_type 
 [[nodiscard]] inline result<address_v6> make_address_v6 (std::string_view text) noexcept
 {
 	address_v6 addr;
-	auto [_, ec] = addr.from_chars(text.data(), text.data() + text.size());
-	if (ec == std::errc{})
+	const auto r = addr.from_chars(text.data(), text.data() + text.size());
+	if (r.ec == std::errc{} && r.ptr == text.data() + text.size())
 	{
 		return addr;
 	}
-	return make_unexpected(ec);
+	return make_unexpected(std::errc::invalid_argument);
 }
 
 /// Tag type to invoke conversion between IPv6 and IPv4-mapped IPv6 addresses.

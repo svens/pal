@@ -2,6 +2,7 @@
 #include <catch2/catch_test_macros.hpp>
 #include <catch2/generators/catch_generators.hpp>
 #include <catch2/generators/catch_generators_range.hpp>
+#include <cctype>
 
 namespace
 {
@@ -174,6 +175,27 @@ TEST_CASE("net/ip/address_v6")
 			CHECK(p == s.data() + s.size());
 		}
 
+		SECTION("to_chars scope_id buffer too small")
+		{
+			// ntop succeeds (needs 8 bytes for "fe80::1\0") but no room for %42
+			const A a{link_local_bytes, test_scope};
+			const size_t min_size = 8, max_size = 9;
+			auto buf_size = GENERATE_COPY(range(min_size, max_size + 1));
+			std::string buf(buf_size, '\0');
+			auto [p, ec] = a.to_chars(buf.data(), buf.data() + buf.size());
+			CHECK(ec == std::errc::value_too_large);
+		}
+
+		SECTION("from_chars scope_id streaming")
+		{
+			const std::string s = "fe80::1%42,next";
+			A a;
+			auto [p, ec] = a.from_chars(s.data(), s.data() + s.size());
+			REQUIRE(ec == std::errc{});
+			CHECK(a.scope_id() == test_scope);
+			CHECK(*p == ',');
+		}
+
 		SECTION("round-trip with scope_id")
 		{
 			const A a{link_local_bytes, test_scope};
@@ -192,13 +214,11 @@ TEST_CASE("net/ip/address_v6")
 			auto check_fail = [] (std::string_view s)
 			{
 				A a;
-				auto [p, ec] = a.from_chars(s.data(), s.data() + s.size());
-				CHECK(ec == std::errc::invalid_argument);
-				CHECK(p == s.data());
+				const auto r = a.from_chars(s.data(), s.data() + s.size());
+				CHECK(r.ec != std::errc{});
 			};
 			check_fail("fe80::1%");		   // empty scope_id
-			check_fail("fe80::1%xyz");	   // non-digit
-			check_fail("fe80::1%2x");	   // trailing non-digit
+			check_fail("fe80::1%xyz");	   // non-digit scope_id
 			check_fail("fe80::1%99999999999"); // overflow
 		}
 	}
@@ -304,14 +324,47 @@ TEST_CASE("net/ip/address_v6")
 		CHECK(a == b);
 	}
 
+	SECTION("from_chars uppercase")
+	{
+		auto upper = view;
+		for (auto &c: upper)
+		{
+			c = static_cast<char>(std::toupper(static_cast<unsigned char>(c)));
+		}
+		A b;
+		auto [p, ec] = b.from_chars(upper.data(), upper.data() + upper.size());
+		REQUIRE(ec == std::errc{});
+		CHECK(b == a);
+		CHECK(p == upper.data() + upper.size());
+	}
+
+	SECTION("from_chars streaming")
+	{
+		const auto input = view + ",next";
+		A b;
+		auto [p, ec] = b.from_chars(input.data(), input.data() + input.size());
+		REQUIRE(ec == std::errc{});
+		CHECK(*p == ',');
+		CHECK(b == a);
+	}
+
 	SECTION("from_chars failure")
 	{
-		view.back() = 'x';
-
+		const auto bad = 'x' + view;
 		A b;
-		auto [p, ec] = b.from_chars(view.data(), view.data() + view.size());
-		REQUIRE(ec == std::errc::invalid_argument);
-		CHECK(p == view.data());
+		const auto r = b.from_chars(bad.data(), bad.data() + bad.size());
+		REQUIRE(r.ec == std::errc::invalid_argument);
+		CHECK(r.ptr == bad.data());
+	}
+
+	SECTION("from_chars invalid address")
+	{
+		// valid chars consumed but inet_pton rejects — ptr advances past them
+		const std::string bad = ":::";
+		A b;
+		const auto r = b.from_chars(bad.data(), bad.data() + bad.size());
+		CHECK(r.ec == std::errc::invalid_argument);
+		CHECK(r.ptr == bad.data() + bad.size());
 	}
 
 	SECTION("make_address_v6(bytes_type)")

@@ -70,6 +70,19 @@ TEST_CASE("net/ip/address")
 		CHECK(any_v6 >= any_v4);
 	}
 
+	SECTION("make_address scope_id")
+	{
+		auto a = make_address("fe80::1%5");
+		REQUIRE(a);
+		REQUIRE(a->is_v6());
+		CHECK(a->v6()->scope_id() == 5);
+
+		std::array<char, A::max_string_length + 1> buf{};
+		auto [end, ec] = a->to_chars(buf.data(), buf.data() + buf.size());
+		REQUIRE(ec == std::errc{});
+		CHECK(std::string_view{buf.data(), static_cast<size_t>(end - buf.data())} == "fe80::1%5");
+	}
+
 	// clang-format off
 	auto [view, addr, is_v4, is_unspecified, is_loopback] = GENERATE(
 		table<std::string, A, bool, bool, bool>({
@@ -144,15 +157,23 @@ TEST_CASE("net/ip/address")
 		CHECK(a.is_v4() == is_v4);
 	}
 
+	SECTION("from_chars streaming")
+	{
+		const auto input = view + ",next";
+		A a;
+		auto [p, ec] = a.from_chars(input.data(), input.data() + input.size());
+		REQUIRE(ec == std::errc{});
+		CHECK(*p == ',');
+		CHECK(a == addr);
+	}
+
 	SECTION("from_chars failure")
 	{
-		auto bad = view;
-		bad.back() = 'x';
-
+		const auto bad = 'x' + view;
 		A a;
-		auto [p, ec] = a.from_chars(bad.data(), bad.data() + bad.size());
-		CHECK(ec == std::errc::invalid_argument);
-		CHECK(p == bad.data());
+		const auto r = a.from_chars(bad.data(), bad.data() + bad.size());
+		CHECK(r.ec == std::errc::invalid_argument);
+		CHECK(r.ptr == bad.data());
 	}
 
 	SECTION("hash")
@@ -194,22 +215,6 @@ TEST_CASE("net/ip/address")
 			CHECK(std::format("{}", pal::masked{addr}) == expected);
 		}
 	}
-}
-
-TEST_CASE("net/ip/address/make_address scope_id")
-{
-	using pal::net::ip::make_address;
-	using A = pal::net::ip::address;
-
-	auto a = make_address("fe80::1%5");
-	REQUIRE(a);
-	REQUIRE(a->is_v6());
-	CHECK(a->v6()->scope_id() == 5);
-
-	std::array<char, A::max_string_length + 1> buf{};
-	auto [end, ec] = a->to_chars(buf.data(), buf.data() + buf.size());
-	REQUIRE(ec == std::errc{});
-	CHECK(std::string_view{buf.data(), static_cast<size_t>(end - buf.data())} == "fe80::1%5");
 }
 
 // NOLINTEND(readability-magic-numbers)

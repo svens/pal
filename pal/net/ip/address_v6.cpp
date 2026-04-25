@@ -7,6 +7,16 @@
 	#include <ws2tcpip.h>
 #endif
 
+namespace
+{
+
+constexpr bool is_v6_char (char c) noexcept
+{
+	return (c >= '0' && c <= '9') || (c >= 'a' && c <= 'f') || (c >= 'A' && c <= 'F') || c == ':' || c == '.';
+}
+
+} // namespace
+
 namespace pal::net::ip
 {
 
@@ -30,48 +40,53 @@ char *ntop (const uint8_t *bytes, char *first, char *last) noexcept
 
 std::to_chars_result address_v6::to_chars (char *first, char *last) const noexcept
 {
+	std::to_chars_result r{.ptr = last, .ec = std::errc::value_too_large};
 	if (auto *p = __address_v6::ntop(bytes_.data(), first, last))
 	{
 		if (scope_id_ == 0)
 		{
-			return {.ptr = p, .ec = std::errc{}};
+			r = {.ptr = p, .ec = std::errc{}};
 		}
-		if (p < last)
+		// p points to the '\0' written by ntop
+		// ntop only succeeds when the buffer fits the full string including '\0', so p < last is guaranteed
+		else if (r = std::to_chars(p + 1, last, scope_id_); r.ec == std::errc{})
 		{
-			if (auto [end, ec] = std::to_chars(p + 1, last, scope_id_); ec == std::errc{})
-			{
-				*p = '%';
-				return {.ptr = end, .ec = std::errc{}};
-			}
+			*p = '%';
 		}
 	}
-	return {.ptr = last, .ec = std::errc::value_too_large};
+	return r;
 }
 
 std::from_chars_result address_v6::from_chars (const char *first, const char *last) noexcept
 {
-	last = (std::min)(first + max_string_length, last);
+	std::from_chars_result r{.ptr = first, .ec = std::errc{}};
+	last = first + (std::min<ptrdiff_t>)(last - first, max_string_length);
 
 	std::array<char, max_string_length + 1> buf{};
-	auto *buf_end = std::copy(first, last, buf.data());
+	auto *buf_p = buf.data();
+
+	while (r.ptr != last && is_v6_char(*r.ptr))
+	{
+		*buf_p++ = *r.ptr++;
+	}
+
+	if (::inet_pton(AF_INET6, buf.data(), bytes_.data()) != 1)
+	{
+		r.ec = std::errc::invalid_argument;
+		return r;
+	}
 
 	scope_id_ = 0;
-	if (auto *p = std::find(buf.data(), buf_end, '%'); p != buf_end)
+	if (r.ptr != last && *r.ptr == '%')
 	{
-		auto [ptr, ec] = std::from_chars(p + 1, buf_end, scope_id_);
-		if (ec != std::errc{} || ptr != buf_end)
+		r = std::from_chars(r.ptr + 1, last, scope_id_);
+		if (r.ec != std::errc{})
 		{
-			return {.ptr = first, .ec = std::errc::invalid_argument};
+			return r;
 		}
-		*p = '\0';
 	}
 
-	if (::inet_pton(AF_INET6, buf.data(), bytes_.data()) == 1)
-	{
-		return {.ptr = last, .ec = std::errc{}};
-	}
-
-	return {.ptr = first, .ec = std::errc::invalid_argument};
+	return r;
 }
 
 } // namespace pal::net::ip

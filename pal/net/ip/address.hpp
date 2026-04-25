@@ -110,7 +110,7 @@ public:
 	 * On success, returns std::from_chars_result with ptr pointing to
 	 * first character not matching the address text.
 	 *
-	 * On failure, ptr is set to \a first and ec std::errc::invalid_argument.
+	 * On failure, ptr is set to first non-legal character and ec std::errc::invalid_argument.
 	 * Content of \a this is unspecified on failure.
 	 */
 	std::from_chars_result from_chars (const char *first, const char *last) noexcept
@@ -145,12 +145,12 @@ private:
 [[nodiscard]] inline result<address> make_address (std::string_view text) noexcept
 {
 	address addr;
-	auto [_, ec] = addr.from_chars(text.data(), text.data() + text.size());
-	if (ec == std::errc{})
+	const auto r = addr.from_chars(text.data(), text.data() + text.size());
+	if (r.ec == std::errc{} && r.ptr == text.data() + text.size())
 	{
 		return addr;
 	}
-	return make_unexpected(ec);
+	return make_unexpected(std::errc::invalid_argument);
 }
 
 } // namespace pal::net::ip
