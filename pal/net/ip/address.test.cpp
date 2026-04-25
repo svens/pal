@@ -84,15 +84,14 @@ TEST_CASE("net/ip/address")
 	}
 
 	// clang-format off
-	auto [view, addr, is_v4, is_unspecified, is_loopback] = GENERATE(
-		table<std::string, A, bool, bool, bool>({
-			{ "0.0.0.0",   A{A4::any},      true,  true,  false },
-			{ "127.0.0.1", A{A4::loopback}, true,  false, true  },
-			{ "::",        A{A6::any},      false, true,  false },
-			{ "::1",       A{A6::loopback}, false, false, true  },
-		})
-	);
+	auto [view, addr, is_v4, is_unspecified, is_loopback] = GENERATE(table<std::string, A, bool, bool, bool>({
+		{ "0.0.0.0",   A4::any,      true,  true,  false },
+		{ "127.0.0.1", A4::loopback, true,  false, true  },
+		{ "::",        A6::any,      false, true,  false },
+		{ "::1",       A6::loopback, false, false, true  },
+	}));
 	// clang-format on
+
 	CAPTURE(view);
 
 	SECTION("copy ctor")
