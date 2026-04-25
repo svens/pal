@@ -90,10 +90,13 @@ TEST_CASE("net/ip/network")
 		auto n4 = N{*make_network_v4(A4::any, 0)};
 		auto n6 = N{*make_network_v6(A6::any, 0)};
 		auto sub4 = N{*make_network_v4(B4{10, 0, 0, 0}, 8)};
+		auto sub6 = N{*make_network_v6(A6::loopback, 128)};
 
 		CHECK(sub4.is_subnet_of(n4));
 		CHECK_FALSE(sub4.is_subnet_of(n6)); // cross-family
 		CHECK_FALSE(n4.is_subnet_of(n6));   // cross-family
+		CHECK(sub6.is_subnet_of(n6));
+		CHECK_FALSE(n6.is_subnet_of(n4));   // cross-family
 	}
 
 	// clang-format off
@@ -113,6 +116,13 @@ TEST_CASE("net/ip/network")
 		CHECK(n == net);
 	}
 
+	SECTION("move ctor")
+	{
+		N src{net};
+		N n{std::move(src)};
+		CHECK(n == net);
+	}
+
 	SECTION("copy assign")
 	{
 		N n;
@@ -129,6 +139,14 @@ TEST_CASE("net/ip/network")
 			b = *n.v6();
 		}
 		CHECK(n == b);
+	}
+
+	SECTION("move assign")
+	{
+		N src{net};
+		N n;
+		n = std::move(src);
+		CHECK(n == net);
 	}
 
 	SECTION("properties")
