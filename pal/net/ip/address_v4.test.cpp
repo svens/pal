@@ -101,27 +101,35 @@ TEST_CASE("net/ip/address_v4")
 		CHECK(a >= c);
 	}
 
+	struct case_t
+	{
+		std::string view;
+		B bytes;
+		bool is_unspecified = false;
+		bool is_loopback = false;
+		bool is_private = false;
+	};
+
 	// clang-format off
-	auto [view, bytes, is_unspecified, is_loopback, is_private] = GENERATE(
-		table<std::string, B, bool, bool, bool>({
-			{ "0.0.0.0",         B{0,0,0,0},         true,  false, false },
-			{ "0.1.0.0",         B{0,1,0,0},         false, false, false },
-			{ "0.0.1.0",         B{0,0,1,0},         false, false, false },
-			{ "0.0.0.1",         B{0,0,0,1},         false, false, false },
-			{ "127.0.0.1",       B{127,0,0,1},       false, true,  false },
-			{ "255.255.255.255", B{255,255,255,255}, false, false, false },
-			{ "224.1.2.3",       B{224,1,2,3},       false, false, false },
-			{ "10.1.2.3",        B{10,1,2,3},        false, false, true  },
-			{ "172.15.0.1",      B{172,15,0,1},      false, false, false },
-			{ "172.16.0.1",      B{172,16,0,1},      false, false, true  },
-			{ "172.20.0.1",      B{172,20,0,1},      false, false, true  },
-			{ "172.31.255.255",  B{172,31,255,255},  false, false, true  },
-			{ "172.32.0.1",      B{172,32,0,1},      false, false, false },
-			{ "192.168.1.2",     B{192,168,1,2},     false, false, true  },
-			{ "192.169.0.1",     B{192,169,0,1},     false, false, false },
-		})
-	);
+	auto [view, bytes, is_unspecified, is_loopback, is_private] = GENERATE(values<case_t>({
+		{.view = "0.0.0.0", .bytes = B{0, 0, 0, 0}, .is_unspecified = true},
+		{.view = "0.1.0.0", .bytes = B{0, 1, 0, 0}},
+		{.view = "0.0.1.0", .bytes = B{0, 0, 1, 0}},
+		{.view = "0.0.0.1", .bytes = B{0, 0, 0, 1}},
+		{.view = "127.0.0.1", .bytes = B{127, 0, 0, 1}, .is_loopback = true},
+		{.view = "255.255.255.255", .bytes = B{255, 255, 255, 255}},
+		{.view = "224.1.2.3", .bytes = B{224, 1, 2, 3}},
+		{.view = "10.1.2.3", .bytes = B{10, 1, 2, 3}, .is_private = true},
+		{.view = "172.15.0.1", .bytes = B{172, 15, 0, 1}},
+		{.view = "172.16.0.1", .bytes = B{172, 16, 0, 1}, .is_private = true},
+		{.view = "172.20.0.1", .bytes = B{172, 20, 0, 1}, .is_private = true},
+		{.view = "172.31.255.255", .bytes = B{172, 31, 255, 255}, .is_private = true},
+		{.view = "172.32.0.1", .bytes = B{172, 32, 0, 1}},
+		{.view = "192.168.1.2", .bytes = B{192, 168, 1, 2}, .is_private = true},
+		{.view = "192.169.0.1", .bytes = B{192, 169, 0, 1}},
+	}));
 	// clang-format on
+
 	CAPTURE(view);
 
 	A a{bytes};

@@ -1,5 +1,4 @@
 #include <pal/net/ip/address_v6.hpp>
-#include <algorithm>
 
 #if __has_include(<arpa/inet.h>)
 	#include <arpa/inet.h>

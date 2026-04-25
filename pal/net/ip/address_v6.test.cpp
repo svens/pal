@@ -223,40 +223,135 @@ TEST_CASE("net/ip/address_v6")
 		}
 	}
 
+	struct case_t
+	{
+		std::string view;
+		B bytes;
+		bool is_unspecified = false;
+		bool is_loopback = false;
+		bool is_v4_mapped = false;
+		bool is_link_local = false;
+		bool is_site_local = false;
+		bool is_multicast = false;
+	};
+
 	// clang-format off
-	auto [view, bytes, is_unspecified, is_loopback, is_v4_mapped, is_link_local, is_site_local, is_multicast] = GENERATE(
-		table<std::string, B, bool, bool, bool, bool, bool, bool>({
-			{ "::",                                    A::any.to_bytes(),                                           true,  false, false, false, false, false },
-			{ "::1",                                   A::loopback.to_bytes(),                                      false, true,  false, false, false, false },
-			{ "::ffff:1.2.3.4",                        B{0,0,0,0,0,0,0,0,0,0,0xff,0xff,0x01,0x02,0x03,0x04},        false, false, true,  false, false, false },
-			{ "1:203:405:607:809:a0b:c0d:e0f",         B{0,1,2,3,4,5,6,7,8,9,10,11,12,13,14,15},                    false, false, false, false, false, false },
+	auto [view, bytes, is_unspecified, is_loopback, is_v4_mapped, is_link_local, is_site_local, is_multicast] = GENERATE(values<case_t>({
+		{
+			.view = "::",
+			.bytes = A::any.to_bytes(),
+			.is_unspecified = true
+		},
+		{
+			.view = "::1",
+			.bytes = A::loopback.to_bytes(),
+			.is_loopback = true
+		},
+		{
+			.view = "::ffff:1.2.3.4",
+			.bytes = B{0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0xff, 0xff, 0x01, 0x02, 0x03, 0x04},
+			.is_v4_mapped = true
+		},
+		{
+			.view = "1:203:405:607:809:a0b:c0d:e0f",
+			.bytes = B{0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15}
+		},
 
-			// for branch coverage
-			{ "fe80::1",                               B{0xfe,0x80,0,0,0,0,0,0,0,0,0,0,0,0,0,0x01},                 false, false, false, true,  false, false },
-			{ "fec0::1",                               B{0xfe,0xc0,0,0,0,0,0,0,0,0,0,0,0,0,0,0x01},                 false, false, false, false, true,  false },
-			{ "100::ffff:0:0",                         B{0x01,0x00,0,0,0,0,0,0,0,0,0xff,0xff,0,0,0,0},              false, false, false, false, false, false },
-			{ "1::ffff:0:0",                           B{0x00,0x01,0,0,0,0,0,0,0,0,0xff,0xff,0,0,0,0},              false, false, false, false, false, false },
-			{ "0:100::ffff:0:0",                       B{0,0,0x01,0x00,0,0,0,0,0,0,0xff,0xff,0,0,0,0},              false, false, false, false, false, false },
-			{ "0:1::ffff:0:0",                         B{0,0,0x00,0x01,0,0,0,0,0,0,0xff,0xff,0,0,0,0},              false, false, false, false, false, false },
-			{ "::100:0:0:ffff:0:0",                    B{0,0,0,0,0x01,0x00,0,0,0,0,0xff,0xff,0,0,0,0},              false, false, false, false, false, false },
-			{ "::1:0:0:ffff:0:0",                      B{0,0,0,0,0x00,0x01,0,0,0,0,0xff,0xff,0,0,0,0},              false, false, false, false, false, false },
-			{ "::100:0:ffff:0:0",                      B{0,0,0,0,0,0,0x01,0x00,0,0,0xff,0xff,0,0,0,0},              false, false, false, false, false, false },
-			{ "::1:0:ffff:0:0",                        B{0,0,0,0,0,0,0x00,0x01,0,0,0xff,0xff,0,0,0,0},              false, false, false, false, false, false },
-			{ "::100:ffff:0:0",                        B{0,0,0,0,0,0,0,0,0x01,0x00,0xff,0xff,0,0,0,0},              false, false, false, false, false, false },
-			{ "::1:ffff:0:0",                          B{0,0,0,0,0,0,0,0,0x00,0x01,0xff,0xff,0,0,0,0},              false, false, false, false, false, false },
-			{ "::fffe:0:0",                            B{0,0,0,0,0,0,0,0,0,0,0xff,0xfe,0,0,0,0},                    false, false, false, false, false, false },
+		// for branch coverage
+		{
+			.view = "fe80::1",
+			.bytes = B{0xfe, 0x80, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0x01},
+			.is_link_local = true
+		},
+		{
+			.view = "fec0::1",
+			.bytes = B{0xfe, 0xc0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0x01},
+			.is_site_local = true
+		},
+		{
+			.view = "100::ffff:0:0",
+			.bytes = B{0x01, 0x00, 0, 0, 0, 0, 0, 0, 0, 0, 0xff, 0xff, 0, 0, 0, 0}
+		},
+		{
+			.view = "1::ffff:0:0",
+			.bytes = B{0x00, 0x01, 0, 0, 0, 0, 0, 0, 0, 0, 0xff, 0xff, 0, 0, 0, 0}
+		},
+		{
+			.view = "0:100::ffff:0:0",
+			.bytes = B{0, 0, 0x01, 0x00, 0, 0, 0, 0, 0, 0, 0xff, 0xff, 0, 0, 0, 0}
+		},
+		{
+			.view = "0:1::ffff:0:0",
+			.bytes = B{0, 0, 0x00, 0x01, 0, 0, 0, 0, 0, 0, 0xff, 0xff, 0, 0, 0, 0}
+		},
+		{
+			.view = "::100:0:0:ffff:0:0",
+			.bytes = B{0, 0, 0, 0, 0x01, 0x00, 0, 0, 0, 0, 0xff, 0xff, 0, 0, 0, 0}
+		},
+		{
+			.view = "::1:0:0:ffff:0:0",
+			.bytes = B{0, 0, 0, 0, 0x00, 0x01, 0, 0, 0, 0, 0xff, 0xff, 0, 0, 0, 0}
+		},
+		{
+			.view = "::100:0:ffff:0:0",
+			.bytes = B{0, 0, 0, 0, 0, 0, 0x01, 0x00, 0, 0, 0xff, 0xff, 0, 0, 0, 0}
+		},
+		{
+			.view = "::1:0:ffff:0:0",
+			.bytes = B{0, 0, 0, 0, 0, 0, 0x00, 0x01, 0, 0, 0xff, 0xff, 0, 0, 0, 0}
+		},
+		{
+			.view = "::100:ffff:0:0",
+			.bytes = B{0, 0, 0, 0, 0, 0, 0, 0, 0x01, 0x00, 0xff, 0xff, 0, 0, 0, 0}
+		},
+		{
+			.view = "::1:ffff:0:0",
+			.bytes = B{0, 0, 0, 0, 0, 0, 0, 0, 0x00, 0x01, 0xff, 0xff, 0, 0, 0, 0}
+		},
+		{
+			.view = "::fffe:0:0",
+			.bytes = B{0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0xff, 0xfe, 0, 0, 0, 0}
+		},
 
-			// multicast (ff00::/8) — scope nibble in bytes[1] & 0x0f
-			{ "ff00::1",                               B{0xff,0x00,0,0,0,0,0,0,0,0,0,0,0,0,0,0x01},                 false, false, false, false, false, true  },
-			{ "ff01::1",                               B{0xff,0x01,0,0,0,0,0,0,0,0,0,0,0,0,0,0x01},                 false, false, false, false, false, true  },
-			{ "ff02::1",                               B{0xff,0x02,0,0,0,0,0,0,0,0,0,0,0,0,0,0x01},                 false, false, false, false, false, true  },
-			{ "ff05::1",                               B{0xff,0x05,0,0,0,0,0,0,0,0,0,0,0,0,0,0x01},                 false, false, false, false, false, true  },
-			{ "ff08::1",                               B{0xff,0x08,0,0,0,0,0,0,0,0,0,0,0,0,0,0x01},                 false, false, false, false, false, true  },
-			{ "ff0e::1",                               B{0xff,0x0e,0,0,0,0,0,0,0,0,0,0,0,0,0,0x01},                 false, false, false, false, false, true  },
-			{ "ffff:ffff:ffff:ffff:ffff:ffff:ffff:ffff", B{0xff,0xff,0xff,0xff,0xff,0xff,0xff,0xff,0xff,0xff,0xff,0xff,0xff,0xff,0xff,0xff}, false, false, false, false, false, true  },
-		})
-	);
+		// multicast (ff00::/8) — scope nibble in bytes[1] & 0x0f
+		{
+			.view = "ff00::1",
+			.bytes = B{0xff, 0x00, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0x01},
+			.is_multicast = true
+		},
+		{
+			.view = "ff01::1",
+			.bytes = B{0xff, 0x01, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0x01},
+			.is_multicast = true
+		},
+		{
+			.view = "ff02::1",
+			.bytes = B{0xff, 0x02, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0x01},
+			.is_multicast = true
+		},
+		{
+			.view = "ff05::1",
+			.bytes = B{0xff, 0x05, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0x01},
+			.is_multicast = true
+		},
+		{
+			.view = "ff08::1",
+			.bytes = B{0xff, 0x08, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0x01},
+			.is_multicast = true
+		},
+		{
+			.view = "ff0e::1",
+			.bytes = B{0xff, 0x0e, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0x01},
+			.is_multicast = true
+		},
+		{
+			.view = "ffff:ffff:ffff:ffff:ffff:ffff:ffff:ffff",
+			.bytes = B{0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff},
+			.is_multicast = true
+		},
+	}));
 	// clang-format on
+
 	CAPTURE(view);
 
 	const A a{bytes};
