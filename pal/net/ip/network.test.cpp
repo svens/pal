@@ -96,7 +96,7 @@ TEST_CASE("net/ip/network")
 		CHECK_FALSE(sub4.is_subnet_of(n6)); // cross-family
 		CHECK_FALSE(n4.is_subnet_of(n6));   // cross-family
 		CHECK(sub6.is_subnet_of(n6));
-		CHECK_FALSE(n6.is_subnet_of(n4));   // cross-family
+		CHECK_FALSE(n6.is_subnet_of(n4)); // cross-family
 	}
 
 	// clang-format off
