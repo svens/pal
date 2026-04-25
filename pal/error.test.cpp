@@ -34,10 +34,7 @@ TEST_CASE("error")
 
 	SECTION("unknown")
 	{
-		const std::error_code ec = static_cast<pal::errc>(
-			// NOLINTNEXTLINE(readability-redundant-parentheses) -- Windows max macro
-			(std::numeric_limits<std::underlying_type_t<pal::errc>>::max)()
-		);
+		const std::error_code ec = static_cast<pal::errc>(-1);
 		CHECK(ec.message() == "unknown");
 		CHECK(ec.category() == pal::error_category());
 		CHECK(ec.category().name() == std::string{"pal"});

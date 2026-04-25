@@ -6,8 +6,6 @@
 namespace
 {
 
-// NOLINTBEGIN(readability-magic-numbers)
-
 TEST_CASE("net/ip/address")
 {
 	using pal::net::ip::make_address;
@@ -215,7 +213,5 @@ TEST_CASE("net/ip/address")
 		}
 	}
 }
-
-// NOLINTEND(readability-magic-numbers)
 
 } // namespace

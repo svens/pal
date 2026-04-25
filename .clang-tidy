@@ -12,6 +12,7 @@ Checks: >
   -performance-enum-size,
   -readability-identifier-length,
   -readability-named-parameter,
+  -readability-redundant-parentheses,
 
 WarningsAsErrors: '*'
 HeaderFilterRegex: 'pal/.*\.hpp$'

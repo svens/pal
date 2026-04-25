@@ -7,8 +7,6 @@
 namespace
 {
 
-// NOLINTBEGIN(readability-magic-numbers)
-
 TEST_CASE("net/ip/address_v6")
 {
 	using pal::net::ip::make_address_v4;
@@ -536,7 +534,5 @@ TEST_CASE("net/ip/address_v6")
 		CHECK(ec2 == std::errc{});
 	}
 }
-
-// NOLINTEND(readability-magic-numbers)
 
 } // namespace

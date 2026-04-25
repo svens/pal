@@ -117,8 +117,7 @@ public:
 
 private:
 
-	// NOLINTNEXTLINE(readability-redundant-member-init)
-	address_v4 address_{};
+	address_v4 address_;
 	uint8_t prefix_length_{};
 
 	constexpr network_v4 (const address_v4 &addr, uint8_t prefix_length) noexcept

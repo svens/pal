@@ -5,3 +5,7 @@ Checks: >-
   -misc-non-private-member-variables-in-classes,
   -readability-container-data-pointer,
   -readability-isolate-declaration,
+  -bugprone-sizeof-expression,
+  -modernize-avoid-c-arrays,
+  -performance-move-const-arg,
+  -readability-magic-numbers,

@@ -6,8 +6,6 @@
 namespace
 {
 
-// NOLINTBEGIN(readability-magic-numbers)
-
 using pal::net::ip::make_network_v6;
 using pal::net::ip::network_v6;
 
@@ -311,7 +309,5 @@ TEST_CASE("net/ip/network_v6")
 		CHECK(r.ptr == bad.data());
 	}
 }
-
-// NOLINTEND(readability-magic-numbers)
 
 } // namespace

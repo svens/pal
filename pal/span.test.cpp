@@ -8,11 +8,9 @@ namespace
 
 TEMPLATE_TEST_CASE("span", "", uint8_t, const uint8_t, uint64_t, const uint64_t)
 {
-	// NOLINTNEXTLINE(modernize-avoid-c-arrays)
 	TestType data_1[] = {1}, data_2[] = {1, 2};
 	std::span span_1(data_1, 1);
 	const std::span span_2(data_2, 2);
-	// NOLINTNEXTLINE(modernize-avoid-c-arrays)
 	std::span<TestType> spans[] = {span_1, span_2};
 
 	SECTION("span_sequence: single")
@@ -29,9 +27,7 @@ TEMPLATE_TEST_CASE("span", "", uint8_t, const uint8_t, uint64_t, const uint64_t)
 
 	SECTION("span_size_bytes")
 	{
-		// NOLINTNEXTLINE(bugprone-sizeof-expression)
 		CHECK(pal::span_size_bytes(span_1) == sizeof(data_1));
-		// NOLINTNEXTLINE(bugprone-sizeof-expression)
 		CHECK(pal::span_size_bytes(span_2) == sizeof(data_2));
 		CHECK(pal::span_size_bytes(spans) == sizeof(data_1) + sizeof(data_2));
 	}
