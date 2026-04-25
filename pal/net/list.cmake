@@ -16,6 +16,7 @@ list(APPEND pal_sources
 	pal/net/ip/network_v4.cpp
 	pal/net/ip/network_v6.hpp
 	pal/net/ip/network_v6.cpp
+	pal/net/ip/network.hpp
 )
 
 list(APPEND pal_test_sources
@@ -29,4 +30,5 @@ list(APPEND pal_test_sources
 	pal/net/ip/address_v6.test.cpp
 	pal/net/ip/network_v4.test.cpp
 	pal/net/ip/network_v6.test.cpp
+	pal/net/ip/network.test.cpp
 )

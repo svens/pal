@@ -10,9 +10,10 @@
 #include <pal/result.hpp>
 #include <algorithm>
 #include <charconv>
-#include <ranges>
 #include <compare>
 #include <format>
+#include <functional>
+#include <ranges>
 #include <string_view>
 
 namespace pal::net::ip

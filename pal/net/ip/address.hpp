@@ -40,6 +40,8 @@ public:
 
 	constexpr address (const address &) noexcept = default;
 	address &operator= (const address &) noexcept = default;
+	constexpr address (address &&) noexcept = default;
+	address &operator= (address &&) noexcept = default;
 
 	/// Return true if \a this holds an IPv4 address
 	[[nodiscard]] constexpr bool is_v4 () const noexcept
@@ -113,7 +115,7 @@ public:
 	 * On failure, ptr is set to first non-legal character and ec std::errc::invalid_argument.
 	 * Content of \a this is unspecified on failure.
 	 */
-	std::from_chars_result from_chars (const char *first, const char *last) noexcept
+	[[nodiscard]] std::from_chars_result from_chars (const char *first, const char *last) noexcept
 	{
 		auto r = addr_.emplace<address_v4>().from_chars(first, last);
 		if (r.ec != std::errc{})
