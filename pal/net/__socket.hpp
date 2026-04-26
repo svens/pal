@@ -21,8 +21,7 @@
 #elif __pal_os_windows
 	#define __pal_net_posix 0
 	#define __pal_net_winsock 1
-	#include <winsock2.h>
-	#include <mswsock.h>
+	#include <pal/__platform_sdk.hpp>
 #endif
 
 namespace pal::net::__socket

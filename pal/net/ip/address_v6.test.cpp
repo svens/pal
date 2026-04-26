@@ -388,6 +388,7 @@ TEST_CASE("net/ip/address_v6")
 	SECTION("hash")
 	{
 		CHECK(a.hash() != 0);
+		CHECK(std::hash<A>{}(a) == a.hash());
 	}
 
 	SECTION("to_chars")
@@ -514,6 +515,7 @@ TEST_CASE("net/ip/address_v6")
 	SECTION("format")
 	{
 		CHECK(std::format("{}", a) == view);
+		CHECK_THROWS_AS((void)std::vformat("{:x}", std::make_format_args(a)), std::format_error);
 	}
 
 	SECTION("masked")
