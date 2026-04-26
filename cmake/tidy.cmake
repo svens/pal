@@ -15,7 +15,7 @@ if(RUN_CLANG_TIDY)
 	add_custom_target(tidy_src
 		COMMAND ${RUN_CLANG_TIDY}
 			-p ${CMAKE_BINARY_DIR}
-			-source-filter "^${CMAKE_SOURCE_DIR}/pal/(?!.*\\.(test|bench)\\.cpp$).*\\.cpp$"
+			-source-filter "^${CMAKE_SOURCE_DIR}/pal/(?!.*\\.(test|bench|fuzz)\\.cpp$).*\\.cpp$"
 			-quiet
 			${_tidy_extra_args}
 		WORKING_DIRECTORY ${CMAKE_SOURCE_DIR}
@@ -24,7 +24,7 @@ if(RUN_CLANG_TIDY)
 	add_custom_target(tidy_test
 		COMMAND ${RUN_CLANG_TIDY}
 			-p ${CMAKE_BINARY_DIR}
-			-source-filter "^${CMAKE_SOURCE_DIR}/pal/.*\\.(test|bench)\\.cpp$"
+			-source-filter "^${CMAKE_SOURCE_DIR}/pal/.*\\.(test|bench|fuzz)\\.cpp$"
 			-config-file ${CMAKE_SOURCE_DIR}/.clang-tidy-test
 			-quiet
 			${_tidy_extra_args}

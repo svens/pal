@@ -16,6 +16,21 @@ foreach(action_file IN LISTS action_files)
     string(APPEND content "  name = ${name}\n")
 endforeach()
 
+string(APPEND content "\nrule fuzz-action\n")
+string(APPEND content "  command = cmake -DPAL_FUZZ_SOURCE=$fuzz_source -P cmake/fuzz.cmake\n")
+string(APPEND content "  description = $out\n")
+string(APPEND content "  pool = console\n")
+
+include("${project_root}/pal/list.cmake")
+foreach(source IN LISTS pal_fuzz_sources)
+    if(NOT source MATCHES "\\.fuzz\\.cpp$")
+        continue()
+    endif()
+    string(REGEX REPLACE "\\.fuzz\\.cpp$" "" fuzz_path "${source}")
+    string(APPEND content "\nbuild fuzz/${fuzz_path}: fuzz-action\n")
+    string(APPEND content "  fuzz_source = ${source}\n")
+endforeach()
+
 string(APPEND content "\ndefault all\n")
 
 file(WRITE "${project_root}/build.ninja" "${content}")

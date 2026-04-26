@@ -39,3 +39,10 @@ list(APPEND pal_test_sources
 	pal/net/ip/network_v4.test.cpp
 	pal/net/ip/network_v6.test.cpp
 )
+
+list(APPEND pal_fuzz_sources
+	pal/net/ip/address_v4.fuzz.cpp
+	pal/net/ip/address_v6.fuzz.cpp
+	pal/net/ip/network_v4.fuzz.cpp
+	pal/net/ip/network_v6.fuzz.cpp
+)
