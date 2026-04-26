@@ -5,13 +5,13 @@
 
 extern "C" int LLVMFuzzerInitialize (int *argc, char ***argv)
 {
-    pal::fuzz::init(argc, argv, pal::net::ip::address_v6::max_string_length);
-    return 0;
+	pal::fuzz::init(argc, argv, pal::net::ip::address_v6::max_string_length);
+	return 0;
 }
 
 extern "C" int LLVMFuzzerTestOneInput (const uint8_t *data, std::size_t size)
 {
-    pal::net::ip::address_v6 addr;
-    (void)addr.from_chars(reinterpret_cast<const char *>(data), reinterpret_cast<const char *>(data) + size);
-    return 0;
+	pal::net::ip::address_v6 addr;
+	(void)addr.from_chars(reinterpret_cast<const char *>(data), reinterpret_cast<const char *>(data) + size);
+	return 0;
 }
