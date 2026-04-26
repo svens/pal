@@ -8,7 +8,6 @@ namespace
 
 char *add_port (port_type port, char *first, char *last) noexcept
 {
-	// guard required: first + 1 is evaluated before std::to_chars can check it
 	if (first < last)
 	{
 		if (auto [p, ec] = std::to_chars(first + 1, last, ntoh(port)); ec == std::errc{})
@@ -34,7 +33,6 @@ char *ntop (const v4 &a, char *first, char *last) noexcept
 
 char *ntop (const v6 &a, char *first, char *last) noexcept
 {
-	// guard required: first + 1 is evaluated before __address_v6::ntop can check it
 	if (first < last)
 	{
 		const auto *bytes = reinterpret_cast<const uint8_t *>(&a.sin6_addr);
