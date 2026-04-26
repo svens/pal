@@ -1,5 +1,4 @@
 list(APPEND pal_sources
-	pal/__platform_sdk.hpp
 	pal/byte_order.hpp
 	pal/error.hpp
 	pal/error.cpp
