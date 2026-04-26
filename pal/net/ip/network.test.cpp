@@ -153,6 +153,8 @@ TEST_CASE("net/ip/network")
 		CHECK(net.is_v6() == !is_v4);
 		CHECK((net.v4() != nullptr) == is_v4);
 		CHECK((net.v6() != nullptr) == !is_v4);
+		const auto expected_prefix = static_cast<uint8_t>(std::stoi(view.substr(view.rfind('/') + 1)));
+		CHECK(net.prefix_length() == expected_prefix);
 	}
 
 	SECTION("to_chars")
@@ -205,6 +207,7 @@ TEST_CASE("net/ip/network")
 	SECTION("hash")
 	{
 		CHECK(net.hash() != 0);
+		CHECK(std::hash<N>{}(net) == net.hash());
 	}
 
 	SECTION("make_network(string_view)")
@@ -226,6 +229,7 @@ TEST_CASE("net/ip/network")
 	SECTION("format")
 	{
 		CHECK(std::format("{}", net) == view);
+		CHECK_THROWS_AS((void)std::vformat("{:x}", std::make_format_args(net)), std::format_error);
 	}
 }
 

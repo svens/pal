@@ -24,7 +24,7 @@ namespace __address_v6
 
 char *ntop (const uint8_t *bytes, char *first, char *last) noexcept
 {
-	if (::inet_ntop(AF_INET6, bytes, first, last - first) != nullptr)
+	if (first < last && ::inet_ntop(AF_INET6, bytes, first, last - first) != nullptr)
 	{
 		while (*first != '\0')
 		{

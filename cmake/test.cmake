@@ -12,6 +12,9 @@ include(Catch)
 
 add_library(cxx_test INTERFACE)
 target_include_directories(cxx_test SYSTEM INTERFACE ${Catch2_SOURCE_DIR}/src)
-target_compile_definitions(cxx_test INTERFACE CATCH_CONFIG_NO_COUNTER)
+target_compile_definitions(cxx_test INTERFACE
+	CATCH_CONFIG_NO_COUNTER
+	$<$<BOOL:${WIN32}>:NOMINMAX WIN32_LEAN_AND_MEAN>
+)
 target_link_libraries(cxx_test INTERFACE cxx_warnings Catch2::Catch2)
 

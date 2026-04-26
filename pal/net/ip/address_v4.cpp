@@ -25,7 +25,7 @@ namespace __address_v4
 
 char *ntop (const uint8_t *bytes, char *first, char *last) noexcept
 {
-	if (::inet_ntop(AF_INET, bytes, first, static_cast<size_t>(last - first)) != nullptr)
+	if (first < last && ::inet_ntop(AF_INET, bytes, first, static_cast<size_t>(last - first)) != nullptr)
 	{
 		while (*first != '\0')
 		{
