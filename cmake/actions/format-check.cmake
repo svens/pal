@@ -9,7 +9,7 @@ endif()
 include("${project_root}/pal/list.cmake")
 
 execute_process(
-    COMMAND ${clang_format} --dry-run --Werror ${pal_sources} ${pal_test_sources}
+    COMMAND ${clang_format} --dry-run --Werror ${pal_sources} ${pal_test_sources} ${pal_fuzz_sources}
     WORKING_DIRECTORY "${project_root}"
     RESULT_VARIABLE result
     OUTPUT_VARIABLE stdout

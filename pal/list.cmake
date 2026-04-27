@@ -25,4 +25,8 @@ list(APPEND pal_test_sources
 	pal/span.test.cpp
 )
 
+list(APPEND pal_fuzz_sources
+	pal/fuzz.hpp
+)
+
 include(pal/net/list.cmake)

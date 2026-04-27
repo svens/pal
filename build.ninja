@@ -20,6 +20,18 @@ build format-check: action
 build format: action
   name = format
 
+build fuzz-check: action
+  name = fuzz-check
+
+build fuzz-list: action
+  name = fuzz-list
+
+build fuzz-reduce: action
+  name = fuzz-reduce
+
+build fuzz-run: action
+  name = fuzz-run
+
 build help: action
   name = help
 
@@ -34,5 +46,22 @@ build smoke: action
 
 build tidy: action
   name = tidy
+
+rule fuzz-action
+  command = cmake -DPAL_FUZZ_SOURCE=$fuzz_source -P cmake/fuzz.cmake
+  description = $out
+  pool = console
+
+build fuzz/pal/net/ip/address_v4: fuzz-action
+  fuzz_source = pal/net/ip/address_v4.fuzz.cpp
+
+build fuzz/pal/net/ip/address_v6: fuzz-action
+  fuzz_source = pal/net/ip/address_v6.fuzz.cpp
+
+build fuzz/pal/net/ip/network_v4: fuzz-action
+  fuzz_source = pal/net/ip/network_v4.fuzz.cpp
+
+build fuzz/pal/net/ip/network_v6: fuzz-action
+  fuzz_source = pal/net/ip/network_v6.fuzz.cpp
 
 default all
