@@ -24,8 +24,8 @@ using namespace pal::net::ip;
 
 TEST_CASE("net/ip/basic_endpoint/hash", "[!benchmark]")
 {
-	const tcp::endpoint v4{address_v4::loopback, 443};
-	const udp::endpoint v6{address_v6::loopback, 443};
+	const tcp::endpoint v4{address_v4::loopback, port_type::https};
+	const udp::endpoint v6{address_v6::loopback, port_type::https};
 
 	BENCHMARK("v4")
 	{

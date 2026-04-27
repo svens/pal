@@ -6,7 +6,7 @@ namespace pal::net::ip::__endpoint
 namespace
 {
 
-char *add_port (port_type port, char *first, char *last) noexcept
+char *add_port (uint16_t port, char *first, char *last) noexcept
 {
 	if (first < last)
 	{

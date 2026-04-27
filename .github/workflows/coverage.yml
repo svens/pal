@@ -16,18 +16,40 @@ jobs:
       - name: Install dependencies
         run: sudo apt-get install -y llvm libc++-18-dev libc++abi-18-dev
 
-      - name: Build, test, and generate coverage
-        run: ninja coverage
+      - name: Configure
+        run: cmake --preset linux-clang-coverage
 
-      - name: Coverage summary
+      - name: Build
+        run: cmake --build --preset linux-clang-coverage
+
+      - name: Test
         run: |
-          echo '```' >> $GITHUB_STEP_SUMMARY
-          llvm-cov report .build/linux-clang-coverage/pal_test \
-            -instr-profile=.build/linux-clang-coverage/coverage.profdata \
-            --Xdemangler=c++filt \
-            --Xdemangler=-n \
+          LLVM_PROFILE_FILE=pal_test-%p.profraw \
+          .build/linux-clang-coverage/pal_test --skip-benchmarks \
+            --reporter console \
+            --reporter junit::out=junit.xml
+
+      - name: Generate report
+        run: |
+          llvm-profdata merge -sparse pal_test-*.profraw -o coverage.profdata
+          llvm-cov export .build/linux-clang-coverage/pal_test \
+            -instr-profile=coverage.profdata \
+            --format=lcov \
             "-ignore-filename-regex=.*(test|bench)\.cpp$" \
             "-ignore-filename-regex=.*/test\.(cpp|hpp)$" \
             "-ignore-filename-regex=.*\.build/.*" \
-            >> $GITHUB_STEP_SUMMARY
-          echo '```' >> $GITHUB_STEP_SUMMARY
+            > coverage.lcov
+
+      - name: Upload to Codecov
+        uses: codecov/codecov-action@v5
+        with:
+          files: coverage.lcov
+          token: ${{ secrets.CODECOV_TOKEN }}
+
+      - name: Upload test results to Codecov
+        if: ${{ !cancelled() }}
+        uses: codecov/codecov-action@v5
+        with:
+          files: junit.xml
+          report_type: test_results
+          token: ${{ secrets.CODECOV_TOKEN }}

@@ -13,6 +13,7 @@ list(APPEND pal_sources
 	pal/net/ip/address_v4.cpp
 	pal/net/ip/address_v6.hpp
 	pal/net/ip/address_v6.cpp
+	pal/net/ip/port_type.hpp
 	pal/net/ip/basic_endpoint.hpp
 	pal/net/ip/basic_endpoint.cpp
 	pal/net/ip/network.hpp
@@ -33,6 +34,7 @@ list(APPEND pal_test_sources
 	pal/net/ip/address.test.cpp
 	pal/net/ip/address_v4.test.cpp
 	pal/net/ip/address_v6.test.cpp
+	pal/net/ip/port_type.test.cpp
 	pal/net/ip/basic_endpoint.bench.cpp
 	pal/net/ip/basic_endpoint.test.cpp
 	pal/net/ip/network.test.cpp

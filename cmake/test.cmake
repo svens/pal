@@ -7,8 +7,6 @@ FetchContent_Declare(Catch2
 )
 FetchContent_MakeAvailable(Catch2)
 FetchContent_GetProperties(Catch2 SOURCE_DIR Catch2_SOURCE_DIR)
-list(APPEND CMAKE_MODULE_PATH ${Catch2_SOURCE_DIR}/extras)
-include(Catch)
 
 add_library(cxx_test INTERFACE)
 target_include_directories(cxx_test SYSTEM INTERFACE ${Catch2_SOURCE_DIR}/src)
