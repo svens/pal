@@ -68,7 +68,7 @@
 			"cacheVariables": {
 				"CMAKE_CXX_COMPILER": "clang++",
 				"CMAKE_BUILD_TYPE": "Debug",
-				"CMAKE_CXX_FLAGS": "-stdlib=libc++ -fsanitize=fuzzer-no-link,address,undefined -fno-omit-frame-pointer -D_LIBCPP_HARDENING_MODE=_LIBCPP_HARDENING_MODE_DEBUG",
+				"CMAKE_CXX_FLAGS": "-fsanitize=fuzzer-no-link,address,undefined -fno-omit-frame-pointer -D_GLIBCXX_ASSERTIONS",
 				"PAL_FUZZ": "ON"
 			}
 		},
