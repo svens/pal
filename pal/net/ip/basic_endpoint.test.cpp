@@ -17,7 +17,7 @@ TEMPLATE_TEST_CASE("net/ip/basic_endpoint", "", tcp, udp)
 	using A4 = address_v4;
 	using A6 = address_v6;
 
-	constexpr port_type port = 60000;
+	constexpr auto port = port_type{60000};
 	constexpr size_t capacity = (std::max)(sizeof(::sockaddr_in), sizeof(::sockaddr_in6));
 
 	SECTION("constexpr")
@@ -29,7 +29,7 @@ TEMPLATE_TEST_CASE("net/ip/basic_endpoint", "", tcp, udp)
 
 		constexpr E e1;
 		static_assert(e1.protocol() == TestType::v4);
-		static_assert(e1.port() == 0);
+		static_assert(e1.port() == port_type::unspecified);
 		static_assert(e1.size() == sizeof(::sockaddr_in));
 		static_assert(e1.capacity() == capacity);
 		static_assert(e1.address() == A4::any);
@@ -84,7 +84,7 @@ TEMPLATE_TEST_CASE("net/ip/basic_endpoint", "", tcp, udp)
 		const E e;
 		CHECK(e.protocol() == TestType::v4);
 		CHECK(e.address() == A4::any);
-		CHECK(e.port() == 0);
+		CHECK(e.port() == port_type::unspecified);
 	}
 
 	SECTION("ctor(address_v4)")
@@ -180,13 +180,13 @@ TEMPLATE_TEST_CASE("net/ip/basic_endpoint", "", tcp, udp)
 		if (e.address().is_v4())
 		{
 			auto *sa = static_cast<::sockaddr_in *>(e.data());
-			sa->sin_port = htons(port + 1);
+			sa->sin_port = htons(static_cast<uint16_t>(port + 1));
 			CHECK(const_cast<const E &>(e).data() == sa);
 		}
 		else
 		{
 			auto *sa = static_cast<::sockaddr_in6 *>(e.data());
-			sa->sin6_port = htons(port + 1);
+			sa->sin6_port = htons(static_cast<uint16_t>(port + 1));
 			CHECK(const_cast<const E &>(e).data() == sa);
 		}
 		CHECK(e.port() == port + 1);

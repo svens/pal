@@ -8,6 +8,7 @@
 #include <pal/net/__socket.hpp>
 #include <pal/net/concepts.hpp>
 #include <pal/net/ip/address.hpp>
+#include <pal/net/ip/port_type.hpp>
 #include <pal/byte_order.hpp>
 #include <pal/hash.hpp>
 #include <pal/masked_formatter.hpp>
@@ -24,9 +25,6 @@
 
 namespace pal::net::ip
 {
-
-/// Port number in host byte order
-using port_type = uint16_t;
 
 namespace __endpoint
 {
@@ -142,7 +140,7 @@ public:
 	{
 		v4_.sin_family = AF_INET;
 		v4_.sin_addr = __endpoint::to_native(address);
-		v4_.sin_port = hton(port);
+		v4_.sin_port = hton(static_cast<uint16_t>(port));
 	}
 
 	/// Construct endpoint with IPv6 \a address and \a port
@@ -151,7 +149,7 @@ public:
 	{
 		v6_.sin6_family = AF_INET6;
 		v6_.sin6_addr = __endpoint::to_native(address);
-		v6_.sin6_port = hton(port);
+		v6_.sin6_port = hton(static_cast<uint16_t>(port));
 		v6_.sin6_scope_id = address.scope_id();
 	}
 
@@ -163,7 +161,7 @@ public:
 			v4_ = {};
 			v4_.sin_family = AF_INET;
 			v4_.sin_addr = __endpoint::to_native(*v4);
-			v4_.sin_port = hton(port);
+			v4_.sin_port = hton(static_cast<uint16_t>(port));
 		}
 		else
 		{
@@ -171,7 +169,7 @@ public:
 			v6_.sin6_family = AF_INET6;
 			const auto *v6 = address.v6();
 			v6_.sin6_addr = __endpoint::to_native(*v6);
-			v6_.sin6_port = hton(port);
+			v6_.sin6_port = hton(static_cast<uint16_t>(port));
 			v6_.sin6_scope_id = v6->scope_id();
 		}
 	}
@@ -183,13 +181,13 @@ public:
 		{
 			v4_ = {};
 			v4_.sin_family = AF_INET;
-			v4_.sin_port = hton(port);
+			v4_.sin_port = hton(static_cast<uint16_t>(port));
 		}
 		else
 		{
 			v6_ = {};
 			v6_.sin6_family = AF_INET6;
-			v6_.sin6_port = hton(port);
+			v6_.sin6_port = hton(static_cast<uint16_t>(port));
 		}
 	}
 
@@ -240,13 +238,13 @@ public:
 	/// Return endpoint port
 	[[nodiscard]] constexpr port_type port () const noexcept
 	{
-		return ntoh(v4_.sin_port);
+		return static_cast<port_type>(ntoh(v4_.sin_port));
 	}
 
 	/// Set new endpoint port, keeping address unchanged
 	constexpr void port (port_type port) noexcept
 	{
-		v4_.sin_port = hton(port);
+		v4_.sin_port = hton(static_cast<uint16_t>(port));
 	}
 
 	/// Return pointer to socket address storage
