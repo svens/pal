@@ -33,7 +33,7 @@ if(PROJECT_IS_TOP_LEVEL)
 
 	add_executable(pal_test ${pal_test_sources})
 	target_link_libraries(pal_test PRIVATE cxx_test pal::pal)
-	catch_discover_tests(pal_test EXTRA_ARGS --skip-benchmarks)
+	add_test(NAME pal_test COMMAND pal_test --skip-benchmarks)
 
 	if(PAL_FUZZ)
 		foreach(source IN LISTS pal_fuzz_sources)
