@@ -16,4 +16,6 @@ jobs:
           sudo apt-get install -y clang-18 g++-14
           sudo update-alternatives --install /usr/bin/clang++ clang++ /usr/bin/clang++-18 18
           sudo update-alternatives --install /usr/bin/g++ g++ /usr/bin/g++-14 14
+      - name: Configure
+        run: cmake --preset linux-clang-fuzz "-DCMAKE_CXX_FLAGS=-fsanitize=fuzzer-no-link,address,undefined -fno-omit-frame-pointer -D_GLIBCXX_ASSERTIONS --gcc-install-dir=/usr/lib/gcc/x86_64-linux-gnu/14"
       - run: ninja fuzz-check
