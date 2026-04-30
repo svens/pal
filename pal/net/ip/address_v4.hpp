@@ -6,7 +6,6 @@
  */
 
 #include <pal/hash.hpp>
-#include <pal/masked_formatter.hpp>
 #include <pal/result.hpp>
 #include <array>
 #include <charconv>
@@ -139,6 +138,12 @@ public:
 		return fnv_1a_64(bytes_);
 	}
 
+	/// Return copy of \a this with last octet zeroed (GDPR-safe)
+	[[nodiscard]] constexpr address_v4 masked () const noexcept
+	{
+		return address_v4{bytes_type{bytes_[0], bytes_[1], bytes_[2], 0}};
+	}
+
 	/// Unspecified IPv4 address
 	static const address_v4 any;
 
@@ -239,25 +244,3 @@ struct formatter<pal::net::ip::address_v4>
 };
 
 } // namespace std
-
-namespace pal
-{
-
-template <>
-struct masked_formatter<net::ip::address_v4>
-{
-	template <typename FormatContext>
-	static FormatContext::iterator format (const net::ip::address_v4 &a, FormatContext &ctx)
-	{
-		const auto &b = a.to_bytes();
-		return std::format_to(
-			ctx.out(),
-			"{}.{}.{}.0",
-			static_cast<unsigned>(b[0]),
-			static_cast<unsigned>(b[1]),
-			static_cast<unsigned>(b[2])
-		);
-	}
-};
-
-} // namespace pal

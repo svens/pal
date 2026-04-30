@@ -203,13 +203,13 @@ TEST_CASE("net/ip/address")
 	{
 		if (const auto *p4 = addr.v4())
 		{
-			auto expected = std::format("{}", pal::masked{*p4});
-			CHECK(std::format("{}", pal::masked{addr}) == expected);
+			auto expected = std::format("{}", p4->masked());
+			CHECK(std::format("{}", addr.masked()) == expected);
 		}
 		else
 		{
-			auto expected = std::format("{}", pal::masked{*addr.v6()});
-			CHECK(std::format("{}", pal::masked{addr}) == expected);
+			auto expected = std::format("{}", addr.v6()->masked());
+			CHECK(std::format("{}", addr.masked()) == expected);
 		}
 	}
 }

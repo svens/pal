@@ -7,7 +7,6 @@
 
 #include <pal/net/ip/address_v4.hpp>
 #include <pal/hash.hpp>
-#include <pal/masked_formatter.hpp>
 #include <pal/result.hpp>
 #include <algorithm>
 #include <array>
@@ -183,6 +182,14 @@ public:
 		return hash_128_to_64(fnv_1a_64(bytes_), static_cast<uint64_t>(scope_id_));
 	}
 
+	/// Return copy of \a this with last 8 bytes zeroed (GDPR-safe)
+	[[nodiscard]] constexpr address_v6 masked () const noexcept
+	{
+		auto bytes = bytes_;
+		std::fill(bytes.begin() + 8, bytes.end(), uint8_t{});
+		return address_v6{bytes};
+	}
+
 	/// Unspecified IPv6 address (::)
 	static const address_v6 any;
 
@@ -288,25 +295,5 @@ struct formatter<pal::net::ip::address_v6>
 };
 
 } // namespace std
-
-namespace pal
-{
-
-template <>
-struct masked_formatter<net::ip::address_v6>
-{
-	template <typename FormatContext>
-	static FormatContext::iterator format (const net::ip::address_v6 &a, FormatContext &ctx)
-	{
-		auto bytes = a.to_bytes();
-		std::fill(bytes.begin() + 8, bytes.end(), uint8_t{});
-		const net::ip::address_v6 masked{bytes};
-		std::array<char, net::ip::address_v6::max_string_length + 1> text{};
-		auto [end, _] = masked.to_chars(text.data(), text.data() + text.size());
-		return std::copy(text.data(), end, ctx.out());
-	}
-};
-
-} // namespace pal
 
 // NOLINTEND(readability-magic-numbers)
