@@ -13,6 +13,8 @@
 namespace pal
 {
 
+// NOLINTBEGIN(readability-magic-numbers)
+
 /// FNV-1a 64-bit initial basis
 constexpr uint64_t fnv_1a_64_init = 0xcbf29ce484222325ULL;
 
@@ -25,7 +27,6 @@ constexpr uint64_t fnv_1a_64 (It first, It last, uint64_t h = fnv_1a_64_init) no
 	while (first != last)
 	{
 		h ^= static_cast<uint8_t>(*first++);
-		// NOLINTNEXTLINE(readability-magic-numbers)
 		h += (h << 1) + (h << 4) + (h << 5) + (h << 7) + (h << 8) + (h << 40);
 	}
 	return h;
@@ -44,12 +45,12 @@ constexpr uint64_t hash_128_to_64 (uint64_t h, uint64_t l) noexcept
 {
 	constexpr uint64_t mul = 0x9ddfea08eb382d69ULL;
 	uint64_t a = (l ^ h) * mul;
-	// NOLINTNEXTLINE(readability-magic-numbers)
 	a ^= (a >> 47);
 	uint64_t b = (h ^ a) * mul;
-	// NOLINTNEXTLINE(readability-magic-numbers)
 	b ^= (b >> 47);
 	return b * mul;
 }
+
+// NOLINTEND(readability-magic-numbers)
 
 } // namespace pal
