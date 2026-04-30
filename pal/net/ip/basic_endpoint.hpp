@@ -11,7 +11,6 @@
 #include <pal/net/ip/port_type.hpp>
 #include <pal/byte_order.hpp>
 #include <pal/hash.hpp>
-#include <pal/masked_formatter.hpp>
 #include <pal/result.hpp>
 #include <algorithm>
 #include <compare>
@@ -313,6 +312,12 @@ public:
 		return is_v4() ? __endpoint::hash(v4_) : __endpoint::hash(v6_);
 	}
 
+	/// Return copy of \a this with GDPR-safe masked address
+	[[nodiscard]] constexpr basic_endpoint masked () const noexcept
+	{
+		return basic_endpoint{address().masked(), port()};
+	}
+
 private:
 
 	union
@@ -370,23 +375,3 @@ struct formatter<pal::net::ip::basic_endpoint<Protocol>>
 };
 
 } // namespace std
-
-namespace pal
-{
-
-template <typename Protocol>
-struct masked_formatter<net::ip::basic_endpoint<Protocol>>
-{
-	template <typename FormatContext>
-	static FormatContext::iterator format (const net::ip::basic_endpoint<Protocol> &e, FormatContext &ctx)
-	{
-		const auto addr = e.address();
-		if (const auto *v4 = addr.v4())
-		{
-			return std::format_to(ctx.out(), "{}:{}", masked{*v4}, e.port());
-		}
-		return std::format_to(ctx.out(), "[{}]:{}", masked{*addr.v6()}, e.port());
-	}
-};
-
-} // namespace pal

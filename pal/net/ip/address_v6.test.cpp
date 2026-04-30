@@ -529,7 +529,7 @@ TEST_CASE("net/ip/address_v6")
 		REQUIRE(ec1 == std::errc{});
 		const std::string expected{expected_buf.data(), expected_end};
 
-		CHECK(std::format("{}", pal::masked{a}) == expected);
+		CHECK(std::format("{}", a.masked()) == expected);
 
 		A parsed;
 		auto [p, ec2] = parsed.from_chars(expected.data(), expected.data() + expected.size());

@@ -1,6 +1,5 @@
 #include <pal/net/ip/tcp.hpp>
 #include <pal/net/ip/udp.hpp>
-#include <pal/masked_formatter.hpp>
 #include <catch2/catch_template_test_macros.hpp>
 #include <catch2/generators/catch_generators.hpp>
 #include <catch2/generators/catch_generators_range.hpp>
@@ -269,7 +268,7 @@ TEMPLATE_TEST_CASE("net/ip/basic_endpoint", "", tcp, udp)
 			auto [end, _] = A6{bytes}.to_chars(buf.data(), buf.data() + buf.size());
 			expected = std::format("[{}]:{}", std::string_view{buf.data(), end}, port);
 		}
-		CHECK(std::format("{}", pal::masked{e}) == expected);
+		CHECK(std::format("{}", e.masked()) == expected);
 	}
 }
 

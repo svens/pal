@@ -244,7 +244,7 @@ TEST_CASE("net/ip/address_v4")
 	SECTION("masked")
 	{
 		auto expected = view.substr(0, view.rfind('.') + 1) + "0";
-		CHECK(std::format("{}", pal::masked{a}) == expected);
+		CHECK(std::format("{}", a.masked()) == expected);
 	}
 }
 

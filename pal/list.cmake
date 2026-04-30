@@ -5,7 +5,6 @@ list(APPEND pal_sources
 	pal/hash.hpp
 	pal/intrusive_queue.hpp
 	pal/intrusive_stack.hpp
-	pal/masked_formatter.hpp
 	pal/result.hpp
 	pal/span.hpp
 	pal/version.hpp
@@ -20,7 +19,6 @@ list(APPEND pal_test_sources
 	pal/hash.test.cpp
 	pal/intrusive_queue.test.cpp
 	pal/intrusive_stack.test.cpp
-	pal/masked_formatter.test.cpp
 	pal/result.test.cpp
 	pal/span.test.cpp
 )

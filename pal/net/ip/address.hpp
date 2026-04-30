@@ -137,6 +137,16 @@ public:
 		return v6()->hash();
 	}
 
+	/// Return copy of \a this with GDPR-safe masking applied
+	[[nodiscard]] constexpr address masked () const noexcept
+	{
+		if (const auto *p = v4())
+		{
+			return p->masked();
+		}
+		return v6()->masked();
+	}
+
 private:
 
 	std::variant<address_v4, address_v6> addr_;
@@ -193,22 +203,3 @@ struct formatter<pal::net::ip::address>
 };
 
 } // namespace std
-
-namespace pal
-{
-
-template <>
-struct masked_formatter<net::ip::address>
-{
-	template <typename FormatContext>
-	static FormatContext::iterator format (const net::ip::address &a, FormatContext &ctx)
-	{
-		if (const auto *v4 = a.v4())
-		{
-			return masked_formatter<net::ip::address_v4>::format(*v4, ctx);
-		}
-		return masked_formatter<net::ip::address_v6>::format(*a.v6(), ctx);
-	}
-};
-
-} // namespace pal
