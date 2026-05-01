@@ -44,10 +44,10 @@ concept endpoint = requires(T ep, const T cep, size_t n)
 template <typename T, typename Protocol>
 concept gettable_socket_option = requires(T &opt, const Protocol &p, size_t n)
 {
-	{ opt.level(p)     } -> std::convertible_to<int>;
-	{ opt.name(p)      } -> std::convertible_to<int>;
-	{ opt.data(p)      } -> std::convertible_to<void *>;
-	{ opt.size(p)      } -> std::same_as<size_t>;
+	{ opt.level(p) } -> std::convertible_to<int>;
+	{ opt.name(p) } -> std::convertible_to<int>;
+	{ opt.data(p) } -> std::convertible_to<void *>;
+	{ opt.size(p) } -> std::same_as<size_t>;
 	{ opt.resize(p, n) } -> std::same_as<result<void>>;
 };
 
@@ -56,9 +56,9 @@ template <typename T, typename Protocol>
 concept settable_socket_option = requires(const T &opt, const Protocol &p)
 {
 	{ opt.level(p) } -> std::convertible_to<int>;
-	{ opt.name(p)  } -> std::convertible_to<int>;
-	{ opt.data(p)  } -> std::convertible_to<const void *>;
-	{ opt.size(p)  } -> std::same_as<size_t>;
+	{ opt.name(p) } -> std::convertible_to<int>;
+	{ opt.data(p) } -> std::convertible_to<const void *>;
+	{ opt.size(p) } -> std::same_as<size_t>;
 };
 
 // clang-format on
