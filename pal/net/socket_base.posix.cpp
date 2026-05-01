@@ -247,7 +247,7 @@ result<void> set_native_non_blocking (__socket::handle_type handle, int mode) no
 
 } // namespace
 
-result<void> native_socket::get_option (int level, int name, void *data, size_t data_size) const noexcept
+result<void> native_socket::get_option (int level, int name, void *data, size_t &data_size) const noexcept
 {
 	if (level == __socket::option_level::lib)
 	{
@@ -263,6 +263,7 @@ result<void> native_socket::get_option (int level, int name, void *data, size_t 
 	socklen_t size = data_size;
 	if (::getsockopt(to_sys(handle_), level, name, data, &size) > -1)
 	{
+		data_size = size;
 		return {};
 	}
 	return __socket::sys_error();

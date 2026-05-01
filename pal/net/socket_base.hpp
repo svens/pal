@@ -94,7 +94,7 @@ public:
 	[[nodiscard]] result<void> local_endpoint (void *endpoint, size_t *endpoint_size) const noexcept;
 	[[nodiscard]] result<void> remote_endpoint (void *endpoint, size_t *endpoint_size) const noexcept;
 
-	[[nodiscard]] result<void> get_option (int level, int name, void *data, size_t data_size) const noexcept;
+	[[nodiscard]] result<void> get_option (int level, int name, void *data, size_t &data_size) const noexcept;
 	[[nodiscard]] result<void> set_option (int level, int name, const void *data, size_t data_size) const noexcept;
 
 private:
@@ -105,6 +105,21 @@ private:
 
 /// Open and return new native socket
 [[nodiscard]] result<native_socket> open (int family, int type, int protocol) noexcept;
+
+namespace __socket
+{
+
+/// \internal Return lambda that constructs \a Socket from native_socket
+template <typename Socket>
+constexpr auto to_api () noexcept
+{
+	return [] (native_socket &&socket) noexcept
+	{
+		return Socket{std::move(socket)};
+	};
+}
+
+} // namespace __socket
 
 /// Common socket types and constants
 class socket_base
@@ -161,18 +176,6 @@ public:
 
 	/// Maximum number of spans for vectored I/O
 	static constexpr size_t io_vector_max_size = __socket::io_vector_max_size;
-
-	/// \internal
-	///
-	/// Return lambda that wraps socket implementation to public API class
-	template <typename Socket>
-	static constexpr auto to_api () noexcept
-	{
-		return [] (auto &&socket)
-		{
-			return Socket{std::forward<decltype(socket)>(socket)};
-		};
-	}
 
 protected:
 
