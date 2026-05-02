@@ -83,13 +83,9 @@ public:
 	{
 		endpoint_type endpoint;
 		auto size = endpoint.capacity();
-		auto r = socket_.local_endpoint(endpoint.data(), &size);
-		if (r)
-		{
-			endpoint.resize(size);
-			return endpoint;
-		}
-		return unexpected{r.error()};
+		return socket_.local_endpoint(endpoint.data(), &size)
+			.and_then(resize(endpoint, size))
+			.transform([&] { return endpoint; });
 	}
 
 	/// Return remote endpoint to which this socket is connected
@@ -97,13 +93,9 @@ public:
 	{
 		endpoint_type endpoint;
 		auto size = endpoint.capacity();
-		auto r = socket_.remote_endpoint(endpoint.data(), &size);
-		if (r)
-		{
-			endpoint.resize(size);
-			return endpoint;
-		}
-		return unexpected{r.error()};
+		return socket_.remote_endpoint(endpoint.data(), &size)
+			.and_then(resize(endpoint, size))
+			.transform([&] { return endpoint; });
 	}
 
 	/// Get socket \a option
@@ -112,12 +104,8 @@ public:
 	{
 		auto p = protocol();
 		auto size = option.size(p);
-		auto r = socket_.get_option(option.level(p), option.name(p), option.data(p), size);
-		if (r)
-		{
-			return option.resize(p, size);
-		}
-		return r;
+		return socket_.get_option(option.level(p), option.name(p), option.data(p), size)
+			.and_then(resize(option, p, size));
 	}
 
 	/// Set socket \a option
@@ -138,6 +126,14 @@ protected:
 	}
 
 	~basic_socket () = default;
+
+	static auto resize (auto &obj, auto... args) noexcept
+	{
+		return [... args = args, &obj] () noexcept
+		{
+			return obj.resize(args...);
+		};
+	}
 
 	template <typename P>
 	friend constexpr auto __socket::to_api () noexcept;

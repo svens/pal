@@ -70,6 +70,7 @@ struct message: ::msghdr
 	{
 		msg_iovlen = 0;
 		msg_iov = iov.data();
+		// NOLINTNEXTLINE(readability-use-anyofallof)
 		for (auto &&b: buffers)
 		{
 			if (static_cast<size_t>(msg_iovlen) == iov.size())

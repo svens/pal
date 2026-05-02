@@ -9,3 +9,6 @@ Checks: >-
   -modernize-avoid-c-arrays,
   -performance-move-const-arg,
   -readability-magic-numbers,
+  -readability-convert-member-functions-to-static,
+  -readability-use-std-min-max,
+  -readability-static-accessed-through-instance,

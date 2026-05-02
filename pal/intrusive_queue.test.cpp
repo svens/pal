@@ -246,13 +246,7 @@ TEST_CASE("intrusive_queue")
 
 		std::array<foo *, 3> expected = {&f1, &f2, &f3};
 		size_t i = 0;
-		std::ranges::for_each(
-			q,
-			[&] (foo &node)
-			{
-				CHECK(&node == expected[i++]);
-			}
-		);
+		std::ranges::for_each(q, [&] (foo &node) { CHECK(&node == expected[i++]); });
 		CHECK(i == 3);
 	}
 

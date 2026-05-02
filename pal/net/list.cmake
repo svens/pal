@@ -1,6 +1,7 @@
 list(APPEND pal_sources
 	# socket
 	pal/net/__socket.hpp
+	pal/net/basic_datagram_socket.hpp
 	pal/net/basic_socket.hpp
 	pal/net/concepts.hpp
 	pal/net/socket_base.hpp
@@ -27,6 +28,8 @@ list(APPEND pal_sources
 )
 
 list(APPEND pal_test_sources
+	pal/net/test.hpp
+
 	# socket
 	pal/net/basic_socket.test.cpp
 	pal/net/socket_base.test.cpp
@@ -42,6 +45,7 @@ list(APPEND pal_test_sources
 	pal/net/ip/network_v4.test.cpp
 	pal/net/ip/network_v6.test.cpp
 	pal/net/ip/port_type.test.cpp
+	pal/net/ip/udp.test.cpp
 )
 
 list(APPEND pal_fuzz_sources
