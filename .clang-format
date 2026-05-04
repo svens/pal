@@ -33,7 +33,7 @@ BinPackParameters: OnePerLine
 # Short constructs
 AllowShortEnumsOnASingleLine: false
 AllowShortFunctionsOnASingleLine: None
-AllowShortLambdasOnASingleLine: None
+AllowShortLambdasOnASingleLine: Inline
 
 # Spaces
 EmptyLineAfterAccessModifier: Always
@@ -140,3 +140,10 @@ SortIncludes: Never
 # 8. Enum base type colon: no option to remove space
 #    Wanted: enum errc: int
 #    Gets:   enum errc : int
+#
+# 9. Short lambdas: Inline (not None or All) keeps argument lambdas compact
+#    while leaving standalone lambdas and functions expanded as usual
+#    Wanted: .and_then([&] { return x; })   ← argument position: stays on one line
+#    Wanted: return [...args = args, &obj] () noexcept   ← return statement: expands
+#    (AllowShortFunctionsOnASingleLine: None is intentionally inconsistent here;
+#    lambdas differ from functions in that they are commonly used inline as arguments)

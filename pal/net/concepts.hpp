@@ -5,6 +5,7 @@
  * Network type concepts
  */
 
+#include <pal/result.hpp>
 #include <concepts>
 #include <cstddef>
 
@@ -22,6 +23,14 @@ concept protocol = requires(const T &p)
 	{ p.family() } -> std::same_as<int>;
 };
 
+/// Requirements for types used as acceptable protocol template parameters.
+/// Refines protocol with a nested socket type (for use with basic_socket_acceptor).
+template <typename T>
+concept acceptable_protocol = protocol<T> && requires
+{
+	typename T::socket;
+};
+
 /// Requirements for types used as network endpoint template parameters
 template <typename T>
 concept endpoint = requires(T ep, const T cep, size_t n)
@@ -37,6 +46,27 @@ concept endpoint = requires(T ep, const T cep, size_t n)
 	{ cep.size() } -> std::same_as<size_t>;
 	{ cep.capacity() } -> std::same_as<size_t>;
 	{ ep.resize(n) };
+};
+
+/// Requirements for types used as gettable socket option template parameters
+template <typename T, typename Protocol>
+concept gettable_socket_option = requires(T &opt, const Protocol &p, size_t n)
+{
+	{ opt.level(p) } -> std::convertible_to<int>;
+	{ opt.name(p) } -> std::convertible_to<int>;
+	{ opt.data(p) } -> std::convertible_to<void *>;
+	{ opt.size(p) } -> std::same_as<size_t>;
+	{ opt.resize(p, n) } -> std::same_as<result<void>>;
+};
+
+/// Requirements for types used as settable socket option template parameters
+template <typename T, typename Protocol>
+concept settable_socket_option = requires(const T &opt, const Protocol &p)
+{
+	{ opt.level(p) } -> std::convertible_to<int>;
+	{ opt.name(p) } -> std::convertible_to<int>;
+	{ opt.data(p) } -> std::convertible_to<const void *>;
+	{ opt.size(p) } -> std::same_as<size_t>;
 };
 
 // clang-format on

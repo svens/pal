@@ -1,4 +1,5 @@
 list(APPEND pal_sources
+	pal/buffer.hpp
 	pal/byte_order.hpp
 	pal/error.hpp
 	pal/error.cpp
@@ -13,6 +14,7 @@ list(APPEND pal_sources
 list(APPEND pal_test_sources
 	pal/test.hpp
 	pal/test.cpp
+	pal/buffer.test.cpp
 	pal/byte_order.test.cpp
 	pal/error.test.cpp
 	pal/hash.bench.cpp

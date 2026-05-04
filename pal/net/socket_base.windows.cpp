@@ -430,7 +430,7 @@ result<void> set_native_non_blocking (__socket::handle_type handle, bool mode) n
 
 } // namespace
 
-result<void> native_socket::get_option (int level, int name, void *data, size_t data_size) const noexcept
+result<void> native_socket::get_option (int level, int name, void *data, size_t &data_size) const noexcept
 {
 	if (auto e = socket_option_precheck(handle_, name))
 	{
@@ -451,6 +451,7 @@ result<void> native_socket::get_option (int level, int name, void *data, size_t 
 	auto size = static_cast<int>(data_size);
 	if (::getsockopt(to_sys(handle_), level, name, p, &size) > -1)
 	{
+		data_size = size;
 		return {};
 	}
 

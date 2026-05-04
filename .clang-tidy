@@ -6,6 +6,7 @@ Checks: >
   performance-*,
   readability-*,
   -bugprone-derived-method-shadowing-base-method,
+  -bugprone-invalid-enum-default-initialization,
   -bugprone-reserved-identifier,
   -misc-include-cleaner,
   -modernize-use-trailing-return-type,

@@ -5,8 +5,8 @@
  * Platform socket abstraction (internal)
  */
 
+#include <pal/buffer.hpp>
 #include <pal/result.hpp>
-#include <pal/span.hpp>
 #include <pal/version.hpp>
 #include <array>
 #include <chrono>
@@ -27,6 +27,8 @@
 
 namespace pal::net::__socket
 {
+
+// NOLINTBEGIN(misc-non-private-member-variables-in-classes)
 
 constexpr size_t io_vector_max_size = 4;
 
@@ -59,32 +61,24 @@ inline pal::unexpected sys_error (int e = errno) noexcept
 	return pal::unexpected{std::error_code{e, std::generic_category()}};
 }
 
-// NOLINTBEGIN(misc-non-private-member-variables-in-classes)
 struct message: ::msghdr
 {
 	std::array<::iovec, io_vector_max_size> iov{};
 
-	template <typename SpanSequence>
-	bool set (const SpanSequence &spans) noexcept
+	template <typename... Buffers>
+	void set (Buffers &&...bufs) noexcept
 	{
+		static_assert(sizeof...(Buffers) <= io_vector_max_size);
 		msg_iovlen = 0;
 		msg_iov = iov.data();
-		auto it = span_sequence_begin(spans);
-		const auto end = span_sequence_end(spans);
-		while (it != end && static_cast<size_t>(msg_iovlen) != iov.size())
+		auto fill = [&] (auto &&b) noexcept
 		{
-			auto &s = *it++;
 			iov[msg_iovlen++] = {
-				.iov_base = const_cast<void *>(static_cast<const void *>(s.data())),
-				.iov_len = s.size_bytes(),
+				.iov_base = const_cast<void *>(static_cast<const void *>(std::data(b))),
+				.iov_len = std::size(b) * sizeof(*std::data(b)),
 			};
-		}
-		return (it == end && static_cast<size_t>(msg_iovlen) <= iov.size());
-	}
-
-	void reset () noexcept
-	{
-		msg_iovlen = 0;
+		};
+		(fill(std::forward<Buffers>(bufs)), ...);
 	}
 
 	void name (const void *n, size_t name_size) noexcept
@@ -98,7 +92,6 @@ struct message: ::msghdr
 		msg_flags = f;
 	}
 };
-// NOLINTEND(misc-non-private-member-variables-in-classes)
 
 #elif __pal_net_winsock //{{{1
 
@@ -129,7 +122,6 @@ inline pal::unexpected sys_error (int e = ::WSAGetLastError()) noexcept
 	return pal::unexpected{std::error_code{e, std::system_category()}};
 }
 
-// NOLINTBEGIN(misc-non-private-member-variables-in-classes)
 struct message
 {
 	sockaddr *msg_name{};
@@ -138,26 +130,21 @@ struct message
 	DWORD msg_iovlen{};
 	std::array<::WSABUF, io_vector_max_size> msg_iov{};
 
-	template <typename SpanSequence>
-	bool set (const SpanSequence &spans) noexcept
+	template <typename... Buffers>
+	void set (Buffers &&...bufs) noexcept
 	{
+		static_assert(sizeof...(Buffers) <= io_vector_max_size);
 		msg_iovlen = 0;
-		auto it = span_sequence_begin(spans);
-		const auto end = span_sequence_end(spans);
-		while (it != end && static_cast<size_t>(msg_iovlen) != msg_iov.size())
+		auto fill = [&] (auto &&b) noexcept
 		{
-			auto &s = *it++;
 			msg_iov[msg_iovlen++] = {
-				.len = static_cast<ULONG>(s.size_bytes()),
-				.buf = const_cast<CHAR *>(reinterpret_cast<const CHAR *>(s.data())),
+				.len = static_cast<ULONG>(std::size(b) * sizeof(*std::data(b))),
+				.buf = const_cast<CHAR *>(
+					static_cast<const CHAR *>(static_cast<const void *>(std::data(b)))
+				),
 			};
-		}
-		return (it == end && static_cast<size_t>(msg_iovlen) <= msg_iov.size());
-	}
-
-	void reset () noexcept
-	{
-		msg_iovlen = 0;
+		};
+		(fill(std::forward<Buffers>(bufs)), ...);
 	}
 
 	void name (const void *n, size_t name_size) noexcept
@@ -171,7 +158,6 @@ struct message
 		msg_flags = f;
 	}
 };
-// NOLINTEND(misc-non-private-member-variables-in-classes)
 
 // clang-format off
 #define SHUT_RD SD_RECEIVE
@@ -214,5 +200,7 @@ enum option_name : int
 {
 	non_blocking_io,
 };
+
+// NOLINTEND(misc-non-private-member-variables-in-classes)
 
 } // namespace pal::net::__socket

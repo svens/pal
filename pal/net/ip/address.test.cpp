@@ -176,6 +176,7 @@ TEST_CASE("net/ip/address")
 	SECTION("hash")
 	{
 		CHECK(addr.hash() != 0);
+		CHECK(std::hash<A>{}(addr) == addr.hash());
 	}
 
 	SECTION("make_address(string_view)")
@@ -197,6 +198,11 @@ TEST_CASE("net/ip/address")
 	SECTION("format")
 	{
 		CHECK(std::format("{}", addr) == view);
+	}
+
+	SECTION("format invalid spec")
+	{
+		CHECK_THROWS_AS(std::vformat("{:x}", std::make_format_args(addr)), std::format_error);
 	}
 
 	SECTION("masked")
