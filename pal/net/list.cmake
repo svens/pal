@@ -19,6 +19,8 @@ list(APPEND pal_sources
 	pal/net/ip/address_v6.cpp
 	pal/net/ip/basic_endpoint.hpp
 	pal/net/ip/basic_endpoint.cpp
+	pal/net/ip/host_name.hpp
+	pal/net/ip/host_name.cpp
 	pal/net/ip/network.hpp
 	pal/net/ip/network_v4.hpp
 	pal/net/ip/network_v4.cpp
@@ -45,6 +47,7 @@ list(APPEND pal_test_sources
 	pal/net/ip/address_v6.test.cpp
 	pal/net/ip/basic_endpoint.bench.cpp
 	pal/net/ip/basic_endpoint.test.cpp
+	pal/net/ip/host_name.test.cpp
 	pal/net/ip/network.test.cpp
 	pal/net/ip/network_v4.test.cpp
 	pal/net/ip/network_v6.test.cpp
