@@ -74,8 +74,7 @@ TEMPLATE_TEST_CASE("net/ip/udp", "", udp_v4, udp_v6)
 
 		SECTION("scatter/gather")
 		{
-			auto bufs = pal::buffer(send_bufs[0], send_bufs[1], send_bufs[2]);
-			auto send = sender.send_to(bufs, endpoint).value();
+			auto send = sender.send_to(send_bufs, endpoint).value();
 			CHECK(send == send_view.size());
 
 			endpoint.port(pal::net::ip::port_type::unspecified);
@@ -148,7 +147,7 @@ TEMPLATE_TEST_CASE("net/ip/udp", "", udp_v4, udp_v6)
 
 		SECTION("scatter/gather")
 		{
-			auto send = sender.send(pal::buffer(send_bufs[0], send_bufs[1], send_bufs[2])).value();
+			auto send = sender.send(send_bufs).value();
 			CHECK(send == send_view.size());
 
 			auto recv = receiver.receive(pal::buffer(recv_buf)).value();

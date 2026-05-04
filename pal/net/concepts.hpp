@@ -23,6 +23,14 @@ concept protocol = requires(const T &p)
 	{ p.family() } -> std::same_as<int>;
 };
 
+/// Requirements for types used as acceptable protocol template parameters.
+/// Refines protocol with a nested socket type (for use with basic_socket_acceptor).
+template <typename T>
+concept acceptable_protocol = protocol<T> && requires
+{
+	typename T::socket;
+};
+
 /// Requirements for types used as network endpoint template parameters
 template <typename T>
 concept endpoint = requires(T ep, const T cep, size_t n)

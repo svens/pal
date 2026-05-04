@@ -5,7 +5,13 @@
  * TCP protocol
  */
 
+#include <pal/net/basic_socket_acceptor.hpp>
+#include <pal/net/basic_stream_socket.hpp>
 #include <pal/net/ip/basic_endpoint.hpp>
+
+#if __pal_net_posix
+	#include <netinet/in.h>
+#endif
 
 namespace pal::net::ip
 {
@@ -18,16 +24,34 @@ public:
 	/// Endpoint type for TCP
 	using endpoint = basic_endpoint<tcp>;
 
+	/// Stream socket type for TCP
+	using socket = net::basic_stream_socket<tcp>;
+
+	/// Acceptor type for TCP
+	using acceptor = net::basic_socket_acceptor<tcp>;
+
 	/// Construct TCP protocol for address \a family
 	constexpr explicit tcp (int family) noexcept
 		: family_{family}
 	{
 	}
 
-	/// Return address family
+	/// Return address family (domain argument for socket(2))
 	[[nodiscard]] constexpr int family () const noexcept
 	{
 		return family_;
+	}
+
+	/// Return socket type (SOCK_STREAM)
+	[[nodiscard]] static constexpr int type () noexcept
+	{
+		return SOCK_STREAM;
+	}
+
+	/// Return protocol number (IPPROTO_TCP)
+	[[nodiscard]] static constexpr int protocol () noexcept
+	{
+		return IPPROTO_TCP;
 	}
 
 	[[nodiscard]] constexpr auto operator<=> (const tcp &) const noexcept = default;
@@ -44,6 +68,7 @@ private:
 };
 static_assert(net::protocol<tcp>);
 static_assert(net::endpoint<tcp::endpoint>);
+static_assert(net::acceptable_protocol<tcp>);
 
 inline constexpr tcp tcp::v4{AF_INET};
 inline constexpr tcp tcp::v6{AF_INET6};
