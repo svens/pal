@@ -65,29 +65,20 @@ struct message: ::msghdr
 {
 	std::array<::iovec, io_vector_max_size> iov{};
 
-	template <pal::const_buffer_sequence Buffers>
-	bool set (const Buffers &buffers) noexcept
+	template <typename... Buffers>
+	void set (Buffers &&...bufs) noexcept
 	{
+		static_assert(sizeof...(Buffers) <= io_vector_max_size);
 		msg_iovlen = 0;
 		msg_iov = iov.data();
-		// NOLINTNEXTLINE(readability-use-anyofallof)
-		for (auto &&b: buffers)
+		auto fill = [&] (auto &&b) noexcept
 		{
-			if (static_cast<size_t>(msg_iovlen) == iov.size())
-			{
-				return false;
-			}
 			iov[msg_iovlen++] = {
 				.iov_base = const_cast<void *>(static_cast<const void *>(std::data(b))),
 				.iov_len = std::size(b) * sizeof(*std::data(b)),
 			};
-		}
-		return true;
-	}
-
-	void reset () noexcept
-	{
-		msg_iovlen = 0;
+		};
+		(fill(std::forward<Buffers>(bufs)), ...);
 	}
 
 	void name (const void *n, size_t name_size) noexcept
@@ -139,29 +130,21 @@ struct message
 	DWORD msg_iovlen{};
 	std::array<::WSABUF, io_vector_max_size> msg_iov{};
 
-	template <pal::const_buffer_sequence Buffers>
-	bool set (const Buffers &buffers) noexcept
+	template <typename... Buffers>
+	void set (Buffers &&...bufs) noexcept
 	{
+		static_assert(sizeof...(Buffers) <= io_vector_max_size);
 		msg_iovlen = 0;
-		for (auto &&b: buffers)
+		auto fill = [&] (auto &&b) noexcept
 		{
-			if (static_cast<size_t>(msg_iovlen) == msg_iov.size())
-			{
-				return false;
-			}
 			msg_iov[msg_iovlen++] = {
 				.len = static_cast<ULONG>(std::size(b) * sizeof(*std::data(b))),
 				.buf = const_cast<CHAR *>(
 					static_cast<const CHAR *>(static_cast<const void *>(std::data(b)))
 				),
 			};
-		}
-		return true;
-	}
-
-	void reset () noexcept
-	{
-		msg_iovlen = 0;
+		};
+		(fill(std::forward<Buffers>(bufs)), ...);
 	}
 
 	void name (const void *n, size_t name_size) noexcept

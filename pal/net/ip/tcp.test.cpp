@@ -3,12 +3,14 @@
 #include <catch2/catch_test_macros.hpp>
 #include <catch2/catch_template_test_macros.hpp>
 #include <chrono>
+#include <string_view>
 
 namespace
 {
 
 using namespace pal_test;
 using namespace std::chrono_literals;
+using namespace std::string_view_literals;
 
 TEST_CASE("net/ip/tcp")
 {
@@ -36,6 +38,12 @@ TEMPLATE_TEST_CASE("net/ip/tcp", "[!nonportable]", tcp_v4, tcp_v6, tcp_v6_only)
 	using protocol_t = std::remove_cvref_t<decltype(TestType::protocol_v)>;
 	using endpoint_t = protocol_t::endpoint;
 
+	std::array<char, 1024> recv_buf{};
+	auto recv_view = [&] (size_t n) noexcept
+	{
+		return std::string_view{recv_buf.data(), n};
+	};
+
 	auto acceptor = TestType::make_acceptor().value();
 	endpoint_t endpoint = TestType::loopback_endpoint();
 	REQUIRE(bind_next_available_port(acceptor, endpoint));
@@ -43,59 +51,47 @@ TEMPLATE_TEST_CASE("net/ip/tcp", "[!nonportable]", tcp_v4, tcp_v6, tcp_v6_only)
 
 	auto receiver = TestType::make_socket().value();
 	REQUIRE_NOTHROW(receiver.connect(endpoint).value());
+
 	auto sender = acceptor.accept().value();
 
 	SECTION("send / receive")
 	{
 		SECTION("single buffer")
 		{
-			auto send = sender.send(pal::buffer(send_bufs[0])).value();
-			CHECK(send == send_bufs[0].size());
+			auto send = sender.send("hello"sv).value();
 
-			auto recv = receiver.receive(pal::buffer(recv_buf)).value();
-			CHECK(recv == send);
-			CHECK(recv_view(recv) == send_bufs[0]);
+			auto recv = receiver.receive(recv_buf).value();
+			REQUIRE(recv == send);
+			CHECK(recv_view(recv) == "hello");
 		}
 
 		SECTION("peek")
 		{
-			REQUIRE_NOTHROW(sender.send(pal::buffer(send_bufs[0])).value());
+			REQUIRE_NOTHROW(sender.send("hello"sv).value());
 
-			auto recv = receiver.receive(pal::buffer(recv_buf), receiver.message_peek).value();
-			CHECK(recv_view(recv) == send_bufs[0]);
+			auto recv = receiver.receive(receiver.message_peek, recv_buf).value();
+			CHECK(recv_view(recv) == "hello");
 			CHECK(receiver.available().value() > 0);
 
 			recv_buf[0] = '\0';
-			recv = receiver.receive(pal::buffer(recv_buf)).value();
-			CHECK(recv_view(recv) == send_bufs[0]);
+			recv = receiver.receive(recv_buf).value();
+			CHECK(recv_view(recv) == "hello");
 			CHECK(receiver.available().value() == 0);
 		}
 
 		SECTION("scatter/gather")
 		{
-			auto send = sender.send(send_bufs).value();
-			CHECK(send == send_view.size());
+			auto send = sender.send("hello"sv, "world"sv).value();
 
-			auto recv = receiver.receive(pal::buffer(recv_buf)).value();
-			CHECK(recv == send);
-			CHECK(recv_view(recv) == send_view);
-		}
-
-		SECTION("argument list too long")
-		{
-			auto send = sender.send(send_too_long);
-			REQUIRE_FALSE(send);
-			CHECK(send.error() == std::errc::argument_list_too_long);
-
-			auto recv = receiver.receive(recv_too_long);
-			REQUIRE_FALSE(recv);
-			CHECK(recv.error() == std::errc::argument_list_too_long);
+			auto recv = receiver.receive(recv_buf).value();
+			REQUIRE(recv == send);
+			CHECK(recv_view(recv) == "helloworld");
 		}
 
 		SECTION("send after shutdown")
 		{
 			REQUIRE_NOTHROW(sender.shutdown(sender.shutdown_send).value());
-			auto send = sender.send(pal::buffer(send_bufs[0]));
+			auto send = sender.send("hello"sv);
 			REQUIRE_FALSE(send);
 			CHECK(send.error() == std::errc::not_connected);
 		}
@@ -103,13 +99,13 @@ TEMPLATE_TEST_CASE("net/ip/tcp", "[!nonportable]", tcp_v4, tcp_v6, tcp_v6_only)
 		SECTION("receive after shutdown")
 		{
 			REQUIRE_NOTHROW(receiver.shutdown(receiver.shutdown_receive).value());
-			CHECK(receiver.receive(pal::buffer(recv_buf)).value() == 0);
+			CHECK(receiver.receive(recv_buf).value() == 0);
 		}
 
 		SECTION("receive timeout")
 		{
 			REQUIRE_NOTHROW(receiver.set_option(pal::net::receive_timeout{10ms}).value());
-			auto recv = receiver.receive(pal::buffer(recv_buf));
+			auto recv = receiver.receive(recv_buf);
 			REQUIRE_FALSE(recv);
 			CHECK(recv.error() == std::errc::timed_out);
 		}
@@ -128,11 +124,11 @@ TEMPLATE_TEST_CASE("net/ip/tcp", "[!nonportable]", tcp_v4, tcp_v6, tcp_v6_only)
 
 				CAPTURE(send_buf_size.value() + recv_buf_size.value());
 				const std::string data(send_buf_size.value() + recv_buf_size.value(), 'X');
-				REQUIRE(sender.send(pal::buffer(std::string_view{data})));
-				REQUIRE(sender.send(pal::buffer(std::string_view{data})));
+				REQUIRE(sender.send(data));
+				REQUIRE(sender.send(data));
 
 				REQUIRE_NOTHROW(sender.set_option(pal::net::send_timeout{10ms}).value());
-				auto send = sender.send(pal::buffer(std::string_view{data}));
+				auto send = sender.send(data);
 				REQUIRE_FALSE(send);
 				CHECK(send.error() == std::errc::timed_out);
 			}
@@ -143,11 +139,11 @@ TEMPLATE_TEST_CASE("net/ip/tcp", "[!nonportable]", tcp_v4, tcp_v6, tcp_v6_only)
 		{
 			sender = TestType::make_socket().value();
 
-			auto send = sender.send(pal::buffer(send_bufs[0]));
+			auto send = sender.send("hello"sv);
 			REQUIRE_FALSE(send);
 			CHECK(send.error() == std::errc::not_connected);
 
-			auto recv = sender.receive(pal::buffer(recv_buf));
+			auto recv = sender.receive(recv_buf);
 			REQUIRE_FALSE(recv);
 			CHECK(recv.error() == std::errc::not_connected);
 		}
@@ -155,12 +151,12 @@ TEMPLATE_TEST_CASE("net/ip/tcp", "[!nonportable]", tcp_v4, tcp_v6, tcp_v6_only)
 		SECTION("bad file descriptor")
 		{
 			close_native_handle(sender);
-			auto send = sender.send(pal::buffer(send_bufs[0]));
+			auto send = sender.send("hello"sv);
 			REQUIRE_FALSE(send);
 			CHECK(send.error() == std::errc::bad_file_descriptor);
 
 			close_native_handle(receiver);
-			auto recv = receiver.receive(pal::buffer(recv_buf));
+			auto recv = receiver.receive(recv_buf);
 			REQUIRE_FALSE(recv);
 			CHECK(recv.error() == std::errc::bad_file_descriptor);
 		}

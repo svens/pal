@@ -14,7 +14,6 @@
 #include <pal/net/ip/udp.hpp>
 #include <limits>
 #include <random>
-#include <string_view>
 
 namespace pal_test
 {
@@ -278,30 +277,6 @@ template <typename Socket>
 void close_native_handle (const Socket &socket) noexcept
 {
 	pal::net::native_socket::close(socket.native_socket().handle());
-}
-
-//
-// I/O test data
-//
-// send_view is the concatenation of send_bufs elements.
-// send_bufs satisfies const_buffer_sequence directly; use pal::buffer() for single-element variants.
-//
-
-constexpr std::string_view send_view = "hello, world";
-constexpr std::array<std::string_view, 3> send_bufs = {"hello", ", ", "world"};
-static_assert(send_bufs[0].size() + send_bufs[1].size() + send_bufs[2].size() == send_view.size());
-
-inline const auto send_too_long = pal::buffer(send_view, send_view, send_view, send_view, send_view);
-static_assert(send_too_long.size() > pal::net::socket_base::io_vector_max_size);
-
-inline std::array<char, 1024> recv_buf;
-
-inline const auto recv_too_long = pal::buffer(recv_buf, recv_buf, recv_buf, recv_buf, recv_buf);
-static_assert(recv_too_long.size() > pal::net::socket_base::io_vector_max_size);
-
-inline std::string_view recv_view (size_t n) noexcept
-{
-	return {recv_buf.data(), n};
 }
 
 // clang-format on
