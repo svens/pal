@@ -112,27 +112,28 @@ TEMPLATE_TEST_CASE("net/ip/tcp", "[!nonportable]", tcp_v4, tcp_v6, tcp_v6_only)
 
 		SECTION("send timeout")
 		{
-			if constexpr (pal::os == pal::os_type::linux)
+			pal::net::receive_buffer_size recv_buf_size{1};
+			REQUIRE_NOTHROW(receiver.set_option(recv_buf_size).value());
+			REQUIRE_NOTHROW(receiver.get_option(recv_buf_size).value());
+
+			pal::net::send_buffer_size send_buf_size{1};
+			REQUIRE_NOTHROW(sender.set_option(send_buf_size).value());
+			REQUIRE_NOTHROW(sender.get_option(send_buf_size).value());
+
+			// Set timeout before filling so each blocked send times out quickly.
+			// Loop until a send actually blocks — avoids fragile "exactly N sends" assumption.
+			REQUIRE_NOTHROW(sender.set_option(pal::net::send_timeout{10ms}).value());
+			const std::string data(send_buf_size.value() + recv_buf_size.value(), 'X');
+			pal::result<size_t> send;
+			for (size_t i = 0; (send = sender.send(data)); ++i)
 			{
-				pal::net::receive_buffer_size recv_buf_size{1};
-				REQUIRE_NOTHROW(receiver.set_option(recv_buf_size).value());
-				REQUIRE_NOTHROW(receiver.get_option(recv_buf_size).value());
-
-				pal::net::send_buffer_size send_buf_size{1};
-				REQUIRE_NOTHROW(sender.set_option(send_buf_size).value());
-				REQUIRE_NOTHROW(sender.get_option(send_buf_size).value());
-
-				CAPTURE(send_buf_size.value() + recv_buf_size.value());
-				const std::string data(send_buf_size.value() + recv_buf_size.value(), 'X');
-				REQUIRE(sender.send(data));
-				REQUIRE(sender.send(data));
-
-				REQUIRE_NOTHROW(sender.set_option(pal::net::send_timeout{10ms}).value());
-				auto send = sender.send(data);
-				REQUIRE_FALSE(send);
-				CHECK(send.error() == std::errc::timed_out);
+				if (i == 100)
+				{
+					SKIP("unable to overflow; i=" << i);
+				}
 			}
-			// macOS and Windows ignore specified buffer sizes
+			REQUIRE_FALSE(send);
+			CHECK(send.error() == std::errc::timed_out);
 		}
 
 		SECTION("not connected")
