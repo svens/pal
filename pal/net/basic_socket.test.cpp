@@ -187,6 +187,34 @@ TEMPLATE_TEST_CASE("net/basic_socket", "[!nonportable]", udp_v4, tcp_v4, udp_v6,
 			CHECK(remote_endpoint.error() == std::errc::bad_file_descriptor);
 		}
 	}
+
+	SECTION("non_blocking_io")
+	{
+		pal::net::non_blocking_io opt{false};
+
+		if constexpr (pal::os == pal::os_type::windows)
+		{
+			// Windows does not support querying the non-blocking state
+			auto r = s.get_option(opt);
+			REQUIRE_FALSE(r);
+			CHECK(r.error() == std::errc::operation_not_supported);
+		}
+		else
+		{
+			REQUIRE_NOTHROW(s.get_option(opt).value());
+			CHECK_FALSE(opt.value());
+
+			opt = true;
+			REQUIRE_NOTHROW(s.set_option(opt).value());
+			REQUIRE_NOTHROW(s.get_option(opt).value());
+			CHECK(opt.value());
+
+			opt = false;
+			REQUIRE_NOTHROW(s.set_option(opt).value());
+			REQUIRE_NOTHROW(s.get_option(opt).value());
+			CHECK_FALSE(opt.value());
+		}
+	}
 }
 
 TEMPLATE_TEST_CASE("net/basic_socket", "", invalid_protocol)
