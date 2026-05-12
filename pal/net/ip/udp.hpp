@@ -7,6 +7,7 @@
 
 #include <pal/net/basic_datagram_socket.hpp>
 #include <pal/net/ip/basic_endpoint.hpp>
+#include <pal/net/ip/basic_resolver.hpp>
 
 #if __pal_net_posix
 	#include <netinet/in.h>
@@ -25,6 +26,9 @@ public:
 
 	/// Datagram socket type for UDP
 	using socket = net::basic_datagram_socket<udp>;
+
+	/// Resolver type for UDP
+	using resolver = basic_resolver<udp>;
 
 	udp () = delete;
 
