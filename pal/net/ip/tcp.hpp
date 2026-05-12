@@ -8,9 +8,14 @@
 #include <pal/net/basic_socket_acceptor.hpp>
 #include <pal/net/basic_stream_socket.hpp>
 #include <pal/net/ip/basic_endpoint.hpp>
+#include <pal/net/ip/basic_resolver.hpp>
+#include <pal/net/socket_option.hpp>
 
 #if __pal_net_posix
 	#include <netinet/in.h>
+	#include <netinet/tcp.h>
+#elif __pal_net_winsock
+	#include <ws2tcpip.h>
 #endif
 
 namespace pal::net::ip
@@ -29,6 +34,19 @@ public:
 
 	/// Acceptor type for TCP
 	using acceptor = net::basic_socket_acceptor<tcp>;
+
+	/// Resolver type for TCP
+	using resolver = basic_resolver<tcp>;
+
+	// clang-format off
+
+	/// Disable Nagle's algorithm
+	using no_delay = socket_option<bool,
+		socket_option_level{IPPROTO_TCP},
+		socket_option_name{TCP_NODELAY}
+	>;
+
+	// clang-format on
 
 	/// Construct TCP protocol for address \a family
 	constexpr explicit tcp (int family) noexcept

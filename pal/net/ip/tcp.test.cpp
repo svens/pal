@@ -163,6 +163,17 @@ TEMPLATE_TEST_CASE("net/ip/tcp", "[!nonportable]", tcp_v4, tcp_v6, tcp_v6_only)
 		}
 	}
 
+	SECTION("no_delay")
+	{
+		static_assert(pal::net::settable_socket_option<pal::net::ip::tcp::no_delay, protocol_t>);
+		static_assert(pal::net::gettable_socket_option<pal::net::ip::tcp::no_delay, protocol_t>);
+
+		REQUIRE_NOTHROW(sender.set_option(pal::net::ip::tcp::no_delay{true}).value());
+		pal::net::ip::tcp::no_delay opt;
+		REQUIRE_NOTHROW(sender.get_option(opt).value());
+		CHECK(opt.value());
+	}
+
 	SECTION("make_stream_socket with endpoint")
 	{
 		SECTION("success")

@@ -80,6 +80,16 @@ struct socket_option_storage<bool>: socket_option_storage<int>
 	{
 		return !value();
 	}
+
+	template <typename Protocol>
+	[[nodiscard]] constexpr result<void> resize (const Protocol &, size_t size) noexcept
+	{
+		if (size == sizeof(int) || size == 1)
+		{
+			return {};
+		}
+		return make_unexpected(std::errc::invalid_argument);
+	}
 };
 
 /// Socket option level (SOL_SOCKET, IPPROTO_TCP, etc)
