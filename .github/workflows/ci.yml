@@ -14,7 +14,11 @@ jobs:
       - uses: actions/checkout@v4
       - name: Install dependencies
         run: |
-          sudo apt-get install -y g++-14 libc++-18-dev libc++abi-18-dev
+          wget -qO- https://apt.llvm.org/llvm-snapshot.gpg.key | sudo tee /etc/apt/trusted.gpg.d/apt.llvm.org.asc
+          echo "deb http://apt.llvm.org/noble/ llvm-toolchain-noble-22 main" | sudo tee /etc/apt/sources.list.d/llvm.list
+          sudo apt-get update
+          sudo apt-get install -y clang-22 libc++-22-dev libc++abi-22-dev g++-14
+          sudo ln -sf /usr/bin/clang++-22 /usr/bin/clang++
           sudo update-alternatives --install /usr/bin/g++ g++ /usr/bin/g++-14 14
       - run: ninja all
 
