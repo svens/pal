@@ -133,9 +133,9 @@ public:
 	constexpr auto operator<=> (const address_v4 &) const noexcept = default;
 
 	/// Return hash value for \a this
-	[[nodiscard]] constexpr uint64_t hash () const noexcept
+	[[nodiscard]] constexpr size_t hash () const noexcept
 	{
-		return fnv_1a_64(bytes_);
+		return static_cast<size_t>(fnv_1a_64(bytes_));
 	}
 
 	/// Return copy of \a this with last octet zeroed (GDPR-safe)

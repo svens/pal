@@ -215,27 +215,40 @@
 	],
 	"testPresets": [
 		{
+			"name": "default",
+			"hidden": true,
+			"output": {
+				"outputOnFailure": true
+			}
+		},
+		{
 			"name": "linux-gcc-debug",
+			"inherits": "default",
 			"configurePreset": "linux-gcc-debug"
 		},
 		{
 			"name": "linux-gcc-release",
+			"inherits": "default",
 			"configurePreset": "linux-gcc-release"
 		},
 		{
 			"name": "linux-gcc-sanitize",
+			"inherits": "default",
 			"configurePreset": "linux-gcc-sanitize"
 		},
 		{
 			"name": "linux-clang-debug",
+			"inherits": "default",
 			"configurePreset": "linux-clang-debug"
 		},
 		{
 			"name": "linux-clang-release",
+			"inherits": "default",
 			"configurePreset": "linux-clang-release"
 		},
 		{
 			"name": "linux-clang-coverage",
+			"inherits": "default",
 			"configurePreset": "linux-clang-coverage",
 			"environment": {
 				"LLVM_PROFILE_FILE": "${sourceDir}/.build/${presetName}/pal_test-%p.profraw"
@@ -243,18 +256,22 @@
 		},
 		{
 			"name": "macos-clang-debug",
+			"inherits": "default",
 			"configurePreset": "macos-clang-debug"
 		},
 		{
 			"name": "macos-clang-release",
+			"inherits": "default",
 			"configurePreset": "macos-clang-release"
 		},
 		{
 			"name": "macos-clang-sanitize",
+			"inherits": "default",
 			"configurePreset": "macos-clang-sanitize"
 		},
 		{
 			"name": "macos-clang-coverage",
+			"inherits": "default",
 			"configurePreset": "macos-clang-coverage",
 			"environment": {
 				"LLVM_PROFILE_FILE": "${sourceDir}/.build/${presetName}/pal_test-%p.profraw"
@@ -262,18 +279,22 @@
 		},
 		{
 			"name": "macos-gcc-debug",
+			"inherits": "default",
 			"configurePreset": "macos-gcc-debug"
 		},
 		{
 			"name": "macos-gcc-release",
+			"inherits": "default",
 			"configurePreset": "macos-gcc-release"
 		},
 		{
 			"name": "windows-msvc-debug",
+			"inherits": "default",
 			"configurePreset": "windows-msvc-debug"
 		},
 		{
 			"name": "windows-msvc-release",
+			"inherits": "default",
 			"configurePreset": "windows-msvc-release"
 		}
 	],

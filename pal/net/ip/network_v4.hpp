@@ -110,9 +110,9 @@ public:
 	constexpr auto operator<=> (const network_v4 &) const noexcept = default;
 
 	/// Return hash value for \a this
-	[[nodiscard]] constexpr uint64_t hash () const noexcept
+	[[nodiscard]] constexpr size_t hash () const noexcept
 	{
-		return hash_128_to_64(address_.hash(), static_cast<uint64_t>(prefix_length_));
+		return static_cast<size_t>(hash_128_to_64(address_.hash(), static_cast<uint64_t>(prefix_length_)));
 	}
 
 private:
