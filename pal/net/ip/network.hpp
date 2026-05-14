@@ -157,7 +157,7 @@ public:
 	constexpr auto operator<=> (const network &) const noexcept = default;
 
 	/// Return hash value for \a this
-	[[nodiscard]] constexpr uint64_t hash () const noexcept
+	[[nodiscard]] constexpr size_t hash () const noexcept
 	{
 		if (const auto *p = v4())
 		{

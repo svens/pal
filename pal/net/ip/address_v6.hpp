@@ -177,9 +177,9 @@ public:
 	constexpr auto operator<=> (const address_v6 &) const noexcept = default;
 
 	/// Return hash value for \a this, incorporating scope_id
-	[[nodiscard]] constexpr uint64_t hash () const noexcept
+	[[nodiscard]] constexpr size_t hash () const noexcept
 	{
-		return hash_128_to_64(fnv_1a_64(bytes_), static_cast<uint64_t>(scope_id_));
+		return static_cast<size_t>(hash_128_to_64(fnv_1a_64(bytes_), static_cast<uint64_t>(scope_id_)));
 	}
 
 	/// Return copy of \a this with last 8 bytes zeroed (GDPR-safe)

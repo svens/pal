@@ -6,6 +6,8 @@ list(APPEND pal_sources
 	pal/net/basic_socket_acceptor.hpp
 	pal/net/basic_stream_socket.hpp
 	pal/net/concepts.hpp
+	pal/net/internet.hpp
+	pal/net/socket.hpp
 	pal/net/socket_base.hpp
 	pal/net/socket_base.posix.cpp
 	pal/net/socket_base.windows.cpp
