@@ -5,14 +5,14 @@
  * PAL errors
  */
 
+#include <pal/result.hpp>
 #include <system_error>
 
 namespace pal
 {
 
 #define __pal_errc(Impl) \
-	Impl(__0, "internal placeholder for not an error") \
-	Impl(cancelled, "cancelled")
+	Impl(__0, "internal placeholder for not an error")
 
 /// PAL errors
 enum class errc : int
@@ -29,6 +29,12 @@ const std::error_category &error_category () noexcept;
 inline std::error_code make_error_code (errc ec) noexcept
 {
 	return {static_cast<int>(ec), error_category()};
+}
+
+/// Make \c pal::unexpected from error code \a ec
+inline unexpected make_unexpected (errc ec) noexcept
+{
+	return unexpected{make_error_code(ec)};
 }
 
 namespace this_thread
