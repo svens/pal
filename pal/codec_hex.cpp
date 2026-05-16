@@ -9,6 +9,7 @@ namespace
 {
 
 // NOLINTBEGIN(readability-magic-numbers)
+// LCOV_EXCL_START
 
 constexpr uint8_t invalid = 0xff;
 
@@ -49,6 +50,7 @@ constexpr auto make_decode_map () noexcept
 	return result;
 }
 
+// LCOV_EXCL_STOP
 // NOLINTEND(readability-magic-numbers)
 
 } // namespace

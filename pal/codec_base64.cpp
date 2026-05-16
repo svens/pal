@@ -13,6 +13,7 @@ namespace
 
 constexpr uint8_t invalid = 0xff;
 
+// LCOV_EXCL_START
 constexpr auto make_decode_map () noexcept
 {
 	std::array<uint8_t, 256> result{};
@@ -38,6 +39,7 @@ constexpr auto make_decode_map () noexcept
 
 	return result;
 }
+// LCOV_EXCL_STOP
 
 } // namespace
 
