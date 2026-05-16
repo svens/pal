@@ -52,6 +52,12 @@ rule fuzz-action
   description = $out
   pool = console
 
+build fuzz/pal/codec_base64: fuzz-action
+  fuzz_source = pal/codec_base64.fuzz.cpp
+
+build fuzz/pal/codec_hex: fuzz-action
+  fuzz_source = pal/codec_hex.fuzz.cpp
+
 build fuzz/pal/net/ip/address_v4: fuzz-action
   fuzz_source = pal/net/ip/address_v4.fuzz.cpp
 

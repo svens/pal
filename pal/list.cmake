@@ -32,6 +32,8 @@ list(APPEND pal_test_sources
 
 list(APPEND pal_fuzz_sources
 	pal/fuzz.hpp
+	pal/codec_base64.fuzz.cpp
+	pal/codec_hex.fuzz.cpp
 )
 
 include(pal/net/list.cmake)
