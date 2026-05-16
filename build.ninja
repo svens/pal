@@ -11,8 +11,8 @@ build all: action
 build coverage-html: action
   name = coverage-html
 
-build coverage: action
-  name = coverage
+build coverage-lcov: action
+  name = coverage-lcov
 
 build format-check: action
   name = format-check
