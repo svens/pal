@@ -50,9 +50,11 @@ result<native_socket> open (int family, int type, int protocol) noexcept
 
 void native_socket::close (handle_type h) noexcept
 {
+	// LCOV_EXCL_START
 	while (::close(to_sys(h)) != 0 && errno == EINTR)
 	{
 	}
+	// LCOV_EXCL_STOP
 }
 
 result<void> native_socket::bind (const void *endpoint, size_t endpoint_size) const noexcept

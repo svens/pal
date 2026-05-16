@@ -11,8 +11,8 @@ build all: action
 build coverage-html: action
   name = coverage-html
 
-build coverage: action
-  name = coverage
+build coverage-lcov: action
+  name = coverage-lcov
 
 build format-check: action
   name = format-check
@@ -51,6 +51,12 @@ rule fuzz-action
   command = cmake -DPAL_FUZZ_SOURCE=$fuzz_source -P cmake/fuzz.cmake
   description = $out
   pool = console
+
+build fuzz/pal/codec_base64: fuzz-action
+  fuzz_source = pal/codec_base64.fuzz.cpp
+
+build fuzz/pal/codec_hex: fuzz-action
+  fuzz_source = pal/codec_hex.fuzz.cpp
 
 build fuzz/pal/net/ip/address_v4: fuzz-action
   fuzz_source = pal/net/ip/address_v4.fuzz.cpp

@@ -11,8 +11,7 @@ namespace pal
 {
 
 #define __pal_errc(Impl) \
-	Impl(__0, "internal placeholder for not an error") \
-	Impl(cancelled, "cancelled")
+	Impl(__0, "internal placeholder for not an error")
 
 /// PAL errors
 enum class errc : int
