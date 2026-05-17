@@ -8,6 +8,7 @@ list(APPEND pal_sources
 	pal/error.hpp
 	pal/error.cpp
 	pal/hash.hpp
+	pal/intrusive_mpsc_queue.hpp
 	pal/intrusive_queue.hpp
 	pal/intrusive_stack.hpp
 	pal/memory.hpp
@@ -27,6 +28,7 @@ list(APPEND pal_test_sources
 	pal/error.test.cpp
 	pal/hash.bench.cpp
 	pal/hash.test.cpp
+	pal/intrusive_mpsc_queue.test.cpp
 	pal/intrusive_queue.test.cpp
 	pal/intrusive_stack.test.cpp
 	pal/memory.test.cpp
