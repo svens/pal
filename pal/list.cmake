@@ -10,6 +10,7 @@ list(APPEND pal_sources
 	pal/hash.hpp
 	pal/intrusive_mpsc_queue.hpp
 	pal/intrusive_queue.hpp
+	pal/intrusive_spsc_stack.hpp
 	pal/intrusive_stack.hpp
 	pal/memory.hpp
 	pal/result.hpp
@@ -31,6 +32,7 @@ list(APPEND pal_test_sources
 	pal/intrusive_mpsc_queue.bench.cpp
 	pal/intrusive_mpsc_queue.test.cpp
 	pal/intrusive_queue.test.cpp
+	pal/intrusive_spsc_stack.test.cpp
 	pal/intrusive_stack.test.cpp
 	pal/memory.test.cpp
 	pal/result.test.cpp

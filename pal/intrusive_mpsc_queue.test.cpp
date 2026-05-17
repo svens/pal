@@ -1,8 +1,8 @@
 #include <pal/intrusive_mpsc_queue.hpp>
 #include <pal/test.hpp>
+#include <catch2/catch_test_macros.hpp>
 #include <algorithm>
 #include <atomic>
-#include <catch2/catch_test_macros.hpp>
 #include <random>
 #include <thread>
 #include <vector>
