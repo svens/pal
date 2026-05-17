@@ -58,7 +58,7 @@ constexpr build_type build =
 #elifdef __GNUC__
 	#undef __pal_compiler_gcc
 	#define __pal_compiler_gcc 1
-#elifdef _MSC_BUILD
+#elifdef _MSC_VER
 	#undef __pal_compiler_msvc
 	#define __pal_compiler_msvc 1
 #else

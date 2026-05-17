@@ -1,4 +1,5 @@
 list(APPEND pal_sources
+	pal/__diagnostic.hpp
 	pal/buffer.hpp
 	pal/byte_order.hpp
 	pal/codec.hpp
@@ -18,6 +19,7 @@ list(APPEND pal_sources
 list(APPEND pal_test_sources
 	pal/test.hpp
 	pal/test.cpp
+	pal/__diagnostic.test.cpp
 	pal/buffer.test.cpp
 	pal/byte_order.test.cpp
 	pal/codec.bench.cpp
