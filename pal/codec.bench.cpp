@@ -29,8 +29,6 @@ constexpr std::string_view codec_alphabet<pal::hex_decoder> =
 	"0123456789abcdefABCDEF"
 ;
 
-// clang-format on
-
 void fill_random (std::span<char> buf) noexcept
 {
 	std::mt19937 rng{static_cast<uint32_t>(std::chrono::steady_clock::now().time_since_epoch().count())};
@@ -51,9 +49,11 @@ void fill_random (std::span<char> buf, std::string_view alpha) noexcept
 	}
 }
 
-TEMPLATE_TEST_CASE(
-	"codec", "[!benchmark]", pal::base64_encoder, pal::base64_decoder, pal::hex_encoder, pal::hex_decoder
-)
+TEMPLATE_TEST_CASE("codec", "[!benchmark]",
+	pal::base64_encoder,
+	pal::base64_decoder,
+	pal::hex_encoder,
+	pal::hex_decoder)
 {
 	auto size = size_t{1} << GENERATE(range(2, 10));
 
@@ -74,5 +74,7 @@ TEMPLATE_TEST_CASE(
 		meter.measure([&] { return pal::convert(TestType{}, dst, std::string_view{src.data(), size}); });
 	};
 }
+
+// clang-format on
 
 } // namespace
