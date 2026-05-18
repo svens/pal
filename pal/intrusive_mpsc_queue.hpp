@@ -51,6 +51,8 @@ class intrusive_mpsc_queue;
 ///
 /// \note push() is safe to call concurrently from multiple threads.
 /// try_pop() and empty() must only be called from a single consumer thread.
+/// Items from the same producer are delivered in push order; items from
+/// different producers may interleave in any order.
 ///
 template <typename T, typename Hook, Hook T::*Next>
 class intrusive_mpsc_queue<Next>
@@ -66,7 +68,9 @@ public:
 	intrusive_mpsc_queue (const intrusive_mpsc_queue &) = delete;
 	intrusive_mpsc_queue &operator= (const intrusive_mpsc_queue &) = delete;
 
-	/// Push \a node onto the back of the queue. Thread-safe.
+	/// Push \a node onto the back of the queue. Thread-safe. All writes to
+	/// \a node before push() happen-before any reads from the returned node
+	/// after try_pop().
 	void push (value_type &node) noexcept
 	{
 		(node.*Next).store(nullptr, std::memory_order_relaxed);
@@ -75,7 +79,8 @@ public:
 	}
 
 	/// Remove and return the front node. Returns nullptr if empty or transiently
-	/// inconsistent (a producer is mid-push). Consumer thread only.
+	/// inconsistent (a producer is mid-push); the caller should retry.
+	/// Consumer thread only.
 	[[nodiscard]] value_type *try_pop () noexcept
 	{
 		auto *front = head_;

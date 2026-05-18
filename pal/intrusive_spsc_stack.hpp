@@ -69,6 +69,9 @@ public:
 	// clang-format off
 
 	/// Push \a node onto the top of the stack. Single producer thread only.
+	/// All writes to \a node before push() happen-before any reads from the
+	/// returned node after try_pop(). Not wait-free: spins briefly if the
+	/// consumer is concurrently popping.
 	void push (value_type &node) noexcept
 	{
 		auto *current = top_.load(std::memory_order_relaxed);
@@ -83,7 +86,9 @@ public:
 	}
 
 	/// Remove and return the top node. Returns nullptr if empty or transiently
-	/// inconsistent (producer is mid-push). Consumer thread only.
+	/// inconsistent (producer is mid-push); the caller should retry.
+	/// All writes to the returned node before its last push() happen-before
+	/// reads after try_pop(). Consumer thread only.
 	[[nodiscard]] value_type *try_pop () noexcept
 	{
 		auto *item = top_.load(std::memory_order_acquire);
