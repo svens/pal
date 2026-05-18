@@ -64,6 +64,50 @@ TEST_CASE("temporary_buffer")
 		CHECK(buf.get().empty());
 		CHECK_FALSE(buf.is_inline());
 	}
+
+	SECTION("heap: larger buffer")
+	{
+		pal::temporary_buffer<2> buf{3};
+		REQUIRE(buf);
+		CHECK(buf.get().size() == 3);
+		CHECK_FALSE(buf.is_inline());
+	}
+
+	SECTION("heap nothrow: larger buffer")
+	{
+		pal::temporary_buffer<2> buf{std::nothrow, 3};
+		REQUIRE(buf);
+		CHECK(buf.get().size() == 3);
+		CHECK_FALSE(buf.is_inline());
+	}
+
+	SECTION("heap failure: larger buffer")
+	{
+		auto f = [] ()
+		{
+			const pal_test::bad_alloc_once x;
+			pal::temporary_buffer<2> buf{3};
+			CAPTURE(buf.get().data());
+			FAIL();
+		};
+		CHECK_THROWS_AS(f(), std::bad_alloc);
+	}
+
+	SECTION("inline: unit buffer")
+	{
+		pal::temporary_buffer<1> buf{1};
+		REQUIRE(buf);
+		CHECK(buf.get().size() == 1);
+		CHECK(buf.is_inline());
+	}
+
+	SECTION("inline nothrow: unit buffer")
+	{
+		pal::temporary_buffer<1> buf{std::nothrow, 1};
+		REQUIRE(buf);
+		CHECK(buf.get().size() == 1);
+		CHECK(buf.is_inline());
+	}
 }
 
 TEST_CASE("alloc_result - void")
