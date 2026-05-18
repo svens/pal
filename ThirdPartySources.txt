@@ -1,5 +1,16 @@
 This library contains following third party sources
 
+== pal/intrusive_mpsc_queue.hpp {{{1
+
+* Intrusive MPSC node-based queue algorithm
+  Dmitry Vyukov, https://www.1024cores.net/home/lock-free-algorithms/queues/intrusive-mpsc-node-based-queue
+
+  Original algorithm is in the public domain.
+
+  Reimplemented from scratch in C++23 with std::atomic<T *> hooks (replacing
+  the original volatile T * pattern) and adapted to pal intrusive container
+  conventions.
+
 == pal/hash.hpp {{{1
 
 * FNV1a: hashing function
