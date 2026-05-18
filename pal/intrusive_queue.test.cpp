@@ -1,7 +1,7 @@
 #include <pal/intrusive_queue.hpp>
 #include <pal/test.hpp>
-#include <array>
 #include <catch2/catch_test_macros.hpp>
+#include <array>
 #include <algorithm>
 #include <tuple>
 

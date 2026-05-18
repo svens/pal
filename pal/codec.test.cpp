@@ -144,6 +144,13 @@ TEMPLATE_TEST_CASE("codec", "", base64, hex)
 		CHECK(pal::convert_max_size(decoder, e.data(), e.data() + e.size()) >= d.size());
 	}
 
+	SECTION("convert_max_size/range")
+	{
+		const auto &[d, e] = Cases::success[1];
+		CHECK(pal::convert_max_size(encoder, d) == e.size());
+		CHECK(pal::convert_max_size(decoder, e) >= d.size());
+	}
+
 	SECTION("encoder/success")
 	{
 		const auto &[decoded, encoded] = GENERATE(from_range(std::span{Cases::success}));
