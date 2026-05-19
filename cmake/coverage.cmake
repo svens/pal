@@ -101,11 +101,9 @@ function(coverage_process)
     print
     next
 }
-/^DA:/ {
-    da = substr($0, 4)
-    n = substr(da, 1, index(da, ",") - 1)
-    if (n in excluded) next
-    print
+/^DA:|^BRDA:/ {
+    split(substr($0, index($0, ":") + 1), fields, ",")
+    if (!(fields[1] in excluded)) print
     next
 }
 { print }
