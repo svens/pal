@@ -14,7 +14,6 @@ list(APPEND pal_sources
 	pal/intrusive_stack.hpp
 	pal/memory.hpp
 	pal/result.hpp
-	pal/span.hpp
 	pal/spsc_bounded_queue.hpp
 	pal/version.hpp
 )
@@ -37,7 +36,6 @@ list(APPEND pal_test_sources
 	pal/intrusive_stack.test.cpp
 	pal/memory.test.cpp
 	pal/result.test.cpp
-	pal/span.test.cpp
 	pal/spsc_bounded_queue.test.cpp
 )
 
