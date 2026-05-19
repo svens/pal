@@ -1,6 +1,6 @@
 #include <pal/intrusive_mpsc_queue.hpp>
 #include <pal/intrusive_queue.hpp>
-#include <pal/intrusive_spsc_stack.hpp>
+#include <pal/intrusive_mpsc_stack.hpp>
 #include <pal/intrusive_stack.hpp>
 #include <array>
 #include <atomic>
@@ -23,7 +23,7 @@ struct lockfree
 		lockfree *owner = nullptr;
 	};
 
-	using task_pool = pal::intrusive_spsc_stack<&task::hook>;
+	using task_pool = pal::intrusive_mpsc_stack<&task::hook>;
 	task_pool pool;
 
 	using task_queue = pal::intrusive_mpsc_queue<&task::hook>;

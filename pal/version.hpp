@@ -120,4 +120,46 @@ constexpr os_type os =
 #endif
 	;
 
+//
+// hardware
+//
+
+#define __pal_arch_x86 0
+#define __pal_arch_x86_64 0
+#define __pal_arch_arm64 0
+
+#if defined(__x86_64__) || defined(_M_X64)
+	#undef __pal_arch_x86_64
+	#define __pal_arch_x86_64 1
+#elif defined(__aarch64__) || defined(_M_ARM64)
+	#undef __pal_arch_arm64
+	#define __pal_arch_arm64 1
+#elif defined(__i386__) || defined(_M_IX86)
+	#undef __pal_arch_x86
+	#define __pal_arch_x86 1
+#else
+	#error "Unsupported hardware"
+#endif
+
+enum class arch_type
+{
+	x86,
+	x86_64,
+	arm64,
+};
+
+constexpr arch_type arch =
+#if __pal_arch_x86
+	arch_type::x86
+#elif __pal_arch_x86_64
+	arch_type::x86_64
+#elif __pal_arch_arm64
+	arch_type::arm64
+#endif
+	;
+
+// std::hardware_destructive_interference_size reflects the build host, not
+// the target, so it cannot be used in portable code
+constexpr size_t cache_line_size = 64;
+
 } // namespace pal
