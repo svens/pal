@@ -9,10 +9,17 @@ option(PAL_FUZZ "Build fuzz targets" OFF)
 include(cmake/cxx.cmake)
 include(cmake/system_libs.cmake)
 
-include(pal/list.cmake)
+if(UNIX)
+	find_package(OpenSSL REQUIRED)
+endif()
+
 pal_system_libs_add(
-	WINDOWS ws2_32
+	LINUX OpenSSL::Crypto
+	DARWIN OpenSSL::Crypto
+	WINDOWS bcrypt ws2_32
 )
+
+include(pal/list.cmake)
 configure_file(
 	pal/version.cpp.in
 	version.cpp
