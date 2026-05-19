@@ -12,17 +12,21 @@ namespace pal::crypto::__crypto
 
 result<void> random_fill (std::span<std::byte> buf) noexcept
 {
-	auto status = ::BCryptGenRandom(
+	const auto status = ::BCryptGenRandom(
 		nullptr,
 		reinterpret_cast<PUCHAR>(buf.data()),
 		static_cast<ULONG>(buf.size()),
 		BCRYPT_USE_SYSTEM_PREFERRED_RNG
 	);
-	if (status == STATUS_SUCCESS)
+
+	// LCOV_EXCL_START
+	if (status != STATUS_SUCCESS)
 	{
-		return {};
+		return make_unexpected(std::errc::io_error);
 	}
-	return make_unexpected(std::errc::io_error);
+	// LCOV_EXCL_STOP
+
+	return {};
 }
 
 } // namespace pal::crypto::__crypto

@@ -32,10 +32,12 @@ result<void> random (mutable_buffer_sequence auto &buffers) noexcept
 {
 	for (auto &buffer: buffers)
 	{
+		// LCOV_EXCL_START
 		if (auto r = __crypto::random_fill(std::as_writable_bytes(std::span{buffer})); !r)
 		{
 			return r;
 		}
+		// LCOV_EXCL_STOP
 	}
 	return {};
 }
