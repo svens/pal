@@ -98,10 +98,6 @@ private:
 
 	value_type *slots_[N]{};
 
-	// std::hardware_destructive_interference_size reflects the build host, not
-	// the target, so it cannot be used in public ABI
-	static constexpr size_t cache_line_size = 64;
-
 	// clang-format off
 	__pal_diagnostic(push)
 	__pal_diagnostic_suppress(__pal_aligned_struct_padding)

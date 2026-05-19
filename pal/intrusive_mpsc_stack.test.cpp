@@ -1,4 +1,4 @@
-#include <pal/intrusive_spsc_stack.hpp>
+#include <pal/intrusive_mpsc_stack.hpp>
 #include <pal/test.hpp>
 #include <catch2/catch_test_macros.hpp>
 #include <atomic>
@@ -8,12 +8,12 @@
 namespace
 {
 
-TEST_CASE("intrusive_spsc_stack")
+TEST_CASE("intrusive_mpsc_stack")
 {
 	struct foo
 	{
-		pal::intrusive_spsc_stack_hook<foo> hook;
-		using stack = pal::intrusive_spsc_stack<&foo::hook>;
+		pal::intrusive_mpsc_stack_hook<foo> hook;
+		using stack = pal::intrusive_mpsc_stack<&foo::hook>;
 
 		int delivery_count = 0;
 	};

@@ -1,8 +1,8 @@
 #pragma once
 
 /**
- * \file pal/intrusive_spsc_stack.hpp
- * Intrusive lock-free SPSC stack (LIFO)
+ * \file pal/intrusive_mpsc_stack.hpp
+ * Intrusive lock-free MPSC stack (LIFO)
  */
 
 #include <atomic>
@@ -10,17 +10,17 @@
 namespace pal
 {
 
-/// Intrusive SPSC stack hook.
-/// \see intrusive_spsc_stack
+/// Intrusive MPSC stack hook.
+/// \see intrusive_mpsc_stack
 template <typename T>
-using intrusive_spsc_stack_hook = std::atomic<T *>;
+using intrusive_mpsc_stack_hook = std::atomic<T *>;
 
 /// \cond
 template <auto Next>
-class intrusive_spsc_stack;
+class intrusive_mpsc_stack;
 /// \endcond
 
-/// Intrusive single-producer single-consumer lock-free stack (SPSC LIFO).
+/// Intrusive multiple-producers single-consumer lock-free stack (MPSC LIFO).
 ///
 /// Elements of this container must provide member \a Next that stores opaque
 /// data managed by the container. At any given time a specific hook can be
@@ -37,8 +37,8 @@ class intrusive_spsc_stack;
 /// \code
 /// struct foo
 /// {
-///   pal::intrusive_spsc_stack_hook<foo> hook{};
-///   using stack = pal::intrusive_spsc_stack<&foo::hook>;
+///   pal::intrusive_mpsc_stack_hook<foo> hook{};
+///   using stack = pal::intrusive_mpsc_stack<&foo::hook>;
 /// };
 ///
 /// foo::stack s;
@@ -47,31 +47,30 @@ class intrusive_spsc_stack;
 /// foo *fp = s.try_pop(); // fp == &f
 /// \endcode
 ///
-/// \note push() must be called from a single producer thread only.
-/// try_pop() and empty() must only be called from the consumer thread.
-/// try_pop() returns nullptr if empty or transiently inconsistent
-/// (producer is mid-push); the caller should retry.
+/// \note push() is safe to call concurrently from multiple producer threads.
+/// try_pop() and empty() must only be called from the single consumer thread.
 ///
 template <typename T, typename Hook, Hook T::*Next>
-class intrusive_spsc_stack<Next>
+class intrusive_mpsc_stack<Next>
 {
 public:
 
 	/// Element type of this container.
 	using value_type = T;
 
-	intrusive_spsc_stack () noexcept = default;
-	~intrusive_spsc_stack () noexcept = default;
+	intrusive_mpsc_stack () noexcept = default;
+	~intrusive_mpsc_stack () noexcept = default;
 
-	intrusive_spsc_stack (const intrusive_spsc_stack &) = delete;
-	intrusive_spsc_stack &operator= (const intrusive_spsc_stack &) = delete;
+	intrusive_mpsc_stack (const intrusive_mpsc_stack &) = delete;
+	intrusive_mpsc_stack &operator= (const intrusive_mpsc_stack &) = delete;
 
 	// clang-format off
 
-	/// Push \a node onto the top of the stack. Single producer thread only.
-	/// All writes to \a node before push() happen-before any reads from the
-	/// returned node after try_pop(). Not wait-free: spins briefly if the
-	/// consumer is concurrently popping.
+	/// Push \a node onto the top of the stack. Thread-safe; may be called
+	/// concurrently from multiple producer threads. All writes to \a node
+	/// before push() happen-before any reads from the returned node after
+	/// try_pop(). Not wait-free: spins if another producer or the consumer is
+	/// concurrently modifying the stack.
 	void push (value_type &node) noexcept
 	{
 		auto *current = top_.load(std::memory_order_relaxed);
@@ -85,8 +84,8 @@ public:
 		}
 	}
 
-	/// Remove and return the top node. Returns nullptr if empty or transiently
-	/// inconsistent (producer is mid-push); the caller should retry.
+	/// Remove and return the top node. Returns nullptr if empty or if a
+	/// producer concurrently completed a push; the caller should retry.
 	/// All writes to the returned node before its last push() happen-before
 	/// reads after try_pop(). Consumer thread only.
 	[[nodiscard]] value_type *try_pop () noexcept
@@ -99,7 +98,7 @@ public:
 
 		auto *next = (item->*Next).load(std::memory_order_relaxed);
 		if (top_.compare_exchange_strong(item, next,
-			std::memory_order_release,
+			std::memory_order_relaxed,
 			std::memory_order_relaxed))
 		{
 			return item;
@@ -113,7 +112,7 @@ public:
 	/// Return true if the stack has no elements. Consumer thread only.
 	[[nodiscard]] bool empty () const noexcept
 	{
-		return top_.load(std::memory_order_acquire) == nullptr;
+		return top_.load(std::memory_order_relaxed) == nullptr;
 	}
 
 private:

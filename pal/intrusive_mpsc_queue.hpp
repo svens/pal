@@ -74,7 +74,7 @@ public:
 	void push (value_type &node) noexcept
 	{
 		(node.*Next).store(nullptr, std::memory_order_relaxed);
-		auto *back = tail_.exchange(&node, std::memory_order_release);
+		auto *back = tail_.exchange(&node, std::memory_order_acq_rel);
 		(back->*Next).store(&node, std::memory_order_release);
 	}
 
@@ -129,10 +129,6 @@ private:
 
 	alignas(alignof(value_type)) std::byte stub_[sizeof(value_type)]{};
 	value_type *const sentry_{reinterpret_cast<value_type *>(stub_)};
-
-	// std::hardware_destructive_interference_size reflects the build host, not
-	// the target, so it cannot be used in public ABI
-	static constexpr size_t cache_line_size = 128;
 
 	// clang-format off
 	__pal_diagnostic(push)
