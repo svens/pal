@@ -12,7 +12,7 @@ namespace pal::crypto::__crypto
 
 result<void> random_fill (std::span<std::byte> buf) noexcept
 {
-	const auto status = ::BCryptGenRandom(
+	const auto result = ::BCryptGenRandom(
 		nullptr,
 		reinterpret_cast<PUCHAR>(buf.data()),
 		static_cast<ULONG>(buf.size()),
@@ -20,7 +20,7 @@ result<void> random_fill (std::span<std::byte> buf) noexcept
 	);
 
 	// LCOV_EXCL_START
-	if (status != STATUS_SUCCESS)
+	if (result != STATUS_SUCCESS)
 	{
 		return make_unexpected(std::errc::io_error);
 	}

@@ -8,6 +8,7 @@
 #include <pal/buffer.hpp>
 #include <pal/result.hpp>
 #include <span>
+#include <type_traits>
 
 namespace pal::crypto
 {
@@ -20,26 +21,18 @@ result<void> random_fill (std::span<std::byte> buf) noexcept;
 } // namespace __crypto
 
 /// Fill \a buffer with cryptographically strong random bytes.
-template <mutable_buffer Buffer>
-	requires(!mutable_buffer_sequence<Buffer>)
-result<void> random (Buffer &buffer) noexcept
+result<void> random (mutable_buffer auto &buffer) noexcept
 {
 	return __crypto::random_fill(std::as_writable_bytes(std::span{buffer}));
 }
 
-/// Fill all \a buffers with cryptographically strong random bytes.
-result<void> random (mutable_buffer_sequence auto &buffers) noexcept
+/// Return cryptographically strong random value of trivially copyable type \a T.
+template <typename T>
+	requires std::is_trivially_copyable_v<T>
+result<T> random () noexcept
 {
-	for (auto &buffer: buffers)
-	{
-		// LCOV_EXCL_START
-		if (auto r = __crypto::random_fill(std::as_writable_bytes(std::span{buffer})); !r)
-		{
-			return r;
-		}
-		// LCOV_EXCL_STOP
-	}
-	return {};
+	T value;
+	return __crypto::random_fill(std::as_writable_bytes(std::span{&value, 1})).transform([&] { return value; });
 }
 
 } // namespace pal::crypto
