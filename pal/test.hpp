@@ -1,11 +1,21 @@
 #pragma once
 
+#include <pal/codec.hpp>
 #include <pal/version.hpp>
 #include <catch2/interfaces/catch_interfaces_capture.hpp>
 #include <string>
 
 namespace pal_test
 {
+
+/// Convert a range of bytes to a lowercase hex string.
+template <typename T>
+std::string to_hex (const T &data)
+{
+	std::string result(pal::convert_max_size(pal::hex_encode, data), '\0');
+	std::ignore = pal::convert(pal::hex_encode, result, data);
+	return result;
+}
 
 inline std::string case_name ()
 {
