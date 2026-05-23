@@ -135,6 +135,15 @@ TEMPLATE_TEST_CASE("crypto/hmac", "", md5, sha1, sha256, sha384, sha512)
 		CHECK(to_hex(hmac.finish()) == expected.at(lazy_dog_cog));
 	}
 
+	SECTION("move assign")
+	{
+		auto h1 = HMAC::make(hmac_key).value();
+		h1.update(std::span{lazy_dog});
+		auto h2 = HMAC::make(hmac_key).value();
+		h2 = std::move(h1);
+		CHECK(to_hex(h2.finish()) == expected.at(lazy_dog));
+	}
+
 	SECTION("one_shot")
 	{
 		CHECK(to_hex(HMAC::one_shot(hmac_key, std::span{lazy_dog}).value()) == expected.at(lazy_dog));
