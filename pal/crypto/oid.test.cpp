@@ -1,5 +1,5 @@
 #include <pal/crypto/oid.hpp>
-#include <pal/test.hpp>
+#include <pal/crypto/test.hpp>
 #include <catch2/catch_test_macros.hpp>
 #include <catch2/generators/catch_generators.hpp>
 

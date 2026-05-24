@@ -17,4 +17,7 @@ list(APPEND pal_test_sources
 	pal/crypto/hmac.test.cpp
 	pal/crypto/oid.test.cpp
 	pal/crypto/random.test.cpp
+	pal/crypto/test.hpp
+	pal/crypto/test_certs.hpp
+	pal/crypto/test_pkcs12.hpp
 )
