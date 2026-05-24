@@ -9,9 +9,12 @@ Checks: >
   -bugprone-invalid-enum-default-initialization,
   -bugprone-reserved-identifier,
   -misc-include-cleaner,
+  -misc-non-private-member-variables-in-classes,
   -modernize-use-trailing-return-type,
   -performance-enum-size,
   -readability-identifier-length,
+  -readability-math-missing-parentheses,
+  -readability-static-accessed-through-instance,
   -readability-named-parameter,
   -readability-redundant-parentheses,
 

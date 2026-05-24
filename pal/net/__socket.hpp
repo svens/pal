@@ -28,8 +28,6 @@
 namespace pal::net::__socket
 {
 
-// NOLINTBEGIN(misc-non-private-member-variables-in-classes)
-
 constexpr size_t io_vector_max_size = 4;
 
 #if __pal_net_posix //{{{1
@@ -200,7 +198,5 @@ enum option_name : int
 {
 	non_blocking_io,
 };
-
-// NOLINTEND(misc-non-private-member-variables-in-classes)
 
 } // namespace pal::net::__socket

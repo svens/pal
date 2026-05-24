@@ -113,7 +113,6 @@ __pal_crypto_digest_algorithm(__pal_crypto_impl_hash)
 		::HMAC_Init_ex(impl->ctx.get(), nullptr, 0, nullptr, nullptr); \
 	}
 
-// NOLINTNEXTLINE(misc-non-private-member-variables-in-classes)
 __pal_crypto_digest_algorithm(__pal_crypto_impl_hmac)
 #undef __pal_crypto_impl_hmac
 

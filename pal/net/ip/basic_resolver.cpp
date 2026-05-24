@@ -16,8 +16,6 @@ struct addrinfo_deleter
 };
 using addrinfo_ptr = std::unique_ptr<::addrinfo, addrinfo_deleter>;
 
-// NOLINTBEGIN(misc-non-private-member-variables-in-classes)
-
 struct forward_result: __resolver::result_base
 {
 	static constexpr size_t slot_size = sizeof(::sockaddr_in6);
@@ -44,8 +42,6 @@ struct reverse_result: __resolver::result_base
 
 	int fill (const addr_info &ai) noexcept;
 };
-
-// NOLINTEND(misc-non-private-member-variables-in-classes)
 
 int forward_result::fill (std::string_view h, std::string_view s, const ::addrinfo &hints) noexcept
 {
