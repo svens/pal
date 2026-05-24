@@ -44,7 +44,7 @@ std::string_view strip_whitespace (std::string_view src, std::span<std::byte> ou
 
 result<std::span<const std::byte>> decode (std::string_view b64, std::span<std::byte> out) noexcept
 {
-	if (const auto r = pal::convert(pal::base64_decode, out, b64); r.ec == std::errc{})
+	if (const auto r = convert(base64_decode, out, b64); r.ec == std::errc{})
 	{
 		return std::as_bytes(out.first(static_cast<size_t>(r.ptr - out.data())));
 	}
@@ -60,10 +60,10 @@ result<certificate> certificate::import_pem (std::string_view pem) noexcept
 	{
 		static constexpr size_t der_stack_size = 2048;
 		static constexpr size_t b64_stack_size = (der_stack_size * 4 / 3 + 1023) / 1024 * 1024;
-		const auto der_max_size = pal::convert_max_size(pal::base64_decode, b64_view);
+		const auto der_max_size = convert_max_size(base64_decode, b64_view);
 
-		pal::temporary_buffer<b64_stack_size> b64_buf{std::nothrow, b64_view.size()};
-		pal::temporary_buffer<der_stack_size> der_buf{std::nothrow, der_max_size};
+		temporary_buffer<b64_stack_size> b64_buf{std::nothrow, b64_view.size()};
+		temporary_buffer<der_stack_size> der_buf{std::nothrow, der_max_size};
 		if (!b64_buf || !der_buf)
 		{
 			return make_unexpected(std::errc::not_enough_memory);

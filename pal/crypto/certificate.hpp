@@ -7,6 +7,7 @@
 
 #include <pal/result.hpp>
 #include <chrono>
+#include <cstdint>
 #include <memory>
 #include <span>
 #include <string_view>
@@ -59,6 +60,45 @@ public:
 	{
 		return !is_null();
 	}
+
+	/// Return certificate encoded as DER blob.
+	[[nodiscard]] std::span<const std::byte> as_bytes () const noexcept;
+
+	/// Return X.509 structure version (1 for v1, 3 for v3).
+	[[nodiscard]] int version () const noexcept;
+
+	/// Return certificate serial number as big-endian byte span.
+	[[nodiscard]] std::span<const uint8_t> serial_number () const noexcept;
+
+	/// Return Common Name from the certificate's Subject Distinguished Name.
+	[[nodiscard]] std::string_view common_name () const noexcept;
+
+	/// Return SHA1 fingerprint as lowercase hex string.
+	[[nodiscard]] std::string_view fingerprint () const noexcept;
+
+	/// Return timestamp from which this certificate is valid.
+	[[nodiscard]] time_type not_before () const noexcept;
+
+	/// Return timestamp until which this certificate is valid.
+	[[nodiscard]] time_type not_after () const noexcept;
+
+	/// Return true if this certificate is valid at \a when.
+	[[nodiscard]] bool not_expired_at (time_type when) const noexcept
+	{
+		return not_before() <= when && when <= not_after();
+	}
+
+	/// Return true if this certificate remains valid for \a d starting from \a when.
+	[[nodiscard]] bool not_expired_for (duration d, time_type when = clock_type::now()) const noexcept
+	{
+		return not_expired_at(when + d);
+	}
+
+	/// Return true if \a this certificate was issued by \a that certificate.
+	[[nodiscard]] bool is_issued_by (const certificate &that) const noexcept;
+
+	/// Return true if this certificate was issued by itself.
+	[[nodiscard]] bool is_self_signed () const noexcept;
 
 private:
 
