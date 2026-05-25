@@ -34,6 +34,8 @@ certificate::impl_type::impl_type (cert_ptr x509, std::span<const std::byte> der
 	, fingerprint{init_fingerprint()}
 	, not_before{to_time(::X509_get_notBefore(this->x509.get()))}
 	, not_after{to_time(::X509_get_notAfter(this->x509.get()))}
+	, subject_dn{::X509_get_subject_name(this->x509.get())}
+	, issuer_dn{::X509_get_issuer_name(this->x509.get())}
 {
 }
 

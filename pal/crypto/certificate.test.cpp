@@ -3,12 +3,12 @@
 #include <catch2/catch_test_macros.hpp>
 #include <catch2/generators/catch_generators_range.hpp>
 #include <chrono>
+#include <format>
 
 namespace
 {
 
 namespace test_cert = pal_test::cert;
-
 using namespace std::chrono_literals;
 
 auto load (const test_cert::info &info)
@@ -99,6 +99,18 @@ TEST_CASE("crypto/certificate")
 		CHECK_FALSE(cert.not_expired_at(cert.not_after() + 1s));
 		CHECK(cert.not_expired_for(0s, cert.not_before()));
 		CHECK_FALSE(cert.not_expired_for(1s, cert.not_after()));
+	}
+
+	SECTION("subject_name")
+	{
+		const auto *info = GENERATE(from_range(test_cert::data));
+		CHECK(std::format("{}", load(*info).subject_name()) == info->subject_name);
+	}
+
+	SECTION("issuer_name")
+	{
+		const auto *info = GENERATE(from_range(test_cert::data));
+		CHECK(std::format("{}", load(*info).issuer_name()) == info->issuer_name);
 	}
 
 	SECTION("is_issued_by")

@@ -179,6 +179,11 @@ make_self_signed no_cn \
 	v3_self_signed \
 	36500
 
+make_self_signed empty_dn \
+	"/" \
+	v3_self_signed \
+	36500
+
 # ----- PKCS#12 ----------------------------------------------------------------
 
 echo "==> PKCS#12"
@@ -297,7 +302,8 @@ echo "==> Writing $CERTS_OUT"
 	emit_info client
 	emit_info self_signed
 	emit_info no_cn
-	echo "constexpr const info *data[] = { &ca, &intermediate, &server, &client, &self_signed, &no_cn };"
+	emit_info empty_dn
+	echo "constexpr const info *data[] = { &ca, &intermediate, &server, &client, &self_signed, &no_cn, &empty_dn };"
 	echo ""
 	echo "} // namespace pal_test::cert"
 } > "$CERTS_OUT"

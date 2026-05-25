@@ -5,6 +5,7 @@
  * X.509 public key certificate
  */
 
+#include <pal/crypto/distinguished_name.hpp>
 #include <pal/result.hpp>
 #include <chrono>
 #include <cstdint>
@@ -99,6 +100,12 @@ public:
 
 	/// Return true if this certificate was issued by itself.
 	[[nodiscard]] bool is_self_signed () const noexcept;
+
+	/// Return subject distinguished name entries.
+	[[nodiscard]] distinguished_name subject_name () const noexcept;
+
+	/// Return issuer distinguished name entries.
+	[[nodiscard]] distinguished_name issuer_name () const noexcept;
 
 private:
 

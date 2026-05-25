@@ -35,6 +35,20 @@ struct cert_deleter
 };
 using cert_ptr = std::unique_ptr<::X509, cert_deleter>;
 
+struct distinguished_name::impl_type
+{
+	::X509_NAME *name;
+	int count;
+
+	explicit impl_type (::X509_NAME *n) noexcept
+		: name{n}
+		, count{::X509_NAME_entry_count(n)}
+	{
+	}
+
+	bool load_at (int index, oid_buffer &oid, value_buffer &value, entry &e) const noexcept;
+};
+
 struct certificate::impl_type
 {
 	cert_ptr x509;
@@ -54,6 +68,9 @@ struct certificate::impl_type
 	certificate::time_type not_before;
 	certificate::time_type not_after;
 
+	distinguished_name::impl_type subject_dn;
+	distinguished_name::impl_type issuer_dn;
+
 	impl_type (cert_ptr x509, std::span<const std::byte> der);
 	impl_type (const impl_type &) = delete;
 	impl_type &operator= (const impl_type &) = delete;
@@ -70,6 +87,40 @@ private:
 
 #elif __pal_crypto_windows //{{{1
 
+template <typename T, size_t Size>
+struct asn_decoder
+{
+	temporary_buffer<Size> buf;
+	const bool is_valid;
+	const T &value;
+
+	asn_decoder (::LPCSTR type, const ::BYTE *data, ::DWORD size) noexcept
+		: buf{std::nothrow, decode_size(type, data, size)}
+		, is_valid{decode(type, data, size, buf)}
+		, value{*reinterpret_cast<const T *>(buf.get().data())}
+	{
+	}
+
+private:
+
+	static constexpr ::DWORD decode_content = X509_ASN_ENCODING;
+	static constexpr ::DWORD decode_flags = CRYPT_DECODE_NOCOPY_FLAG | CRYPT_DECODE_SHARE_OID_STRING_FLAG;
+
+	static ::DWORD decode_size (::LPCSTR type, const ::BYTE *data, ::DWORD size) noexcept
+	{
+		::DWORD needed = 0;
+		::CryptDecodeObjectEx(decode_content, type, data, size, decode_flags, nullptr, nullptr, &needed);
+		return needed;
+	}
+
+	static bool decode (::LPCSTR type, const ::BYTE *data, ::DWORD size, temporary_buffer<Size> &buf) noexcept
+	{
+		auto ptr = buf.get().data();
+		auto len = static_cast<::DWORD>(buf.get().size());
+		return ::CryptDecodeObjectEx(decode_content, type, data, size, decode_flags, nullptr, ptr, &len);
+	}
+};
+
 struct cert_deleter
 {
 	void operator() (const ::CERT_CONTEXT *p) const noexcept
@@ -78,6 +129,16 @@ struct cert_deleter
 	}
 };
 using cert_ptr = std::unique_ptr<const ::CERT_CONTEXT, cert_deleter>;
+
+struct distinguished_name::impl_type
+{
+	::CERT_NAME_BLOB name;
+	int count;
+
+	explicit impl_type (::CERT_NAME_BLOB b) noexcept;
+
+	bool load_at (int index, oid_buffer &oid, value_buffer &value, entry &e) const noexcept;
+};
 
 struct certificate::impl_type
 {
@@ -99,6 +160,9 @@ struct certificate::impl_type
 
 	certificate::time_type not_before;
 	certificate::time_type not_after;
+
+	distinguished_name::impl_type subject_dn;
+	distinguished_name::impl_type issuer_dn;
 
 	explicit impl_type (cert_ptr x509) noexcept;
 	impl_type (const impl_type &) = delete;

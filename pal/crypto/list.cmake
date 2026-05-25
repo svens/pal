@@ -9,6 +9,10 @@ list(APPEND pal_sources
 	pal/crypto/digest_algorithm.hpp
 	pal/crypto/digest_algorithm.openssl.cpp
 	pal/crypto/digest_algorithm.windows.cpp
+	pal/crypto/distinguished_name.hpp
+	pal/crypto/distinguished_name.cpp
+	pal/crypto/distinguished_name.openssl.cpp
+	pal/crypto/distinguished_name.windows.cpp
 	pal/crypto/hash.hpp
 	pal/crypto/hmac.hpp
 	pal/crypto/oid.hpp
@@ -19,6 +23,7 @@ list(APPEND pal_sources
 
 list(APPEND pal_test_sources
 	pal/crypto/certificate.test.cpp
+	pal/crypto/distinguished_name.test.cpp
 	pal/crypto/hash.test.cpp
 	pal/crypto/hmac.test.cpp
 	pal/crypto/oid.test.cpp

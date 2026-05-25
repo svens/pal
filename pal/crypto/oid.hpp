@@ -5,7 +5,7 @@
  * Object identifiers for X.509 certificates
  */
 
-#include <algorithm>
+#include <array>
 #include <string_view>
 #include <utility>
 
@@ -66,17 +66,28 @@ constexpr std::string_view
 constexpr std::string_view alias_or (std::string_view oid) noexcept
 {
 	using namespace std::string_view_literals;
-	constexpr std::pair<std::string_view, std::string_view> map[] = {
-		{common_name, "CN"sv},
-		{country_name, "C"sv},
-		{locality_name, "L"sv},
-		{organization_name, "O"sv},
-		{organizational_unit_name, "OU"sv},
-		{state_or_province_name, "ST"sv},
-		{street_address, "STREET"sv},
-	};
-	const auto *it = std::ranges::find_if(map, [&] (const auto &e) { return e.first == oid; });
-	return it != std::end(map) ? it->second : oid;
+
+	// clang-format off
+	constexpr auto map = std::to_array<std::pair<std::string_view, std::string_view>>(
+	{
+		{ common_name, "CN"sv },
+		{ country_name, "C"sv },
+		{ locality_name, "L"sv },
+		{ organization_name, "O"sv },
+		{ organizational_unit_name, "OU"sv },
+		{ state_or_province_name, "ST"sv },
+		{ street_address, "STREET"sv },
+	});
+	// clang-format on
+
+	for (const auto &[key, alias]: map)
+	{
+		if (key == oid)
+		{
+			return alias;
+		}
+	}
+	return oid;
 }
 
 } // namespace pal::crypto::oid

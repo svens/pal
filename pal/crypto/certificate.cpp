@@ -1,4 +1,4 @@
-#include <pal/crypto/certificate.hpp>
+#include <pal/crypto/__certificate.hpp>
 #include <pal/codec.hpp>
 #include <pal/memory.hpp>
 #include <algorithm>
@@ -64,15 +64,28 @@ result<certificate> certificate::import_pem (std::string_view pem) noexcept
 
 		temporary_buffer<b64_stack_size> b64_buf{std::nothrow, b64_view.size()};
 		temporary_buffer<der_stack_size> der_buf{std::nothrow, der_max_size};
+
+		// LCOV_EXCL_START
 		if (!b64_buf || !der_buf)
 		{
 			return make_unexpected(std::errc::not_enough_memory);
 		}
+		// LCOV_EXCL_STOP
 
 		const auto b64 = strip_whitespace(b64_view, b64_buf.get());
 		return decode(b64, der_buf.get()).and_then(import_der);
 	});
 	// clang-format on
+}
+
+distinguished_name certificate::subject_name () const noexcept
+{
+	return distinguished_name{distinguished_name::impl_ptr{impl_, &impl_->subject_dn}};
+}
+
+distinguished_name certificate::issuer_name () const noexcept
+{
+	return distinguished_name{distinguished_name::impl_ptr{impl_, &impl_->issuer_dn}};
 }
 
 } // namespace pal::crypto

@@ -32,7 +32,19 @@ certificate::time_type to_time (const FILETIME &time) noexcept
 	return certificate::clock_type::from_time_t(std::mktime(&tm));
 }
 
+int dn_count (const ::CERT_NAME_BLOB &blob) noexcept
+{
+	const asn_decoder<::CERT_NAME_INFO, 2048> decoder{X509_NAME, blob.pbData, blob.cbData};
+	return decoder.is_valid ? static_cast<int>(decoder.value.cRDN) : 0;
+}
+
 } // namespace
+
+distinguished_name::impl_type::impl_type (::CERT_NAME_BLOB b) noexcept
+	: name{b}
+	, count{dn_count(b)}
+{
+}
 
 certificate::impl_type::impl_type (cert_ptr x509) noexcept
 	: x509{std::move(x509)}
@@ -42,6 +54,8 @@ certificate::impl_type::impl_type (cert_ptr x509) noexcept
 	, fingerprint{init_fingerprint()}
 	, not_before{to_time(this->x509->pCertInfo->NotBefore)}
 	, not_after{to_time(this->x509->pCertInfo->NotAfter)}
+	, subject_dn{this->x509->pCertInfo->Subject}
+	, issuer_dn{this->x509->pCertInfo->Issuer}
 {
 }
 
