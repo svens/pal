@@ -131,6 +131,38 @@ bool certificate::is_self_signed () const noexcept
 	return ::X509_self_signed(impl_->x509.get(), 0) == 1;
 }
 
+alternative_name certificate::subject_alternative_name () const noexcept
+{
+	general_names_ptr names{static_cast<::GENERAL_NAMES *>(
+		::X509_get_ext_d2i(impl_->x509.get(), NID_subject_alt_name, nullptr, nullptr)
+	)};
+	if (!names)
+	{
+		return alternative_name{nullptr};
+	}
+	if (auto impl = pal::make_shared<alternative_name::impl_type>(std::move(names)))
+	{
+		return alternative_name{std::move(*impl)};
+	}
+	return alternative_name{nullptr};
+}
+
+alternative_name certificate::issuer_alternative_name () const noexcept
+{
+	general_names_ptr names{static_cast<::GENERAL_NAMES *>(
+		::X509_get_ext_d2i(impl_->x509.get(), NID_issuer_alt_name, nullptr, nullptr)
+	)};
+	if (!names)
+	{
+		return alternative_name{nullptr};
+	}
+	if (auto impl = pal::make_shared<alternative_name::impl_type>(std::move(names)))
+	{
+		return alternative_name{std::move(*impl)};
+	}
+	return alternative_name{nullptr};
+}
+
 } // namespace pal::crypto
 
 #endif // __pal_crypto_openssl

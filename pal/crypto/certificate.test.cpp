@@ -114,6 +114,18 @@ TEST_CASE("crypto/certificate")
 		CHECK(std::format("{}", load(*info).issuer_name()) == info->issuer_name);
 	}
 
+	SECTION("subject_alternative_name")
+	{
+		const auto *info = GENERATE(from_range(test_cert::data));
+		CHECK(std::format("{}", load(*info).subject_alternative_name()) == info->subject_alternative_name);
+	}
+
+	SECTION("issuer_alternative_name")
+	{
+		const auto *info = GENERATE(from_range(test_cert::data));
+		CHECK(std::format("{}", load(*info).issuer_alternative_name()) == info->issuer_alternative_name);
+	}
+
 	SECTION("is_issued_by")
 	{
 		const auto ca = load(test_cert::ca);

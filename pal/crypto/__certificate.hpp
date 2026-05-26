@@ -26,6 +26,15 @@ namespace pal::crypto
 
 #if __pal_crypto_openssl //{{{1
 
+struct general_names_deleter
+{
+	void operator() (::GENERAL_NAMES *p) const noexcept
+	{
+		sk_GENERAL_NAME_pop_free(p, GENERAL_NAME_free);
+	}
+};
+using general_names_ptr = std::unique_ptr<::GENERAL_NAMES, general_names_deleter>;
+
 struct cert_deleter
 {
 	void operator() (::X509 *p) const noexcept
@@ -38,7 +47,7 @@ using cert_ptr = std::unique_ptr<::X509, cert_deleter>;
 struct distinguished_name::impl_type
 {
 	::X509_NAME *name;
-	int count;
+	const int count;
 
 	explicit impl_type (::X509_NAME *n) noexcept
 		: name{n}
@@ -47,6 +56,20 @@ struct distinguished_name::impl_type
 	}
 
 	bool load_at (int index, oid_buffer &oid, value_buffer &value, entry &e) const noexcept;
+};
+
+struct alternative_name::impl_type
+{
+	general_names_ptr names;
+	const int count;
+
+	explicit impl_type (general_names_ptr names) noexcept
+		: names{std::move(names)}
+		, count{sk_GENERAL_NAME_num(this->names.get())}
+	{
+	}
+
+	bool load_at (int index, entry_buffer &buf, alternative_name_entry &entry) const noexcept;
 };
 
 struct certificate::impl_type
@@ -133,11 +156,18 @@ using cert_ptr = std::unique_ptr<const ::CERT_CONTEXT, cert_deleter>;
 struct distinguished_name::impl_type
 {
 	::CERT_NAME_BLOB name;
-	int count;
+	const int count;
 
 	explicit impl_type (::CERT_NAME_BLOB b) noexcept;
 
 	bool load_at (int index, oid_buffer &oid, value_buffer &value, entry &e) const noexcept;
+};
+
+struct alternative_name::impl_type
+{
+	const int count = 0;
+
+	bool load_at (int index, entry_buffer &buf, alternative_name_entry &entry) const noexcept;
 };
 
 struct certificate::impl_type

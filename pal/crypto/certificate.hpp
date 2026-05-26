@@ -5,6 +5,7 @@
  * X.509 public key certificate
  */
 
+#include <pal/crypto/alternative_name.hpp>
 #include <pal/crypto/distinguished_name.hpp>
 #include <pal/result.hpp>
 #include <chrono>
@@ -106,6 +107,12 @@ public:
 
 	/// Return issuer distinguished name entries.
 	[[nodiscard]] distinguished_name issuer_name () const noexcept;
+
+	/// Return Subject Alternative Name extension entries.
+	[[nodiscard]] alternative_name subject_alternative_name () const noexcept;
+
+	/// Return Issuer Alternative Name extension entries.
+	[[nodiscard]] alternative_name issuer_alternative_name () const noexcept;
 
 private:
 
