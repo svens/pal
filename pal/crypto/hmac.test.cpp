@@ -1,6 +1,6 @@
 #include <pal/crypto/digest_algorithm.hpp>
 #include <pal/crypto/hmac.hpp>
-#include <pal/test.hpp>
+#include <pal/crypto/test.hpp>
 #include <catch2/catch_template_test_macros.hpp>
 #include <string_view>
 #include <unordered_map>
@@ -157,7 +157,7 @@ TEMPLATE_TEST_CASE("crypto/hmac", "", md5, sha1, sha256, sha384, sha512)
 	SECTION("finish: output buffer")
 	{
 		auto hmac = HMAC::make(hmac_key).value();
-		std::array<std::byte, 64> buf{};
+		std::vector<std::byte> buf(HMAC::digest_size);
 		const auto out = hmac.update(std::span{lazy_dog}).finish(buf);
 		REQUIRE(out.has_value());
 		CHECK(out->size() == HMAC::digest_size);

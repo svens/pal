@@ -2,7 +2,6 @@ InheritParentConfig: true
 Checks: >-
   -bugprone-use-after-move,
   -readability-function-cognitive-complexity,
-  -misc-non-private-member-variables-in-classes,
   -readability-container-data-pointer,
   -readability-isolate-declaration,
   -bugprone-sizeof-expression,
@@ -11,4 +10,3 @@ Checks: >-
   -readability-magic-numbers,
   -readability-convert-member-functions-to-static,
   -readability-use-std-min-max,
-  -readability-static-accessed-through-instance,

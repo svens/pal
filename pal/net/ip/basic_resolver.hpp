@@ -53,8 +53,6 @@ inline std::error_code make_error_code (resolver_errc ec) noexcept
 namespace __resolver
 {
 
-// NOLINTBEGIN(misc-non-private-member-variables-in-classes)
-
 /// Common result fields shared by forward and reverse lookups.
 /// endpoint_data points to the start of a flat array of endpoint-sized slots;
 /// max_count is the upper bound on the number of slots (forward result only).
@@ -71,8 +69,6 @@ struct result_base
 	size_t count{};
 	const char *endpoint_data{};
 };
-
-// NOLINTEND(misc-non-private-member-variables-in-classes)
 
 using result_storage_ptr = std::unique_ptr<result_base>;
 

@@ -17,6 +17,7 @@ if(RUN_CLANG_TIDY)
 			-p ${CMAKE_BINARY_DIR}
 			-source-filter "^${CMAKE_SOURCE_DIR}/pal/(?!.*\\.(test|bench|fuzz)\\.cpp$).*\\.cpp$"
 			-quiet
+			-hide-progress
 			${_tidy_extra_args}
 		WORKING_DIRECTORY ${CMAKE_SOURCE_DIR}
 		VERBATIM
@@ -27,6 +28,7 @@ if(RUN_CLANG_TIDY)
 			-source-filter "^${CMAKE_SOURCE_DIR}/pal/.*\\.(test|bench|fuzz)\\.cpp$"
 			-config-file ${CMAKE_SOURCE_DIR}/.clang-tidy-test
 			-quiet
+			-hide-progress
 			${_tidy_extra_args}
 		WORKING_DIRECTORY ${CMAKE_SOURCE_DIR}
 		VERBATIM
