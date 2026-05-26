@@ -30,7 +30,7 @@ bool distinguished_name::impl_type::load_at (int index, oid_buffer &oid, value_b
 	std::copy_n(attr.pszObjId, len, oid.data());
 	e.oid = {oid.data(), len};
 
-	len = ::CertRDNValueToStr(attr.dwValueType, &attr.Value, value.data(), value.size());
+	len = ::CertRDNValueToStr(attr.dwValueType, &attr.Value, value.data(), static_cast<DWORD>(value.size()));
 	e.value = {value.data(), len > 0U ? len - 1 : 0};
 
 	return true;
