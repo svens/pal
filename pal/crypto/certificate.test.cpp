@@ -24,6 +24,7 @@ TEST_CASE("crypto/certificate")
 		auto cert = pal::crypto::certificate::from_pem(info->pem);
 		REQUIRE(cert);
 		CHECK_FALSE(cert->is_null());
+		CHECK(*cert);
 	}
 
 	SECTION("from_der/valid")
