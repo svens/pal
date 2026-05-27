@@ -9,7 +9,6 @@ namespace
 
 using pal::crypto::certificate;
 using pal::crypto::key;
-using pal::crypto::key_algorithm;
 namespace test_cert = pal_test::cert;
 
 TEST_CASE("crypto/key")
@@ -27,7 +26,7 @@ TEST_CASE("crypto/key")
 		auto cert = certificate::from_pem(info->pem).value();
 		auto k = cert.public_key().value();
 		REQUIRE(k);
-		CHECK(k.algorithm() == key_algorithm::rsa);
+		CHECK(k.algorithm() == info->algorithm);
 		CHECK(k.size_bits() == info->size_bits);
 		CHECK(k.max_block_size() == info->max_block_size);
 	}

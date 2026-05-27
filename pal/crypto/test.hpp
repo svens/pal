@@ -5,6 +5,7 @@
  * Test infrastructure for pal/crypto certificate tests
  */
 
+#include <pal/crypto/key.hpp>
 #include <pal/test.hpp>
 #include <pal/codec.hpp>
 #include <cstddef>
@@ -27,6 +28,7 @@ struct info
 	std::string_view fingerprint;
 	size_t size_bits;
 	size_t max_block_size;
+	pal::crypto::key_algorithm algorithm;
 	std::string_view pem;
 };
 

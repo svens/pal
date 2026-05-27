@@ -68,6 +68,17 @@ size_t get_size (::NCRYPT_KEY_HANDLE pkey, ::LPCWSTR property) noexcept
 	return buf;
 }
 
+constexpr size_t max_block_size_for (key_algorithm algorithm, size_t size_bits) noexcept
+{
+	if (algorithm == key_algorithm::ec)
+	{
+		const auto n = (size_bits + 7) / 8;
+		const auto content = 2 * (n + 3);
+		return content > 127 ? 3 + content : 2 + content;
+	}
+	return size_bits / 8;
+}
+
 } // namespace
 
 key::impl_type::impl_type (certificate::impl_ptr owner, ::BCRYPT_KEY_HANDLE pkey) noexcept
@@ -75,7 +86,7 @@ key::impl_type::impl_type (certificate::impl_ptr owner, ::BCRYPT_KEY_HANDLE pkey
 	, pkey{pkey}
 	, algorithm{to_algorithm(pkey)}
 	, size_bits{get_size(pkey, BCRYPT_KEY_LENGTH)}
-	, max_block_size{get_size(pkey, BCRYPT_BLOCK_LENGTH)}
+	, max_block_size{max_block_size_for(algorithm, size_bits)}
 {
 }
 
@@ -84,7 +95,7 @@ key::impl_type::impl_type (certificate::impl_ptr owner, ::NCRYPT_KEY_HANDLE pkey
 	, pkey{pkey}
 	, algorithm{to_algorithm(pkey)}
 	, size_bits{get_size(pkey, NCRYPT_LENGTH_PROPERTY)}
-	, max_block_size{get_size(pkey, NCRYPT_BLOCK_LENGTH_PROPERTY)}
+	, max_block_size{max_block_size_for(algorithm, size_bits)}
 {
 }
 
