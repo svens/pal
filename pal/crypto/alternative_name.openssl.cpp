@@ -59,7 +59,7 @@ bool alternative_name::impl_type::load_at (int index, entry_buffer &buf, alterna
 				entry.emplace<ip_address>(buf.data(), end - buf.data());
 				return true;
 			}
-			[[fallthrough]];
+			return false;
 		}
 
 		default:

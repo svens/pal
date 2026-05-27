@@ -110,7 +110,7 @@ private:
 
 #elif __pal_crypto_windows //{{{1
 
-template <typename T, size_t Size>
+template <typename T, size_t Size, ::DWORD Flags = CRYPT_DECODE_NOCOPY_FLAG | CRYPT_DECODE_SHARE_OID_STRING_FLAG>
 struct asn_decoder
 {
 	temporary_buffer<Size> buf;
@@ -127,7 +127,7 @@ struct asn_decoder
 private:
 
 	static constexpr ::DWORD decode_content = X509_ASN_ENCODING;
-	static constexpr ::DWORD decode_flags = CRYPT_DECODE_NOCOPY_FLAG | CRYPT_DECODE_SHARE_OID_STRING_FLAG;
+	static constexpr ::DWORD decode_flags = Flags;
 
 	static ::DWORD decode_size (::LPCSTR type, const ::BYTE *data, ::DWORD size) noexcept
 	{
@@ -165,7 +165,14 @@ struct distinguished_name::impl_type
 
 struct alternative_name::impl_type
 {
-	const int count = 0;
+	asn_decoder<::CERT_ALT_NAME_INFO, 3 * 1024, 0> name;
+	const int count;
+
+	explicit impl_type (const ::CERT_EXTENSION &ext) noexcept
+		: name{X509_ALTERNATE_NAME, ext.Value.pbData, ext.Value.cbData}
+		, count{name.is_valid ? static_cast<int>(name.value.cAltEntry) : 0}
+	{
+	}
 
 	bool load_at (int index, entry_buffer &buf, alternative_name_entry &entry) const noexcept;
 };
