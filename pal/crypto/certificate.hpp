@@ -8,6 +8,7 @@
 #include <pal/crypto/alternative_name.hpp>
 #include <pal/crypto/alternative_name_value.hpp>
 #include <pal/crypto/distinguished_name.hpp>
+#include <pal/crypto/key.hpp>
 #include <pal/result.hpp>
 #include <chrono>
 #include <cstdint>
@@ -120,6 +121,9 @@ public:
 	/// Return Subject Alternative Name as a packed lookup structure for hostname/IP matching.
 	[[nodiscard]] const alternative_name_value &subject_alternative_name_value () const noexcept;
 
+	/// Return the certificate's public key.
+	[[nodiscard]] result<key> public_key () const noexcept;
+
 private:
 
 	struct impl_type;
@@ -137,6 +141,7 @@ private:
 	static certificate to_api (impl_ptr impl) noexcept;
 
 	friend class alternative_name;
+	friend class key;
 };
 
 inline certificate certificate::to_api (certificate::impl_ptr impl) noexcept

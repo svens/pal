@@ -20,6 +20,9 @@ list(APPEND pal_sources
 	pal/crypto/distinguished_name.windows.cpp
 	pal/crypto/hash.hpp
 	pal/crypto/hmac.hpp
+	pal/crypto/key.hpp
+	pal/crypto/key.openssl.cpp
+	pal/crypto/key.windows.cpp
 	pal/crypto/oid.hpp
 	pal/crypto/random.hpp
 	pal/crypto/random.openssl.cpp
@@ -32,6 +35,7 @@ list(APPEND pal_test_sources
 	pal/crypto/distinguished_name.test.cpp
 	pal/crypto/hash.test.cpp
 	pal/crypto/hmac.test.cpp
+	pal/crypto/key.test.cpp
 	pal/crypto/oid.test.cpp
 	pal/crypto/random.test.cpp
 	pal/crypto/test.hpp

@@ -16,7 +16,7 @@ endif()
 pal_system_libs_add(
 	LINUX OpenSSL::Crypto
 	DARWIN OpenSSL::Crypto
-	WINDOWS bcrypt crypt32 ntdll ws2_32
+	WINDOWS bcrypt crypt32 ncrypt ntdll ws2_32
 )
 
 include(pal/list.cmake)

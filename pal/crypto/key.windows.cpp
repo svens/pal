@@ -1,0 +1,150 @@
+#include <pal/crypto/__crypto.hpp>
+
+#if __pal_crypto_windows
+
+// clang-format off
+#include <pal/crypto/__certificate.hpp>
+#include <pal/memory.hpp>
+#include <bcrypt.h>
+// clang-format on
+
+namespace pal::crypto
+{
+
+namespace
+{
+
+key_algorithm algorithm_from_name (const wchar_t *name) noexcept
+{
+	if (::wcscmp(name, BCRYPT_RSA_ALGORITHM) == 0)
+	{
+		return key_algorithm::rsa;
+	}
+	if (::wcsncmp(name, L"EC", 2) == 0)
+	{
+		return key_algorithm::ec;
+	}
+	return key_algorithm::opaque;
+}
+
+key_algorithm to_algorithm (::BCRYPT_KEY_HANDLE pkey) noexcept
+{
+	wchar_t buf[64] = {};
+	::ULONG len = 0;
+	::BCryptGetProperty(
+		pkey, BCRYPT_ALGORITHM_NAME, reinterpret_cast<::PUCHAR>(buf), sizeof(buf) - sizeof(wchar_t), &len, 0
+	);
+	return algorithm_from_name(buf);
+}
+
+key_algorithm to_algorithm (::NCRYPT_KEY_HANDLE pkey) noexcept
+{
+	wchar_t buf[64] = {};
+	::ULONG len = 0;
+	::NCryptGetProperty(
+		pkey,
+		NCRYPT_ALGORITHM_GROUP_PROPERTY,
+		reinterpret_cast<::PUCHAR>(buf),
+		sizeof(buf) - sizeof(wchar_t),
+		&len,
+		0
+	);
+	return algorithm_from_name(buf);
+}
+
+size_t get_size (::BCRYPT_KEY_HANDLE pkey, ::LPCWSTR property) noexcept
+{
+	::DWORD buf = 0;
+	::ULONG len = 0;
+	::BCryptGetProperty(pkey, property, reinterpret_cast<::PUCHAR>(&buf), sizeof(buf), &len, 0);
+	return buf;
+}
+
+size_t get_size (::NCRYPT_KEY_HANDLE pkey, ::LPCWSTR property) noexcept
+{
+	::DWORD buf = 0;
+	::ULONG len = 0;
+	::NCryptGetProperty(pkey, property, reinterpret_cast<::PUCHAR>(&buf), sizeof(buf), &len, 0);
+	return buf;
+}
+
+} // namespace
+
+key::impl_type::impl_type (certificate::impl_ptr owner, ::BCRYPT_KEY_HANDLE pkey) noexcept
+	: owner{std::move(owner)}
+	, pkey{pkey}
+	, algorithm{to_algorithm(pkey)}
+	, size_bits{get_size(pkey, BCRYPT_KEY_LENGTH)}
+	, max_block_size{get_size(pkey, BCRYPT_BLOCK_LENGTH)}
+{
+}
+
+key::impl_type::impl_type (certificate::impl_ptr owner, ::NCRYPT_KEY_HANDLE pkey) noexcept
+	: owner{std::move(owner)}
+	, pkey{pkey}
+	, algorithm{to_algorithm(pkey)}
+	, size_bits{get_size(pkey, NCRYPT_LENGTH_PROPERTY)}
+	, max_block_size{get_size(pkey, NCRYPT_BLOCK_LENGTH_PROPERTY)}
+{
+}
+
+key::impl_type::~impl_type () noexcept
+{
+	if (auto *bh = std::get_if<::BCRYPT_KEY_HANDLE>(&pkey))
+	{
+		::BCryptDestroyKey(*bh);
+	}
+	else if (auto *nh = std::get_if<::NCRYPT_KEY_HANDLE>(&pkey))
+	{
+		::NCryptFreeObject(*nh);
+	}
+}
+
+key_algorithm key::algorithm () const noexcept
+{
+	return impl_->algorithm;
+}
+
+size_t key::size_bits () const noexcept
+{
+	return impl_->size_bits;
+}
+
+size_t key::max_block_size () const noexcept
+{
+	return impl_->max_block_size;
+}
+
+result<key> certificate::public_key () const noexcept
+{
+	::BCRYPT_KEY_HANDLE pkey = {};
+
+	// clang-format off
+
+	auto status = ::CryptImportPublicKeyInfoEx2(
+		X509_ASN_ENCODING,
+		&impl_->x509->pCertInfo->SubjectPublicKeyInfo,
+		0,
+		nullptr,
+		&pkey
+	);
+
+	if (status)
+	{
+		return pal::make_shared<key::impl_type>(impl_, pkey)
+			.transform(key::to_api)
+			.or_else([&pkey] (std::error_code ec) -> result<key>
+			{
+				::BCryptDestroyKey(pkey);
+				return pal::unexpected{std::move(ec)};
+			});
+	}
+
+	// clang-format on
+
+	return make_unexpected(std::errc::invalid_argument);
+}
+
+} // namespace pal::crypto
+
+#endif // __pal_crypto_windows
