@@ -6,6 +6,8 @@
 #include <pal/crypto/__certificate.hpp>
 #include <pal/codec.hpp>
 #include <pal/memory.hpp>
+#include <pal/net/ip/address_v4.hpp>
+#include <pal/net/ip/address_v6.hpp>
 #include <algorithm>
 #include <ctime>
 // clang-format on
@@ -23,6 +25,11 @@ certificate::time_type to_time (const ::ASN1_TIME *time) noexcept
 	return certificate::clock_type::from_time_t(std::mktime(&tm));
 }
 
+general_names_ptr get_alternative_name (::X509 *x509, int nid) noexcept
+{
+	return general_names_ptr{static_cast<::GENERAL_NAMES *>(::X509_get_ext_d2i(x509, nid, nullptr, nullptr))};
+}
+
 } // namespace
 
 certificate::impl_type::impl_type (cert_ptr x509, std::span<const std::byte> der)
@@ -36,6 +43,7 @@ certificate::impl_type::impl_type (cert_ptr x509, std::span<const std::byte> der
 	, not_after{to_time(::X509_get_notAfter(this->x509.get()))}
 	, subject_dn{::X509_get_subject_name(this->x509.get())}
 	, issuer_dn{::X509_get_issuer_name(this->x509.get())}
+	, subject_san_value{init_san_value()}
 {
 }
 
@@ -67,6 +75,74 @@ std::string_view certificate::impl_type::init_common_name () const noexcept
 	return {};
 }
 
+alternative_name_value certificate::impl_type::init_san_value () const noexcept
+{
+	alternative_name_value result{};
+
+	auto names = get_alternative_name(x509.get(), NID_subject_alt_name);
+	if (!names)
+	{
+		return result;
+	}
+
+	// clang-format off
+
+	static constexpr auto to_dns_view = [] (const ASN1_STRING *s) noexcept -> std::string_view
+	{
+		return
+		{
+			reinterpret_cast<const char *>(::ASN1_STRING_get0_data(s)),
+			static_cast<size_t>(::ASN1_STRING_length(s))
+		};
+	};
+
+	std::array<char, net::ip::address_v6::max_string_length + 1> buf{};
+	const auto to_ip_view = [&buf] (const ASN1_STRING *s) noexcept -> std::string_view
+	{
+		const auto *bytes = reinterpret_cast<const uint8_t *>(::ASN1_STRING_get0_data(s));
+		const auto size = static_cast<size_t>(::ASN1_STRING_length(s));
+		const char *end = nullptr;
+		if (size == sizeof(net::ip::address_v4::bytes_type))
+		{
+			end = net::ip::__address_v4::ntop(bytes, buf.data(), buf.data() + buf.size());
+		}
+		else if (size == sizeof(net::ip::address_v6::bytes_type))
+		{
+			end = net::ip::__address_v6::ntop(bytes, buf.data(), buf.data() + buf.size());
+		}
+		if (end != nullptr)
+		{
+			return {buf.data(), static_cast<size_t>(end - buf.data())};
+		}
+		return {};
+	};
+
+	// clang-format on
+
+	auto *p = result.data_.data();
+	const auto count = sk_GENERAL_NAME_num(names.get());
+	for (auto i = 0; i < count && p != nullptr; ++i)
+	{
+		const auto *gen = sk_GENERAL_NAME_value(names.get(), i);
+		if (gen->type == GEN_DNS)
+		{
+			if (const auto sv = to_dns_view(gen->d.dNSName); !sv.empty())
+			{
+				p = result.append(p, alternative_name_value::kind::fqdn, sv);
+			}
+		}
+		else if (gen->type == GEN_IPADD)
+		{
+			if (const auto sv = to_ip_view(gen->d.iPAddress); !sv.empty())
+			{
+				p = result.append(p, alternative_name_value::kind::ip, sv);
+			}
+		}
+	}
+
+	return result;
+}
+
 std::string_view certificate::impl_type::init_fingerprint () noexcept
 {
 	std::array<unsigned char, sha1_hex_size / 2> digest{};
@@ -81,7 +157,7 @@ result<certificate> certificate::import_der (std::span<const std::byte> der) noe
 	const auto *data = reinterpret_cast<const uint8_t *>(der.data());
 	if (cert_ptr x509{::d2i_X509(nullptr, &data, static_cast<long>(der.size()))})
 	{
-		return pal::make_shared<impl_type>(std::move(x509), der).transform(impl_type::to_api);
+		return pal::make_shared<impl_type>(std::move(x509), der).transform(certificate::to_api);
 	}
 	return make_unexpected(std::errc::invalid_argument);
 }
@@ -129,6 +205,26 @@ bool certificate::is_issued_by (const certificate &that) const noexcept
 bool certificate::is_self_signed () const noexcept
 {
 	return ::X509_self_signed(impl_->x509.get(), 0) == 1;
+}
+
+result<alternative_name> certificate::subject_alternative_name () const noexcept
+{
+	if (auto names = get_alternative_name(impl_->x509.get(), NID_subject_alt_name))
+	{
+		return pal::make_shared<alternative_name::impl_type>(impl_, std::move(names))
+			.transform(alternative_name::to_api);
+	}
+	return alternative_name{nullptr};
+}
+
+result<alternative_name> certificate::issuer_alternative_name () const noexcept
+{
+	if (auto names = get_alternative_name(impl_->x509.get(), NID_issuer_alt_name))
+	{
+		return pal::make_shared<alternative_name::impl_type>(impl_, std::move(names))
+			.transform(alternative_name::to_api);
+	}
+	return alternative_name{nullptr};
 }
 
 } // namespace pal::crypto

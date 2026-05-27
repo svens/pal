@@ -3,6 +3,14 @@
 /**
  * \file pal/crypto/__certificate.hpp
  * Platform certificate implementation types (internal)
+ *
+ * \internal distinguished_name::impl_type is embedded by value inside
+ * certificate::impl_type rather than holding a certificate::impl_ptr owner
+ * like other property types. This allows subject_name()/issuer_name() to use
+ * the shared_ptr aliasing constructor — zero extra allocation. DN is always
+ * present in a valid certificate and always accessed, making eager embedding
+ * the right tradeoff. Optional/lazy properties (alternative_name, key) use
+ * the owner pattern instead.
  */
 
 #include <pal/crypto/__crypto.hpp>
@@ -26,6 +34,15 @@ namespace pal::crypto
 
 #if __pal_crypto_openssl //{{{1
 
+struct general_names_deleter
+{
+	void operator() (::GENERAL_NAMES *p) const noexcept
+	{
+		sk_GENERAL_NAME_pop_free(p, GENERAL_NAME_free);
+	}
+};
+using general_names_ptr = std::unique_ptr<::GENERAL_NAMES, general_names_deleter>;
+
 struct cert_deleter
 {
 	void operator() (::X509 *p) const noexcept
@@ -38,7 +55,7 @@ using cert_ptr = std::unique_ptr<::X509, cert_deleter>;
 struct distinguished_name::impl_type
 {
 	::X509_NAME *name;
-	int count;
+	const int count;
 
 	explicit impl_type (::X509_NAME *n) noexcept
 		: name{n}
@@ -47,6 +64,22 @@ struct distinguished_name::impl_type
 	}
 
 	bool load_at (int index, oid_buffer &oid, value_buffer &value, entry &e) const noexcept;
+};
+
+struct alternative_name::impl_type
+{
+	certificate::impl_ptr owner;
+	general_names_ptr names;
+	const int count;
+
+	explicit impl_type (certificate::impl_ptr owner, general_names_ptr names) noexcept
+		: owner{std::move(owner)}
+		, names{std::move(names)}
+		, count{sk_GENERAL_NAME_num(this->names.get())}
+	{
+	}
+
+	bool load_at (int index, entry_buffer &buf, alternative_name_entry &entry) const noexcept;
 };
 
 struct certificate::impl_type
@@ -70,12 +103,11 @@ struct certificate::impl_type
 
 	distinguished_name::impl_type subject_dn;
 	distinguished_name::impl_type issuer_dn;
+	alternative_name_value subject_san_value;
 
 	impl_type (cert_ptr x509, std::span<const std::byte> der);
 	impl_type (const impl_type &) = delete;
 	impl_type &operator= (const impl_type &) = delete;
-
-	static certificate to_api (certificate::impl_ptr impl) noexcept;
 
 private:
 
@@ -83,6 +115,7 @@ private:
 	[[nodiscard]] std::span<const uint8_t> init_serial_number () const noexcept;
 	[[nodiscard]] std::string_view init_common_name () const noexcept;
 	std::string_view init_fingerprint () noexcept;
+	[[nodiscard]] alternative_name_value init_san_value () const noexcept;
 };
 
 #elif __pal_crypto_windows //{{{1
@@ -133,11 +166,27 @@ using cert_ptr = std::unique_ptr<const ::CERT_CONTEXT, cert_deleter>;
 struct distinguished_name::impl_type
 {
 	::CERT_NAME_BLOB name;
-	int count;
+	const int count;
 
 	explicit impl_type (::CERT_NAME_BLOB b) noexcept;
 
 	bool load_at (int index, oid_buffer &oid, value_buffer &value, entry &e) const noexcept;
+};
+
+struct alternative_name::impl_type
+{
+	certificate::impl_ptr owner;
+	asn_decoder<::CERT_ALT_NAME_INFO, 3 * 1024> name;
+	const int count;
+
+	explicit impl_type (certificate::impl_ptr owner, const ::CERT_EXTENSION &ext) noexcept
+		: owner{std::move(owner)}
+		, name{X509_ALTERNATE_NAME, ext.Value.pbData, ext.Value.cbData}
+		, count{name.is_valid ? static_cast<int>(name.value.cAltEntry) : 0}
+	{
+	}
+
+	bool load_at (int index, entry_buffer &buf, alternative_name_entry &entry) const noexcept;
 };
 
 struct certificate::impl_type
@@ -163,25 +212,20 @@ struct certificate::impl_type
 
 	distinguished_name::impl_type subject_dn;
 	distinguished_name::impl_type issuer_dn;
+	alternative_name_value subject_san_value;
 
 	explicit impl_type (cert_ptr x509) noexcept;
 	impl_type (const impl_type &) = delete;
 	impl_type &operator= (const impl_type &) = delete;
-
-	static certificate to_api (certificate::impl_ptr impl) noexcept;
 
 private:
 
 	std::span<const uint8_t> init_serial_number () noexcept;
 	std::string_view init_common_name () noexcept;
 	std::string_view init_fingerprint () noexcept;
+	[[nodiscard]] alternative_name_value init_san_value () const noexcept;
 };
 
 #endif //}}}1
-
-inline certificate certificate::impl_type::to_api (certificate::impl_ptr impl) noexcept
-{
-	return certificate{std::move(impl)};
-}
 
 } // namespace pal::crypto

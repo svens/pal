@@ -114,6 +114,52 @@ TEST_CASE("crypto/certificate")
 		CHECK(std::format("{}", load(*info).issuer_name()) == info->issuer_name);
 	}
 
+	SECTION("subject_alternative_name")
+	{
+		const auto *info = GENERATE(from_range(test_cert::data));
+		auto an = load(*info).subject_alternative_name().value();
+		CHECK(std::format("{}", an) == info->subject_alternative_name);
+	}
+
+	SECTION("issuer_alternative_name")
+	{
+		const auto *info = GENERATE(from_range(test_cert::data));
+		auto an = load(*info).issuer_alternative_name().value();
+		CHECK(std::format("{}", an) == info->issuer_alternative_name);
+	}
+
+	SECTION("subject_alternative_name_value")
+	{
+		{
+			const auto san = load(test_cert::server).subject_alternative_name_value();
+
+			CHECK(san.contains("server.pal.alt.ee"));
+			CHECK(san.contains("anything.pal.alt.ee")); // wildcard *.pal.alt.ee
+			CHECK(san.contains("1.2.3.4"));
+			CHECK(san.contains("2001:db8:85a3::8a2e:370:7334"));
+
+			CHECK_FALSE(san.contains("pal.alt.ee"));
+			CHECK_FALSE(san.contains("sub.sub.pal.alt.ee"));
+			CHECK_FALSE(san.contains("*.pal.alt.ee"));
+			CHECK_FALSE(san.contains(".pal.alt.ee"));
+			CHECK_FALSE(san.contains("pal@alt.ee"));
+			CHECK_FALSE(san.contains("https://pal.alt.ee/path")); // URI not stored
+		}
+
+		{
+			const auto san = load(test_cert::client).subject_alternative_name_value();
+
+			CHECK(san.contains("client.pal.alt.ee"));
+			CHECK_FALSE(san.contains("server.pal.alt.ee"));
+			CHECK_FALSE(san.contains("pal@alt.ee")); // email not stored
+		}
+
+		{
+			const auto san = load(test_cert::self_signed).subject_alternative_name_value();
+			CHECK_FALSE(san.contains("anything"));
+		}
+	}
+
 	SECTION("is_issued_by")
 	{
 		const auto ca = load(test_cert::ca);

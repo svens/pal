@@ -84,12 +84,6 @@ TEST_CASE("crypto/distinguished_name")
 		CHECK(a != b);
 	}
 
-	SECTION("iterator/default_constructed_is_end")
-	{
-		distinguished_name::const_iterator it;
-		CHECK(it == std::default_sentinel);
-	}
-
 	SECTION("to_chars/fits")
 	{
 		// self_signed: "CN=Test" (7 chars); to_chars writes "CN=Test, " (9) then trims

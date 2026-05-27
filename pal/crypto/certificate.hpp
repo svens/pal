@@ -5,6 +5,8 @@
  * X.509 public key certificate
  */
 
+#include <pal/crypto/alternative_name.hpp>
+#include <pal/crypto/alternative_name_value.hpp>
 #include <pal/crypto/distinguished_name.hpp>
 #include <pal/result.hpp>
 #include <chrono>
@@ -107,6 +109,17 @@ public:
 	/// Return issuer distinguished name entries.
 	[[nodiscard]] distinguished_name issuer_name () const noexcept;
 
+	/// Return Subject Alternative Name extension entries.
+	/// Returns empty alternative_name on absent extension; error on OOM.
+	[[nodiscard]] result<alternative_name> subject_alternative_name () const noexcept;
+
+	/// Return Issuer Alternative Name extension entries.
+	/// Returns empty alternative_name on absent extension; error on OOM.
+	[[nodiscard]] result<alternative_name> issuer_alternative_name () const noexcept;
+
+	/// Return Subject Alternative Name as a packed lookup structure for hostname/IP matching.
+	[[nodiscard]] const alternative_name_value &subject_alternative_name_value () const noexcept;
+
 private:
 
 	struct impl_type;
@@ -120,6 +133,15 @@ private:
 
 	static result<certificate> import_der (std::span<const std::byte> der) noexcept;
 	static result<certificate> import_pem (std::string_view pem) noexcept;
+
+	static certificate to_api (impl_ptr impl) noexcept;
+
+	friend class alternative_name;
 };
+
+inline certificate certificate::to_api (certificate::impl_ptr impl) noexcept
+{
+	return certificate{std::move(impl)};
+}
 
 } // namespace pal::crypto

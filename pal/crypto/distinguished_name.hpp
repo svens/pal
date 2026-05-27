@@ -78,8 +78,6 @@ public:
 	using reference = const entry &;
 	using difference_type = std::ptrdiff_t;
 
-	const_iterator () = default;
-
 	bool operator== (const const_iterator &that) const noexcept
 	{
 		return owner_ == that.owner_ && at_ == that.at_;
