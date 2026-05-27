@@ -13,7 +13,7 @@ using namespace pal::crypto;
 
 auto subject_san (const test_cert::info &info)
 {
-	return (*certificate::from_pem(info.pem)).subject_alternative_name();
+	return (*certificate::from_pem(info.pem)).subject_alternative_name().value();
 }
 
 TEST_CASE("crypto/alternative_name")
@@ -31,11 +31,11 @@ TEST_CASE("crypto/alternative_name")
 
 	SECTION("iterator/entry_types")
 	{
-		// first entry of server SAN is ip_address("1.2.3.4")
+		// first entry of server SAN is alt_name::ip("1.2.3.4")
 		const auto an = subject_san(test_cert::server);
 		auto it = an.begin();
 		REQUIRE(it != std::default_sentinel);
-		const auto *ip = std::get_if<ip_address>(&*it);
+		const auto *ip = std::get_if<alt_name::ip>(&*it);
 		REQUIRE(ip != nullptr);
 		CHECK(*ip == "1.2.3.4");
 	}
@@ -45,7 +45,7 @@ TEST_CASE("crypto/alternative_name")
 		const auto an = subject_san(test_cert::server);
 		auto it = an.begin();
 		REQUIRE(it != std::default_sentinel);
-		const auto *ip = std::get_if<ip_address>(it.operator->());
+		const auto *ip = std::get_if<alt_name::ip>(it.operator->());
 		REQUIRE(ip != nullptr);
 		CHECK(*ip == "1.2.3.4");
 	}
@@ -114,7 +114,7 @@ TEST_CASE("crypto/alternative_name")
 	SECTION("to_chars/all_certs_issuer")
 	{
 		const auto *info = GENERATE(from_range(test_cert::data));
-		const auto an = (*certificate::from_pem(info->pem)).issuer_alternative_name();
+		const auto an = (*certificate::from_pem(info->pem)).issuer_alternative_name().value();
 		std::array<char, 512> buf{};
 		auto [ptr, ec] = an.to_chars(buf.data(), buf.data() + buf.size());
 		REQUIRE(ec == std::errc{});

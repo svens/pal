@@ -26,24 +26,40 @@ struct alternative_name_entry_value: std::string_view
 	static constexpr std::string_view label = Label;
 };
 
-inline constexpr std::string_view dns_label = "dns";
+/// Alternative name entry types.
+namespace alt_name
+{
+
 /// DNS name alternative name entry.
-using dns_name = alternative_name_entry_value<dns_label>;
+inline constexpr std::string_view dns_label = "dns";
+using dns = alternative_name_entry_value<dns_label>;
 
-inline constexpr std::string_view email_label = "email";
 /// Email address alternative name entry.
-using email_address = alternative_name_entry_value<email_label>;
+inline constexpr std::string_view email_label = "email";
+using email = alternative_name_entry_value<email_label>;
 
-inline constexpr std::string_view ip_label = "ip";
 /// IP address alternative name entry (text form: dotted-decimal or colon-hex).
-using ip_address = alternative_name_entry_value<ip_label>;
+inline constexpr std::string_view ip_label = "ip";
+using ip = alternative_name_entry_value<ip_label>;
 
-inline constexpr std::string_view uri_label = "uri";
 /// URI alternative name entry.
+inline constexpr std::string_view uri_label = "uri";
 using uri = alternative_name_entry_value<uri_label>;
 
+} // namespace alt_name
+
+// clang-format off
+
 /// Single entry in an alternative name extension.
-using alternative_name_entry = std::variant<std::monostate, dns_name, email_address, ip_address, uri>;
+using alternative_name_entry = std::variant<
+	std::monostate,
+	alt_name::dns,
+	alt_name::email,
+	alt_name::ip,
+	alt_name::uri
+>;
+
+// clang-format on
 
 /// Sequence of entries from a certificate's Subject or Issuer Alternative Name extension.
 /// Absent extension or OOM during construction yields an empty range.
@@ -75,6 +91,8 @@ private:
 		: impl_{std::move(impl)}
 	{
 	}
+
+	static alternative_name to_api (impl_ptr impl) noexcept;
 
 	friend class certificate;
 };
@@ -140,6 +158,11 @@ private:
 
 	friend class alternative_name;
 };
+
+inline alternative_name alternative_name::to_api (impl_ptr impl) noexcept
+{
+	return alternative_name{std::move(impl)};
+}
 
 inline alternative_name::const_iterator alternative_name::begin () const noexcept
 {

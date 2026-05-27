@@ -117,13 +117,15 @@ TEST_CASE("crypto/certificate")
 	SECTION("subject_alternative_name")
 	{
 		const auto *info = GENERATE(from_range(test_cert::data));
-		CHECK(std::format("{}", load(*info).subject_alternative_name()) == info->subject_alternative_name);
+		auto an = load(*info).subject_alternative_name().value();
+		CHECK(std::format("{}", an) == info->subject_alternative_name);
 	}
 
 	SECTION("issuer_alternative_name")
 	{
 		const auto *info = GENERATE(from_range(test_cert::data));
-		CHECK(std::format("{}", load(*info).issuer_alternative_name()) == info->issuer_alternative_name);
+		auto an = load(*info).issuer_alternative_name().value();
+		CHECK(std::format("{}", an) == info->issuer_alternative_name);
 	}
 
 	SECTION("is_issued_by")

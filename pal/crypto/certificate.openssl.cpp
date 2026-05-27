@@ -81,7 +81,7 @@ result<certificate> certificate::import_der (std::span<const std::byte> der) noe
 	const auto *data = reinterpret_cast<const uint8_t *>(der.data());
 	if (cert_ptr x509{::d2i_X509(nullptr, &data, static_cast<long>(der.size()))})
 	{
-		return pal::make_shared<impl_type>(std::move(x509), der).transform(impl_type::to_api);
+		return pal::make_shared<impl_type>(std::move(x509), der).transform(certificate::to_api);
 	}
 	return make_unexpected(std::errc::invalid_argument);
 }
@@ -131,34 +131,32 @@ bool certificate::is_self_signed () const noexcept
 	return ::X509_self_signed(impl_->x509.get(), 0) == 1;
 }
 
-alternative_name certificate::subject_alternative_name () const noexcept
+namespace
 {
-	general_names_ptr names{static_cast<::GENERAL_NAMES *>(
-		::X509_get_ext_d2i(impl_->x509.get(), NID_subject_alt_name, nullptr, nullptr)
-	)};
-	if (!names)
+
+general_names_ptr get_alternative_name (::X509 *x509, int nid) noexcept
+{
+	return general_names_ptr{static_cast<::GENERAL_NAMES *>(::X509_get_ext_d2i(x509, nid, nullptr, nullptr))};
+}
+
+} // namespace
+
+result<alternative_name> certificate::subject_alternative_name () const noexcept
+{
+	if (auto names = get_alternative_name(impl_->x509.get(), NID_subject_alt_name))
 	{
-		return alternative_name{nullptr};
-	}
-	if (auto impl = pal::make_shared<alternative_name::impl_type>(std::move(names)))
-	{
-		return alternative_name{std::move(*impl)};
+		return pal::make_shared<alternative_name::impl_type>(impl_, std::move(names))
+			.transform(alternative_name::to_api);
 	}
 	return alternative_name{nullptr};
 }
 
-alternative_name certificate::issuer_alternative_name () const noexcept
+result<alternative_name> certificate::issuer_alternative_name () const noexcept
 {
-	general_names_ptr names{static_cast<::GENERAL_NAMES *>(
-		::X509_get_ext_d2i(impl_->x509.get(), NID_issuer_alt_name, nullptr, nullptr)
-	)};
-	if (!names)
+	if (auto names = get_alternative_name(impl_->x509.get(), NID_issuer_alt_name))
 	{
-		return alternative_name{nullptr};
-	}
-	if (auto impl = pal::make_shared<alternative_name::impl_type>(std::move(names)))
-	{
-		return alternative_name{std::move(*impl)};
+		return pal::make_shared<alternative_name::impl_type>(impl_, std::move(names))
+			.transform(alternative_name::to_api);
 	}
 	return alternative_name{nullptr};
 }

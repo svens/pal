@@ -99,7 +99,7 @@ result<certificate> certificate::import_der (std::span<const std::byte> der) noe
 	auto size = static_cast<DWORD>(der.size());
 	if (cert_ptr x509{::CertCreateCertificateContext(X509_ASN_ENCODING, data, size)})
 	{
-		return pal::make_shared<impl_type>(std::move(x509)).transform(impl_type::to_api);
+		return pal::make_shared<impl_type>(std::move(x509)).transform(certificate::to_api);
 	}
 	return make_unexpected(std::errc::invalid_argument);
 }
@@ -157,32 +157,31 @@ bool certificate::is_self_signed () const noexcept
 	);
 }
 
-alternative_name certificate::subject_alternative_name () const noexcept
+namespace
 {
-	const auto &info = *impl_->x509->pCertInfo;
-	const auto *ext = ::CertFindExtension(szOID_SUBJECT_ALT_NAME2, info.cExtension, info.rgExtension);
-	if (!ext)
+
+const ::CERT_EXTENSION *get_alternative_name (const ::CERT_CONTEXT *x509, ::LPCSTR oid) noexcept
+{
+	const auto &info = *x509->pCertInfo;
+	return ::CertFindExtension(oid, info.cExtension, info.rgExtension);
+}
+
+} // namespace
+
+result<alternative_name> certificate::subject_alternative_name () const noexcept
+{
+	if (const auto *ext = get_alternative_name(impl_->x509.get(), szOID_SUBJECT_ALT_NAME2))
 	{
-		return alternative_name{nullptr};
-	}
-	if (auto an = pal::make_shared<alternative_name::impl_type>(*ext))
-	{
-		return alternative_name{std::move(*an)};
+		return pal::make_shared<alternative_name::impl_type>(impl_, *ext).transform(alternative_name::to_api);
 	}
 	return alternative_name{nullptr};
 }
 
-alternative_name certificate::issuer_alternative_name () const noexcept
+result<alternative_name> certificate::issuer_alternative_name () const noexcept
 {
-	const auto &info = *impl_->x509->pCertInfo;
-	const auto *ext = ::CertFindExtension(szOID_ISSUER_ALT_NAME2, info.cExtension, info.rgExtension);
-	if (!ext)
+	if (const auto *ext = get_alternative_name(impl_->x509.get(), szOID_ISSUER_ALT_NAME2))
 	{
-		return alternative_name{nullptr};
-	}
-	if (auto an = pal::make_shared<alternative_name::impl_type>(*ext))
-	{
-		return alternative_name{std::move(*an)};
+		return pal::make_shared<alternative_name::impl_type>(impl_, *ext).transform(alternative_name::to_api);
 	}
 	return alternative_name{nullptr};
 }

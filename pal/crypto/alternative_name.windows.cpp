@@ -30,7 +30,7 @@ bool alternative_name::impl_type::load_at (int index, entry_buffer &buf, alterna
 		case CERT_ALT_NAME_DNS_NAME:
 			if (auto len = to_utf8(alt.pwszDNSName, buf.data(), buf.size()))
 			{
-				entry.emplace<dns_name>(buf.data(), len);
+				entry.emplace<alt_name::dns>(buf.data(), len);
 				return true;
 			}
 			return false;
@@ -38,7 +38,7 @@ bool alternative_name::impl_type::load_at (int index, entry_buffer &buf, alterna
 		case CERT_ALT_NAME_RFC822_NAME:
 			if (auto len = to_utf8(alt.pwszRfc822Name, buf.data(), buf.size()))
 			{
-				entry.emplace<email_address>(buf.data(), len);
+				entry.emplace<alt_name::email>(buf.data(), len);
 				return true;
 			}
 			return false;
@@ -46,7 +46,7 @@ bool alternative_name::impl_type::load_at (int index, entry_buffer &buf, alterna
 		case CERT_ALT_NAME_URL:
 			if (auto len = to_utf8(alt.pwszURL, buf.data(), buf.size()))
 			{
-				entry.emplace<uri>(buf.data(), len);
+				entry.emplace<alt_name::uri>(buf.data(), len);
 				return true;
 			}
 			return false;
@@ -66,7 +66,7 @@ bool alternative_name::impl_type::load_at (int index, entry_buffer &buf, alterna
 			}
 			if (end != nullptr)
 			{
-				entry.emplace<ip_address>(buf.data(), end - buf.data());
+				entry.emplace<alt_name::ip>(buf.data(), end - buf.data());
 				return true;
 			}
 			return false;

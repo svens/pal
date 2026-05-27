@@ -3,6 +3,14 @@
 /**
  * \file pal/crypto/__certificate.hpp
  * Platform certificate implementation types (internal)
+ *
+ * \internal distinguished_name::impl_type is embedded by value inside
+ * certificate::impl_type rather than holding a certificate::impl_ptr owner
+ * like other property types. This allows subject_name()/issuer_name() to use
+ * the shared_ptr aliasing constructor — zero extra allocation. DN is always
+ * present in a valid certificate and always accessed, making eager embedding
+ * the right tradeoff. Optional/lazy properties (alternative_name, key) use
+ * the owner pattern instead.
  */
 
 #include <pal/crypto/__crypto.hpp>
@@ -60,11 +68,13 @@ struct distinguished_name::impl_type
 
 struct alternative_name::impl_type
 {
+	certificate::impl_ptr owner;
 	general_names_ptr names;
 	const int count;
 
-	explicit impl_type (general_names_ptr names) noexcept
-		: names{std::move(names)}
+	explicit impl_type (certificate::impl_ptr owner, general_names_ptr names) noexcept
+		: owner{std::move(owner)}
+		, names{std::move(names)}
 		, count{sk_GENERAL_NAME_num(this->names.get())}
 	{
 	}
@@ -98,8 +108,6 @@ struct certificate::impl_type
 	impl_type (const impl_type &) = delete;
 	impl_type &operator= (const impl_type &) = delete;
 
-	static certificate to_api (certificate::impl_ptr impl) noexcept;
-
 private:
 
 	std::span<const std::byte> init_bytes (std::span<const std::byte> der) noexcept;
@@ -110,7 +118,7 @@ private:
 
 #elif __pal_crypto_windows //{{{1
 
-template <typename T, size_t Size, ::DWORD Flags = CRYPT_DECODE_NOCOPY_FLAG | CRYPT_DECODE_SHARE_OID_STRING_FLAG>
+template <typename T, size_t Size>
 struct asn_decoder
 {
 	temporary_buffer<Size> buf;
@@ -127,7 +135,7 @@ struct asn_decoder
 private:
 
 	static constexpr ::DWORD decode_content = X509_ASN_ENCODING;
-	static constexpr ::DWORD decode_flags = Flags;
+	static constexpr ::DWORD decode_flags = CRYPT_DECODE_NOCOPY_FLAG | CRYPT_DECODE_SHARE_OID_STRING_FLAG;
 
 	static ::DWORD decode_size (::LPCSTR type, const ::BYTE *data, ::DWORD size) noexcept
 	{
@@ -165,11 +173,13 @@ struct distinguished_name::impl_type
 
 struct alternative_name::impl_type
 {
-	asn_decoder<::CERT_ALT_NAME_INFO, 3 * 1024, 0> name;
+	certificate::impl_ptr owner;
+	asn_decoder<::CERT_ALT_NAME_INFO, 3 * 1024> name;
 	const int count;
 
-	explicit impl_type (const ::CERT_EXTENSION &ext) noexcept
-		: name{X509_ALTERNATE_NAME, ext.Value.pbData, ext.Value.cbData}
+	explicit impl_type (certificate::impl_ptr owner, const ::CERT_EXTENSION &ext) noexcept
+		: owner{std::move(owner)}
+		, name{X509_ALTERNATE_NAME, ext.Value.pbData, ext.Value.cbData}
 		, count{name.is_valid ? static_cast<int>(name.value.cAltEntry) : 0}
 	{
 	}
@@ -205,8 +215,6 @@ struct certificate::impl_type
 	impl_type (const impl_type &) = delete;
 	impl_type &operator= (const impl_type &) = delete;
 
-	static certificate to_api (certificate::impl_ptr impl) noexcept;
-
 private:
 
 	std::span<const uint8_t> init_serial_number () noexcept;
@@ -215,10 +223,5 @@ private:
 };
 
 #endif //}}}1
-
-inline certificate certificate::impl_type::to_api (certificate::impl_ptr impl) noexcept
-{
-	return certificate{std::move(impl)};
-}
 
 } // namespace pal::crypto

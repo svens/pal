@@ -21,7 +21,7 @@ bool alternative_name::impl_type::load_at (int index, entry_buffer &buf, alterna
 		{
 			auto len = std::min<size_t>(::ASN1_STRING_length(gen->d.dNSName), buf.size());
 			std::copy_n(::ASN1_STRING_get0_data(gen->d.dNSName), len, buf.data());
-			entry.emplace<dns_name>(buf.data(), len);
+			entry.emplace<alt_name::dns>(buf.data(), len);
 			return true;
 		}
 
@@ -29,7 +29,7 @@ bool alternative_name::impl_type::load_at (int index, entry_buffer &buf, alterna
 		{
 			auto len = std::min<size_t>(::ASN1_STRING_length(gen->d.rfc822Name), buf.size());
 			std::copy_n(::ASN1_STRING_get0_data(gen->d.rfc822Name), len, buf.data());
-			entry.emplace<email_address>(buf.data(), len);
+			entry.emplace<alt_name::email>(buf.data(), len);
 			return true;
 		}
 
@@ -37,7 +37,7 @@ bool alternative_name::impl_type::load_at (int index, entry_buffer &buf, alterna
 		{
 			auto len = std::min<size_t>(::ASN1_STRING_length(gen->d.uniformResourceIdentifier), buf.size());
 			std::copy_n(::ASN1_STRING_get0_data(gen->d.uniformResourceIdentifier), len, buf.data());
-			entry.emplace<uri>(buf.data(), len);
+			entry.emplace<alt_name::uri>(buf.data(), len);
 			return true;
 		}
 
@@ -56,7 +56,7 @@ bool alternative_name::impl_type::load_at (int index, entry_buffer &buf, alterna
 			}
 			if (end != nullptr)
 			{
-				entry.emplace<ip_address>(buf.data(), end - buf.data());
+				entry.emplace<alt_name::ip>(buf.data(), end - buf.data());
 				return true;
 			}
 			return false;
