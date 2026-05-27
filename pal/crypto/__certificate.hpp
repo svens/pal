@@ -82,6 +82,17 @@ struct alternative_name::impl_type
 	bool load_at (int index, entry_buffer &buf, alternative_name_entry &entry) const noexcept;
 };
 
+struct key::impl_type
+{
+	certificate::impl_ptr owner;
+	::EVP_PKEY &pkey;
+	key_algorithm algorithm;
+	size_t size_bits;
+	size_t max_block_size;
+
+	impl_type (certificate::impl_ptr owner, ::EVP_PKEY &pkey) noexcept;
+};
+
 struct certificate::impl_type
 {
 	cert_ptr x509;
@@ -187,6 +198,19 @@ struct alternative_name::impl_type
 	}
 
 	bool load_at (int index, entry_buffer &buf, alternative_name_entry &entry) const noexcept;
+};
+
+struct key::impl_type
+{
+	certificate::impl_ptr owner;
+	std::variant<::BCRYPT_KEY_HANDLE, ::NCRYPT_KEY_HANDLE> pkey;
+	key_algorithm algorithm;
+	size_t size_bits;
+	size_t max_block_size;
+
+	impl_type (certificate::impl_ptr owner, ::BCRYPT_KEY_HANDLE pkey) noexcept;
+	impl_type (certificate::impl_ptr owner, ::NCRYPT_KEY_HANDLE pkey) noexcept;
+	~impl_type () noexcept;
 };
 
 struct certificate::impl_type
