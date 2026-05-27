@@ -78,6 +78,11 @@ result<certificate> certificate::import_pem (std::string_view pem) noexcept
 	// clang-format on
 }
 
+const alternative_name_value &certificate::subject_alternative_name_value () const noexcept
+{
+	return impl_->subject_san_value;
+}
+
 distinguished_name certificate::subject_name () const noexcept
 {
 	return distinguished_name{distinguished_name::impl_ptr{impl_, &impl_->subject_dn}};

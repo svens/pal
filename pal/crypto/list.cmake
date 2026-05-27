@@ -3,6 +3,7 @@ list(APPEND pal_sources
 	pal/crypto/__crypto.hpp
 	pal/crypto/alternative_name.hpp
 	pal/crypto/alternative_name.cpp
+	pal/crypto/alternative_name_value.hpp
 	pal/crypto/alternative_name.openssl.cpp
 	pal/crypto/alternative_name.windows.cpp
 	pal/crypto/certificate.hpp

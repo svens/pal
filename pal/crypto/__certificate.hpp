@@ -103,6 +103,7 @@ struct certificate::impl_type
 
 	distinguished_name::impl_type subject_dn;
 	distinguished_name::impl_type issuer_dn;
+	alternative_name_value subject_san_value;
 
 	impl_type (cert_ptr x509, std::span<const std::byte> der);
 	impl_type (const impl_type &) = delete;
@@ -114,6 +115,7 @@ private:
 	[[nodiscard]] std::span<const uint8_t> init_serial_number () const noexcept;
 	[[nodiscard]] std::string_view init_common_name () const noexcept;
 	std::string_view init_fingerprint () noexcept;
+	[[nodiscard]] alternative_name_value init_san_value () const noexcept;
 };
 
 #elif __pal_crypto_windows //{{{1
@@ -210,6 +212,7 @@ struct certificate::impl_type
 
 	distinguished_name::impl_type subject_dn;
 	distinguished_name::impl_type issuer_dn;
+	alternative_name_value subject_san_value;
 
 	explicit impl_type (cert_ptr x509) noexcept;
 	impl_type (const impl_type &) = delete;
@@ -220,6 +223,7 @@ private:
 	std::span<const uint8_t> init_serial_number () noexcept;
 	std::string_view init_common_name () noexcept;
 	std::string_view init_fingerprint () noexcept;
+	[[nodiscard]] alternative_name_value init_san_value () const noexcept;
 };
 
 #endif //}}}1

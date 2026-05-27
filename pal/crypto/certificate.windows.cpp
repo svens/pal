@@ -6,6 +6,8 @@
 #include <pal/crypto/__certificate.hpp>
 #include <pal/codec.hpp>
 #include <pal/memory.hpp>
+#include <pal/net/ip/address_v4.hpp>
+#include <pal/net/ip/address_v6.hpp>
 #include <algorithm>
 #include <ctime>
 // clang-format on
@@ -56,6 +58,7 @@ certificate::impl_type::impl_type (cert_ptr x509) noexcept
 	, not_after{to_time(this->x509->pCertInfo->NotAfter)}
 	, subject_dn{this->x509->pCertInfo->Subject}
 	, issuer_dn{this->x509->pCertInfo->Issuer}
+	, subject_san_value{init_san_value()}
 {
 }
 
@@ -82,6 +85,84 @@ std::string_view certificate::impl_type::init_common_name () noexcept
 		static_cast<DWORD>(common_name_buf.size())
 	);
 	return common_name_buf.data();
+}
+
+alternative_name_value certificate::impl_type::init_san_value () const noexcept
+{
+	alternative_name_value result{};
+
+	const auto &info = *x509->pCertInfo;
+	const auto *ext = ::CertFindExtension(szOID_SUBJECT_ALT_NAME2, info.cExtension, info.rgExtension);
+	if (!ext)
+	{
+		return result;
+	}
+
+	// clang-format off
+
+	const asn_decoder<::CERT_ALT_NAME_INFO, 3 * 1024> decoder{X509_ALTERNATE_NAME, ext->Value.pbData, ext->Value.cbData};
+	if (!decoder.is_valid)
+	{
+		return result;
+	}
+
+	std::array<char, 256> buf{};
+	const auto to_dns_view = [&buf] (::LPCWSTR wide) noexcept -> std::string_view
+	{
+		const auto len = ::WideCharToMultiByte(
+			CP_UTF8,
+			0,
+			wide,
+			-1,
+			buf.data(),
+			static_cast<int>(buf.size()),
+			nullptr,
+			nullptr
+		);
+		return len > 0 ? std::string_view{buf.data(), static_cast<size_t>(len - 1)} : std::string_view{};
+	};
+
+	const auto to_ip_view = [&buf] (const ::CRYPT_DATA_BLOB &ip) noexcept -> std::string_view
+	{
+		const char *end = nullptr;
+		if (ip.cbData == sizeof(net::ip::address_v4::bytes_type))
+		{
+			end = net::ip::__address_v4::ntop(ip.pbData, buf.data(), buf.data() + buf.size());
+		}
+		else if (ip.cbData == sizeof(net::ip::address_v6::bytes_type))
+		{
+			end = net::ip::__address_v6::ntop(ip.pbData, buf.data(), buf.data() + buf.size());
+		}
+		if (end != nullptr)
+		{
+			return std::string_view{buf.data(), static_cast<size_t>(end - buf.data())};
+		}
+		return {};
+	};
+
+	// clang-format on
+
+	auto *p = result.data_.data();
+	for (auto i = 0u; i < decoder.value.cAltEntry && p != nullptr; ++i)
+	{
+		const auto &alt = decoder.value.rgAltEntry[i];
+		if (alt.dwAltNameChoice == CERT_ALT_NAME_DNS_NAME)
+		{
+			if (const auto sv = to_dns_view(alt.pwszDNSName); !sv.empty())
+			{
+				p = result.append(p, alternative_name_value::kind::fqdn, sv);
+			}
+		}
+		else if (alt.dwAltNameChoice == CERT_ALT_NAME_IP_ADDRESS)
+		{
+			if (const auto sv = to_ip_view(alt.IPAddress); !sv.empty())
+			{
+				p = result.append(p, alternative_name_value::kind::ip, sv);
+			}
+		}
+	}
+
+	return result;
 }
 
 std::string_view certificate::impl_type::init_fingerprint () noexcept

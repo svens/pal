@@ -6,6 +6,7 @@
  */
 
 #include <pal/crypto/alternative_name.hpp>
+#include <pal/crypto/alternative_name_value.hpp>
 #include <pal/crypto/distinguished_name.hpp>
 #include <pal/result.hpp>
 #include <chrono>
@@ -115,6 +116,9 @@ public:
 	/// Return Issuer Alternative Name extension entries.
 	/// Returns empty alternative_name on absent extension; error on OOM.
 	[[nodiscard]] result<alternative_name> issuer_alternative_name () const noexcept;
+
+	/// Return Subject Alternative Name as a packed lookup structure for hostname/IP matching.
+	[[nodiscard]] const alternative_name_value &subject_alternative_name_value () const noexcept;
 
 private:
 
