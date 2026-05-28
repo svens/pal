@@ -15,6 +15,7 @@
 
 #include <pal/crypto/__crypto.hpp>
 #include <pal/crypto/certificate.hpp>
+#include <pal/crypto/certificate_store.hpp>
 #include <pal/memory.hpp>
 #include <array>
 #include <cstdint>
@@ -51,6 +52,15 @@ struct cert_deleter
 	}
 };
 using cert_ptr = std::unique_ptr<::X509, cert_deleter>;
+
+struct pkey_deleter
+{
+	void operator() (::EVP_PKEY *p) const noexcept
+	{
+		::EVP_PKEY_free(p);
+	}
+};
+using pkey_ptr = std::unique_ptr<::EVP_PKEY, pkey_deleter>;
 
 struct distinguished_name::impl_type
 {
@@ -116,13 +126,18 @@ struct certificate::impl_type
 	distinguished_name::impl_type issuer_dn;
 	alternative_name_value subject_san_value;
 
+	impl_ptr next = nullptr;
+	pkey_ptr private_key = nullptr;
+
 	impl_type (cert_ptr x509, std::span<const std::byte> der);
+	explicit impl_type (cert_ptr x509) noexcept;
 	impl_type (const impl_type &) = delete;
 	impl_type &operator= (const impl_type &) = delete;
 
 private:
 
 	std::span<const std::byte> init_bytes (std::span<const std::byte> der) noexcept;
+	std::span<const std::byte> init_bytes_from_cert () noexcept;
 	[[nodiscard]] std::span<const uint8_t> init_serial_number () const noexcept;
 	[[nodiscard]] std::string_view init_common_name () const noexcept;
 	std::string_view init_fingerprint () noexcept;
@@ -238,7 +253,11 @@ struct certificate::impl_type
 	distinguished_name::impl_type issuer_dn;
 	alternative_name_value subject_san_value;
 
+	impl_ptr next = nullptr;
+	::NCRYPT_KEY_HANDLE private_key = 0;
+
 	explicit impl_type (cert_ptr x509) noexcept;
+	~impl_type () noexcept;
 	impl_type (const impl_type &) = delete;
 	impl_type &operator= (const impl_type &) = delete;
 
@@ -251,5 +270,10 @@ private:
 };
 
 #endif //}}}1
+
+struct certificate_store::impl_type
+{
+	certificate::impl_ptr head;
+};
 
 } // namespace pal::crypto

@@ -113,6 +113,7 @@ TEST_CASE("crypto/distinguished_name")
 	{
 		// to_chars output matches std::format for all test certs
 		const auto *info = GENERATE(from_range(test_cert::data));
+		CAPTURE(info->fingerprint);
 		const auto dn = subject(*info);
 		std::array<char, 512> buf{};
 		auto [ptr, ec] = dn.to_chars(buf.data(), buf.data() + buf.size());

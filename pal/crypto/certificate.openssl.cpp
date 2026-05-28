@@ -32,6 +32,21 @@ general_names_ptr get_alternative_name (::X509 *x509, int nid) noexcept
 
 } // namespace
 
+certificate::impl_type::impl_type (cert_ptr x509) noexcept
+	: x509{std::move(x509)}
+	, bytes_buf{std::nothrow, static_cast<size_t>(::i2d_X509(this->x509.get(), nullptr))}
+	, bytes{init_bytes_from_cert()}
+	, serial_number{init_serial_number()}
+	, common_name{init_common_name()}
+	, fingerprint{init_fingerprint()}
+	, not_before{to_time(::X509_get_notBefore(this->x509.get()))}
+	, not_after{to_time(::X509_get_notAfter(this->x509.get()))}
+	, subject_dn{::X509_get_subject_name(this->x509.get())}
+	, issuer_dn{::X509_get_issuer_name(this->x509.get())}
+	, subject_san_value{init_san_value()}
+{
+}
+
 certificate::impl_type::impl_type (cert_ptr x509, std::span<const std::byte> der)
 	: x509{std::move(x509)}
 	, bytes_buf{der.size()}
@@ -45,6 +60,18 @@ certificate::impl_type::impl_type (cert_ptr x509, std::span<const std::byte> der
 	, issuer_dn{::X509_get_issuer_name(this->x509.get())}
 	, subject_san_value{init_san_value()}
 {
+}
+
+std::span<const std::byte> certificate::impl_type::init_bytes_from_cert () noexcept
+{
+	if (auto *p = reinterpret_cast<uint8_t *>(bytes_buf.get().data()))
+	{
+		if (const auto written = ::i2d_X509(x509.get(), &p); written > 0)
+		{
+			return std::as_bytes(bytes_buf.get().first(written));
+		}
+	}
+	return {};
 }
 
 std::span<const std::byte> certificate::impl_type::init_bytes (std::span<const std::byte> der) noexcept
@@ -225,6 +252,21 @@ result<alternative_name> certificate::issuer_alternative_name () const noexcept
 			.transform(alternative_name::to_api);
 	}
 	return alternative_name{nullptr};
+}
+
+result<key> certificate::public_key () const noexcept
+{
+	auto &pkey = *::X509_get0_pubkey(impl_->x509.get());
+	return pal::make_shared<key::impl_type>(impl_, pkey).transform(key::to_api);
+}
+
+result<key> certificate::private_key () const noexcept
+{
+	if (impl_->private_key)
+	{
+		return pal::make_shared<key::impl_type>(impl_, *impl_->private_key).transform(key::to_api);
+	}
+	return make_unexpected(std::errc::io_error);
 }
 
 } // namespace pal::crypto

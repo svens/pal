@@ -10,6 +10,7 @@
 #include <pal/net/ip/address_v6.hpp>
 #include <algorithm>
 #include <ctime>
+#include <ncrypt.h>
 // clang-format on
 
 namespace pal::crypto
@@ -60,6 +61,16 @@ certificate::impl_type::impl_type (cert_ptr x509) noexcept
 	, issuer_dn{this->x509->pCertInfo->Issuer}
 	, subject_san_value{init_san_value()}
 {
+}
+
+certificate::impl_type::~impl_type () noexcept
+{
+	if (private_key)
+	{
+		// Remove the persisted key from disk; see open_pfx in certificate_store.windows.cpp.
+		::NCryptDeleteKey(private_key, NCRYPT_SILENT_FLAG);
+		::NCryptFreeObject(private_key);
+	}
 }
 
 std::span<const uint8_t> certificate::impl_type::init_serial_number () noexcept
@@ -265,6 +276,45 @@ result<alternative_name> certificate::issuer_alternative_name () const noexcept
 		return pal::make_shared<alternative_name::impl_type>(impl_, *ext).transform(alternative_name::to_api);
 	}
 	return alternative_name{nullptr};
+}
+
+result<key> certificate::public_key () const noexcept
+{
+	::BCRYPT_KEY_HANDLE pkey = {};
+
+	// clang-format off
+
+	auto status = ::CryptImportPublicKeyInfoEx2(
+		X509_ASN_ENCODING,
+		&impl_->x509->pCertInfo->SubjectPublicKeyInfo,
+		0,
+		nullptr,
+		&pkey
+	);
+
+	if (status)
+	{
+		return pal::make_shared<key::impl_type>(impl_, pkey)
+			.transform(key::to_api)
+			.or_else([&pkey] (std::error_code ec) -> result<key>
+			{
+				::BCryptDestroyKey(pkey);
+				return pal::unexpected{std::move(ec)};
+			});
+	}
+
+	// clang-format on
+
+	return make_unexpected(std::errc::invalid_argument);
+}
+
+result<key> certificate::private_key () const noexcept
+{
+	if (impl_->private_key)
+	{
+		return pal::make_shared<key::impl_type>(impl_, impl_->private_key).transform(key::to_api);
+	}
+	return make_unexpected(std::errc::io_error);
 }
 
 } // namespace pal::crypto
