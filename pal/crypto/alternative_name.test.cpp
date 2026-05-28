@@ -104,6 +104,7 @@ TEST_CASE("crypto/alternative_name")
 	SECTION("to_chars/all_certs_subject")
 	{
 		const auto *info = GENERATE(from_range(test_cert::data));
+		CAPTURE(info->fingerprint);
 		const auto an = subject_san(*info);
 		std::array<char, 512> buf{};
 		auto [ptr, ec] = an.to_chars(buf.data(), buf.data() + buf.size());
@@ -114,6 +115,7 @@ TEST_CASE("crypto/alternative_name")
 	SECTION("to_chars/all_certs_issuer")
 	{
 		const auto *info = GENERATE(from_range(test_cert::data));
+		CAPTURE(info->fingerprint);
 		const auto an = (*certificate::from_pem(info->pem)).issuer_alternative_name().value();
 		std::array<char, 512> buf{};
 		auto [ptr, ec] = an.to_chars(buf.data(), buf.data() + buf.size());

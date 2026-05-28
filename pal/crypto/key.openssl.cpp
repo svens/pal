@@ -52,12 +52,6 @@ size_t key::max_block_size () const noexcept
 	return impl_->max_block_size;
 }
 
-result<key> certificate::public_key () const noexcept
-{
-	auto &pkey = *::X509_get0_pubkey(impl_->x509.get());
-	return pal::make_shared<key::impl_type>(impl_, pkey).transform(key::to_api);
-}
-
 } // namespace pal::crypto
 
 #endif // __pal_crypto_openssl

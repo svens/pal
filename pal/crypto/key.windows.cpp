@@ -105,10 +105,7 @@ key::impl_type::~impl_type () noexcept
 	{
 		::BCryptDestroyKey(*bh);
 	}
-	else if (auto *nh = std::get_if<::NCRYPT_KEY_HANDLE>(&pkey))
-	{
-		::NCryptFreeObject(*nh);
-	}
+	// NCRYPT handle is borrowed from certificate::impl_type; lifetime managed there
 }
 
 key_algorithm key::algorithm () const noexcept
@@ -124,36 +121,6 @@ size_t key::size_bits () const noexcept
 size_t key::max_block_size () const noexcept
 {
 	return impl_->max_block_size;
-}
-
-result<key> certificate::public_key () const noexcept
-{
-	::BCRYPT_KEY_HANDLE pkey = {};
-
-	// clang-format off
-
-	auto status = ::CryptImportPublicKeyInfoEx2(
-		X509_ASN_ENCODING,
-		&impl_->x509->pCertInfo->SubjectPublicKeyInfo,
-		0,
-		nullptr,
-		&pkey
-	);
-
-	if (status)
-	{
-		return pal::make_shared<key::impl_type>(impl_, pkey)
-			.transform(key::to_api)
-			.or_else([&pkey] (std::error_code ec) -> result<key>
-			{
-				::BCryptDestroyKey(pkey);
-				return pal::unexpected{std::move(ec)};
-			});
-	}
-
-	// clang-format on
-
-	return make_unexpected(std::errc::invalid_argument);
 }
 
 } // namespace pal::crypto

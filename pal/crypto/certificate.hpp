@@ -124,6 +124,11 @@ public:
 	/// Return the certificate's public key.
 	[[nodiscard]] result<key> public_key () const noexcept;
 
+	/// Return the certificate's private key.
+	/// Only available on the leaf certificate loaded from a PKCS#12 store.
+	/// Returns std::errc::io_error if no private key is associated.
+	[[nodiscard]] result<key> private_key () const noexcept;
+
 private:
 
 	struct impl_type;
@@ -141,6 +146,7 @@ private:
 	static certificate to_api (impl_ptr impl) noexcept;
 
 	friend class alternative_name;
+	friend class certificate_store;
 	friend class key;
 };
 

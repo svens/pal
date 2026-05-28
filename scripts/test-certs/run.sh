@@ -216,6 +216,17 @@ openssl pkcs12 -export \
 	-macalg SHA1 \
 	-out pkcs12.p12
 
+# Certs-only (no private key): root CA + intermediate CA.
+# Tests that from_pkcs12 rejects certs-only PKCS#12 (no identity).
+openssl pkcs12 -export \
+	-nokeys \
+	-in ca.pem \
+	-certfile intermediate.pem \
+	-passout pass:"" \
+	-certpbe PBE-SHA1-3DES \
+	-macalg SHA1 \
+	-out pkcs12_ca.p12
+
 # ----- Helper functions -------------------------------------------------------
 
 fingerprint() # pem
@@ -253,10 +264,10 @@ constexpr info $1 =
 {
 	.version = 3,
 	.common_name = "$cn",
-	.subject_name = "",
-	.subject_alternative_name = "",
-	.issuer_name = "",
-	.issuer_alternative_name = "",
+	.subject_name = "CHANGE-ME",
+	.subject_alternative_name = "CHANGE-ME",
+	.issuer_name = "CHANGE-ME",
+	.issuer_alternative_name = "CHANGE-ME",
 	.serial_number = "$sn",
 	.fingerprint = "$fp",
 	.size_bits = ${2:-2048},
@@ -285,6 +296,12 @@ echo "==> Writing $PKCS12_OUT"
 	echo "constexpr uint8_t pkcs12_data[] ="
 	echo "{"
 	xxd -i pkcs12.p12 \
+		| grep -v '^unsigned' \
+		| sed 's/^  /\t/'
+	echo ""
+	echo "constexpr uint8_t pkcs12_ca_data[] ="
+	echo "{"
+	xxd -i pkcs12_ca.p12 \
 		| grep -v '^unsigned' \
 		| sed 's/^  /\t/'
 	echo ""
