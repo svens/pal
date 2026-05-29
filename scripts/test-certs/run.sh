@@ -227,6 +227,16 @@ openssl pkcs12 -export \
 	-macalg SHA1 \
 	-out pkcs12_ca.p12
 
+# EC identity (empty_dn self-signed): enables ECDSA sign/verify tests.
+openssl pkcs12 -export \
+	-inkey empty_dn.key.pem \
+	-in empty_dn.pem \
+	-passout pass:"" \
+	-certpbe PBE-SHA1-3DES \
+	-keypbe PBE-SHA1-3DES \
+	-macalg SHA1 \
+	-out pkcs12_ec.p12
+
 # ----- Helper functions -------------------------------------------------------
 
 fingerprint() # pem
@@ -305,6 +315,12 @@ echo "==> Writing $PKCS12_OUT"
 		| grep -v '^unsigned' \
 		| sed 's/^  /\t/'
 	echo ""
+	echo "constexpr uint8_t pkcs12_ec_data[] ="
+	echo "{"
+	xxd -i pkcs12_ec.p12 \
+		| grep -v '^unsigned' \
+		| sed 's/^  /\t/'
+	echo ""
 	echo "} // namespace pal_test::cert"
 } > "$PKCS12_OUT"
 
@@ -333,4 +349,8 @@ echo "==> Writing $CERTS_OUT"
 	echo "} // namespace pal_test::cert"
 } > "$CERTS_OUT"
 
-echo "==> Done: run 'ninja smoke', then copy subject_name/issuer_name/*_alternative_name values from failing tests into $CERTS_OUT"
+echo "==> Done: run 'ninja smoke'"
+echo "    If tests fail, each failure shows:"
+echo "      info->fingerprint := <hash>   -- identifies the cert in test_certs.hpp"
+echo "      \"actual value\" == \"CHANGE-ME\" -- exact replacement for the CHANGE-ME placeholder"
+echo "    Find the cert by fingerprint in $CERTS_OUT and replace CHANGE-ME with the shown value."
