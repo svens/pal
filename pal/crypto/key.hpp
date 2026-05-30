@@ -13,6 +13,10 @@ namespace pal::crypto
 
 class certificate;
 class certificate_store;
+namespace __signature
+{
+struct context;
+}
 
 /// Key algorithm
 enum class key_algorithm
@@ -65,6 +69,7 @@ private:
 
 	friend class certificate;
 	friend class certificate_store;
+	friend struct __signature::context;
 };
 
 inline key key::to_api (impl_ptr impl) noexcept

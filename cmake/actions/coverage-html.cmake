@@ -5,7 +5,7 @@ coverage_collect()
 
 coverage_process(show
     -format=html
-    -output-dir="${_cov_build_dir}/coverage"
+    -output-dir=${_cov_build_dir}/coverage
     -show-instantiation-summary
     --Xdemangler=c++filt
     --Xdemangler=-n
