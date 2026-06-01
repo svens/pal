@@ -39,6 +39,25 @@ public:
 	/// \copydetails from_pkcs12(const_buffer auto const &)
 	static result<certificate_store> from_pkcs12 (const std::filesystem::path &path) noexcept;
 
+	/// Load all certificates from PKCS#12 files in directory \a dir.
+	///
+	/// Non-recursive enumeration of \a dir. Files whose extension (lower-cased)
+	/// is `.pfx` or `.p12` are parsed; everything else is ignored. Per-file
+	/// parse / read failures are skipped silently. Entries are loaded in
+	/// lexicographic order of `filename()`, file-by-file (each file's leaf
+	/// followed by its chain).
+	///
+	/// Returns a valid (possibly empty) store on success. Returns an error
+	/// only when \a dir itself cannot be opened, or on out-of-memory.
+	static result<certificate_store> from_cert_dir (const std::filesystem::path &dir) noexcept;
+
+	/// Load the current user's personal identity store (certificates with private keys).
+	///
+	/// - Windows: `CERT_SYSTEM_STORE_CURRENT_USER\MY`.
+	/// - OpenSSL: equivalent to `from_cert_dir($SSL_CERT_DIR)`, falling back
+	///   to the current working directory if `SSL_CERT_DIR` is unset.
+	static result<certificate_store> from_user_identities () noexcept;
+
 	/// Returns true if this represents an unspecified (null) store.
 	[[nodiscard]] bool is_null () const noexcept
 	{
@@ -77,6 +96,8 @@ private:
 	}
 
 	static result<certificate_store> import_pkcs12 (std::span<const std::byte> data) noexcept;
+	static result<certificate::impl_ptr> import_pkcs12_chain (std::span<const std::byte> data) noexcept;
+	static result<certificate::impl_ptr> load_one (const std::filesystem::path &path) noexcept;
 	static void advance (certificate &cert) noexcept;
 	static certificate_store to_api (impl_ptr impl) noexcept;
 };

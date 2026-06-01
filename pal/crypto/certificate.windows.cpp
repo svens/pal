@@ -67,9 +67,15 @@ certificate::impl_type::~impl_type () noexcept
 {
 	if (private_key)
 	{
-		// Remove the persisted key from disk; see open_pfx in certificate_store.windows.cpp.
-		::NCryptDeleteKey(private_key, NCRYPT_SILENT_FLAG);
-		::NCryptFreeObject(private_key);
+		if (delete_private_key_on_destruct)
+		{
+			// Remove the persisted key from disk; see open_pfx in certificate_store.windows.cpp.
+			::NCryptDeleteKey(private_key, NCRYPT_SILENT_FLAG);
+		}
+		if (free_private_key_on_destruct)
+		{
+			::NCryptFreeObject(private_key);
+		}
 	}
 }
 

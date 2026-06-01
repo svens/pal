@@ -36,9 +36,38 @@ store_ptr open_pfx (std::span<const std::byte> data) noexcept
 	return store_ptr{::PFXImportCertStore(&pfx, L"", 0)};
 }
 
+store_ptr open_my_store () noexcept
+{
+	return store_ptr{::CertOpenStore(
+		CERT_STORE_PROV_SYSTEM_W,
+		0,
+		0,
+		CERT_SYSTEM_STORE_CURRENT_USER | CERT_STORE_READONLY_FLAG | CERT_STORE_OPEN_EXISTING_FLAG,
+		L"MY"
+	)};
+}
+
+::NCRYPT_KEY_HANDLE acquire_borrowed_key (::PCCERT_CONTEXT cert, ::BOOL &caller_must_free) noexcept
+{
+	::HCRYPTPROV_OR_NCRYPT_KEY_HANDLE pkey = 0;
+	::DWORD key_spec = 0;
+	const auto flags = CRYPT_ACQUIRE_ONLY_NCRYPT_KEY_FLAG | CRYPT_ACQUIRE_SILENT_FLAG;
+	if (!::CryptAcquireCertificatePrivateKey(cert, flags, nullptr, &pkey, &key_spec, &caller_must_free))
+	{
+		return 0;
+	}
+
+	if (key_spec != CERT_NCRYPT_KEY_SPEC)
+	{
+		return 0;
+	}
+
+	return static_cast<::NCRYPT_KEY_HANDLE>(pkey);
+}
+
 } // namespace
 
-result<certificate_store> certificate_store::import_pkcs12 (std::span<const std::byte> data) noexcept
+result<certificate::impl_ptr> certificate_store::import_pkcs12_chain (std::span<const std::byte> data) noexcept
 {
 	const auto pfx = open_pfx(data);
 	if (!pfx)
@@ -64,14 +93,19 @@ result<certificate_store> certificate_store::import_pkcs12 (std::span<const std:
 
 	::HCRYPTPROV_OR_NCRYPT_KEY_HANDLE pkey = 0;
 	::DWORD key_spec = 0;
+	::BOOL caller_must_free = FALSE;
 	const auto ok = ::CryptAcquireCertificatePrivateKey(
-		leaf.get(), CRYPT_ACQUIRE_ONLY_NCRYPT_KEY_FLAG, nullptr, &pkey, &key_spec, nullptr
+		leaf.get(), CRYPT_ACQUIRE_ONLY_NCRYPT_KEY_FLAG, nullptr, &pkey, &key_spec, &caller_must_free
 	);
 	if (!ok || key_spec != CERT_NCRYPT_KEY_SPEC)
 	{
 		return make_unexpected(std::errc::invalid_argument);
 	}
 	(*head)->private_key = static_cast<::NCRYPT_KEY_HANDLE>(pkey);
+	(*head)->free_private_key_on_destruct = (caller_must_free == TRUE);
+
+	// PKCS#12 was imported with flag=0, which persists the key to disk; the dtor must wipe it. See open_pfx
+	(*head)->delete_private_key_on_destruct = true;
 
 	auto tail = *head;
 	::PCCERT_CONTEXT it = nullptr;
@@ -90,12 +124,71 @@ result<certificate_store> certificate_store::import_pkcs12 (std::span<const std:
 		tail = tail->next;
 	}
 
-	return pal::make_shared<certificate_store::impl_type>(std::move(*head)).transform(certificate_store::to_api);
+	return *head;
+}
+
+result<certificate_store> certificate_store::import_pkcs12 (std::span<const std::byte> data) noexcept
+{
+	// clang-format off
+
+	return import_pkcs12_chain(data).and_then([] (certificate::impl_ptr head) -> result<certificate_store>
+	{
+		return pal::make_shared<certificate_store::impl_type>(std::move(head))
+			.transform(certificate_store::to_api);
+	});
+
+	// clang-format on
 }
 
 void certificate_store::advance (certificate &cert) noexcept
 {
 	cert.impl_ = cert.impl_->next;
+}
+
+result<certificate_store> certificate_store::from_user_identities () noexcept
+{
+	const auto my = open_my_store();
+	if (!my)
+	{
+		return make_unexpected(std::errc::invalid_argument);
+	}
+
+	const auto store = static_cast<::HCERTSTORE>(my.get());
+
+	certificate::impl_ptr head;
+	certificate::impl_ptr tail;
+
+	::PCCERT_CONTEXT it = nullptr;
+	while ((it = ::CertEnumCertificatesInStore(store, it)) != nullptr)
+	{
+		auto node = pal::make_shared<certificate::impl_type>(cert_ptr{::CertDuplicateCertificateContext(it)});
+		if (!node)
+		{
+			return pal::unexpected{node.error()};
+		}
+
+		::BOOL caller_must_free = FALSE;
+		if (auto pkey = acquire_borrowed_key(it, caller_must_free); pkey != 0)
+		{
+			(*node)->private_key = pkey;
+			(*node)->free_private_key_on_destruct = (caller_must_free == TRUE);
+
+			// delete_private_key_on_destruct stays false: the key belongs to
+			// the user's MY store and must not be wiped from disk.
+		}
+
+		if (!head)
+		{
+			head = *node;
+		}
+		else
+		{
+			tail->next = *node;
+		}
+		tail = *node;
+	}
+
+	return pal::make_shared<certificate_store::impl_type>(std::move(head)).transform(certificate_store::to_api);
 }
 
 } // namespace pal::crypto
