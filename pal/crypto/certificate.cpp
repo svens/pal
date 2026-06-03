@@ -53,7 +53,7 @@ result<std::span<const std::byte>> decode (std::string_view b64, std::span<std::
 
 } // namespace
 
-result<certificate> certificate::import_pem (std::string_view pem) noexcept
+result<certificate> certificate::from_pem (std::string_view pem) noexcept
 {
 	// clang-format off
 	return unwrap(pem).and_then([] (std::string_view b64_view) noexcept -> result<certificate>
