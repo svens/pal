@@ -8,6 +8,8 @@
 #include <pal/buffer.hpp>
 #include <pal/crypto/certificate.hpp>
 #include <pal/result.hpp>
+#include <algorithm>
+#include <concepts>
 #include <filesystem>
 #include <iterator>
 #include <span>
@@ -82,6 +84,20 @@ public:
 	[[nodiscard]] static std::default_sentinel_t end () noexcept
 	{
 		return {};
+	}
+
+	/// Return the first certificate satisfying \a pred, or a null certificate if none match.
+	///
+	/// For multi-match use cases, compose with the standard library:
+	/// \code
+	/// for (const auto &c: store | std::views::filter(pred)) ...
+	/// \endcode
+	template <std::predicate<const certificate &> Pred>
+	[[nodiscard]] certificate
+	find_first (Pred pred) const noexcept(noexcept(pred(std::declval<const certificate &>())))
+	{
+		const auto it = std::ranges::find_if(*this, std::move(pred));
+		return it == end() ? certificate{} : *it;
 	}
 
 private:
