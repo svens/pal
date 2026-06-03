@@ -255,6 +255,8 @@ struct certificate::impl_type
 
 	impl_ptr next = nullptr;
 	::NCRYPT_KEY_HANDLE private_key = 0;
+	bool delete_private_key_on_destruct = false;
+	bool free_private_key_on_destruct = false;
 
 	explicit impl_type (cert_ptr x509) noexcept;
 	~impl_type () noexcept;

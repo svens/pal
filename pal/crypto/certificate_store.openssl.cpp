@@ -6,6 +6,8 @@
 #include <pal/crypto/__certificate.hpp>
 #include <pal/memory.hpp>
 #include <openssl/pkcs12.h>
+#include <cstdlib>
+#include <filesystem>
 // clang-format on
 
 namespace pal::crypto
@@ -13,6 +15,8 @@ namespace pal::crypto
 
 namespace
 {
+
+namespace fs = std::filesystem;
 
 struct pkcs12_deleter
 {
@@ -34,7 +38,7 @@ using x509_stack_ptr = std::unique_ptr<STACK_OF(X509), x509_stack_deleter>;
 
 } // namespace
 
-result<certificate_store> certificate_store::import_pkcs12 (std::span<const std::byte> data) noexcept
+result<certificate::impl_ptr> certificate_store::import_pkcs12_chain (std::span<const std::byte> data) noexcept
 {
 	const auto *ptr = reinterpret_cast<const uint8_t *>(data.data());
 	const pkcs12_ptr p12{::d2i_PKCS12(nullptr, &ptr, static_cast<long>(data.size()))};
@@ -81,12 +85,47 @@ result<certificate_store> certificate_store::import_pkcs12 (std::span<const std:
 
 	(*head)->private_key = std::move(pkey);
 
-	return pal::make_shared<certificate_store::impl_type>(std::move(*head)).transform(certificate_store::to_api);
+	return *head;
+}
+
+result<certificate_store> certificate_store::import_pkcs12 (std::span<const std::byte> data) noexcept
+{
+	// clang-format off
+
+	return import_pkcs12_chain(data).and_then([] (certificate::impl_ptr head) -> result<certificate_store>
+	{
+		return pal::make_shared<certificate_store::impl_type>(std::move(head))
+			.transform(certificate_store::to_api);
+	});
+
+	// clang-format on
 }
 
 void certificate_store::advance (certificate &cert) noexcept
 {
 	cert.impl_ = cert.impl_->next;
+}
+
+result<certificate_store> certificate_store::from_user_identities () noexcept
+{
+	try
+	{
+		if (const char *env = std::getenv("SSL_CERT_DIR"); env != nullptr)
+		{
+			return from_cert_dir(env);
+		}
+
+		std::error_code ec;
+		if (auto dir = fs::current_path(ec); !ec)
+		{
+			return from_cert_dir(dir);
+		}
+		return pal::unexpected{ec};
+	}
+	catch (...)
+	{
+		return make_unexpected(std::errc::not_enough_memory);
+	}
 }
 
 } // namespace pal::crypto

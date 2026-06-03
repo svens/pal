@@ -10,6 +10,7 @@ list(APPEND pal_sources
 	pal/crypto/certificate.cpp
 	pal/crypto/certificate.openssl.cpp
 	pal/crypto/certificate.windows.cpp
+	pal/crypto/certificate_filter.hpp
 	pal/crypto/certificate_store.hpp
 	pal/crypto/certificate_store.cpp
 	pal/crypto/certificate_store.openssl.cpp
@@ -39,6 +40,7 @@ list(APPEND pal_sources
 list(APPEND pal_test_sources
 	pal/crypto/alternative_name.test.cpp
 	pal/crypto/certificate.test.cpp
+	pal/crypto/certificate_filter.test.cpp
 	pal/crypto/certificate_store.test.cpp
 	pal/crypto/distinguished_name.test.cpp
 	pal/crypto/hash.test.cpp
