@@ -75,6 +75,22 @@ TEST_CASE("crypto/certificate_store")
 		CHECK(not_found.error() == std::errc::no_such_file_or_directory);
 	}
 
+	SECTION("from_pkcs12/not_enough_memory")
+	{
+		const auto path = std::filesystem::temp_directory_path() / "pal_test_oom.p12";
+		std::ofstream{path, std::ios::binary}.write(
+			reinterpret_cast<const char *>(std::data(test_cert::pkcs12_data)),
+			std::size(test_cert::pkcs12_data)
+		);
+
+		const pal_test::bad_alloc_once x;
+		auto store = certificate_store::from_pkcs12(path);
+		std::filesystem::remove(path);
+
+		REQUIRE_FALSE(store);
+		CHECK(store.error() == std::errc::not_enough_memory);
+	}
+
 	SECTION("iteration")
 	{
 		auto store = certificate_store::from_pkcs12(test_cert::pkcs12_data).value();
