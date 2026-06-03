@@ -47,11 +47,7 @@ public:
 	}
 
 	/// Load X.509 certificate from PEM-encoded \a pem.
-	template <typename Data>
-	static result<certificate> from_pem (const Data &pem) noexcept
-	{
-		return import_pem({std::data(pem), std::size(pem)});
-	}
+	static result<certificate> from_pem (std::string_view pem) noexcept;
 
 	/// Returns true if this represents an unspecified (null) certificate.
 	[[nodiscard]] bool is_null () const noexcept
@@ -141,7 +137,6 @@ private:
 	}
 
 	static result<certificate> import_der (std::span<const std::byte> der) noexcept;
-	static result<certificate> import_pem (std::string_view pem) noexcept;
 
 	static certificate to_api (impl_ptr impl) noexcept;
 
