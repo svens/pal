@@ -32,6 +32,9 @@ list(APPEND pal_sources
 	pal/crypto/random.hpp
 	pal/crypto/random.openssl.cpp
 	pal/crypto/random.windows.cpp
+	pal/crypto/secure_channel.hpp
+	pal/crypto/secure_channel.cpp
+	pal/crypto/secure_channel.openssl.cpp
 	pal/crypto/signature.hpp
 	pal/crypto/signature.openssl.cpp
 	pal/crypto/signature.windows.cpp
@@ -48,6 +51,7 @@ list(APPEND pal_test_sources
 	pal/crypto/key.test.cpp
 	pal/crypto/oid.test.cpp
 	pal/crypto/random.test.cpp
+	pal/crypto/secure_channel.test.cpp
 	pal/crypto/signature.test.cpp
 	pal/crypto/test.hpp
 	pal/crypto/test_certs.hpp
