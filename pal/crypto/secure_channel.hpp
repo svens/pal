@@ -29,6 +29,7 @@
 #include <span>
 #include <string_view>
 #include <system_error>
+#include <utility>
 
 namespace pal::crypto
 {
@@ -59,39 +60,45 @@ enum class verify_relax : unsigned
 
 constexpr verify_relax operator| (verify_relax a, verify_relax b) noexcept
 {
-	return static_cast<verify_relax>(static_cast<unsigned>(a) | static_cast<unsigned>(b));
+	return static_cast<verify_relax>(std::to_underlying(a) | std::to_underlying(b));
 }
 
 constexpr verify_relax operator& (verify_relax a, verify_relax b) noexcept
 {
-	return static_cast<verify_relax>(static_cast<unsigned>(a) & static_cast<unsigned>(b));
+	return static_cast<verify_relax>(std::to_underlying(a) & std::to_underlying(b));
 }
 
 constexpr verify_relax operator~(verify_relax a) noexcept
 {
-	return static_cast<verify_relax>(~static_cast<unsigned>(a));
+	return static_cast<verify_relax>(~std::to_underlying(a));
 }
 
 constexpr bool any (verify_relax a) noexcept
 {
-	return static_cast<unsigned>(a) != 0;
+	return std::to_underlying(a) != 0;
 }
 
 // error category {{{1
 
 /// Secure channel error codes.
+#define __pal_secure_channel_errc(Impl) \
+	Impl(__0, "internal placeholder for not an error") \
+	Impl(handshake_failed, "TLS handshake failed") \
+	Impl(peer_verification_failed, "peer certificate verification failed") \
+	Impl(peer_hostname_mismatch, "peer hostname does not match certificate") \
+	Impl(no_application_protocol, "no overlapping ALPN protocol") \
+	Impl(client_certificate_required, "client certificate required but not provided") \
+	Impl(message_too_large, "message exceeds datagram MTU") \
+	Impl(decrypt_failed, "record decryption failed") \
+	Impl(protocol_error, "secure channel protocol error") \
+	Impl(closed, "secure channel is closed") \
+	Impl(invalid_configuration, "invalid secure channel configuration")
+
 enum class secure_channel_errc : int
 {
-	handshake_failed = 1,
-	peer_verification_failed,
-	peer_hostname_mismatch,
-	no_application_protocol,
-	client_certificate_required,
-	message_too_large,
-	decrypt_failed,
-	protocol_error,
-	closed,
-	invalid_configuration,
+#define __pal_secure_channel_errc_enum(Code, Message) Code,
+	__pal_secure_channel_errc(__pal_secure_channel_errc_enum)
+#undef __pal_secure_channel_errc_enum
 };
 
 /// Return secure channel error category.
@@ -323,19 +330,19 @@ constexpr size_t dtls_record_size (std::span<const std::byte> bytes) noexcept
 struct channel_result
 {
 	/// Bytes consumed from input.
-	size_t consumed;
+	size_t consumed = 0;
 
 	/// Bytes produced into output.
-	size_t produced;
+	size_t produced = 0;
 
 	/// Operation needs more peer bytes (decrypt with partial record).
-	bool want_input;
+	bool want_input = false;
 
 	/// Output buffer was insufficient; supply a fresh output and call again.
-	bool want_output;
+	bool want_output = false;
 
 	/// `decrypt()` observed a peer `close_notify`. Further reads from peer are not expected.
-	bool peer_closed;
+	bool peer_closed = false;
 };
 
 // connected_channel {{{1
@@ -444,16 +451,16 @@ private:
 struct handshake_result
 {
 	/// Bytes consumed from the caller's input span.
-	size_t consumed;
+	size_t consumed = 0;
 
 	/// Bytes written to the caller's output span.
-	size_t produced;
+	size_t produced = 0;
 
 	/// Channel needs more peer bytes to make progress.
-	bool want_input;
+	bool want_input = false;
 
 	/// Output span was insufficient; call again with a fresh output buffer.
-	bool want_output;
+	bool want_output = false;
 
 	/// Engaged on the step that completes the handshake.
 	std::optional<connected_channel> connected;

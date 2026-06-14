@@ -3,8 +3,13 @@
 #include <pal/crypto/certificate_store.hpp>
 #include <pal/crypto/test.hpp>
 #include <catch2/catch_test_macros.hpp>
+#include <catch2/catch_template_test_macros.hpp>
+#include <catch2/generators/catch_generators.hpp>
+#include <algorithm>
 #include <array>
-#include <cstring>
+#include <optional>
+#include <ranges>
+#include <string_view>
 #include <vector>
 
 namespace
@@ -12,6 +17,11 @@ namespace
 
 namespace test_cert = pal_test::cert;
 using namespace pal::crypto;
+
+// Scratch buffer size for handshake I/O: comfortably larger than any single (D)TLS record or flight.
+constexpr auto io_buffer_size = 16 * 1024;
+
+// identity helpers {{{1
 
 auto load_cert (const test_cert::info &info)
 {
@@ -22,193 +32,231 @@ auto load_cert (const test_cert::info &info)
 
 auto load_pkcs12_chain ()
 {
-	const auto data = std::as_bytes(std::span{test_cert::pkcs12_data});
-	auto store = certificate_store::from_pkcs12(data);
+	auto store = certificate_store::from_pkcs12(test_cert::pkcs12_data);
 	REQUIRE(store);
-	std::vector<certificate> chain;
-	for (auto cert: *store)
-	{
-		chain.push_back(std::move(cert));
-	}
-	return chain;
+	return std::ranges::to<std::vector<certificate>>(*store);
 }
 
-template <typename Factory>
-auto pump_handshake (handshake_channel &client_hs, handshake_channel &server_hs)
-{
-	// Pump until both produce a connected channel.
-	std::vector<std::byte> c2s(size_t{16} * 1024);
-	std::vector<std::byte> s2c(size_t{16} * 1024);
-	size_t c2s_size = 0;
-	size_t s2c_size = 0;
+// handshake driver {{{1
 
+struct handshake_result
+{
 	std::optional<connected_channel> client;
 	std::optional<connected_channel> server;
+	std::error_code error;
+};
 
-	for (int i = 0; i < 32; ++i)
+// Drive both sides until both produce a connected channel or one errors. On the connected hand-off the
+// originating handshake_channel must go null (checked inline); the slot guard in step_side then stops
+// stepping that side, so each hands off at most once.
+handshake_result pump (handshake_channel &client_hs, handshake_channel &server_hs)
+{
+	using diff = std::ptrdiff_t;
+
+	// One direction's in-flight bytes: `data` is the backing store, `size` its valid prefix.
+	struct wire
 	{
-		if (!client && client_hs)
+		std::array<std::byte, io_buffer_size> data{};
+		size_t size = 0;
+	};
+	wire c2s;
+	wire s2c;
+
+	handshake_result result;
+
+	// Step one side: read its inbound bytes, append handshake output to its outbound buffer. Returns
+	// false (with result.error set) on a step error.
+	auto step_side = [&] (handshake_channel &handshake, std::optional<connected_channel> &slot, wire &in, wire &out)
+	{
+		// clang-format off
+
+		if (slot || !handshake)
 		{
-			auto r = client_hs.step(
-				std::span{s2c.data(), s2c_size}, std::span{c2s.data() + c2s_size, c2s.size() - c2s_size}
-			);
-			if (!r)
-			{
-				INFO("client step error: " << r.error().message());
-				REQUIRE(r);
-			}
-			s2c.erase(
-				s2c.begin(),
-				s2c.begin() + static_cast<std::vector<std::byte>::difference_type>(r->consumed)
-			);
-			s2c_size -= r->consumed;
-			c2s_size += r->produced;
-			if (r->connected)
-			{
-				client.emplace(std::move(*r->connected));
-			}
+			return true;
 		}
 
-		if (!server && server_hs)
+		auto r = handshake.step(
+			std::span{in.data}.first(in.size),
+			std::span{out.data}.subspan(out.size)
+		);
+		if (!r)
 		{
-			auto r = server_hs.step(
-				std::span{c2s.data(), c2s_size}, std::span{s2c.data() + s2c_size, s2c.size() - s2c_size}
-			);
-			if (!r)
-			{
-				INFO("server step error: " << r.error().message());
-				REQUIRE(r);
-			}
-			c2s.erase(
-				c2s.begin(),
-				c2s.begin() + static_cast<std::vector<std::byte>::difference_type>(r->consumed)
-			);
-			c2s_size -= r->consumed;
-			s2c_size += r->produced;
-			if (r->connected)
-			{
-				server.emplace(std::move(*r->connected));
-			}
+			result.error = r.error();
+			return false;
 		}
 
-		if (client && server)
+		std::shift_left(
+			in.data.begin(),
+			in.data.begin() + static_cast<diff>(in.size),
+			static_cast<diff>(r->consumed)
+		);
+		in.size -= r->consumed;
+		out.size += r->produced;
+
+		if (r->connected)
 		{
-			break;
+			slot.emplace(std::move(*r->connected));
+			CHECK(handshake.is_null());
+		}
+
+		return true;
+
+		// clang-format on
+	};
+
+	for (int i = 0; i < 32 && !(result.client && result.server); ++i)
+	{
+		if (!step_side(client_hs, result.client, s2c, c2s))
+		{
+			return result;
+		}
+		if (!step_side(server_hs, result.server, c2s, s2c))
+		{
+			return result;
 		}
 	}
 
-	REQUIRE(client.has_value());
-	REQUIRE(server.has_value());
-
-	// NOLINTNEXTLINE(bugprone-unchecked-optional-access)
-	return std::pair{std::move(*client), std::move(*server)};
+	REQUIRE(result.client);
+	REQUIRE(result.server);
+	return result;
 }
 
-} // namespace
-
-TEST_CASE("crypto/secure_channel/sniff_stream")
+// Build acceptor + connector from the given options, run the handshake to completion (or first error).
+template <typename Traits>
+handshake_result establish (
+	const typename Traits::acceptor::options &accept_options,
+	const typename Traits::connector::options &connect_options,
+	std::string_view peer_name = "server.pal.alt.ee"
+)
 {
-	using pal::crypto::wire_protocol;
+	auto acceptor = Traits::acceptor::make(accept_options);
+	REQUIRE(acceptor);
+	auto connector = Traits::connector::make(connect_options);
+	REQUIRE(connector);
 
+	auto connector_handshake = connector->connect({.peer_name = peer_name});
+	REQUIRE(connector_handshake);
+	auto acceptor_handshake = acceptor->accept();
+	REQUIRE(acceptor_handshake);
+
+	return pump(*connector_handshake, *acceptor_handshake);
+}
+
+// Positive-path wrapper: the handshake must succeed; returns the connected {client, server} pair.
+template <typename Traits>
+std::pair<connected_channel, connected_channel> connect_pair (
+	const typename Traits::acceptor::options &accept_options,
+	const typename Traits::connector::options &connect_options,
+	std::string_view peer_name = "server.pal.alt.ee"
+)
+{
+	auto handshake = establish<Traits>(accept_options, connect_options, peer_name);
+	REQUIRE_FALSE(handshake.error);
+	return {std::move(*handshake.client), std::move(*handshake.server)};
+}
+
+// A client's first step on empty input emits a real ClientHello. Sniffing it (rather than a hand-encoded
+// header) grounds the positive verdict in secure_channel actual wire output, and corrupting one field of it
+// grounds each negative gate in a record that is otherwise valid.
+template <typename Connector>
+std::vector<std::byte> make_client_hello ()
+{
+	auto connector = Connector::make({.use_system_trust = false});
+	REQUIRE(connector);
+	auto handshake = connector->connect({.peer_name = "server.pal.alt.ee"});
+	REQUIRE(handshake);
+
+	std::vector<std::byte> hello(io_buffer_size);
+	auto r = handshake->step(hello);
+	REQUIRE(r);
+	REQUIRE(r->produced > 0);
+	hello.resize(r->produced);
+	return hello;
+}
+
+// transport traits {{{1
+
+struct stream
+{
+	using acceptor = stream_acceptor;
+	using connector = stream_connector;
+	static constexpr bool is_datagram = false;
+};
+
+struct datagram
+{
+	using acceptor = datagram_acceptor;
+	using connector = datagram_connector;
+	static constexpr bool is_datagram = true;
+};
+
+TEST_CASE("crypto/secure_channel/sniff_stream") //{{{1
+{
 	SECTION("empty -> need_more")
 	{
 		CHECK(sniff_stream(std::span<const std::byte>{}) == wire_protocol::need_more);
 	}
 
-	SECTION("plain text")
+	SECTION("plaintext traffic -> plain")
 	{
-		const std::array<std::byte, 6> bytes{
-			std::byte{'G'}, std::byte{'E'}, std::byte{'T'}, std::byte{' '}, std::byte{'/'}, std::byte{' '}};
-		CHECK(sniff_stream(bytes) == wire_protocol::plain);
+		// A realistic non-TLS payload (HTTP request) multiplexed on the same port classifies as plain.
+		CHECK(sniff_stream(std::string_view{"GET / "}) == wire_protocol::plain);
 	}
 
-	SECTION("TLS ClientHello header")
+	SECTION("real ClientHello")
 	{
-		const std::array<std::byte, 6> bytes{
-			std::byte{0x16},
-			std::byte{0x03},
-			std::byte{0x01},
-			std::byte{0x00},
-			std::byte{0xC8},
-			std::byte{0x01}};
-		CHECK(sniff_stream(bytes) == wire_protocol::tls);
-	}
+		const auto hello = make_client_hello<stream_connector>();
+		CHECK(sniff_stream(hello) == wire_protocol::tls);
 
-	SECTION("partial: need more")
-	{
-		const std::array<std::byte, 2> short_bytes{std::byte{0x16}, std::byte{0x03}};
-		CHECK(sniff_stream(short_bytes) == wire_protocol::need_more);
-	}
+		// Inconclusive until the full 6-byte record header is buffered.
+		CHECK(sniff_stream(std::span{hello}.first(2)) == wire_protocol::need_more);
+		CHECK(sniff_stream(std::span{hello}.first(5)) == wire_protocol::need_more);
 
-	SECTION("bad version")
-	{
-		const std::array<std::byte, 6> bytes{
-			std::byte{0x16},
-			std::byte{0x05},
-			std::byte{0x01},
-			std::byte{0x00},
-			std::byte{0xC8},
-			std::byte{0x01}};
-		CHECK(sniff_stream(bytes) == wire_protocol::plain);
+		// Corrupt one gated header field at a time; each demotes an otherwise-valid record to plain.
+		const auto corrupt = [&] (size_t i, uint8_t v)
+		{
+			auto bytes = hello;
+			bytes[i] = std::byte{v};
+			return bytes;
+		};
+		CHECK(sniff_stream(corrupt(0, 0x17)) == wire_protocol::plain); // not a handshake record
+		CHECK(sniff_stream(corrupt(1, 0x05)) == wire_protocol::plain); // major version
+		CHECK(sniff_stream(corrupt(2, 0x99)) == wire_protocol::plain); // minor version out of range
+		CHECK(sniff_stream(corrupt(5, 0x02)) == wire_protocol::plain); // handshake type != ClientHello
 	}
 }
 
-TEST_CASE("crypto/secure_channel/sniff_datagram")
+TEST_CASE("crypto/secure_channel/sniff_datagram") //{{{1
 {
-	using pal::crypto::wire_protocol;
-
 	SECTION("too short -> plain")
 	{
 		const std::array<std::byte, 8> bytes{};
 		CHECK(sniff_datagram(bytes) == wire_protocol::plain);
 	}
 
-	SECTION("DTLS ClientHello header")
+	SECTION("real ClientHello")
 	{
-		const std::array<std::byte, 16> bytes{
-			std::byte{0x16},
-			std::byte{0xFE},
-			std::byte{0xFD},
-			std::byte{0x00},
-			std::byte{0x00},
-			std::byte{0x00},
-			std::byte{0x00},
-			std::byte{0x00},
-			std::byte{0x00},
-			std::byte{0x00},
-			std::byte{0x00},
-			std::byte{0x00},
-			std::byte{0x03},
-			std::byte{0x01},
-			std::byte{0x00},
-			std::byte{0x00}};
-		CHECK(sniff_datagram(bytes) == wire_protocol::dtls);
-	}
+		const auto hello = make_client_hello<datagram_connector>();
+		CHECK(sniff_datagram(hello) == wire_protocol::dtls);
 
-	SECTION("non-handshake content type -> plain")
-	{
-		const std::array<std::byte, 16> bytes{
-			std::byte{0x17},
-			std::byte{0xFE},
-			std::byte{0xFD},
-			std::byte{0x00},
-			std::byte{0x00},
-			std::byte{0x00},
-			std::byte{0x00},
-			std::byte{0x00},
-			std::byte{0x00},
-			std::byte{0x00},
-			std::byte{0x00},
-			std::byte{0x00},
-			std::byte{0x03},
-			std::byte{0x01},
-			std::byte{0x00},
-			std::byte{0x00}};
-		CHECK(sniff_datagram(bytes) == wire_protocol::plain);
+		// A datagram shorter than the 13-byte record header is never DTLS.
+		CHECK(sniff_datagram(std::span{hello}.first(12)) == wire_protocol::plain);
+
+		// Corrupt one gated header field at a time; each demotes an otherwise-valid record to plain.
+		const auto corrupt = [&] (size_t i, uint8_t v)
+		{
+			auto bytes = hello;
+			bytes[i] = std::byte{v};
+			return bytes;
+		};
+		CHECK(sniff_datagram(corrupt(0, 0x17)) == wire_protocol::plain);  // not a handshake record
+		CHECK(sniff_datagram(corrupt(2, 0x00)) == wire_protocol::plain);  // version too low
+		CHECK(sniff_datagram(corrupt(3, 0x01)) == wire_protocol::plain);  // epoch != 0
+		CHECK(sniff_datagram(corrupt(13, 0x02)) == wire_protocol::plain); // handshake type != ClientHello
 	}
 }
 
-TEST_CASE("crypto/secure_channel/dtls_record_size")
+TEST_CASE("crypto/secure_channel/dtls_record_size") //{{{1
 {
 	using pal::crypto::__secure_channel::dtls_record_size;
 
@@ -255,856 +303,384 @@ TEST_CASE("crypto/secure_channel/dtls_record_size")
 	}
 }
 
-TEST_CASE("crypto/secure_channel/error_category")
+TEST_CASE("crypto/secure_channel/error_category") //{{{1
 {
-	auto ec = make_error_code(secure_channel_errc::handshake_failed);
-	CHECK(ec);
-	CHECK(ec.category().name() == std::string_view{"secure_channel"});
-	CHECK_FALSE(ec.message().empty());
+#define __pal_errc(Code, Message) secure_channel_errc::Code,
+
+	SECTION("known codes")
+	{
+		const std::error_code ec = GENERATE(values({__pal_secure_channel_errc(__pal_errc)}));
+		CAPTURE(ec);
+		CHECK_FALSE(ec.message().empty());
+		CHECK(ec.message() != "unknown secure channel error");
+		CHECK(ec.category() == secure_channel_category());
+		CHECK(ec.category().name() == std::string_view{"secure_channel"});
+	}
+
+	SECTION("unknown")
+	{
+		const std::error_code ec = static_cast<secure_channel_errc>(-1);
+		CHECK(ec.message() == "unknown secure channel error");
+		CHECK(ec.category() == secure_channel_category());
+	}
+
+#undef __pal_errc
 }
 
-TEST_CASE("crypto/secure_channel/stream/handshake")
+TEMPLATE_TEST_CASE("crypto/secure_channel/channel", "", stream, datagram) //{{{1
 {
+	using acceptor = TestType::acceptor;
+	using connector = TestType::connector;
+
 	auto chain = load_pkcs12_chain();
 	REQUIRE_FALSE(chain.empty());
 	auto leaf_key = chain.front().private_key();
 	REQUIRE(leaf_key);
+	const std::array roots{load_cert(test_cert::ca)};
 
-	auto ca = load_cert(test_cert::ca);
-	std::array<certificate, 1> roots{ca};
+	// Non-const: Catch2 re-runs the body per SECTION, so each section gets a fresh copy to tweak in place.
+	typename acceptor::options accept_options{.certificate_chain = chain, .private_key = *leaf_key};
+	typename connector::options connect_options{.trusted_roots = roots, .use_system_trust = false};
 
-	const stream_acceptor::options acc_opts{
-		.certificate_chain = chain,
-		.private_key = *leaf_key,
-	};
-	auto acc = stream_acceptor::make(acc_opts);
-	REQUIRE(acc);
+	SECTION("handshake / round trip / close")
+	{
+		auto [client, server] = connect_pair<TestType>(accept_options, connect_options);
 
-	const stream_connector::options cn_opts{
-		.trusted_roots = roots,
-		.use_system_trust = false,
-	};
-	auto cn = stream_connector::make(cn_opts);
-	REQUIRE(cn);
+		if constexpr (TestType::is_datagram)
+		{
+			CHECK(client.max_message_size() > 0);
+			CHECK(client.max_message_size() < 65536);
+		}
 
-	auto cn_hs = cn->connect({.peer_name = "server.pal.alt.ee"});
-	REQUIRE(cn_hs);
-	auto ac_hs = acc->accept();
-	REQUIRE(ac_hs);
+		// Round trip plaintext.
+		std::array<std::byte, 4096> buf{};
+		auto enc = client.encrypt(pal_test::case_name(), buf);
+		REQUIRE(enc);
+		CHECK(enc->produced > 0);
 
-	auto [client, server] = pump_handshake<stream_acceptor>(*cn_hs, *ac_hs);
+		std::array<char, 4096> plain{};
+		auto dec = server.decrypt(std::span{buf}.first(enc->produced), plain);
+		REQUIRE(dec);
+		CHECK(std::string_view{plain.data(), dec->produced} == pal_test::case_name());
 
-	CHECK(client);
-	CHECK(server);
+		// Server closes, client observes peer_closed.
+		std::array<std::byte, 256> close_buf{};
+		auto srv_close = server.close(close_buf);
+		REQUIRE(srv_close);
+		CHECK(srv_close->produced > 0);
 
-	// Round trip plaintext
-	std::array<std::byte, 4096> buf{};
-	const std::string_view msg = "hello world";
-	auto enc = client.encrypt(msg, buf);
-	REQUIRE(enc);
-	CHECK(enc->produced > 0);
+		std::array<std::byte, 256> drain{};
+		auto cli_dec = client.decrypt(std::span{close_buf}.first(srv_close->produced), drain);
+		REQUIRE(cli_dec);
+		CHECK(cli_dec->peer_closed);
+	}
 
-	std::array<std::byte, 4096> plain{};
-	auto dec = server.decrypt(std::span{buf.data(), enc->produced}, plain);
-	REQUIRE(dec);
-	CHECK(dec->produced == msg.size());
-	CHECK(std::memcmp(plain.data(), msg.data(), msg.size()) == 0);
+	SECTION("decrypt_tampered")
+	{
+		auto [client, server] = connect_pair<TestType>(accept_options, connect_options);
 
-	// Server close, client observes
-	std::array<std::byte, 256> close_buf{};
-	auto srv_close = server.close(close_buf);
-	REQUIRE(srv_close);
-	CHECK(srv_close->produced > 0);
+		std::array<std::byte, 4096> cipher{};
+		auto enc = client.encrypt(pal_test::case_name(), cipher);
+		REQUIRE(enc);
+		REQUIRE(enc->produced > 6);
 
-	std::array<std::byte, 256> drain{};
-	auto cli_dec = client.decrypt(std::span{close_buf.data(), srv_close->produced}, drain);
-	REQUIRE(cli_dec);
-	CHECK(cli_dec->peer_closed);
+		// Flip the last ciphertext byte (the AEAD tag) so the record fails authentication on the peer.
+		cipher[enc->produced - 1] ^= std::byte{0xff};
+
+		std::array<std::byte, 4096> plain{};
+		auto dec = server.decrypt(std::span{cipher}.first(enc->produced), plain);
+		if constexpr (TestType::is_datagram)
+		{
+			// DTLS silently discards a record that fails authentication (RFC 9147): the bad record is
+			// dropped, nothing is produced, and no error surfaces.
+			REQUIRE(dec);
+			CHECK(dec->produced == 0);
+		}
+		else
+		{
+			REQUIRE_FALSE(dec);
+			CHECK(dec.error() == secure_channel_errc::decrypt_failed);
+		}
+	}
+
+	SECTION("peer_certificate")
+	{
+		auto [client, server] = connect_pair<TestType>(accept_options, connect_options);
+
+		auto peer_on_client = client.peer_certificate();
+		REQUIRE(peer_on_client);
+		REQUIRE_FALSE(peer_on_client->is_null());
+		CHECK(peer_on_client->common_name() == "pal.alt.ee");
+
+		// No mTLS: server should see no peer cert.
+		auto peer_on_server = server.peer_certificate();
+		REQUIRE(peer_on_server);
+		CHECK(peer_on_server->is_null());
+	}
+
+	SECTION("peer_hostname_mismatch")
+	{
+		auto handshake = establish<TestType>(accept_options, connect_options, "wrong.name");
+		CHECK(handshake.error == secure_channel_errc::peer_hostname_mismatch);
+	}
+
+	SECTION("verification fails (empty trust)")
+	{
+		// Empty trust + use_system_trust=false -> strict verification rejects the server cert.
+		connect_options.trusted_roots = {};
+		auto handshake = establish<TestType>(accept_options, connect_options);
+		CHECK(handshake.error == secure_channel_errc::peer_verification_failed);
+	}
+
+	SECTION("alpn")
+	{
+		const std::array<std::string_view, 2> server_protocols{"h2", "http/1.1"};
+		const std::array<std::string_view, 1> client_protocols{"http/1.1"};
+		accept_options.supported_protocols = server_protocols;
+		connect_options.supported_protocols = client_protocols;
+
+		auto [client, server] = connect_pair<TestType>(accept_options, connect_options);
+		CHECK(client.selected_protocol() == "http/1.1");
+		CHECK(server.selected_protocol() == "http/1.1");
+	}
+
+	SECTION("alpn_mismatch")
+	{
+		const std::array<std::string_view, 1> server_protocols{"h2"};
+		const std::array<std::string_view, 1> client_protocols{"smtp"};
+		accept_options.supported_protocols = server_protocols;
+		connect_options.supported_protocols = client_protocols;
+
+		auto handshake = establish<TestType>(accept_options, connect_options);
+		CHECK(handshake.error == secure_channel_errc::no_application_protocol);
+	}
+
+	SECTION("mtls_missing_client_cert")
+	{
+		accept_options.require_client_certificate = true;
+		accept_options.trusted_roots = roots;
+
+		auto handshake = establish<TestType>(accept_options, connect_options);
+
+		// Deterministic per build but varies by TLS version / OpenSSL: the server may reject the missing
+		// client cert directly, or the client may surface the resulting fatal alert generically.
+		const std::array<std::error_code, 3> expected{
+			secure_channel_errc::client_certificate_required,
+			secure_channel_errc::peer_verification_failed,
+			secure_channel_errc::handshake_failed,
+		};
+		CHECK(std::ranges::contains(expected, handshake.error));
+	}
+
+	SECTION("encrypt_after_close")
+	{
+		auto client = connect_pair<TestType>(accept_options, connect_options).first;
+		std::array<std::byte, 256> buf{};
+
+		REQUIRE(client.close(buf));
+
+		auto enc = client.encrypt(pal_test::case_name(), buf);
+		REQUIRE_FALSE(enc);
+		CHECK(enc.error() == secure_channel_errc::closed);
+	}
+
+	if constexpr (!TestType::is_datagram)
+	{
+		SECTION("decrypt_drain")
+		{
+			// Encrypt a large message; decrypt with a small output buffer to exercise drain mode.
+			auto [client, server] = connect_pair<TestType>(accept_options, connect_options);
+
+			const std::vector<std::byte> msg(8UL * 1024, std::byte{0x42});
+			std::vector<std::byte> cipher(32UL * 1024);
+			auto enc = client.encrypt(msg, cipher);
+			REQUIRE(enc);
+			REQUIRE(enc->consumed == msg.size());
+
+			std::array<std::byte, 128> out{};
+			size_t total = 0;
+			auto remaining = std::span{cipher}.first(enc->produced);
+
+			for (int i = 0; i < 256 && total < msg.size(); ++i)
+			{
+				auto dec = remaining.empty() ? server.decrypt(out) : server.decrypt(remaining, out);
+				REQUIRE(dec);
+
+				total += dec->produced;
+				remaining = remaining.subspan(dec->consumed);
+
+				if (remaining.empty() && dec->produced == 0)
+				{
+					break;
+				}
+			}
+
+			CHECK(total == msg.size());
+		}
+
+		SECTION("decrypt_incremental_input")
+		{
+			// Ciphertext delivered one byte at a time (slow/hostile peer): the server buffers partial
+			// records, emits plaintext only once a record completes, and makes progress every call.
+			auto [client, server] = connect_pair<TestType>(accept_options, connect_options);
+
+			std::array<std::byte, 4096> cipher{};
+			auto enc = client.encrypt(pal_test::case_name(), cipher);
+			REQUIRE(enc);
+
+			std::vector<char> plain;
+			std::array<char, 4096> out{};
+			for (size_t fed = 0; fed < enc->produced; ++fed)
+			{
+				auto dec = server.decrypt(std::span{cipher}.subspan(fed, 1), out);
+				REQUIRE(dec);
+				CHECK(dec->consumed == 1);
+				plain.append_range(std::span{out}.first(dec->produced));
+			}
+			CHECK(std::string_view{plain.data(), plain.size()} == pal_test::case_name());
+		}
+
+		SECTION("encrypt_partial_output")
+		{
+			// Multi-record message (> one 16 KiB TLS record) encrypted into an output buffer that holds
+			// only about one record. With SSL_MODE_ENABLE_PARTIAL_WRITE the caller advances by consumed
+			// each call, so every call makes forward progress (consumed > 0); without partial writes
+			// consumed would be 0.
+			auto [client, server] = connect_pair<TestType>(accept_options, connect_options);
+
+			const std::vector<std::byte> msg(40UL * 1000, std::byte{0x42});
+			std::array<std::byte, 20000> out{};
+			std::vector<std::byte> cipher;
+
+			size_t consumed = 0;
+			for (int i = 0; i < 64 && consumed < msg.size(); ++i)
+			{
+				auto enc = client.encrypt(std::span{msg}.subspan(consumed), out);
+				REQUIRE(enc);
+				CHECK(enc->consumed > 0);
+				cipher.append_range(std::span{out}.first(enc->produced));
+				consumed += enc->consumed;
+				CHECK(enc->want_output == (consumed < msg.size()));
+			}
+			REQUIRE(consumed == msg.size());
+
+			// The reassembled ciphertext must decrypt back to the original message.
+			std::vector<std::byte> plain;
+			std::span<const std::byte> rem{cipher};
+			for (int i = 0; i < 64 && plain.size() < msg.size(); ++i)
+			{
+				auto dec = rem.empty() ? server.decrypt(out) : server.decrypt(rem, out);
+				REQUIRE(dec);
+				plain.append_range(std::span{out}.first(dec->produced));
+				rem = rem.subspan(dec->consumed);
+				if (rem.empty() && dec->produced == 0)
+				{
+					break;
+				}
+			}
+			CHECK(plain == msg);
+		}
+	}
+
+	if constexpr (TestType::is_datagram)
+	{
+		SECTION("message_too_large")
+		{
+			auto client = connect_pair<TestType>(accept_options, connect_options).first;
+
+			const size_t cap = client.max_message_size();
+			REQUIRE(cap > 0);
+
+			const std::vector<std::byte> oversized(cap + 1, std::byte{0});
+			std::array<std::byte, 4096> out{};
+			auto r = client.encrypt(oversized, out);
+			REQUIRE_FALSE(r);
+			CHECK(r.error() == secure_channel_errc::message_too_large);
+		}
+
+		SECTION("decrypt_multi_record")
+		{
+			auto [client, server] = connect_pair<TestType>(accept_options, connect_options);
+
+			// Two independently encrypted records concatenated into one buffer.
+			const auto msg1 = pal_test::case_name() + " 1";
+			const auto msg2 = pal_test::case_name() + " 2";
+			std::array<std::byte, 2048> rec{};
+			std::vector<std::byte> combined;
+
+			auto enc1 = client.encrypt(msg1, rec);
+			REQUIRE(enc1);
+			combined.append_range(std::span{rec}.first(enc1->produced));
+
+			auto enc2 = client.encrypt(msg2, rec);
+			REQUIRE(enc2);
+			combined.append_range(std::span{rec}.first(enc2->produced));
+
+			// First decrypt must yield exactly the first record's payload and consume exactly the
+			// first record, leaving the second untouched for a follow-up call.
+			std::array<char, 2048> plain{};
+			auto dec1 = server.decrypt(std::span<const std::byte>{combined}, plain);
+			REQUIRE(dec1);
+			CHECK(std::string_view{plain.data(), dec1->produced} == msg1);
+			CHECK(dec1->consumed == enc1->produced);
+
+			// Second decrypt on the remainder yields the second record.
+			const auto rest = std::span{combined}.subspan(dec1->consumed);
+			auto dec2 = server.decrypt(rest, plain);
+			REQUIRE(dec2);
+			CHECK(std::string_view{plain.data(), dec2->produced} == msg2);
+		}
+	}
 }
 
-TEST_CASE("crypto/secure_channel/factory_outlives_inputs")
+TEMPLATE_TEST_CASE("crypto/secure_channel/factory_outlives_inputs", "", stream, datagram) //{{{1
 {
-	// The factory's SSL_CTX must hold its own references to the cert chain, key and trusted roots, so
-	// sessions keep working after the caller's certificate/key handles are destroyed. Run under sanitize
-	// to catch any use-after-free if those references are not actually held.
-	std::optional<stream_acceptor> acc;
-	std::optional<stream_connector> cn;
+	// The factory's must hold its own references to the cert chain, key and trusted roots, so sessions keep
+	// working after the caller's certificate/key handles are destroyed. Run under sanitize to catch any
+	// use-after-free if those references are not actually held.
+	std::optional<typename TestType::acceptor> acceptor;
+	std::optional<typename TestType::connector> connector;
+
 	{
 		auto chain = load_pkcs12_chain();
 		REQUIRE_FALSE(chain.empty());
 		auto leaf_key = chain.front().private_key();
 		REQUIRE(leaf_key);
-		auto ca = load_cert(test_cert::ca);
-		std::array<certificate, 1> roots{ca};
+		const std::array roots{load_cert(test_cert::ca)};
 
-		auto acc_result = stream_acceptor::make({.certificate_chain = chain, .private_key = *leaf_key});
-		REQUIRE(acc_result);
-		acc = std::move(*acc_result);
+		{
+			auto r = TestType::acceptor::make({.certificate_chain = chain, .private_key = *leaf_key});
+			REQUIRE(r);
+			acceptor = std::move(*r);
+		}
 
-		auto cn_result = stream_connector::make({.trusted_roots = roots, .use_system_trust = false});
-		REQUIRE(cn_result);
-		cn = std::move(*cn_result);
+		{
+			auto r = TestType::connector::make({.trusted_roots = roots, .use_system_trust = false});
+			REQUIRE(r);
+			connector = std::move(*r);
+		}
 	}
-	// chain / leaf_key / ca / roots are destroyed here; the factories must work from SSL_CTX refs alone.
+	// chain / leaf_key / roots are destroyed here; the factories must work from SSL_CTX refs alone.
 
-	auto cn_hs = cn->connect({.peer_name = "server.pal.alt.ee"});
-	REQUIRE(cn_hs);
-	auto ac_hs = acc->accept();
-	REQUIRE(ac_hs);
+	auto connector_handshake = connector->connect({.peer_name = "server.pal.alt.ee"});
+	REQUIRE(connector_handshake);
+	auto acceptor_handshake = acceptor->accept();
+	REQUIRE(acceptor_handshake);
 
-	auto [client, server] = pump_handshake<stream_acceptor>(*cn_hs, *ac_hs);
-	REQUIRE(client);
-	REQUIRE(server);
+	auto handshake = pump(*connector_handshake, *acceptor_handshake);
+	REQUIRE_FALSE(handshake.error);
+	auto [client, server] = std::pair{std::move(*handshake.client), std::move(*handshake.server)};
 
 	std::array<std::byte, 4096> buf{};
-	const std::string_view msg = "hello after inputs freed";
-	auto enc = client.encrypt(msg, buf);
+	auto enc = client.encrypt(pal_test::case_name(), buf);
 	REQUIRE(enc);
 
-	std::array<std::byte, 4096> plain{};
-	auto dec = server.decrypt(std::span{buf.data(), enc->produced}, plain);
+	std::array<char, 4096> plain{};
+	auto dec = server.decrypt(std::span{buf}.first(enc->produced), plain);
 	REQUIRE(dec);
-	CHECK(dec->produced == msg.size());
-	CHECK(std::memcmp(plain.data(), msg.data(), msg.size()) == 0);
+	CHECK(std::string_view{plain.data(), dec->produced} == pal_test::case_name());
 }
 
-TEST_CASE("crypto/secure_channel/stream/decrypt_tampered")
-{
-	auto chain = load_pkcs12_chain();
-	REQUIRE_FALSE(chain.empty());
-	auto leaf_key = chain.front().private_key();
-	REQUIRE(leaf_key);
+// }}}1
 
-	auto ca = load_cert(test_cert::ca);
-	std::array<certificate, 1> roots{ca};
-
-	auto acc = stream_acceptor::make({.certificate_chain = chain, .private_key = *leaf_key});
-	REQUIRE(acc);
-	auto cn = stream_connector::make({.trusted_roots = roots, .use_system_trust = false});
-	REQUIRE(cn);
-
-	auto cn_hs = cn->connect({.peer_name = "server.pal.alt.ee"});
-	REQUIRE(cn_hs);
-	auto ac_hs = acc->accept();
-	REQUIRE(ac_hs);
-
-	auto [client, server] = pump_handshake<stream_acceptor>(*cn_hs, *ac_hs);
-	REQUIRE(client);
-	REQUIRE(server);
-
-	std::array<std::byte, 4096> cipher{};
-	const std::string_view msg = "hello world";
-	auto enc = client.encrypt(msg, cipher);
-	REQUIRE(enc);
-	REQUIRE(enc->produced > 6);
-
-	// Flip the last ciphertext byte (the AEAD tag) so the record fails authentication on the peer.
-	cipher[enc->produced - 1] ^= std::byte{0xff};
-
-	std::array<std::byte, 4096> plain{};
-	auto dec = server.decrypt(std::span{cipher.data(), enc->produced}, plain);
-	REQUIRE_FALSE(dec);
-	CHECK(dec.error() == secure_channel_errc::decrypt_failed);
-}
-
-TEST_CASE("crypto/secure_channel/stream/peer_hostname_mismatch")
-{
-	auto chain = load_pkcs12_chain();
-	REQUIRE_FALSE(chain.empty());
-	auto leaf_key = chain.front().private_key();
-	REQUIRE(leaf_key);
-
-	auto ca = load_cert(test_cert::ca);
-	std::array<certificate, 1> roots{ca};
-
-	auto acc = stream_acceptor::make({.certificate_chain = chain, .private_key = *leaf_key});
-	REQUIRE(acc);
-	auto cn = stream_connector::make({.trusted_roots = roots, .use_system_trust = false});
-	REQUIRE(cn);
-
-	auto cn_hs = cn->connect({.peer_name = "wrong.name"});
-	REQUIRE(cn_hs);
-	auto ac_hs = acc->accept();
-	REQUIRE(ac_hs);
-
-	std::vector<std::byte> c2s(size_t{16} * 1024);
-	std::vector<std::byte> s2c(size_t{16} * 1024);
-	size_t c2s_size = 0;
-	size_t s2c_size = 0;
-	std::error_code last_err;
-
-	for (int i = 0; i < 32; ++i)
-	{
-		if (*cn_hs)
-		{
-			auto r = cn_hs->step(
-				std::span{s2c.data(), s2c_size}, std::span{c2s.data() + c2s_size, c2s.size() - c2s_size}
-			);
-			if (!r)
-			{
-				last_err = r.error();
-				break;
-			}
-			s2c.erase(
-				s2c.begin(),
-				s2c.begin() + static_cast<std::vector<std::byte>::difference_type>(r->consumed)
-			);
-			s2c_size -= r->consumed;
-			c2s_size += r->produced;
-			if (r->connected)
-			{
-				break;
-			}
-		}
-		if (*ac_hs)
-		{
-			auto r = ac_hs->step(
-				std::span{c2s.data(), c2s_size}, std::span{s2c.data() + s2c_size, s2c.size() - s2c_size}
-			);
-			if (!r)
-			{
-				last_err = r.error();
-				break;
-			}
-			c2s.erase(
-				c2s.begin(),
-				c2s.begin() + static_cast<std::vector<std::byte>::difference_type>(r->consumed)
-			);
-			c2s_size -= r->consumed;
-			s2c_size += r->produced;
-			if (r->connected)
-			{
-				break;
-			}
-		}
-	}
-
-	CHECK(last_err == secure_channel_errc::peer_hostname_mismatch);
-}
-
-TEST_CASE("crypto/secure_channel/datagram/handshake")
-{
-	auto chain = load_pkcs12_chain();
-	REQUIRE_FALSE(chain.empty());
-	auto leaf_key = chain.front().private_key();
-	REQUIRE(leaf_key);
-
-	auto ca = load_cert(test_cert::ca);
-	std::array<certificate, 1> roots{ca};
-
-	auto acc = datagram_acceptor::make({.certificate_chain = chain, .private_key = *leaf_key});
-	REQUIRE(acc);
-	auto cn = datagram_connector::make({.trusted_roots = roots, .use_system_trust = false});
-	REQUIRE(cn);
-
-	auto cn_hs = cn->connect({.peer_name = "server.pal.alt.ee"});
-	REQUIRE(cn_hs);
-	auto ac_hs = acc->accept();
-	REQUIRE(ac_hs);
-
-	auto [client, server] = pump_handshake<datagram_acceptor>(*cn_hs, *ac_hs);
-
-	CHECK(client.max_message_size() > 0);
-	CHECK(client.max_message_size() < 65536);
-
-	std::array<std::byte, 2048> buf{};
-	const std::string_view msg = "datagram hello";
-	auto enc = client.encrypt(msg, buf);
-	REQUIRE(enc);
-	REQUIRE(enc->produced > 0);
-
-	std::array<std::byte, 2048> plain{};
-	auto dec = server.decrypt(std::span{buf.data(), enc->produced}, plain);
-	REQUIRE(dec);
-	CHECK(dec->produced == msg.size());
-}
-
-TEST_CASE("crypto/secure_channel/datagram/decrypt_multi_record")
-{
-	auto chain = load_pkcs12_chain();
-	REQUIRE_FALSE(chain.empty());
-	auto leaf_key = chain.front().private_key();
-	REQUIRE(leaf_key);
-
-	auto ca = load_cert(test_cert::ca);
-	std::array<certificate, 1> roots{ca};
-
-	auto acc = datagram_acceptor::make({.certificate_chain = chain, .private_key = *leaf_key});
-	REQUIRE(acc);
-	auto cn = datagram_connector::make({.trusted_roots = roots, .use_system_trust = false});
-	REQUIRE(cn);
-
-	auto cn_hs = cn->connect({.peer_name = "server.pal.alt.ee"});
-	REQUIRE(cn_hs);
-	auto ac_hs = acc->accept();
-	REQUIRE(ac_hs);
-
-	auto [client, server] = pump_handshake<datagram_acceptor>(*cn_hs, *ac_hs);
-
-	// Two independently encrypted records concatenated into one buffer.
-	std::array<std::byte, 2048> rec1{};
-	std::array<std::byte, 2048> rec2{};
-	const std::string_view msg1 = "first record";
-	const std::string_view msg2 = "second record";
-	auto enc1 = client.encrypt(msg1, rec1);
-	REQUIRE(enc1);
-	auto enc2 = client.encrypt(msg2, rec2);
-	REQUIRE(enc2);
-
-	std::vector<std::byte> combined;
-	combined.insert(combined.end(), rec1.data(), rec1.data() + enc1->produced);
-	combined.insert(combined.end(), rec2.data(), rec2.data() + enc2->produced);
-
-	// First decrypt must yield exactly the first record's payload and consume exactly the
-	// first record, leaving the second untouched for a follow-up call.
-	std::array<std::byte, 2048> plain1{};
-	auto dec1 = server.decrypt(std::span<const std::byte>{combined}, plain1);
-	REQUIRE(dec1);
-	CHECK(dec1->produced == msg1.size());
-	CHECK(std::memcmp(plain1.data(), msg1.data(), msg1.size()) == 0);
-	CHECK(dec1->consumed == enc1->produced);
-
-	// Second decrypt on the remainder yields the second record.
-	const std::span<const std::byte> rest{combined.data() + dec1->consumed, combined.size() - dec1->consumed};
-	std::array<std::byte, 2048> plain2{};
-	auto dec2 = server.decrypt(rest, plain2);
-	REQUIRE(dec2);
-	CHECK(dec2->produced == msg2.size());
-	CHECK(std::memcmp(plain2.data(), msg2.data(), msg2.size()) == 0);
-}
-
-TEST_CASE("crypto/secure_channel/stream/self_signed")
-{
-	auto self = load_cert(test_cert::self_signed);
-	const std::array<certificate, 1> chain{self};
-
-	// self_signed test_cert does not carry a private key; we need an identity
-	// with a key for the acceptor. Use the PKCS#12 chain leaf as identity, and
-	// then run a connector with empty trust to exercise verify_relax path.
-	auto pkcs12 = load_pkcs12_chain();
-	REQUIRE_FALSE(pkcs12.empty());
-	auto leaf_key = pkcs12.front().private_key();
-	REQUIRE(leaf_key);
-
-	auto acc = stream_acceptor::make({.certificate_chain = pkcs12, .private_key = *leaf_key});
-	REQUIRE(acc);
-
-	// Empty trust + use_system_trust=false → strict verification fails by default.
-	auto cn_strict = stream_connector::make({.trusted_roots = {}, .use_system_trust = false});
-	REQUIRE(cn_strict);
-
-	auto strict_client = cn_strict->connect({.peer_name = "server.pal.alt.ee"});
-	REQUIRE(strict_client);
-	auto strict_server = acc->accept();
-	REQUIRE(strict_server);
-
-	std::vector<std::byte> c2s(size_t{16} * 1024);
-	std::vector<std::byte> s2c(size_t{16} * 1024);
-	size_t c2s_size = 0;
-	size_t s2c_size = 0;
-	std::error_code last_err;
-
-	for (int i = 0; i < 32; ++i)
-	{
-		auto cr = strict_client->step(
-			std::span{s2c.data(), s2c_size}, std::span{c2s.data() + c2s_size, c2s.size() - c2s_size}
-		);
-		if (!cr)
-		{
-			last_err = cr.error();
-			break;
-		}
-		s2c.erase(
-			s2c.begin(), s2c.begin() + static_cast<std::vector<std::byte>::difference_type>(cr->consumed)
-		);
-		s2c_size -= cr->consumed;
-		c2s_size += cr->produced;
-
-		auto sr = strict_server->step(
-			std::span{c2s.data(), c2s_size}, std::span{s2c.data() + s2c_size, s2c.size() - s2c_size}
-		);
-		if (!sr)
-		{
-			last_err = sr.error();
-			break;
-		}
-		c2s.erase(
-			c2s.begin(), c2s.begin() + static_cast<std::vector<std::byte>::difference_type>(sr->consumed)
-		);
-		c2s_size -= sr->consumed;
-		s2c_size += sr->produced;
-	}
-
-	CHECK(last_err == secure_channel_errc::peer_verification_failed);
-}
-
-TEST_CASE("crypto/secure_channel/stream/alpn")
-{
-	auto chain = load_pkcs12_chain();
-	REQUIRE_FALSE(chain.empty());
-	auto leaf_key = chain.front().private_key();
-	REQUIRE(leaf_key);
-
-	auto ca = load_cert(test_cert::ca);
-	std::array<certificate, 1> roots{ca};
-
-	std::array<std::string_view, 2> server_protos{"h2", "http/1.1"};
-	std::array<std::string_view, 1> client_protos{"http/1.1"};
-
-	auto acc = stream_acceptor::make({
-		.certificate_chain = chain,
-		.private_key = *leaf_key,
-		.supported_protocols = server_protos,
-	});
-	REQUIRE(acc);
-	auto cn = stream_connector::make({
-		.trusted_roots = roots,
-		.use_system_trust = false,
-		.supported_protocols = client_protos,
-	});
-	REQUIRE(cn);
-
-	auto cn_hs = cn->connect({.peer_name = "server.pal.alt.ee"});
-	REQUIRE(cn_hs);
-	auto ac_hs = acc->accept();
-	REQUIRE(ac_hs);
-
-	auto [client, server] = pump_handshake<stream_acceptor>(*cn_hs, *ac_hs);
-
-	CHECK(client.selected_protocol() == "http/1.1");
-	CHECK(server.selected_protocol() == "http/1.1");
-}
-
-TEST_CASE("crypto/secure_channel/stream/alpn_mismatch")
-{
-	auto chain = load_pkcs12_chain();
-	REQUIRE_FALSE(chain.empty());
-	auto leaf_key = chain.front().private_key();
-	REQUIRE(leaf_key);
-
-	auto ca = load_cert(test_cert::ca);
-	std::array<certificate, 1> roots{ca};
-
-	std::array<std::string_view, 1> server_protos{"h2"};
-	std::array<std::string_view, 1> client_protos{"smtp"};
-
-	auto acc = stream_acceptor::make({
-		.certificate_chain = chain,
-		.private_key = *leaf_key,
-		.supported_protocols = server_protos,
-	});
-	REQUIRE(acc);
-	auto cn = stream_connector::make({
-		.trusted_roots = roots,
-		.use_system_trust = false,
-		.supported_protocols = client_protos,
-	});
-	REQUIRE(cn);
-
-	auto cn_hs = cn->connect({.peer_name = "server.pal.alt.ee"});
-	REQUIRE(cn_hs);
-	auto ac_hs = acc->accept();
-	REQUIRE(ac_hs);
-
-	std::vector<std::byte> c2s(size_t{16} * 1024);
-	std::vector<std::byte> s2c(size_t{16} * 1024);
-	size_t c2s_size = 0;
-	size_t s2c_size = 0;
-	std::error_code last_err;
-
-	for (int i = 0; i < 32; ++i)
-	{
-		auto cr = cn_hs->step(
-			std::span{s2c.data(), s2c_size}, std::span{c2s.data() + c2s_size, c2s.size() - c2s_size}
-		);
-		if (!cr)
-		{
-			last_err = cr.error();
-			break;
-		}
-		s2c.erase(
-			s2c.begin(), s2c.begin() + static_cast<std::vector<std::byte>::difference_type>(cr->consumed)
-		);
-		s2c_size -= cr->consumed;
-		c2s_size += cr->produced;
-
-		auto sr = ac_hs->step(
-			std::span{c2s.data(), c2s_size}, std::span{s2c.data() + s2c_size, s2c.size() - s2c_size}
-		);
-		if (!sr)
-		{
-			last_err = sr.error();
-			break;
-		}
-		c2s.erase(
-			c2s.begin(), c2s.begin() + static_cast<std::vector<std::byte>::difference_type>(sr->consumed)
-		);
-		c2s_size -= sr->consumed;
-		s2c_size += sr->produced;
-	}
-
-	CHECK(last_err == secure_channel_errc::no_application_protocol);
-}
-
-TEST_CASE("crypto/secure_channel/stream/peer_certificate")
-{
-	auto chain = load_pkcs12_chain();
-	REQUIRE_FALSE(chain.empty());
-	auto leaf_key = chain.front().private_key();
-	REQUIRE(leaf_key);
-
-	auto ca = load_cert(test_cert::ca);
-	std::array<certificate, 1> roots{ca};
-
-	auto acc = stream_acceptor::make({.certificate_chain = chain, .private_key = *leaf_key});
-	REQUIRE(acc);
-	auto cn = stream_connector::make({.trusted_roots = roots, .use_system_trust = false});
-	REQUIRE(cn);
-
-	auto cn_hs = cn->connect({.peer_name = "server.pal.alt.ee"});
-	REQUIRE(cn_hs);
-	auto ac_hs = acc->accept();
-	REQUIRE(ac_hs);
-
-	auto [client, server] = pump_handshake<stream_acceptor>(*cn_hs, *ac_hs);
-
-	auto peer_on_client = client.peer_certificate();
-	REQUIRE(peer_on_client);
-	CHECK_FALSE(peer_on_client->is_null());
-	CHECK(peer_on_client->common_name() == "pal.alt.ee");
-
-	// No mTLS: server should see no peer cert.
-	auto peer_on_server = server.peer_certificate();
-	REQUIRE(peer_on_server);
-	CHECK(peer_on_server->is_null());
-}
-
-TEST_CASE("crypto/secure_channel/stream/mtls_missing_client_cert")
-{
-	auto chain = load_pkcs12_chain();
-	REQUIRE_FALSE(chain.empty());
-	auto leaf_key = chain.front().private_key();
-	REQUIRE(leaf_key);
-
-	auto ca = load_cert(test_cert::ca);
-	std::array<certificate, 1> roots{ca};
-
-	auto acc = stream_acceptor::make({
-		.certificate_chain = chain,
-		.private_key = *leaf_key,
-		.require_client_certificate = true,
-		.trusted_roots = roots,
-	});
-	REQUIRE(acc);
-	auto cn = stream_connector::make({
-		.trusted_roots = roots,
-		.use_system_trust = false,
-	});
-	REQUIRE(cn);
-
-	auto cn_hs = cn->connect({.peer_name = "server.pal.alt.ee"});
-	REQUIRE(cn_hs);
-	auto ac_hs = acc->accept();
-	REQUIRE(ac_hs);
-
-	std::vector<std::byte> c2s(size_t{16} * 1024);
-	std::vector<std::byte> s2c(size_t{16} * 1024);
-	size_t c2s_size = 0;
-	size_t s2c_size = 0;
-	std::error_code last_err;
-
-	for (int i = 0; i < 32; ++i)
-	{
-		auto cr = cn_hs->step(
-			std::span{s2c.data(), s2c_size}, std::span{c2s.data() + c2s_size, c2s.size() - c2s_size}
-		);
-		if (!cr)
-		{
-			last_err = cr.error();
-			break;
-		}
-		s2c.erase(
-			s2c.begin(), s2c.begin() + static_cast<std::vector<std::byte>::difference_type>(cr->consumed)
-		);
-		s2c_size -= cr->consumed;
-		c2s_size += cr->produced;
-
-		auto sr = ac_hs->step(
-			std::span{c2s.data(), c2s_size}, std::span{s2c.data() + s2c_size, s2c.size() - s2c_size}
-		);
-		if (!sr)
-		{
-			last_err = sr.error();
-			break;
-		}
-		c2s.erase(
-			c2s.begin(), c2s.begin() + static_cast<std::vector<std::byte>::difference_type>(sr->consumed)
-		);
-		c2s_size -= sr->consumed;
-		s2c_size += sr->produced;
-	}
-
-	CHECK((last_err == secure_channel_errc::client_certificate_required
-	       || last_err == secure_channel_errc::peer_verification_failed
-	       || last_err == secure_channel_errc::handshake_failed));
-}
-
-TEST_CASE("crypto/secure_channel/connected_channel/encrypt_after_close")
-{
-	auto chain = load_pkcs12_chain();
-	REQUIRE_FALSE(chain.empty());
-	auto leaf_key = chain.front().private_key();
-	REQUIRE(leaf_key);
-
-	auto ca = load_cert(test_cert::ca);
-	std::array<certificate, 1> roots{ca};
-
-	auto acc = stream_acceptor::make({.certificate_chain = chain, .private_key = *leaf_key});
-	REQUIRE(acc);
-	auto cn = stream_connector::make({.trusted_roots = roots, .use_system_trust = false});
-	REQUIRE(cn);
-
-	auto cn_hs = cn->connect({.peer_name = "server.pal.alt.ee"});
-	REQUIRE(cn_hs);
-	auto ac_hs = acc->accept();
-	REQUIRE(ac_hs);
-
-	auto [client, server] = pump_handshake<stream_acceptor>(*cn_hs, *ac_hs);
-
-	std::array<std::byte, 256> close_buf{};
-	auto close_r = client.close(close_buf);
-	REQUIRE(close_r);
-
-	std::array<std::byte, 256> enc_buf{};
-	const std::string_view msg = "post-close";
-	auto enc = client.encrypt(msg, enc_buf);
-	REQUIRE_FALSE(enc);
-	CHECK(enc.error() == secure_channel_errc::closed);
-}
-
-TEST_CASE("crypto/secure_channel/datagram/message_too_large")
-{
-	auto chain = load_pkcs12_chain();
-	REQUIRE_FALSE(chain.empty());
-	auto leaf_key = chain.front().private_key();
-	REQUIRE(leaf_key);
-
-	auto ca = load_cert(test_cert::ca);
-	std::array<certificate, 1> roots{ca};
-
-	auto acc = datagram_acceptor::make({.certificate_chain = chain, .private_key = *leaf_key});
-	REQUIRE(acc);
-	auto cn = datagram_connector::make({.trusted_roots = roots, .use_system_trust = false});
-	REQUIRE(cn);
-
-	auto cn_hs = cn->connect({.peer_name = "server.pal.alt.ee"});
-	REQUIRE(cn_hs);
-	auto ac_hs = acc->accept();
-	REQUIRE(ac_hs);
-
-	auto [client, server] = pump_handshake<datagram_acceptor>(*cn_hs, *ac_hs);
-
-	const size_t cap = client.max_message_size();
-	REQUIRE(cap > 0);
-	const std::vector<std::byte> oversized(cap + 1, std::byte{0});
-	std::array<std::byte, 4096> out{};
-
-	auto r = client.encrypt(oversized, out);
-	REQUIRE_FALSE(r);
-	CHECK(r.error() == secure_channel_errc::message_too_large);
-}
-
-TEST_CASE("crypto/secure_channel/stream/handshake_handoff_exactly_once")
-{
-	auto chain = load_pkcs12_chain();
-	REQUIRE_FALSE(chain.empty());
-	auto leaf_key = chain.front().private_key();
-	REQUIRE(leaf_key);
-
-	auto ca = load_cert(test_cert::ca);
-	std::array<certificate, 1> roots{ca};
-
-	auto acc = stream_acceptor::make({.certificate_chain = chain, .private_key = *leaf_key});
-	REQUIRE(acc);
-	auto cn = stream_connector::make({.trusted_roots = roots, .use_system_trust = false});
-	REQUIRE(cn);
-
-	auto cn_hs = cn->connect({.peer_name = "server.pal.alt.ee"});
-	REQUIRE(cn_hs);
-	auto ac_hs = acc->accept();
-	REQUIRE(ac_hs);
-
-	std::vector<std::byte> c2s(size_t{16} * 1024);
-	std::vector<std::byte> s2c(size_t{16} * 1024);
-	size_t c2s_size = 0;
-	size_t s2c_size = 0;
-
-	int client_connected_count = 0;
-	int server_connected_count = 0;
-	std::optional<connected_channel> client;
-	std::optional<connected_channel> server;
-
-	for (int i = 0; i < 32; ++i)
-	{
-		if (*cn_hs)
-		{
-			auto r = cn_hs->step(
-				std::span{s2c.data(), s2c_size}, std::span{c2s.data() + c2s_size, c2s.size() - c2s_size}
-			);
-			REQUIRE(r);
-			s2c.erase(
-				s2c.begin(),
-				s2c.begin() + static_cast<std::vector<std::byte>::difference_type>(r->consumed)
-			);
-			s2c_size -= r->consumed;
-			c2s_size += r->produced;
-			if (r->connected)
-			{
-				++client_connected_count;
-				client.emplace(std::move(*r->connected));
-				// After hand-off, handshake_channel is null.
-				CHECK(cn_hs->is_null());
-			}
-		}
-		if (*ac_hs)
-		{
-			auto r = ac_hs->step(
-				std::span{c2s.data(), c2s_size}, std::span{s2c.data() + s2c_size, s2c.size() - s2c_size}
-			);
-			REQUIRE(r);
-			c2s.erase(
-				c2s.begin(),
-				c2s.begin() + static_cast<std::vector<std::byte>::difference_type>(r->consumed)
-			);
-			c2s_size -= r->consumed;
-			s2c_size += r->produced;
-			if (r->connected)
-			{
-				++server_connected_count;
-				server.emplace(std::move(*r->connected));
-				CHECK(ac_hs->is_null());
-			}
-		}
-		if (client && server)
-		{
-			break;
-		}
-	}
-
-	CHECK(client_connected_count == 1);
-	CHECK(server_connected_count == 1);
-	REQUIRE(client.has_value());
-	REQUIRE(server.has_value());
-}
-
-TEST_CASE("crypto/secure_channel/stream/decrypt_drain")
-{
-	auto chain = load_pkcs12_chain();
-	REQUIRE_FALSE(chain.empty());
-	auto leaf_key = chain.front().private_key();
-	REQUIRE(leaf_key);
-
-	auto ca = load_cert(test_cert::ca);
-	std::array<certificate, 1> roots{ca};
-
-	auto acc = stream_acceptor::make({.certificate_chain = chain, .private_key = *leaf_key});
-	REQUIRE(acc);
-	auto cn = stream_connector::make({.trusted_roots = roots, .use_system_trust = false});
-	REQUIRE(cn);
-
-	auto cn_hs = cn->connect({.peer_name = "server.pal.alt.ee"});
-	REQUIRE(cn_hs);
-	auto ac_hs = acc->accept();
-	REQUIRE(ac_hs);
-
-	auto [client, server] = pump_handshake<stream_acceptor>(*cn_hs, *ac_hs);
-
-	// Encrypt a large message; decrypt with a small output buffer to exercise
-	// drain mode.
-	const std::vector<std::byte> msg(size_t{8} * 1024, std::byte{0x42});
-	std::vector<std::byte> cipher(size_t{32} * 1024);
-	auto enc = client.encrypt(msg, cipher);
-	REQUIRE(enc);
-	REQUIRE(enc->consumed == msg.size());
-
-	std::array<std::byte, 128> small_out{};
-	size_t total = 0;
-	std::span<const std::byte> remaining{cipher.data(), enc->produced};
-
-	for (int i = 0; i < 256 && total < msg.size(); ++i)
-	{
-		auto dec = remaining.empty() ? server.decrypt(small_out) : server.decrypt(remaining, small_out);
-		REQUIRE(dec);
-		if (dec->produced > 0)
-		{
-			total += dec->produced;
-		}
-		remaining = remaining.subspan(dec->consumed);
-		if (remaining.empty() && dec->produced == 0)
-		{
-			break;
-		}
-	}
-
-	CHECK(total == msg.size());
-}
-
-TEST_CASE("crypto/secure_channel/stream/encrypt_partial_output")
-{
-	auto chain = load_pkcs12_chain();
-	REQUIRE_FALSE(chain.empty());
-	auto leaf_key = chain.front().private_key();
-	REQUIRE(leaf_key);
-
-	auto ca = load_cert(test_cert::ca);
-	std::array<certificate, 1> roots{ca};
-
-	auto acc = stream_acceptor::make({.certificate_chain = chain, .private_key = *leaf_key});
-	REQUIRE(acc);
-	auto cn = stream_connector::make({.trusted_roots = roots, .use_system_trust = false});
-	REQUIRE(cn);
-
-	auto cn_hs = cn->connect({.peer_name = "server.pal.alt.ee"});
-	REQUIRE(cn_hs);
-	auto ac_hs = acc->accept();
-	REQUIRE(ac_hs);
-
-	auto [client, server] = pump_handshake<stream_acceptor>(*cn_hs, *ac_hs);
-
-	// Multi-record message (> one 16 KiB TLS record) encrypted into an output buffer that holds only
-	// about one record. With SSL_MODE_ENABLE_PARTIAL_WRITE the caller advances by consumed each call,
-	// so every call makes forward progress (consumed > 0); without partial writes consumed would be 0.
-	const std::vector<std::byte> msg(size_t{40} * 1000, std::byte{0x42});
-	std::array<std::byte, 20000> out{};
-	std::vector<std::byte> cipher;
-
-	size_t consumed = 0;
-	for (int i = 0; i < 64 && consumed < msg.size(); ++i)
-	{
-		auto enc = client.encrypt(std::span{msg}.subspan(consumed), out);
-		REQUIRE(enc);
-		CHECK(enc->consumed > 0);
-		cipher.insert(cipher.end(), out.data(), out.data() + enc->produced);
-		consumed += enc->consumed;
-		CHECK(enc->want_output == (consumed < msg.size()));
-	}
-	REQUIRE(consumed == msg.size());
-
-	// The reassembled ciphertext must decrypt back to the original message.
-	std::vector<std::byte> plain;
-	std::array<std::byte, 16384> dout{};
-	std::span<const std::byte> rem{cipher};
-	for (int i = 0; i < 64 && plain.size() < msg.size(); ++i)
-	{
-		auto dec = rem.empty() ? server.decrypt(dout) : server.decrypt(rem, dout);
-		REQUIRE(dec);
-		plain.insert(plain.end(), dout.data(), dout.data() + dec->produced);
-		rem = rem.subspan(dec->consumed);
-		if (rem.empty() && dec->produced == 0)
-		{
-			break;
-		}
-	}
-	CHECK(plain.size() == msg.size());
-	CHECK(plain == msg);
-}
+} // namespace

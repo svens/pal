@@ -553,9 +553,9 @@ bool apply_cert_chain (::SSL_CTX *ctx, std::span<const certificate> chain, const
 		return false;
 	}
 
-	for (size_t i = 1; i < chain.size(); ++i)
+	for (const auto &cert: chain.subspan(1))
 	{
-		if (auto *x509 = attorney::x509(chain[i]); x509 == nullptr || ::SSL_CTX_add1_chain_cert(ctx, x509) != 1)
+		if (auto *x509 = attorney::x509(cert); x509 == nullptr || ::SSL_CTX_add1_chain_cert(ctx, x509) != 1)
 		{
 			return false;
 		}

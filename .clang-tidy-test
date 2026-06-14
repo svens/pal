@@ -1,6 +1,7 @@
 InheritParentConfig: true
 Checks: >-
   -bugprone-use-after-move,
+  -bugprone-unchecked-optional-access,
   -readability-function-cognitive-complexity,
   -readability-container-data-pointer,
   -readability-isolate-declaration,
