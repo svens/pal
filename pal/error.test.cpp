@@ -2,7 +2,6 @@
 #include <pal/test.hpp>
 #include <catch2/catch_test_macros.hpp>
 #include <catch2/generators/catch_generators.hpp>
-#include <type_traits>
 
 #include <pal/version.hpp>
 #if __pal_os_linux || __pal_os_macos

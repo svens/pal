@@ -1,7 +1,6 @@
 #include <pal/crypto/random.hpp>
 #include <pal/crypto/test.hpp>
 #include <catch2/catch_test_macros.hpp>
-#include <array>
 #include <cstdint>
 #include <string>
 

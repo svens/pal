@@ -9,6 +9,7 @@
 #include <array>
 #include <optional>
 #include <ranges>
+#include <string>
 #include <string_view>
 #include <vector>
 
@@ -30,9 +31,9 @@ auto load_cert (const test_cert::info &info)
 	return std::move(*cert);
 }
 
-auto load_pkcs12_chain ()
+auto load_pkcs12_chain (const auto &pkcs12)
 {
-	auto store = certificate_store::from_pkcs12(test_cert::pkcs12_data);
+	auto store = certificate_store::from_pkcs12(pkcs12);
 	REQUIRE(store);
 	return std::ranges::to<std::vector<certificate>>(*store);
 }
@@ -155,9 +156,7 @@ std::pair<connected_channel, connected_channel> connect_pair (
 	return {std::move(*handshake.client), std::move(*handshake.server)};
 }
 
-// A client's first step on empty input emits a real ClientHello. Sniffing it (rather than a hand-encoded
-// header) grounds the positive verdict in secure_channel actual wire output, and corrupting one field of it
-// grounds each negative gate in a record that is otherwise valid.
+// Produce ClientHello for sniffing tests
 template <typename Connector>
 std::vector<std::byte> make_client_hello ()
 {
@@ -192,18 +191,18 @@ struct datagram
 
 TEST_CASE("crypto/secure_channel/sniff_stream") //{{{1
 {
-	SECTION("empty -> need_more")
+	SECTION("empty")
 	{
 		CHECK(sniff_stream(std::span<const std::byte>{}) == wire_protocol::need_more);
 	}
 
-	SECTION("plaintext traffic -> plain")
+	SECTION("plaintext")
 	{
 		// A realistic non-TLS payload (HTTP request) multiplexed on the same port classifies as plain.
 		CHECK(sniff_stream(std::string_view{"GET / "}) == wire_protocol::plain);
 	}
 
-	SECTION("real ClientHello")
+	SECTION("client_hello")
 	{
 		const auto hello = make_client_hello<stream_connector>();
 		CHECK(sniff_stream(hello) == wire_protocol::tls);
@@ -228,13 +227,13 @@ TEST_CASE("crypto/secure_channel/sniff_stream") //{{{1
 
 TEST_CASE("crypto/secure_channel/sniff_datagram") //{{{1
 {
-	SECTION("too short -> plain")
+	SECTION("too_short")
 	{
 		const std::array<std::byte, 8> bytes{};
 		CHECK(sniff_datagram(bytes) == wire_protocol::plain);
 	}
 
-	SECTION("real ClientHello")
+	SECTION("client_hello")
 	{
 		const auto hello = make_client_hello<datagram_connector>();
 		CHECK(sniff_datagram(hello) == wire_protocol::dtls);
@@ -272,31 +271,31 @@ TEST_CASE("crypto/secure_channel/dtls_record_size") //{{{1
 		return bytes;
 	};
 
-	SECTION("buffer shorter than record header -> whole buffer")
+	SECTION("short_buffer")
 	{
 		const std::array<std::byte, 8> bytes{};
 		CHECK(dtls_record_size(bytes) == bytes.size());
 	}
 
-	SECTION("header only, zero-length payload")
+	SECTION("empty_payload")
 	{
 		const auto bytes = make_record(0, 13);
 		CHECK(dtls_record_size(bytes) == 13);
 	}
 
-	SECTION("single record sized exactly")
+	SECTION("exact_record")
 	{
 		const auto bytes = make_record(4, 17); // 13 header + 4 payload
 		CHECK(dtls_record_size(bytes) == 17);
 	}
 
-	SECTION("first of multiple records")
+	SECTION("first_of_many")
 	{
 		const auto bytes = make_record(4, 30); // first record is 17, trailing bytes follow
 		CHECK(dtls_record_size(bytes) == 17);
 	}
 
-	SECTION("claimed length overruns buffer -> clamped to whole buffer")
+	SECTION("length_overruns")
 	{
 		const auto bytes = make_record(100, 17); // claims 113, only 17 present
 		CHECK(dtls_record_size(bytes) == bytes.size());
@@ -307,7 +306,7 @@ TEST_CASE("crypto/secure_channel/error_category") //{{{1
 {
 #define __pal_errc(Code, Message) secure_channel_errc::Code,
 
-	SECTION("known codes")
+	SECTION("known")
 	{
 		const std::error_code ec = GENERATE(values({__pal_secure_channel_errc(__pal_errc)}));
 		CAPTURE(ec);
@@ -327,22 +326,47 @@ TEST_CASE("crypto/secure_channel/error_category") //{{{1
 #undef __pal_errc
 }
 
+TEST_CASE("crypto/secure_channel/verify_relax") //{{{1
+{
+	SECTION("any")
+	{
+		CHECK_FALSE(any(verify_relax::none));
+		CHECK(any(verify_relax::self_signed));
+	}
+
+	SECTION("combine")
+	{
+		CHECK((verify_relax::none | verify_relax::self_signed) == verify_relax::self_signed);
+		CHECK((verify_relax::self_signed | verify_relax::none) == verify_relax::self_signed);
+	}
+
+	SECTION("mask")
+	{
+		CHECK((verify_relax::self_signed & verify_relax::self_signed) == verify_relax::self_signed);
+		CHECK((verify_relax::self_signed & verify_relax::none) == verify_relax::none);
+	}
+
+	SECTION("clear")
+	{
+		CHECK((verify_relax::self_signed & ~verify_relax::self_signed) == verify_relax::none);
+	}
+}
+
 TEMPLATE_TEST_CASE("crypto/secure_channel/channel", "", stream, datagram) //{{{1
 {
 	using acceptor = TestType::acceptor;
 	using connector = TestType::connector;
 
-	auto chain = load_pkcs12_chain();
+	auto chain = load_pkcs12_chain(test_cert::pkcs12_data);
 	REQUIRE_FALSE(chain.empty());
 	auto leaf_key = chain.front().private_key();
 	REQUIRE(leaf_key);
 	const std::array roots{load_cert(test_cert::ca)};
 
-	// Non-const: Catch2 re-runs the body per SECTION, so each section gets a fresh copy to tweak in place.
 	typename acceptor::options accept_options{.certificate_chain = chain, .private_key = *leaf_key};
 	typename connector::options connect_options{.trusted_roots = roots, .use_system_trust = false};
 
-	SECTION("handshake / round trip / close")
+	SECTION("round_trip")
 	{
 		auto [client, server] = connect_pair<TestType>(accept_options, connect_options);
 
@@ -424,12 +448,115 @@ TEMPLATE_TEST_CASE("crypto/secure_channel/channel", "", stream, datagram) //{{{1
 		CHECK(handshake.error == secure_channel_errc::peer_hostname_mismatch);
 	}
 
-	SECTION("verification fails (empty trust)")
+	SECTION("empty_trust")
 	{
 		// Empty trust + use_system_trust=false -> strict verification rejects the server cert.
 		connect_options.trusted_roots = {};
 		auto handshake = establish<TestType>(accept_options, connect_options);
 		CHECK(handshake.error == secure_channel_errc::peer_verification_failed);
+	}
+
+	SECTION("self_signed")
+	{
+		// note: here we use EC because it is self-signed
+		auto ec_chain = load_pkcs12_chain(test_cert::pkcs12_ec_data);
+		REQUIRE_FALSE(ec_chain.empty());
+		auto ec_key = ec_chain.front().private_key();
+		REQUIRE(ec_key);
+
+		const typename acceptor::options ec_accept{.certificate_chain = ec_chain, .private_key = *ec_key};
+		const typename connector::options strict_connect{.trusted_roots = {}, .use_system_trust = false};
+
+		auto run = [&] (verify_relax relax)
+		{
+			auto a = acceptor::make(ec_accept);
+			REQUIRE(a);
+			auto c = connector::make(strict_connect);
+			REQUIRE(c);
+			auto connect_handshake = c->connect({.relax = relax});
+			REQUIRE(connect_handshake);
+			auto accept_handshake = a->accept();
+			REQUIRE(accept_handshake);
+			return pump(*connect_handshake, *accept_handshake);
+		};
+
+		// Without the relaxation the self-signed server cert is rejected.
+		auto result = run(verify_relax::none);
+		CHECK(result.error == secure_channel_errc::peer_verification_failed);
+
+		// With it the same cert is accepted and the handshake completes.
+		result = run(verify_relax::self_signed);
+		CHECK_FALSE(result.error);
+	}
+
+	SECTION("invalid_configuration")
+	{
+		// Connector advertising a client-cert chain but no matching private key.
+		{
+			const typename connector::options bad = {
+				.trusted_roots = roots,
+				.use_system_trust = false,
+				.certificate_chain = chain,
+				.private_key = key{},
+			};
+			auto c = connector::make(bad);
+			REQUIRE_FALSE(c);
+			CHECK(c.error() == secure_channel_errc::invalid_configuration);
+		}
+
+		// ALPN entry exceeding the per-protocol length limit (encoded in a single length byte).
+		{
+			const std::string proto(256, 'h');
+			const std::array<std::string_view, 1> protocols{proto};
+			const typename connector::options bad = {
+				.trusted_roots = roots,
+				.use_system_trust = false,
+				.supported_protocols = protocols,
+			};
+			auto c = connector::make(bad);
+			REQUIRE_FALSE(c);
+			CHECK(c.error() == secure_channel_errc::invalid_configuration);
+		}
+
+		// peer_name longer than the 255-byte SNI limit.
+		{
+			auto c = connector::make(connect_options);
+			REQUIRE(c);
+			const std::string name(256, 'a');
+			auto h = c->connect({.peer_name = name});
+			REQUIRE_FALSE(h);
+			CHECK(h.error() == secure_channel_errc::invalid_configuration);
+		}
+	}
+
+	SECTION("make: not_enough_memory")
+	{
+		const pal_test::bad_alloc_once x;
+		auto acc = acceptor::make(accept_options);
+		REQUIRE_FALSE(acc);
+		CHECK(acc.error() == std::errc::not_enough_memory);
+	}
+
+	SECTION("accept: not_enough_memory")
+	{
+		auto acc = acceptor::make(accept_options);
+		REQUIRE(acc);
+
+		const pal_test::bad_alloc_once x;
+		auto hs = acc->accept();
+		REQUIRE_FALSE(hs);
+		CHECK(hs.error() == std::errc::not_enough_memory);
+	}
+
+	SECTION("connect: not_enough_memory")
+	{
+		auto cn = connector::make(connect_options);
+		REQUIRE(cn);
+
+		const pal_test::bad_alloc_once x;
+		auto hs = cn->connect({});
+		REQUIRE_FALSE(hs);
+		CHECK(hs.error() == std::errc::not_enough_memory);
 	}
 
 	SECTION("alpn")
@@ -482,6 +609,28 @@ TEMPLATE_TEST_CASE("crypto/secure_channel/channel", "", stream, datagram) //{{{1
 		auto enc = client.encrypt(pal_test::case_name(), buf);
 		REQUIRE_FALSE(enc);
 		CHECK(enc.error() == secure_channel_errc::closed);
+	}
+
+	SECTION("close_idempotent")
+	{
+		auto [client, server] = connect_pair<TestType>(accept_options, connect_options);
+
+		std::array<std::byte, 256> buf{};
+		REQUIRE(client.close(buf));
+
+		auto again = client.close(buf);
+		REQUIRE(again);
+		CHECK(again->produced == 0);
+	}
+
+	SECTION("close_undersized_output")
+	{
+		auto [client, server] = connect_pair<TestType>(accept_options, connect_options);
+
+		std::array<std::byte, 1> tiny{};
+		auto tight = client.close(tiny);
+		REQUIRE(tight);
+		CHECK(tight->want_output);
 	}
 
 	if constexpr (!TestType::is_datagram)
@@ -642,7 +791,7 @@ TEMPLATE_TEST_CASE("crypto/secure_channel/factory_outlives_inputs", "", stream, 
 	std::optional<typename TestType::connector> connector;
 
 	{
-		auto chain = load_pkcs12_chain();
+		auto chain = load_pkcs12_chain(test_cert::pkcs12_data);
 		REQUIRE_FALSE(chain.empty());
 		auto leaf_key = chain.front().private_key();
 		REQUIRE(leaf_key);
