@@ -410,7 +410,7 @@ public:
 	///
 	/// Subsequent `encrypt()` calls return `secure_channel_errc::closed`. `decrypt()` continues to function so
 	/// the caller may observe the peer's `close_notify` and any in-flight data.
-	result<channel_result> close (mutable_buffer auto &&out) noexcept
+	result<channel_result> close_notify (mutable_buffer auto &&out) noexcept
 	{
 		return close_impl(std::as_writable_bytes(std::span{out}));
 	}

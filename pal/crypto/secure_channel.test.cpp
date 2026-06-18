@@ -22,22 +22,6 @@ using namespace pal::crypto;
 // Scratch buffer size for handshake I/O: comfortably larger than any single (D)TLS record or flight.
 constexpr auto io_buffer_size = 16 * 1024;
 
-// identity helpers {{{1
-
-auto load_cert (const test_cert::info &info)
-{
-	auto cert = certificate::from_pem(info.pem);
-	REQUIRE(cert);
-	return std::move(*cert);
-}
-
-auto load_pkcs12_chain (const auto &pkcs12)
-{
-	auto store = certificate_store::from_pkcs12(pkcs12);
-	REQUIRE(store);
-	return std::ranges::to<std::vector<certificate>>(*store);
-}
-
 // handshake driver {{{1
 
 struct handshake_result
@@ -357,11 +341,11 @@ TEMPLATE_TEST_CASE("crypto/secure_channel/channel", "", stream, datagram) //{{{1
 	using acceptor = TestType::acceptor;
 	using connector = TestType::connector;
 
-	auto chain = load_pkcs12_chain(test_cert::pkcs12_data);
+	auto chain = test_cert::load_pkcs12(test_cert::pkcs12_data);
 	REQUIRE_FALSE(chain.empty());
 	auto leaf_key = chain.front().private_key();
 	REQUIRE(leaf_key);
-	const std::array roots{load_cert(test_cert::ca)};
+	const std::array roots{test_cert::load_pem(test_cert::ca)};
 
 	typename acceptor::options accept_options{.certificate_chain = chain, .private_key = *leaf_key};
 	typename connector::options connect_options{.trusted_roots = roots, .use_system_trust = false};
@@ -389,7 +373,7 @@ TEMPLATE_TEST_CASE("crypto/secure_channel/channel", "", stream, datagram) //{{{1
 
 		// Server closes, client observes peer_closed.
 		std::array<std::byte, 256> close_buf{};
-		auto srv_close = server.close(close_buf);
+		auto srv_close = server.close_notify(close_buf);
 		REQUIRE(srv_close);
 		CHECK(srv_close->produced > 0);
 
@@ -459,7 +443,7 @@ TEMPLATE_TEST_CASE("crypto/secure_channel/channel", "", stream, datagram) //{{{1
 	SECTION("self_signed")
 	{
 		// note: here we use EC because it is self-signed
-		auto ec_chain = load_pkcs12_chain(test_cert::pkcs12_ec_data);
+		auto ec_chain = test_cert::load_pkcs12(test_cert::pkcs12_ec_data);
 		REQUIRE_FALSE(ec_chain.empty());
 		auto ec_key = ec_chain.front().private_key();
 		REQUIRE(ec_key);
@@ -604,7 +588,7 @@ TEMPLATE_TEST_CASE("crypto/secure_channel/channel", "", stream, datagram) //{{{1
 		auto client = connect_pair<TestType>(accept_options, connect_options).first;
 		std::array<std::byte, 256> buf{};
 
-		REQUIRE(client.close(buf));
+		REQUIRE(client.close_notify(buf));
 
 		auto enc = client.encrypt(pal_test::case_name(), buf);
 		REQUIRE_FALSE(enc);
@@ -616,9 +600,9 @@ TEMPLATE_TEST_CASE("crypto/secure_channel/channel", "", stream, datagram) //{{{1
 		auto [client, server] = connect_pair<TestType>(accept_options, connect_options);
 
 		std::array<std::byte, 256> buf{};
-		REQUIRE(client.close(buf));
+		REQUIRE(client.close_notify(buf));
 
-		auto again = client.close(buf);
+		auto again = client.close_notify(buf);
 		REQUIRE(again);
 		CHECK(again->produced == 0);
 	}
@@ -628,7 +612,7 @@ TEMPLATE_TEST_CASE("crypto/secure_channel/channel", "", stream, datagram) //{{{1
 		auto [client, server] = connect_pair<TestType>(accept_options, connect_options);
 
 		std::array<std::byte, 1> tiny{};
-		auto tight = client.close(tiny);
+		auto tight = client.close_notify(tiny);
 		REQUIRE(tight);
 		CHECK(tight->want_output);
 	}
@@ -791,11 +775,11 @@ TEMPLATE_TEST_CASE("crypto/secure_channel/factory_outlives_inputs", "", stream, 
 	std::optional<typename TestType::connector> connector;
 
 	{
-		auto chain = load_pkcs12_chain(test_cert::pkcs12_data);
+		auto chain = test_cert::load_pkcs12(test_cert::pkcs12_data);
 		REQUIRE_FALSE(chain.empty());
 		auto leaf_key = chain.front().private_key();
 		REQUIRE(leaf_key);
-		const std::array roots{load_cert(test_cert::ca)};
+		const std::array roots{test_cert::load_pem(test_cert::ca)};
 
 		{
 			auto r = TestType::acceptor::make({.certificate_chain = chain, .private_key = *leaf_key});
