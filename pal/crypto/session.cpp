@@ -20,13 +20,15 @@ constexpr size_t close_notify_cap = 256;
 struct session::impl_type //{{{1
 {
 	connected_channel channel;
-	std::array<std::byte, record_cap> wire_buf{};
+	std::array<std::byte, record_cap> wire{};
 	size_t first = 0;
 	size_t last = 0;
 	bool pending_plain = false;
+	enum transport transport;
 
-	explicit impl_type (connected_channel ch) noexcept
-		: channel{std::move(ch)}
+	explicit impl_type (connected_channel channel, enum transport transport) noexcept
+		: channel{std::move(channel)}
+		, transport{transport}
 	{
 	}
 
@@ -39,13 +41,13 @@ struct session::impl_type //{{{1
 	/// View of the unconsumed ciphertext in the buffer.
 	[[nodiscard]] std::span<const std::byte> ciphertext () const noexcept
 	{
-		return std::span{wire_buf}.subspan(first, last - first);
+		return std::span{wire}.subspan(first, last - first);
 	}
 
 	/// Space available for the next transport read.
 	std::span<std::byte> free_space () noexcept
 	{
-		return std::span{wire_buf}.subspan(last);
+		return std::span{wire}.subspan(last);
 	}
 
 	/// Mark \a n bytes at the front as consumed by the TLS engine.
@@ -65,19 +67,24 @@ struct session::impl_type //{{{1
 	{
 		if (first != 0)
 		{
-			std::memmove(wire_buf.data(), wire_buf.data() + first, last - first);
+			std::memmove(wire.data(), wire.data() + first, last - first);
 			last -= first;
 			first = 0;
 		}
 	}
 
-	/// Write \a data to \a transport, looping until all bytes are sent.
-	static result<size_t> write (__session::device &transport, std::span<const std::byte> data) noexcept
+	/// Write \a data to \a dev.
+	///
+	/// For stream: loops until all bytes are sent. For datagram: sends each record separately.
+	result<size_t> write (__session::device &dev, std::span<const std::byte> data) const noexcept
 	{
 		size_t sent_total = 0;
 		while (sent_total < data.size())
 		{
-			auto sent = transport.send(data.subspan(sent_total));
+			const auto chunk = (transport == transport::datagram)
+				? data.subspan(sent_total, dtls_record_size(data.subspan(sent_total)))
+				: data.subspan(sent_total);
+			auto sent = dev.send(chunk);
 			if (!sent)
 			{
 				return pal::unexpected(sent.error());
@@ -87,10 +94,10 @@ struct session::impl_type //{{{1
 		return sent_total;
 	}
 
-	/// Read from \a transport into free_space(), returning bytes received.
-	[[nodiscard]] result<size_t> read (__session::device &transport) noexcept
+	/// Read from \a dev into free_space(), returning bytes received.
+	[[nodiscard]] result<size_t> read (__session::device &dev) noexcept
 	{
-		auto received = transport.receive(free_space());
+		auto received = dev.receive(free_space());
 		if (!received)
 		{
 			return pal::unexpected(received.error());
@@ -104,8 +111,8 @@ struct session::impl_type //{{{1
 
 session::session () noexcept = default;
 
-session::session (impl_ptr p) noexcept
-	: impl_{std::move(p)}
+session::session (impl_ptr impl) noexcept
+	: impl_{std::move(impl)}
 {
 }
 
@@ -118,25 +125,27 @@ session::operator bool () const noexcept
 	return impl_ != nullptr;
 }
 
-result<session> session::from (connected_channel &&ch) noexcept //{{{1
+result<session> session::from (connected_channel &&channel, transport transport) noexcept //{{{1
 {
-	return pal::make_unique<impl_type>(std::move(ch)).transform([] (auto p) { return session{std::move(p)}; });
+	return pal::make_unique<impl_type>(std::move(channel), transport).transform([] (auto p)
+	{
+		return session{std::move(p)};
+	});
 }
 
-result<session> session::run_handshake_impl (__session::device &transport, handshake_channel &hs) noexcept //{{{1
+result<session>
+session::run_handshake_impl (__session::device &dev, handshake_channel &handshake, transport transport) noexcept //{{{1
 {
-	auto p = pal::make_unique<impl_type>(connected_channel{});
-	if (!p)
+	auto session = from(connected_channel{}, transport);
+	if (!session)
 	{
-		return pal::unexpected(p.error());
+		return pal::unexpected(session.error());
 	}
-	auto &impl = **p;
 
 	std::array<std::byte, handshake_buf_cap> out_buf{};
-
-	for (;;)
+	for (auto &impl = *session->impl_;;)
 	{
-		auto step = hs.step(impl.ciphertext(), std::span{out_buf});
+		auto step = handshake.step(impl.ciphertext(), std::span{out_buf});
 		if (!step)
 		{
 			return pal::unexpected(step.error());
@@ -144,7 +153,7 @@ result<session> session::run_handshake_impl (__session::device &transport, hands
 
 		impl.consume(step->consumed);
 
-		if (auto write = impl.write(transport, std::span{out_buf}.first(step->produced)); !write)
+		if (auto write = impl.write(dev, std::span{out_buf}.first(step->produced)); !write)
 		{
 			return pal::unexpected(write.error());
 		}
@@ -153,7 +162,7 @@ result<session> session::run_handshake_impl (__session::device &transport, hands
 		{
 			impl.compact();
 			impl.channel = std::move(*step->connected);
-			return session{std::move(*p)};
+			return std::move(*session);
 		}
 
 		if (step->want_output)
@@ -163,21 +172,21 @@ result<session> session::run_handshake_impl (__session::device &transport, hands
 
 		impl.compact();
 
-		if (auto read = impl.read(transport); !read)
+		if (auto read = impl.read(dev); !read)
 		{
 			return pal::unexpected(read.error());
 		}
 	}
 }
 
-result<size_t> session::send_impl (__session::device &transport, std::span<const std::byte> plain) noexcept //{{{1
+result<size_t> session::send_impl (__session::device &dev, std::span<const std::byte> plain) noexcept //{{{1
 {
 	auto remaining = plain;
 	const size_t total = remaining.size();
 
 	while (!remaining.empty())
 	{
-		auto encrypt = impl_->channel.encrypt(remaining, impl_->wire_buf);
+		auto encrypt = impl_->channel.encrypt(remaining, impl_->wire);
 		if (!encrypt)
 		{
 			return pal::unexpected(encrypt.error());
@@ -185,7 +194,7 @@ result<size_t> session::send_impl (__session::device &transport, std::span<const
 
 		remaining = remaining.subspan(encrypt->consumed);
 
-		if (auto write = impl_->write(transport, std::span{impl_->wire_buf}.first(encrypt->produced)); !write)
+		if (auto write = impl_->write(dev, std::span{impl_->wire}.first(encrypt->produced)); !write)
 		{
 			return pal::unexpected(write.error());
 		}
@@ -194,7 +203,7 @@ result<size_t> session::send_impl (__session::device &transport, std::span<const
 	return total;
 }
 
-result<size_t> session::receive_impl (__session::device &transport, std::span<std::byte> out) noexcept //{{{1
+result<size_t> session::receive_impl (__session::device &dev, std::span<std::byte> out) noexcept //{{{1
 {
 	for (;;)
 	{
@@ -239,17 +248,16 @@ result<size_t> session::receive_impl (__session::device &transport, std::span<st
 
 		impl_->compact();
 
-		if (auto read = impl_->read(transport); !read)
+		if (auto read = impl_->read(dev); !read)
 		{
 			return pal::unexpected(read.error());
 		}
 	}
 }
 
-result<void> session::close_notify_impl (__session::device &transport) noexcept //{{{1
+result<void> session::close_notify_impl (__session::device &dev) noexcept //{{{1
 {
 	std::array<std::byte, close_notify_cap> out{};
-
 	for (;;)
 	{
 		auto close_notify = impl_->channel.close_notify(out);
@@ -258,7 +266,7 @@ result<void> session::close_notify_impl (__session::device &transport) noexcept 
 			return pal::unexpected(close_notify.error());
 		}
 
-		if (auto write = impl_->write(transport, std::span{out}.first(close_notify->produced)); !write)
+		if (auto write = impl_->write(dev, std::span{out}.first(close_notify->produced)); !write)
 		{
 			return pal::unexpected(write.error());
 		}

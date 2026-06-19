@@ -37,6 +37,7 @@ list(APPEND pal_sources
 	pal/crypto/secure_channel.openssl.cpp
 	pal/crypto/session.hpp
 	pal/crypto/session.cpp
+	pal/crypto/tls_wire.hpp
 	pal/crypto/signature.hpp
 	pal/crypto/signature.openssl.cpp
 	pal/crypto/signature.windows.cpp
@@ -59,4 +60,5 @@ list(APPEND pal_test_sources
 	pal/crypto/test.hpp
 	pal/crypto/test_certs.hpp
 	pal/crypto/test_pkcs12.hpp
+	pal/crypto/tls_wire.test.cpp
 )

@@ -19,7 +19,7 @@ namespace pal::crypto
 // clang-format off
 
 /// Satisfied when \a T can send a \a ConstBuffer and receive into a \a MutableBuffer,
-/// both noexcept, both returning the byte count.
+/// both noexcept, both returning the byte count, and declares its transport type.
 template <typename T, typename ConstBuffer, typename MutableBuffer>
 concept io_device = requires(T &t, ConstBuffer out, MutableBuffer in)
 {
@@ -27,6 +27,7 @@ concept io_device = requires(T &t, ConstBuffer out, MutableBuffer in)
 	requires mutable_buffer<MutableBuffer>;
 	{ t.send(out) } noexcept -> std::same_as<result<size_t>>;
 	{ t.receive(in) } noexcept -> std::same_as<result<size_t>>;
+	requires std::same_as<std::remove_cvref_t<decltype(T::transport_value)>, transport>;
 };
 
 namespace __session
@@ -88,23 +89,23 @@ public:
 	explicit operator bool () const noexcept;
 
 	/// Wrap an already-established \a channel in a session.
-	static result<session> from (connected_channel &&) noexcept;
+	static result<session> from (connected_channel &&, transport) noexcept;
 
 	/// Run the TLS handshake to completion over \a transport, returning the live session.
 	template <io_device<std::span<const std::byte>, std::span<std::byte>> T>
-	static result<session> run_handshake (T &t, handshake_channel &hs) noexcept
+	static result<session> run_handshake (T &transport, handshake_channel &handshake) noexcept
 	{
-		__session::adapter a{t};
-		return run_handshake_impl(a, hs);
+		__session::adapter a{transport};
+		return run_handshake_impl(a, handshake, T::transport_value);
 	}
 
 	/// Encrypt \a plain and flush all ciphertext through \a transport.
 	///
 	/// All-or-nothing: returns \c plain's byte count on success.
 	template <io_device<std::span<const std::byte>, std::span<std::byte>> T>
-	result<size_t> send (T &t, const_buffer auto const &plain) noexcept
+	result<size_t> send (T &transport, const_buffer auto const &plain) noexcept
 	{
-		__session::adapter a{t};
+		__session::adapter a{transport};
 		return send_impl(a, std::as_bytes(std::span{plain}));
 	}
 
@@ -112,17 +113,17 @@ public:
 	///
 	/// Returns \c closed error when the peer sends \c close_notify.
 	template <io_device<std::span<const std::byte>, std::span<std::byte>> T>
-	result<size_t> receive (T &t, mutable_buffer auto &&buf) noexcept
+	result<size_t> receive (T &transport, mutable_buffer auto &&buf) noexcept
 	{
-		__session::adapter a{t};
+		__session::adapter a{transport};
 		return receive_impl(a, std::as_writable_bytes(std::span{buf}));
 	}
 
 	/// Send a TLS \c close_notify alert through \a transport.
 	template <io_device<std::span<const std::byte>, std::span<std::byte>> T>
-	result<void> close_notify (T &t) noexcept
+	result<void> close_notify (T &transport) noexcept
 	{
-		__session::adapter a{t};
+		__session::adapter a{transport};
 		return close_notify_impl(a);
 	}
 
@@ -140,7 +141,7 @@ private:
 
 	explicit session (impl_ptr) noexcept;
 
-	static result<session> run_handshake_impl (__session::device &, handshake_channel &) noexcept;
+	static result<session> run_handshake_impl (__session::device &, handshake_channel &, transport) noexcept;
 	result<size_t> send_impl (__session::device &, std::span<const std::byte>) noexcept;
 	result<size_t> receive_impl (__session::device &, std::span<std::byte>) noexcept;
 	result<void> close_notify_impl (__session::device &) noexcept;
