@@ -239,8 +239,7 @@ TEMPLATE_TEST_CASE("net/basic_secure_socket", "", stream, datagram) //{{{1
 
 	SECTION("receive_small_buffer")
 	{
-		// DTLS MTU constrains single-record size; 256 bytes is within any DTLS MTU.
-		constexpr size_t msg_size = (TestType::transport_value == crypto::transport::stream) ? 4096 : 256;
+		const size_t msg_size = std::min(4096UL, client.max_message_size());
 		const std::vector<std::byte> msg(msg_size, std::byte{0x42});
 		REQUIRE(server.send(msg));
 
@@ -258,9 +257,7 @@ TEMPLATE_TEST_CASE("net/basic_secure_socket", "", stream, datagram) //{{{1
 	SECTION("send_large_payload")
 	{
 		// TLS fragments large messages; DTLS is limited to one record per send (within MTU).
-		constexpr size_t msg_size = (TestType::transport_value == crypto::transport::stream)
-			? 40UL * 1024
-			: 256;
+		const size_t msg_size = std::min(40UL * 1024, client.max_message_size());
 		const std::vector<std::byte> msg(msg_size, std::byte{0x42});
 		auto send = client.send(msg);
 		REQUIRE(send);
@@ -315,6 +312,45 @@ TEMPLATE_TEST_CASE("net/basic_secure_socket", "", stream, datagram) //{{{1
 		auto [server, client] = make_connected_pair<TestType>(*server_factory, *client_factory);
 		CHECK(client.selected_protocol() == "http/1.1");
 		CHECK(server.selected_protocol() == "http/1.1");
+	}
+
+	SECTION("max_message_size")
+	{
+		if constexpr (TestType::transport_value == crypto::transport::stream)
+		{
+			CHECK(client.max_message_size() == SIZE_MAX);
+		}
+		else
+		{
+			CHECK(client.max_message_size() > 0);
+			CHECK(client.max_message_size() < 65536);
+		}
+	}
+
+	SECTION("local_endpoint")
+	{
+		auto endpoint = client.local_endpoint();
+		REQUIRE(endpoint);
+		CHECK(endpoint->address() == ip::address_v4::loopback);
+		CHECK(endpoint->port() != ip::port_type::unspecified);
+	}
+
+	SECTION("remote_endpoint")
+	{
+		auto endpoint = client.remote_endpoint();
+		REQUIRE(endpoint);
+		CHECK(endpoint->address() == ip::address_v4::loopback);
+		CHECK(endpoint->port() != ip::port_type::unspecified);
+	}
+
+	SECTION("set_get_option")
+	{
+		using namespace std::chrono_literals;
+		REQUIRE(client.set_option(net::receive_timeout{200ms}));
+
+		net::receive_timeout opt{};
+		REQUIRE(client.get_option(opt));
+		CHECK(opt.timeout() >= 200ms);
 	}
 
 	SECTION("release")

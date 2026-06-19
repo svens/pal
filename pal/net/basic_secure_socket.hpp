@@ -33,8 +33,9 @@ inline constexpr crypto::transport transport_v<basic_datagram_socket<Protocol>> 
 /// TLS/DTLS socket.
 ///
 /// Pure TLS/DTLS layer over a caller-owned \c Protocol::socket. The socket must be
-/// fully configured (options, connect) before transferring ownership via the
-/// factory functions; no transport API is exposed after that point.
+/// fully configured (connected) before transferring ownership via the factory functions.
+/// Endpoint queries, socket options, and TLS-level I/O remain accessible afterward;
+/// raw transport I/O (send/receive/close at the socket level) is not exposed.
 ///
 /// Move-only; moved-from instances have \c operator bool() == false.
 template <typename Protocol, crypto::transport Transport>
@@ -91,6 +92,40 @@ public:
 	[[nodiscard]] std::string_view selected_protocol () const noexcept
 	{
 		return session_.selected_protocol();
+	}
+
+	/// Return the maximum plaintext size for a single \c send call.
+	///
+	/// For DTLS, this is the MTU-constrained limit; for TLS, \c SIZE_MAX.
+	[[nodiscard]] size_t max_message_size () const noexcept
+	{
+		return session_.max_message_size();
+	}
+
+	/// Return the local endpoint to which the underlying socket is bound.
+	[[nodiscard]] result<endpoint_type> local_endpoint () const noexcept
+	{
+		return transport_.socket.local_endpoint();
+	}
+
+	/// Return the remote endpoint to which the underlying socket is connected.
+	[[nodiscard]] result<endpoint_type> remote_endpoint () const noexcept
+	{
+		return transport_.socket.remote_endpoint();
+	}
+
+	/// Get socket \a option from the underlying socket.
+	template <gettable_socket_option<protocol_type> Option>
+	[[nodiscard]] result<void> get_option (Option &option) const noexcept
+	{
+		return transport_.socket.get_option(option);
+	}
+
+	/// Set socket \a option on the underlying socket.
+	template <settable_socket_option<protocol_type> Option>
+	[[nodiscard]] result<void> set_option (const Option &option) noexcept
+	{
+		return transport_.socket.set_option(option);
 	}
 
 	/// Release the underlying OS socket handle and destroy the TLS/DTLS session.

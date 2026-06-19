@@ -290,6 +290,11 @@ std::string_view session::selected_protocol () const noexcept
 	return impl_->channel.selected_protocol();
 }
 
+size_t session::max_message_size () const noexcept
+{
+	return impl_->channel.max_message_size();
+}
+
 // }}}1
 
 } // namespace pal::crypto

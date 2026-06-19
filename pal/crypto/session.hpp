@@ -133,6 +133,12 @@ public:
 	/// Return the ALPN-selected protocol, or an empty view if none was negotiated.
 	[[nodiscard]] std::string_view selected_protocol () const noexcept;
 
+	/// Return the maximum plaintext size for a single send call.
+	///
+	/// For DTLS (datagram transport), this is the MTU-constrained limit.
+	/// For TLS (stream transport), this is \c SIZE_MAX (TLS fragments automatically).
+	[[nodiscard]] size_t max_message_size () const noexcept;
+
 private:
 
 	struct impl_type;
