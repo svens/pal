@@ -5,16 +5,27 @@
  * UDP protocol
  */
 
+#include <pal/crypto/tls_wire.hpp>
 #include <pal/net/basic_datagram_socket.hpp>
 #include <pal/net/ip/basic_endpoint.hpp>
-#include <pal/net/ip/basic_resolver.hpp>
 
 #if __pal_net_posix
 	#include <netinet/in.h>
 #endif
 
+namespace pal::net
+{
+
+template <typename Protocol, crypto::transport Transport>
+class basic_secure_socket;
+
+} // namespace pal::net
+
 namespace pal::net::ip
 {
+
+template <typename Protocol>
+class basic_resolver;
 
 /// UDP protocol type
 class udp
@@ -49,6 +60,9 @@ public:
 	{
 		return SOCK_DGRAM;
 	}
+
+	/// DTLS socket type for UDP
+	using secure_socket = net::basic_secure_socket<udp, crypto::transport::datagram>;
 
 	/// Return protocol number (IPPROTO_UDP)
 	[[nodiscard]] static constexpr int protocol () noexcept

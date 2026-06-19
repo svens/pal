@@ -5,10 +5,10 @@
  * TCP protocol
  */
 
+#include <pal/crypto/tls_wire.hpp>
 #include <pal/net/basic_socket_acceptor.hpp>
 #include <pal/net/basic_stream_socket.hpp>
 #include <pal/net/ip/basic_endpoint.hpp>
-#include <pal/net/ip/basic_resolver.hpp>
 #include <pal/net/socket_option.hpp>
 
 #if __pal_net_posix
@@ -18,8 +18,19 @@
 	#include <ws2tcpip.h>
 #endif
 
+namespace pal::net
+{
+
+template <typename Protocol, crypto::transport Transport>
+class basic_secure_socket;
+
+} // namespace pal::net
+
 namespace pal::net::ip
 {
+
+template <typename Protocol>
+class basic_resolver;
 
 /// TCP protocol type
 class tcp
@@ -34,6 +45,9 @@ public:
 
 	/// Acceptor type for TCP
 	using acceptor = net::basic_socket_acceptor<tcp>;
+
+	/// TLS socket type for TCP
+	using secure_socket = net::basic_secure_socket<tcp, crypto::transport::stream>;
 
 	/// Resolver type for TCP
 	using resolver = basic_resolver<tcp>;
