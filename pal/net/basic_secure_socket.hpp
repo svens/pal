@@ -207,7 +207,8 @@ template <typename Socket>
 make_secure_socket (
 	Socket socket,
 	const crypto::connector<__socket::transport_v<Socket>> &connector,
-	const crypto::connector_handshake_options &opts = {}) noexcept
+	const crypto::connector_handshake_options &opts = {}
+) noexcept
 {
 	using Protocol = Socket::protocol_type;
 	using secure_socket = basic_secure_socket<Protocol, __socket::transport_v<Socket>>;
@@ -234,7 +235,8 @@ template <typename Socket>
 make_secure_socket (
 	Socket socket,
 	const crypto::acceptor<__socket::transport_v<Socket>> &acceptor,
-	const crypto::acceptor_handshake_options &opts = {}) noexcept
+	const crypto::acceptor_handshake_options &opts = {}
+) noexcept
 {
 	using Protocol = Socket::protocol_type;
 	using secure_socket = basic_secure_socket<Protocol, __socket::transport_v<Socket>>;

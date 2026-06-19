@@ -2,14 +2,12 @@
 
 #if __pal_crypto_windows
 
-// clang-format off
 #include <pal/crypto/__certificate.hpp>
 #include <pal/crypto/digest_algorithm.hpp>
 #include <pal/crypto/signature.hpp>
 #include <pal/memory.hpp>
 #include <bcrypt.h>
 #include <ncrypt.h>
-// clang-format on
 
 namespace pal::crypto
 {

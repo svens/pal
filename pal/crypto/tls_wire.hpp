@@ -30,7 +30,7 @@ enum class transport : int
 ///
 /// Default `none` requires strict trust-chain verification. Bits enable
 /// specific deviations; combine with bitwise operators.
-enum class verify_relax: unsigned
+enum class verify_relax : unsigned
 {
 	none = 0,
 
@@ -49,7 +49,7 @@ constexpr verify_relax operator& (verify_relax a, verify_relax b) noexcept
 	return static_cast<verify_relax>(std::to_underlying(a) & std::to_underlying(b));
 }
 
-constexpr verify_relax operator~ (verify_relax a) noexcept
+constexpr verify_relax operator~(verify_relax a) noexcept
 {
 	return static_cast<verify_relax>(~std::to_underlying(a));
 }

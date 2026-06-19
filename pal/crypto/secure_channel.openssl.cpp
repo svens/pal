@@ -2,7 +2,6 @@
 
 #if __pal_crypto_openssl
 
-// clang-format off
 #include <pal/crypto/__certificate.hpp>
 #include <pal/crypto/secure_channel.hpp>
 #include <pal/memory.hpp>
@@ -16,7 +15,6 @@
 #include <mutex>
 #include <optional>
 #include <utility>
-// clang-format on
 
 namespace pal::crypto
 {

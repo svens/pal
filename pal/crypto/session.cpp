@@ -127,10 +127,12 @@ session::operator bool () const noexcept
 
 result<session> session::from (connected_channel &&channel, transport transport) noexcept //{{{1
 {
+	// clang-format off
 	return pal::make_unique<impl_type>(std::move(channel), transport).transform([] (auto p)
 	{
 		return session{std::move(p)};
 	});
+	// clang-format on
 }
 
 result<session>

@@ -2,10 +2,8 @@
 
 #if __pal_crypto_openssl
 
-// clang-format off
 #include <pal/crypto/__certificate.hpp>
 #include <algorithm>
-// clang-format on
 
 namespace pal::crypto
 {

@@ -14,8 +14,8 @@ namespace
 {
 
 using pal::const_buffer;
-using pal::mutable_buffer;
 using pal::make_unexpected;
+using pal::mutable_buffer;
 using pal::result;
 
 using pal_test::connected_pair;
@@ -186,14 +186,17 @@ struct blocking_pair
 		return {.pair = *this, .buffer = c2s, .sink = s2c};
 	}
 };
-static_assert(io_device<blocking_pair<transport::stream>::half_device, std::span<const std::byte>, std::span<std::byte>>);
-static_assert(io_device<blocking_pair<transport::datagram>::half_device, std::span<const std::byte>, std::span<std::byte>>);
+static_assert(
+	io_device<blocking_pair<transport::stream>::half_device, std::span<const std::byte>, std::span<std::byte>>
+);
+static_assert(
+	io_device<blocking_pair<transport::datagram>::half_device, std::span<const std::byte>, std::span<std::byte>>
+);
 
 // pump_handshake {{{1
 
-connected_pair<connected_channel> pump_handshake (
-	handshake_channel &client_handshake,
-	handshake_channel &server_handshake)
+connected_pair<connected_channel>
+pump_handshake (handshake_channel &client_handshake, handshake_channel &server_handshake)
 {
 	constexpr size_t buf_cap = 16UL * 1024;
 
@@ -245,7 +248,8 @@ template <typename Traits>
 connected_pair<session> make_session_pair (
 	const typename Traits::acceptor &server_factory,
 	const typename Traits::connector &client_factory,
-	const connector_handshake_options &opts = {.peer_name = "server.pal.alt.ee"})
+	const connector_handshake_options &opts = {.peer_name = "server.pal.alt.ee"}
+)
 {
 	auto client_handshake = client_factory.connect(opts);
 	REQUIRE(client_handshake);

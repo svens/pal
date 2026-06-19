@@ -111,7 +111,8 @@ template <typename Traits>
 handshake_result establish (
 	const typename Traits::acceptor::options &accept_options,
 	const typename Traits::connector::options &connect_options,
-	std::string_view peer_name = "server.pal.alt.ee")
+	std::string_view peer_name = "server.pal.alt.ee"
+)
 {
 	auto acceptor = Traits::acceptor::make(accept_options);
 	REQUIRE(acceptor);
@@ -131,7 +132,8 @@ template <typename Traits>
 std::pair<connected_channel, connected_channel> connect_pair (
 	const typename Traits::acceptor::options &accept_options,
 	const typename Traits::connector::options &connect_options,
-	std::string_view peer_name = "server.pal.alt.ee")
+	std::string_view peer_name = "server.pal.alt.ee"
+)
 {
 	auto handshake = establish<Traits>(accept_options, connect_options, peer_name);
 	REQUIRE_FALSE(handshake.error);

@@ -132,7 +132,8 @@ template <typename Traits>
 connected_pair<typename Traits::secure_socket_type> make_connected_pair (
 	const typename Traits::acceptor &server_factory,
 	const typename Traits::connector &client_factory,
-	const crypto::connector_handshake_options &connect_opts = default_opts)
+	const crypto::connector_handshake_options &connect_opts = default_opts
+)
 {
 	auto ctx = Traits::prepare();
 

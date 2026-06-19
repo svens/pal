@@ -2,10 +2,8 @@
 
 #if __pal_crypto_windows
 
-// clang-format off
 #include <pal/crypto/random.hpp>
 #include <bcrypt.h>
-// clang-format on
 
 namespace pal::crypto::__crypto
 {
