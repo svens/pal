@@ -35,6 +35,7 @@ list(APPEND pal_sources
 	pal/crypto/secure_channel.hpp
 	pal/crypto/secure_channel.cpp
 	pal/crypto/secure_channel.openssl.cpp
+	pal/crypto/secure_channel.windows.cpp
 	pal/crypto/session.hpp
 	pal/crypto/session.cpp
 	pal/crypto/tls_wire.hpp

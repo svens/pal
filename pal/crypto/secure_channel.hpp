@@ -466,6 +466,17 @@ using datagram_connector = connector<transport::datagram>;
 
 } // namespace pal::crypto
 
+namespace pal
+{
+
+/// Return unexpected result with \a ec and secure_channel_category()
+inline unexpected make_unexpected (crypto::secure_channel_errc ec) noexcept
+{
+	return unexpected{crypto::make_error_code(ec)};
+}
+
+} // namespace pal
+
 namespace std
 {
 

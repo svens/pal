@@ -60,14 +60,6 @@ const SSL_METHOD *method_for (kind k) noexcept //{{{1
 	return nullptr;
 }
 
-pal::unexpected make_unexpected (secure_channel_errc ec) noexcept //{{{1
-{
-	return pal::unexpected{make_error_code(ec)};
-}
-
-// make the std::errc overload reachable (local overload would otherwise hide it)
-using pal::make_unexpected;
-
 struct bio_io //{{{1
 {
 	std::span<const std::byte> read_in;
@@ -395,8 +387,13 @@ namespace __secure_channel
 
 struct context //{{{1
 {
-	kind k;
+	const kind k;
 	ssl_ctx_ptr ssl_ctx;
+
+	explicit context (kind k) noexcept
+		: k{k}
+	{
+	}
 
 	struct alpn
 	{
@@ -481,12 +478,7 @@ std::string_view context::alpn::select (std::string_view client_wire) const noex
 	return {};
 }
 
-// attorney {{{1
-
-/// Attorney-Client idiom bridge: grants this implementation file controlled access to
-/// private internals of certificate/key/handshake_channel/connected_channel
-/// without making each helper a friend individually.
-struct attorney
+struct attorney //{{{1
 {
 	static ::X509 *x509 (const certificate &c) noexcept
 	{
@@ -700,14 +692,13 @@ result<session_state_ptr> make_session (const context_ptr &ctx) noexcept //{{{1
 result<context_ptr>
 wrap_context (kind k, ssl_ctx_ptr ssl_ctx, std::span<const std::string_view> protocols) noexcept //{{{1
 {
-	auto ctx = pal::make_shared<context>();
+	auto ctx = pal::make_shared<context>(k);
 	if (!ctx)
 	{
 		return pal::unexpected{ctx.error()};
 	}
 
 	auto &c = **ctx;
-	c.k = k;
 	c.ssl_ctx = std::move(ssl_ctx);
 
 	if (!c.alpn.encode(protocols))
@@ -887,8 +878,6 @@ result<handshake_result> handshake_channel::step_impl ( //{{{1
 	std::span<const std::byte> in,
 	std::span<std::byte> out) noexcept
 {
-	using namespace __secure_channel;
-
 	if (!impl_ || !impl_->state)
 	{
 		return make_unexpected(secure_channel_errc::invalid_configuration);
@@ -912,7 +901,7 @@ result<handshake_result> handshake_channel::step_impl ( //{{{1
 	if (ret == 1)
 	{
 		// handshake complete, migrate state into connected_channel.
-		auto migrated = attorney::emit_connected_channel(std::move(impl_->state));
+		auto migrated = __secure_channel::attorney::emit_connected_channel(std::move(impl_->state));
 		if (!migrated)
 		{
 			return pal::unexpected{migrated.error()};
@@ -941,8 +930,6 @@ result<channel_result> connected_channel::encrypt_impl ( //{{{1
 	std::span<const std::byte> plain,
 	std::span<std::byte> out) noexcept
 {
-	using namespace __secure_channel;
-
 	if (!impl_ || !impl_->state)
 	{
 		return make_unexpected(secure_channel_errc::invalid_configuration);
@@ -1007,8 +994,6 @@ result<channel_result> connected_channel::decrypt_impl ( //{{{1
 	std::span<const std::byte> cipher,
 	std::span<std::byte> out) noexcept
 {
-	using namespace __secure_channel;
-
 	if (!impl_ || !impl_->state)
 	{
 		return make_unexpected(secure_channel_errc::invalid_configuration);
@@ -1082,8 +1067,6 @@ result<channel_result> connected_channel::decrypt_impl ( //{{{1
 
 result<channel_result> connected_channel::close_impl (std::span<std::byte> out) noexcept //{{{1
 {
-	using namespace __secure_channel;
-
 	if (!impl_ || !impl_->state)
 	{
 		return make_unexpected(secure_channel_errc::invalid_configuration);
@@ -1131,12 +1114,12 @@ result<channel_result> connected_channel::close_impl (std::span<std::byte> out) 
 
 result<certificate> connected_channel::peer_certificate () const noexcept //{{{1
 {
-	using namespace __secure_channel;
 	if (!impl_ || !impl_->state)
 	{
 		return certificate{};
 	}
-	return attorney::to_certificate(::SSL_get_peer_certificate(impl_->state->ssl.get()));
+
+	return __secure_channel::attorney::to_certificate(::SSL_get_peer_certificate(impl_->state->ssl.get()));
 }
 
 std::string_view connected_channel::selected_protocol () const noexcept //{{{1
@@ -1160,7 +1143,6 @@ std::string_view connected_channel::selected_protocol () const noexcept //{{{1
 
 size_t connected_channel::max_message_size () const noexcept //{{{1
 {
-	using namespace __secure_channel;
 	if (!impl_ || !impl_->state)
 	{
 		return 0;
@@ -1170,7 +1152,7 @@ size_t connected_channel::max_message_size () const noexcept //{{{1
 	{
 		// DTLS record overhead depends on cipher; use MTU minus a generous reserve.
 		constexpr size_t overhead = 64;
-		return dtls_mtu > static_cast<int>(overhead) ? static_cast<size_t>(dtls_mtu) - overhead : 0;
+		return dtls_mtu > overhead ? dtls_mtu - overhead : 0;
 	}
 
 	// stream is unbounded
