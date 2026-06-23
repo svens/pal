@@ -35,6 +35,7 @@
 #include <cstring>
 #include <span>
 #include <string>
+#include <tuple>
 #include <vector>
 
 #ifndef SECURITY_WIN32
@@ -276,7 +277,7 @@ struct connected_channel::impl_type //{{{1
 	explicit impl_type (session_state_ptr state) noexcept
 		: state{std::move(state)}
 	{
-		::QueryContextAttributesW(&this->state->security_ctx, SECPKG_ATTR_STREAM_SIZES, &sizes);
+		std::ignore = ::QueryContextAttributesW(&this->state->security_ctx, SECPKG_ATTR_STREAM_SIZES, &sizes);
 
 		// Negotiated ALPN. Works for stream (both roles) and the datagram client. The datagram *server*
 		// cannot introspect its own selection — SChannel reports ProtoNegoStatus "none" even though it
@@ -975,7 +976,8 @@ result<handshake_result> handshake_channel::step_impl ( //{{{1
 	r.consumed = in.size();
 	if (in_bufs[1].BufferType == SECBUFFER_EXTRA && in_bufs[1].cbBuffer > 0)
 	{
-		// SChannel left some input unconsumed (reported in the EXTRA slot)
+		// SChannel left some input unconsumed (reported in the reserved EXTRA slot; the cookie EXTRA, when
+		// present, lives in a later slot and must not be counted here).
 		r.consumed -= in_bufs[1].cbBuffer;
 	}
 	r.produced = out_bufs[0].cbBuffer;
@@ -1172,8 +1174,9 @@ result<channel_result> connected_channel::decrypt_impl ( //{{{1
 
 	if (ss == SEC_I_RENEGOTIATE)
 	{
-		r.want_input = true;
-		return r;
+		// Renegotiation is unsupported: fail rather than attempt an in-stream re-handshake (the data channel
+		// has no handshake path). The OpenSSL backend sets SSL_OP_NO_RENEGOTIATION for the same policy.
+		return make_unexpected(secure_channel_errc::protocol_error);
 	}
 
 	if (ss == SEC_E_DECRYPT_FAILURE || ss == SEC_E_MESSAGE_ALTERED || ss == SEC_E_INVALID_TOKEN)

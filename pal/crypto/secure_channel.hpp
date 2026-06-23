@@ -168,7 +168,9 @@ struct channel_result
 	/// Output buffer was insufficient; supply a fresh output and call again.
 	bool want_output = false;
 
-	/// `decrypt()` observed a peer `close_notify`. Further reads from peer are not expected.
+	/// `decrypt()` observed a peer `close_notify`. Further reads from peer are not expected, and any
+	/// ciphertext following the alert will be ignored (RFC 8446 §6.1). A caller may therefore treat
+	/// `peer_closed` as terminal without risk of dropping data.
 	bool peer_closed = false;
 };
 

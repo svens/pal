@@ -333,6 +333,8 @@ result<ssl_ctx_ptr> make_ssl_ctx (kind k) noexcept //{{{1
 		::SSL_CTX_set_mode(ctx.get(), SSL_MODE_ENABLE_PARTIAL_WRITE | SSL_MODE_ACCEPT_MOVING_WRITE_BUFFER);
 	}
 
+	::SSL_CTX_set_options(ctx.get(), SSL_OP_NO_RENEGOTIATION);
+
 	return ctx;
 }
 
@@ -751,7 +753,7 @@ result<context_ptr> make_context (transport t, const acceptor_options &opts) noe
 	}
 
 	auto ssl_ctx = std::move(*ctx_result);
-	::SSL_CTX_set_options(ssl_ctx.get(), SSL_OP_NO_RENEGOTIATION | SSL_OP_NO_SESSION_RESUMPTION_ON_RENEGOTIATION);
+	::SSL_CTX_set_options(ssl_ctx.get(), SSL_OP_NO_SESSION_RESUMPTION_ON_RENEGOTIATION);
 	::SSL_CTX_set_num_tickets(ssl_ctx.get(), 0);
 
 	if (!apply_cert_chain(ssl_ctx.get(), opts.certificate_chain, opts.private_key))
