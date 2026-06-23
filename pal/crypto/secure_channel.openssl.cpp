@@ -3,6 +3,7 @@
 #if __pal_crypto_openssl
 
 #include <pal/crypto/__certificate.hpp>
+#include <pal/crypto/__secure_channel.hpp>
 #include <pal/crypto/secure_channel.hpp>
 #include <pal/memory.hpp>
 #include <openssl/bio.h>
@@ -26,23 +27,7 @@ namespace
 constexpr long dgram_mtu_overhead = 28;
 constexpr int dtls_mtu = 1500 - dgram_mtu_overhead;
 
-enum class kind //{{{1
-{
-	stream_acceptor,
-	stream_connector,
-	datagram_acceptor,
-	datagram_connector,
-};
-
-constexpr bool is_acceptor (kind k) noexcept //{{{1
-{
-	return k == kind::stream_acceptor || k == kind::datagram_acceptor;
-}
-
-constexpr bool is_datagram (kind k) noexcept //{{{1
-{
-	return k == kind::datagram_acceptor || k == kind::datagram_connector;
-}
+using __secure_channel::kind;
 
 const SSL_METHOD *method_for (kind k) noexcept //{{{1
 {
@@ -389,11 +374,11 @@ namespace __secure_channel
 
 struct context //{{{1
 {
-	const kind k;
+	const enum kind kind;
 	ssl_ctx_ptr ssl_ctx;
 
-	explicit context (kind k) noexcept
-		: k{k}
+	explicit context (enum kind kind) noexcept
+		: kind{kind}
 	{
 	}
 
@@ -415,23 +400,12 @@ struct context //{{{1
 
 bool context::alpn::encode (std::span<const std::string_view> protocols) noexcept
 {
-	constexpr size_t max_byte_encoded_length = 255;
-
-	size_t pos = 0;
-	for (const auto &p: protocols)
+	if (const auto n = encode_alpn_wire(protocols, std::as_writable_bytes(std::span{storage})))
 	{
-		if (p.empty() || p.size() > max_byte_encoded_length || pos + p.size() + 1 > storage.size())
-		{
-			return false;
-		}
-
-		storage[pos++] = static_cast<char>(p.size());
-		std::memcpy(storage.data() + pos, p.data(), p.size());
-		pos += p.size();
+		wire = std::string_view{storage.data(), *n};
+		return true;
 	}
-
-	wire = std::string_view{storage.data(), pos};
-	return true;
+	return false;
 }
 
 std::string_view context::alpn::select (std::string_view client_wire) const noexcept
@@ -482,19 +456,19 @@ std::string_view context::alpn::select (std::string_view client_wire) const noex
 
 struct attorney //{{{1
 {
-	static ::X509 *x509 (const certificate &c) noexcept
+	static auto to_sys (const certificate &c) noexcept
 	{
 		return c.impl_ ? c.impl_->x509.get() : nullptr;
 	}
 
-	static ::EVP_PKEY *pkey (const key &k) noexcept
+	static auto to_sys (const key &k) noexcept
 	{
 		return k.impl_ ? &k.impl_->pkey : nullptr;
 	}
 
 	// clang-format off
 
-	static result<certificate> to_certificate (::X509 *x509) noexcept
+	static result<certificate> from_sys (::X509 *x509) noexcept
 	{
 		if (x509 == nullptr)
 		{
@@ -540,20 +514,20 @@ bool apply_cert_chain (::SSL_CTX *ctx, std::span<const certificate> chain, const
 		return true;
 	}
 
-	if (auto *leaf = attorney::x509(chain[0]); leaf == nullptr || ::SSL_CTX_use_certificate(ctx, leaf) != 1)
+	if (auto *leaf = attorney::to_sys(chain[0]); leaf == nullptr || ::SSL_CTX_use_certificate(ctx, leaf) != 1)
 	{
 		return false;
 	}
 
 	for (const auto &cert: chain.subspan(1))
 	{
-		if (auto *x509 = attorney::x509(cert); x509 == nullptr || ::SSL_CTX_add1_chain_cert(ctx, x509) != 1)
+		if (auto *x509 = attorney::to_sys(cert); x509 == nullptr || ::SSL_CTX_add1_chain_cert(ctx, x509) != 1)
 		{
 			return false;
 		}
 	}
 
-	auto *pk = attorney::pkey(pkey);
+	auto *pk = attorney::to_sys(pkey);
 	if (pk == nullptr)
 	{
 		return false;
@@ -589,7 +563,7 @@ bool apply_trust (::SSL_CTX *ctx, std::span<const certificate> roots, bool use_s
 	::X509_STORE *store = ::SSL_CTX_get_cert_store(ctx);
 	return std::ranges::all_of(roots, [store] (const certificate &root) noexcept
 	{
-		if (auto *x509 = attorney::x509(root); x509 == nullptr)
+		if (auto *x509 = attorney::to_sys(root); x509 == nullptr)
 		{
 			return false;
 		}
@@ -644,7 +618,7 @@ result<session_state_ptr> make_session (const context_ptr &ctx) noexcept //{{{1
 
 	auto state = std::move(*state_result);
 	state->ctx = ctx;
-	state->is_datagram = is_datagram(ctx->k);
+	state->is_datagram = is_datagram(ctx->kind);
 
 	ssl_ptr ssl{::SSL_new(ctx->ssl_ctx.get())};
 	if (!ssl)
@@ -652,7 +626,7 @@ result<session_state_ptr> make_session (const context_ptr &ctx) noexcept //{{{1
 		return make_unexpected(std::errc::not_enough_memory);
 	}
 
-	if (is_acceptor(ctx->k))
+	if (is_acceptor(ctx->kind))
 	{
 		::SSL_set_accept_state(ssl.get());
 	}
@@ -740,12 +714,12 @@ wrap_context (kind k, ssl_ctx_ptr ssl_ctx, std::span<const std::string_view> pro
 
 result<context_ptr> make_context (transport t, const acceptor_options &opts) noexcept //{{{1
 {
-	if (opts.certificate_chain.empty() || attorney::pkey(opts.private_key) == nullptr)
+	if (opts.certificate_chain.empty() || attorney::to_sys(opts.private_key) == nullptr)
 	{
 		return make_unexpected(secure_channel_errc::invalid_configuration);
 	}
 
-	const kind k = (t == transport::stream) ? kind::stream_acceptor : kind::datagram_acceptor;
+	const kind k = make_kind(t, true);
 	auto ctx_result = make_ssl_ctx(k);
 	if (!ctx_result)
 	{
@@ -779,12 +753,12 @@ result<context_ptr> make_context (transport t, const acceptor_options &opts) noe
 
 result<context_ptr> make_context (transport t, const connector_options &opts) noexcept //{{{1
 {
-	if (!opts.certificate_chain.empty() && attorney::pkey(opts.private_key) == nullptr)
+	if (!opts.certificate_chain.empty() && attorney::to_sys(opts.private_key) == nullptr)
 	{
 		return make_unexpected(secure_channel_errc::invalid_configuration);
 	}
 
-	const kind k = (t == transport::stream) ? kind::stream_connector : kind::datagram_connector;
+	const kind k = make_kind(t, false);
 	auto ctx_result = make_ssl_ctx(k);
 	if (!ctx_result)
 	{
@@ -1121,7 +1095,7 @@ result<certificate> connected_channel::peer_certificate () const noexcept //{{{1
 		return certificate{};
 	}
 
-	return __secure_channel::attorney::to_certificate(::SSL_get_peer_certificate(impl_->state->ssl.get()));
+	return __secure_channel::attorney::from_sys(::SSL_get_peer_certificate(impl_->state->ssl.get()));
 }
 
 std::string_view connected_channel::selected_protocol () const noexcept //{{{1

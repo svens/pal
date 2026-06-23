@@ -1,6 +1,7 @@
 list(APPEND pal_sources
 	pal/crypto/__certificate.hpp
 	pal/crypto/__crypto.hpp
+	pal/crypto/__secure_channel.hpp
 	pal/crypto/alternative_name.hpp
 	pal/crypto/alternative_name.cpp
 	pal/crypto/alternative_name_value.hpp

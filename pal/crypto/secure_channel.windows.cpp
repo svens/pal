@@ -28,6 +28,7 @@
 #if __pal_crypto_windows
 
 #include <pal/crypto/__certificate.hpp>
+#include <pal/crypto/__secure_channel.hpp>
 #include <pal/crypto/secure_channel.hpp>
 #include <pal/memory.hpp>
 #include <algorithm>
@@ -115,27 +116,6 @@ constexpr DWORD asc_dtls_flags =
 	ASC_REQ_DATAGRAM;
 
 // clang-format on
-
-// (D)TLS channel kind {{{1
-//
-// Duplicates the OpenSSL backend's kind/helpers (cross-backend de-dup pending).
-enum class kind
-{
-	stream_acceptor,
-	stream_connector,
-	datagram_acceptor,
-	datagram_connector,
-};
-
-constexpr bool is_acceptor (kind k) noexcept
-{
-	return k == kind::stream_acceptor || k == kind::datagram_acceptor;
-}
-
-constexpr bool is_datagram (kind k) noexcept
-{
-	return k == kind::datagram_acceptor || k == kind::datagram_connector;
-}
 
 const wchar_t *to_wide (std::string_view utf8, std::span<wchar_t> buf) noexcept //{{{1
 {
@@ -316,12 +296,12 @@ namespace __secure_channel
 
 struct attorney //{{{1
 {
-	static PCCERT_CONTEXT cert_ctx (const certificate &c) noexcept
+	static auto to_sys (const certificate &c) noexcept
 	{
 		return c.impl_ ? c.impl_->x509.get() : nullptr;
 	}
 
-	static ::NCRYPT_KEY_HANDLE ncrypt_key (const key &k) noexcept
+	static ::NCRYPT_KEY_HANDLE to_sys (const key &k) noexcept
 	{
 		if (!k.impl_)
 		{
@@ -359,7 +339,7 @@ struct attorney //{{{1
 
 struct context //{{{1
 {
-	const kind k;
+	const kind kind;
 	CredHandle cred = {};
 	bool require_client_certificate = false;
 
@@ -421,8 +401,8 @@ struct context //{{{1
 		const cert_ptr &peer_cert, std::string_view peer_name, verify_relax relax, DWORD auth_type
 	) const noexcept;
 
-	explicit context (kind k) noexcept
-		: k{k}
+	explicit context (enum kind kind) noexcept
+		: kind{kind}
 	{
 		SecInvalidateHandle(&cred);
 	}
@@ -455,7 +435,7 @@ void context::ca_store::add_intermediates (std::span<const certificate> intermed
 
 	for (const auto &cert: intermediates)
 	{
-		if (PCCERT_CONTEXT c = attorney::cert_ctx(cert))
+		if (auto c = attorney::to_sys(cert))
 		{
 			PCCERT_CONTEXT added = nullptr;
 			auto rc = ::CertAddCertificateContextToStore(store, c, CERT_STORE_ADD_REPLACE_EXISTING, &added);
@@ -469,33 +449,24 @@ void context::ca_store::add_intermediates (std::span<const certificate> intermed
 
 bool context::alpn::encode (std::span<const std::string_view> protocols) noexcept //{{{1
 {
-	constexpr size_t max_len = 255;
-
 	auto &list = *reinterpret_cast<SEC_APPLICATION_PROTOCOLS *>(buffer.data());
 	BYTE *wire = list.ProtocolLists[0].ProtocolList;
 
-	size_t pos = 0;
-	for (const auto &p: protocols)
+	const auto n = encode_alpn_wire(protocols, std::span{reinterpret_cast<std::byte *>(wire), max_wire_size});
+	if (!n)
 	{
-		if (p.empty() || p.size() > max_len || pos + p.size() + 1 > max_wire_size)
-		{
-			return false;
-		}
-
-		wire[pos++] = static_cast<BYTE>(p.size());
-		std::memcpy(wire + pos, p.data(), p.size());
-		pos += p.size();
+		return false;
 	}
 
-	if (pos == 0)
+	if (*n == 0)
 	{
 		buffer_size = 0;
 		return true;
 	}
 
 	list.ProtocolLists[0].ProtoNegoExt = SecApplicationProtocolNegotiationExt_ALPN;
-	list.ProtocolLists[0].ProtocolListSize = static_cast<WORD>(pos);
-	list.ProtocolListsSize = static_cast<DWORD>(offsetof(SEC_APPLICATION_PROTOCOL_LIST, ProtocolList) + pos);
+	list.ProtocolLists[0].ProtocolListSize = static_cast<WORD>(*n);
+	list.ProtocolListsSize = static_cast<DWORD>(offsetof(SEC_APPLICATION_PROTOCOL_LIST, ProtocolList) + *n);
 	buffer_size = static_cast<ULONG>(sizeof(DWORD) + list.ProtocolListsSize);
 	return true;
 }
@@ -613,7 +584,7 @@ HCERTSTORE make_cert_store (std::span<const certificate> roots) noexcept //{{{1
 
 	for (const auto &root: roots)
 	{
-		PCCERT_CONTEXT ctx = attorney::cert_ctx(root);
+		auto ctx = attorney::to_sys(root);
 		if (!ctx)
 		{
 			::CertCloseStore(store, 0);
@@ -635,7 +606,7 @@ HCERTSTORE make_cert_store (std::span<const certificate> roots) noexcept //{{{1
 
 result<context_ptr> make_context (transport t, const acceptor_options &opts) noexcept //{{{1
 {
-	if (attorney::ncrypt_key(opts.private_key) == 0)
+	if (attorney::to_sys(opts.private_key) == 0)
 	{
 		return make_unexpected(secure_channel_errc::invalid_configuration);
 	}
@@ -644,7 +615,7 @@ result<context_ptr> make_context (transport t, const acceptor_options &opts) noe
 		return make_unexpected(secure_channel_errc::invalid_configuration);
 	}
 
-	const kind k = (t == transport::stream) ? kind::stream_acceptor : kind::datagram_acceptor;
+	const kind k = make_kind(t, true);
 	auto ctx_result = pal::make_shared<context>(k);
 	if (!ctx_result)
 	{
@@ -663,7 +634,7 @@ result<context_ptr> make_context (transport t, const acceptor_options &opts) noe
 		return make_unexpected(secure_channel_errc::invalid_configuration);
 	}
 
-	PCCERT_CONTEXT leaf_cert = attorney::cert_ctx(ctx.chain_refs.front());
+	auto leaf_cert = attorney::to_sys(ctx.chain_refs.front());
 	if (!leaf_cert)
 	{
 		return make_unexpected(secure_channel_errc::invalid_configuration);
@@ -710,7 +681,7 @@ result<context_ptr> make_context (transport t, const acceptor_options &opts) noe
 
 result<context_ptr> make_context (transport t, const connector_options &opts) noexcept //{{{1
 {
-	if (!opts.certificate_chain.empty() && attorney::ncrypt_key(opts.private_key) == 0)
+	if (!opts.certificate_chain.empty() && attorney::to_sys(opts.private_key) == 0)
 	{
 		return make_unexpected(secure_channel_errc::invalid_configuration);
 	}
@@ -719,7 +690,7 @@ result<context_ptr> make_context (transport t, const connector_options &opts) no
 		return make_unexpected(secure_channel_errc::invalid_configuration);
 	}
 
-	const kind k = (t == transport::stream) ? kind::stream_connector : kind::datagram_connector;
+	const kind k = make_kind(t, false);
 	auto ctx_result = pal::make_shared<context>(k);
 	if (!ctx_result)
 	{
@@ -757,7 +728,7 @@ result<context_ptr> make_context (transport t, const connector_options &opts) no
 	PCCERT_CONTEXT client_cert = nullptr;
 	if (ctx.chain_count != 0)
 	{
-		client_cert = attorney::cert_ctx(ctx.chain_refs.front());
+		client_cert = attorney::to_sys(ctx.chain_refs.front());
 		if (!client_cert)
 		{
 			return make_unexpected(secure_channel_errc::invalid_configuration);
@@ -795,7 +766,7 @@ result<context_ptr> make_context (transport t, const connector_options &opts) no
 
 result<handshake_channel> make_channel (const context_ptr &ctx, const acceptor_handshake_options &opts) noexcept //{{{1
 {
-	auto state = pal::make_unique<session_state>(ctx, is_datagram(ctx->k), opts.relax, std::string_view{});
+	auto state = pal::make_unique<session_state>(ctx, is_datagram(ctx->kind), opts.relax, std::string_view{});
 	if (!state)
 	{
 		return pal::unexpected{state.error()};
@@ -810,7 +781,7 @@ result<handshake_channel> make_channel (const context_ptr &ctx, const connector_
 		return make_unexpected(secure_channel_errc::invalid_configuration);
 	}
 
-	auto state = pal::make_unique<session_state>(ctx, is_datagram(ctx->k), opts.relax, opts.peer_name);
+	auto state = pal::make_unique<session_state>(ctx, is_datagram(ctx->kind), opts.relax, opts.peer_name);
 	if (!state)
 	{
 		return pal::unexpected{state.error()};
@@ -831,7 +802,7 @@ SECURITY_STATUS session_state::do_step ( //{{{1
 	SECURITY_STATUS ss;
 	const bool first = !SecIsValidHandle(&security_ctx);
 
-	if (is_acceptor(config->k))
+	if (is_acceptor(config->kind))
 	{
 		DWORD req_flags = is_datagram ? asc_dtls_flags : asc_stream_flags;
 		if (config->require_client_certificate)
@@ -890,7 +861,7 @@ SECURITY_STATUS session_state::do_step ( //{{{1
 
 std::error_code session_state::verify_peer () noexcept //{{{1
 {
-	const bool acceptor = is_acceptor(config->k);
+	const bool acceptor = is_acceptor(config->kind);
 	if (acceptor && !config->require_client_certificate)
 	{
 		return {};
@@ -958,7 +929,7 @@ result<handshake_result> handshake_channel::step_impl ( //{{{1
 	// Cookie address on every server call: SChannel needs it to generate the HelloVerifyRequest cookie
 	// (first call) and to verify the echoed cookie on ClientHello#2 (second call). Passing it only on
 	// the first call breaks the handshake.
-	if (is_datagram(shared.k) && is_acceptor(shared.k))
+	if (shared.kind == kind::datagram_acceptor)
 	{
 		in_bufs[in_count++] = {SECBUFFER_EXTRA, dtls_cookie_addr, sizeof(dtls_cookie_addr)};
 	}
@@ -1290,7 +1261,7 @@ result<channel_result> connected_channel::close_impl (std::span<std::byte> out) 
 	DWORD ret_flags = 0;
 	SECURITY_STATUS ss;
 
-	if (is_acceptor(state.config->k))
+	if (is_acceptor(state.config->kind))
 	{
 		ss = ::AcceptSecurityContext(
 			&state.config->cred,
