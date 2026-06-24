@@ -4,9 +4,11 @@
 #include <algorithm>
 #include <array>
 #include <condition_variable>
+#include <cstddef>
 #include <mutex>
 #include <optional>
 #include <ranges>
+#include <span>
 #include <thread>
 #include <vector>
 
@@ -23,26 +25,22 @@ using pal_test::connected_pair;
 using namespace pal::crypto;
 namespace cert = pal_test::cert;
 
-// transport traits {{{1
-
-struct stream
+struct stream //{{{1
 {
 	using acceptor = stream_acceptor;
 	using connector = stream_connector;
 	static constexpr transport transport_value = transport::stream;
 };
 
-struct datagram
+struct datagram //{{{1
 {
 	using acceptor = datagram_acceptor;
 	using connector = datagram_connector;
 	static constexpr transport transport_value = transport::datagram;
 };
 
-// loopback_device, loopback_pair {{{1
-
 template <transport Transport>
-struct loopback_device
+struct loopback_device //{{{1
 {
 	static constexpr transport transport_value = Transport;
 
@@ -98,7 +96,7 @@ static_assert(io_device<loopback_device<transport::stream>, std::span<const std:
 static_assert(io_device<loopback_device<transport::datagram>, std::span<const std::byte>, std::span<std::byte>>);
 
 template <transport Transport>
-struct loopback_pair
+struct loopback_pair //{{{1
 {
 	std::vector<std::byte> c2s{};
 	std::vector<std::byte> s2c{};
@@ -106,10 +104,8 @@ struct loopback_pair
 	loopback_device<Transport> server{.buffer = c2s, .sink = s2c};
 };
 
-// blocking_pair {{{1
-
 template <transport Transport>
-struct blocking_pair
+struct blocking_pair //{{{1
 {
 	std::mutex mutex{};
 	std::condition_variable cv{};
@@ -193,10 +189,8 @@ static_assert(
 	io_device<blocking_pair<transport::datagram>::half_device, std::span<const std::byte>, std::span<std::byte>>
 );
 
-// pump_handshake {{{1
-
 connected_pair<connected_channel>
-pump_handshake (handshake_channel &client_handshake, handshake_channel &server_handshake)
+pump_handshake (handshake_channel &client_handshake, handshake_channel &server_handshake) //{{{1
 {
 	constexpr size_t buf_cap = 16UL * 1024;
 
@@ -242,18 +236,28 @@ pump_handshake (handshake_channel &client_handshake, handshake_channel &server_h
 	return {.server = std::move(*server_channel), .client = std::move(*client_channel)};
 }
 
-// make_session_pair {{{1
+template <typename Acceptor>
+[[nodiscard]] auto server_accept (const Acceptor &acceptor) //{{{1
+{
+	if constexpr (Acceptor::transport_value == transport::datagram)
+	{
+		return acceptor.accept(std::span<const std::byte>{});
+	}
+	else
+	{
+		return acceptor.accept();
+	}
+}
 
 template <typename Traits>
-connected_pair<session> make_session_pair (
+connected_pair<session> make_session_pair ( //{{{1
 	const typename Traits::acceptor &server_factory,
 	const typename Traits::connector &client_factory,
-	const connector_handshake_options &opts = {.peer_name = "server.pal.alt.ee"}
-)
+	const connector_handshake_options &opts = {.peer_name = "server.pal.alt.ee"})
 {
 	auto client_handshake = client_factory.connect(opts);
 	REQUIRE(client_handshake);
-	auto server_handshake = server_factory.accept();
+	auto server_handshake = server_accept(server_factory);
 	REQUIRE(server_handshake);
 
 	auto [server_channel, client_channel] = pump_handshake(*client_handshake, *server_handshake);
@@ -387,7 +391,7 @@ TEMPLATE_TEST_CASE("crypto/session", "", stream, datagram) //{{{1
 		// clang-format off
 		std::thread server_thread([&]
 		{
-			if (auto server_handshake = server_factory->accept())
+			if (auto server_handshake = server_accept(*server_factory))
 			{
 				server_session = session::run_handshake(server_device, *server_handshake);
 			}

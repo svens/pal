@@ -18,9 +18,6 @@
  *    the selection, and a protocol mismatch is rejected at handshake time), but it cannot introspect
  *    its own choice afterwards — SECPKG_ATTR_APPLICATION_PROTOCOL reports "none". So a datagram
  *    acceptor's selected_protocol() is empty.
- *
- * DTLS anti-amplification is not yet wired up: the HelloVerifyRequest cookie binds to a constant
- * placeholder address (see TODO(dtls-cookie)), not the caller's real peer endpoint.
  */
 
 #include <pal/crypto/__crypto.hpp>
@@ -165,16 +162,16 @@ struct session_state //{{{1
 	std::array<char, max_peer_name> peer_name_buf{};
 	size_t peer_name_size = 0;
 
-	session_state (
-		__secure_channel::context_ptr config, bool is_datagram, verify_relax relax, std::string_view peer_name
-	) noexcept
+	static constexpr size_t max_peer_token = 64;
+	std::array<std::byte, max_peer_token> peer_token_buf{};
+	size_t peer_token_size = 0;
+
+	session_state (__secure_channel::context_ptr config, bool is_datagram, verify_relax relax) noexcept
 		: config{std::move(config)}
 		, relax{relax}
 		, is_datagram{is_datagram}
-		, peer_name_size{peer_name.size()}
 	{
 		SecInvalidateHandle(&security_ctx);
-		std::memcpy(peer_name_buf.data(), peer_name.data(), peer_name.size());
 	}
 
 	~session_state () noexcept
@@ -187,6 +184,24 @@ struct session_state //{{{1
 
 	session_state (const session_state &) = delete;
 	session_state &operator= (const session_state &) = delete;
+
+	void peer_token (std::span<const std::byte> token) noexcept
+	{
+		peer_token_size = token.size();
+		if (!token.empty())
+		{
+			std::memcpy(peer_token_buf.data(), token.data(), token.size());
+		}
+	}
+
+	void peer_name (std::string_view name) noexcept
+	{
+		peer_name_size = name.size();
+		if (!name.empty())
+		{
+			std::memcpy(peer_name_buf.data(), name.data(), name.size());
+		}
+	}
 
 	std::string_view peer_name () const noexcept
 	{
@@ -764,13 +779,22 @@ result<context_ptr> make_context (transport t, const connector_options &opts) no
 	return *ctx_result;
 }
 
-result<handshake_channel> make_channel (const context_ptr &ctx, const acceptor_handshake_options &opts) noexcept //{{{1
+result<handshake_channel> make_channel ( //{{{1
+	const context_ptr &ctx,
+	const acceptor_handshake_options &opts,
+	std::span<const std::byte> peer_token) noexcept
 {
-	auto state = pal::make_unique<session_state>(ctx, is_datagram(ctx->kind), opts.relax, std::string_view{});
+	if (peer_token.size() > session_state::max_peer_token)
+	{
+		return make_unexpected(secure_channel_errc::invalid_configuration);
+	}
+
+	auto state = pal::make_unique<session_state>(ctx, is_datagram(ctx->kind), opts.relax);
 	if (!state)
 	{
 		return pal::unexpected{state.error()};
 	}
+	(*state)->peer_token(peer_token);
 	return attorney::emit_handshake_channel(std::move(*state));
 }
 
@@ -781,11 +805,12 @@ result<handshake_channel> make_channel (const context_ptr &ctx, const connector_
 		return make_unexpected(secure_channel_errc::invalid_configuration);
 	}
 
-	auto state = pal::make_unique<session_state>(ctx, is_datagram(ctx->kind), opts.relax, opts.peer_name);
+	auto state = pal::make_unique<session_state>(ctx, is_datagram(ctx->kind), opts.relax);
 	if (!state)
 	{
 		return pal::unexpected{state.error()};
 	}
+	(*state)->peer_name(opts.peer_name);
 	return attorney::emit_handshake_channel(std::move(*state));
 }
 
@@ -905,10 +930,6 @@ result<handshake_result> handshake_channel::step_impl ( //{{{1
 	auto &state = *impl_->state;
 	auto &shared = *state.config;
 
-	// Bogus constant DTLS cookie peer-address. TODO(dtls-cookie): replace with the caller's real peer
-	// endpoint once the contract carries it; until then DTLS anti-amplification is forfeited.
-	unsigned char dtls_cookie_addr[8] = {10, 0, 0, 1, 0, 0, 0, 1};
-
 	sec_buffer in_bufs[4] = {
 		{SECBUFFER_TOKEN, in},
 		{SECBUFFER_EMPTY},
@@ -917,22 +938,34 @@ result<handshake_result> handshake_channel::step_impl ( //{{{1
 
 	if (shared.alpn.buffer_size > 0)
 	{
-		// clang-format off
 		in_bufs[in_count++] = {
 			SECBUFFER_APPLICATION_PROTOCOLS,
 			shared.alpn.buffer.data(),
-			shared.alpn.buffer_size
+			shared.alpn.buffer_size,
 		};
-		// clang-format on
 	}
 
-	// Cookie address on every server call: SChannel needs it to generate the HelloVerifyRequest cookie
-	// (first call) and to verify the echoed cookie on ClientHello#2 (second call). Passing it only on
-	// the first call breaks the handshake.
 	if (shared.kind == kind::datagram_acceptor)
 	{
-		in_bufs[in_count++] = {SECBUFFER_EXTRA, dtls_cookie_addr, sizeof(dtls_cookie_addr)};
+		if (state.peer_token_size > 0)
+		{
+			in_bufs[in_count++] = {
+				SECBUFFER_EXTRA,
+				state.peer_token_buf.data(),
+				state.peer_token_size,
+			};
+		}
+		else
+		{
+			static std::array placeholder = {10, 0, 0, 1, 0, 0, 0, 1};
+			in_bufs[in_count++] = {
+				SECBUFFER_EXTRA,
+				placeholder.data(),
+				placeholder.size(),
+			};
+		}
 	}
+
 	sec_buffer_desc in_desc{in_bufs, in_count};
 
 	sec_buffer out_bufs[] = {

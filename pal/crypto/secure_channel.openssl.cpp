@@ -7,7 +7,11 @@
 #include <pal/crypto/secure_channel.hpp>
 #include <pal/memory.hpp>
 #include <openssl/bio.h>
+#include <openssl/crypto.h>
 #include <openssl/err.h>
+#include <openssl/evp.h>
+#include <openssl/hmac.h>
+#include <openssl/rand.h>
 #include <openssl/ssl.h>
 #include <openssl/x509v3.h>
 #include <algorithm>
@@ -182,6 +186,10 @@ struct ssl_deleter //{{{1
 };
 using ssl_ptr = std::unique_ptr<::SSL, ssl_deleter>;
 
+// DTLS HelloVerifyRequest cookie HMAC key size (a 256-bit key).
+constexpr size_t cookie_secret_size = 32;
+using cookie_secret_type = std::array<unsigned char, cookie_secret_size>;
+
 // session_state {{{1
 
 /// Shared session state held by handshake_channel::impl_type and migrated to
@@ -198,6 +206,23 @@ struct session_state
 
 	// Slot for peer cert verification result, used by verify callback.
 	int verify_error = 0;
+
+	// Per-handshake snapshot of the acceptor's cookie HMAC key (copied at accept time)
+	cookie_secret_type cookie_secret{};
+
+	// DTLS anti-amplification cookie binding bytes (datagram acceptor only); empty disables the exchange.
+	static constexpr size_t max_peer_token = 64;
+	std::array<unsigned char, max_peer_token> peer_token_buf{};
+	size_t peer_token_size = 0;
+
+	void peer_token (std::span<const std::byte> token) noexcept
+	{
+		peer_token_size = token.size();
+		if (!token.empty())
+		{
+			std::memcpy(peer_token_buf.data(), token.data(), token.size());
+		}
+	}
 
 	static int verify_callback (int preverify_ok, ::X509_STORE_CTX *store_ctx) noexcept;
 };
@@ -376,6 +401,9 @@ struct context //{{{1
 {
 	const enum kind kind;
 	ssl_ctx_ptr ssl_ctx;
+
+	// DTLS HelloVerifyRequest cookie HMAC master key; randomized for datagram_acceptor (unused for other kinds)
+	cookie_secret_type cookie_secret{};
 
 	explicit context (enum kind kind) noexcept
 		: kind{kind}
@@ -605,6 +633,52 @@ int alpn_select_callback ( //{{{1
 	return SSL_TLSEXT_ERR_OK;
 }
 
+bool compute_cookie (const session_state &state, unsigned char *out, unsigned int *out_len) noexcept //{{{1
+{
+	const auto &secret = state.cookie_secret;
+
+	// clang-format off
+	auto *result = ::HMAC(::EVP_sha256(),
+		secret.data(),
+		secret.size(),
+		state.peer_token_buf.data(),
+		state.peer_token_size,
+		out,
+		out_len
+	);
+	// clang-format on
+
+	return result != nullptr;
+}
+
+int cookie_generate (::SSL *ssl, unsigned char *cookie, unsigned int *cookie_len) noexcept //{{{1
+{
+	const auto *state = static_cast<const session_state *>(::SSL_get_ex_data(ssl, session_index()));
+	if (state == nullptr)
+	{
+		return 0;
+	}
+	return compute_cookie(*state, cookie, cookie_len) ? 1 : 0;
+}
+
+int cookie_verify (::SSL *ssl, const unsigned char *cookie, unsigned int cookie_len) noexcept //{{{1
+{
+	const auto *state = static_cast<const session_state *>(::SSL_get_ex_data(ssl, session_index()));
+	if (state == nullptr)
+	{
+		return 0;
+	}
+
+	std::array<unsigned char, EVP_MAX_MD_SIZE> expected{};
+	unsigned int expected_len = 0;
+	if (!compute_cookie(*state, expected.data(), &expected_len))
+	{
+		return 0;
+	}
+
+	return cookie_len == expected_len && ::CRYPTO_memcmp(cookie, expected.data(), expected_len) == 0 ? 1 : 0;
+}
+
 result<session_state_ptr> make_session (const context_ptr &ctx) noexcept //{{{1
 {
 	// Precondition: ctx is a valid factory context. Factories carry no null state (no default ctor), so a
@@ -662,9 +736,6 @@ result<session_state_ptr> make_session (const context_ptr &ctx) noexcept //{{{1
 	return state;
 }
 
-/// Wrap an already-configured SSL_CTX into the shared context: encode ALPN and register it on the
-/// SSL_CTX (server-select callback or client protocol list, by role). The SSL_CTX already holds its own
-/// references to the applied certs/key/roots, so no caller material is copied here.
 result<context_ptr>
 wrap_context (kind k, ssl_ctx_ptr ssl_ctx, std::span<const std::string_view> protocols) noexcept //{{{1
 {
@@ -703,6 +774,17 @@ wrap_context (kind k, ssl_ctx_ptr ssl_ctx, std::span<const std::string_view> pro
 				return make_unexpected(secure_channel_errc::invalid_configuration);
 			}
 		}
+	}
+
+	if (k == kind::datagram_acceptor)
+	{
+		if (::RAND_bytes(c.cookie_secret.data(), c.cookie_secret.size()) != 1)
+		{
+			::ERR_clear_error();
+			return make_unexpected(secure_channel_errc::invalid_configuration);
+		}
+		::SSL_CTX_set_cookie_generate_cb(c.ssl_ctx.get(), &cookie_generate);
+		::SSL_CTX_set_cookie_verify_cb(c.ssl_ctx.get(), &cookie_verify);
 	}
 
 	return *ctx;
@@ -786,8 +868,16 @@ result<context_ptr> make_context (transport t, const connector_options &opts) no
 	return wrap_context(k, std::move(ssl_ctx), opts.supported_protocols);
 }
 
-result<handshake_channel> make_channel (const context_ptr &ctx, const acceptor_handshake_options &opts) noexcept //{{{1
+result<handshake_channel> make_channel ( //{{{1
+	const context_ptr &ctx,
+	const acceptor_handshake_options &opts,
+	std::span<const std::byte> peer_token) noexcept
 {
+	if (peer_token.size() > session_state::max_peer_token)
+	{
+		return make_unexpected(secure_channel_errc::invalid_configuration);
+	}
+
 	auto state_result = make_session(ctx);
 	if (!state_result)
 	{
@@ -796,6 +886,13 @@ result<handshake_channel> make_channel (const context_ptr &ctx, const acceptor_h
 
 	auto &state = **state_result;
 	state.relax = opts.relax;
+
+	if (!peer_token.empty())
+	{
+		state.peer_token(peer_token);
+		state.cookie_secret = ctx->cookie_secret;
+		::SSL_set_options(state.ssl.get(), SSL_OP_COOKIE_EXCHANGE);
+	}
 
 	return attorney::emit_handshake_channel(std::move(*state_result));
 }

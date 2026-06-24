@@ -106,6 +106,19 @@ handshake_result pump (handshake_channel &client_hs, handshake_channel &server_h
 	return result;
 }
 
+template <typename Acceptor>
+[[nodiscard]] auto server_accept (const Acceptor &acceptor)
+{
+	if constexpr (Acceptor::transport_value == transport::datagram)
+	{
+		return acceptor.accept(std::span<const std::byte>{});
+	}
+	else
+	{
+		return acceptor.accept();
+	}
+}
+
 // Build acceptor + connector from the given options, run the handshake to completion (or first error).
 template <typename Traits>
 handshake_result establish (
@@ -121,7 +134,7 @@ handshake_result establish (
 
 	auto connector_handshake = connector->connect({.peer_name = peer_name});
 	REQUIRE(connector_handshake);
-	auto acceptor_handshake = acceptor->accept();
+	auto acceptor_handshake = server_accept(*acceptor);
 	REQUIRE(acceptor_handshake);
 
 	return pump(*connector_handshake, *acceptor_handshake);
@@ -180,7 +193,7 @@ TEST_CASE("crypto/secure_channel/error_category") //{{{1
 #undef __pal_errc
 }
 
-TEMPLATE_TEST_CASE("crypto/secure_channel/channel", "", stream, datagram) //{{{1
+TEMPLATE_TEST_CASE("crypto/secure_channel", "", stream, datagram) //{{{1
 {
 	using acceptor = TestType::acceptor;
 	using connector = TestType::connector;
@@ -315,7 +328,7 @@ TEMPLATE_TEST_CASE("crypto/secure_channel/channel", "", stream, datagram) //{{{1
 			REQUIRE(c);
 			auto connect_handshake = c->connect({.relax = relax});
 			REQUIRE(connect_handshake);
-			auto accept_handshake = a->accept();
+			auto accept_handshake = server_accept(*a);
 			REQUIRE(accept_handshake);
 			return pump(*connect_handshake, *accept_handshake);
 		};
@@ -384,7 +397,7 @@ TEMPLATE_TEST_CASE("crypto/secure_channel/channel", "", stream, datagram) //{{{1
 		REQUIRE(acc);
 
 		const pal_test::bad_alloc_once x;
-		auto hs = acc->accept();
+		auto hs = server_accept(*acc);
 		REQUIRE_FALSE(hs);
 		CHECK(hs.error() == std::errc::not_enough_memory);
 	}
@@ -704,7 +717,7 @@ TEMPLATE_TEST_CASE("crypto/secure_channel/factory_outlives_inputs", "", stream, 
 
 	auto connector_handshake = connector->connect({.peer_name = "server.pal.alt.ee"});
 	REQUIRE(connector_handshake);
-	auto acceptor_handshake = acceptor->accept();
+	auto acceptor_handshake = server_accept(*acceptor);
 	REQUIRE(acceptor_handshake);
 
 	auto handshake = pump(*connector_handshake, *acceptor_handshake);
@@ -719,6 +732,107 @@ TEMPLATE_TEST_CASE("crypto/secure_channel/factory_outlives_inputs", "", stream, 
 	auto dec = server.decrypt(std::span{buf}.first(enc->produced), plain);
 	REQUIRE(dec);
 	CHECK(std::string_view{plain.data(), dec->produced} == pal_test::case_name());
+}
+
+TEMPLATE_TEST_CASE("crypto/secure_channel/dtls_cookie", "[!nonportable]", datagram) //{{{1
+{
+	auto chain = test_cert::load_pkcs12(test_cert::pkcs12_data);
+	REQUIRE_FALSE(chain.empty());
+	auto leaf_key = chain.front().private_key();
+	REQUIRE(leaf_key);
+	const std::array roots{test_cert::load_pem(test_cert::ca)};
+
+	auto acceptor = TestType::acceptor::make({.certificate_chain = chain, .private_key = *leaf_key});
+	REQUIRE(acceptor);
+	auto connector = TestType::connector::make({.trusted_roots = roots, .use_system_trust = false});
+	REQUIRE(connector);
+
+	// Opaque per-peer identity; the crypto layer never interprets it, only binds the cookie to it.
+	const std::array peer_token{
+		std::byte{1},
+		std::byte{2},
+		std::byte{3},
+		std::byte{4},
+		std::byte{5},
+		std::byte{6},
+		std::byte{7},
+		std::byte{8},
+	};
+
+	SECTION("amplification")
+	{
+		auto client = connector->connect({.peer_name = "server.pal.alt.ee"});
+		REQUIRE(client);
+		auto server = acceptor->accept(peer_token);
+		REQUIRE(server);
+
+		std::array<std::byte, io_buffer_size> client_buf{};
+		std::array<std::byte, io_buffer_size> server_buf{};
+
+		// ClientHello#1 -> small HelloVerifyRequest; the server withholds its flight, not yet connected.
+		auto ch1 = client->step(client_buf);
+		REQUIRE(ch1);
+		auto hvr = server->step(std::span{client_buf}.first(ch1->produced), server_buf);
+		REQUIRE(hvr);
+		CHECK_FALSE(hvr->connected);
+		REQUIRE(hvr->produced > 0);
+
+		// ClientHello#2 echoes the cookie -> the full ServerHello+Certificate flight.
+		auto ch2 = client->step(std::span{server_buf}.first(hvr->produced), client_buf);
+		REQUIRE(ch2);
+		REQUIRE(ch2->produced > 0);
+		auto flight = server->step(std::span{client_buf}.first(ch2->produced), server_buf);
+		REQUIRE(flight);
+
+		// The large flight is gated behind the cookie round-trip — the anti-amplification guarantee.
+		CHECK(hvr->produced < flight->produced);
+	}
+
+	SECTION("empty_token")
+	{
+		auto client = connector->connect({.peer_name = "server.pal.alt.ee"});
+		REQUIRE(client);
+		std::array<std::byte, io_buffer_size> client_hello_buf{};
+		auto ch1 = client->step(client_hello_buf);
+		REQUIRE(ch1);
+		const auto client_hello = std::span{client_hello_buf}.first(ch1->produced);
+
+		std::array<std::byte, io_buffer_size> buf{};
+
+		auto server_with_cookie = acceptor->accept(peer_token);
+		REQUIRE(server_with_cookie);
+		auto with_cookie = server_with_cookie->step(client_hello, buf);
+		REQUIRE(with_cookie);
+
+		auto server_without_cookie = acceptor->accept(std::span<const std::byte>{});
+		REQUIRE(server_without_cookie);
+		auto without_cookie = server_without_cookie->step(client_hello, buf);
+		REQUIRE(without_cookie);
+
+		if constexpr (pal::os == pal::os_type::windows)
+		{
+			// SChannel always runs the cookie exchange, so the empty-token server still gates — same HVR.
+			CHECK(with_cookie->produced == without_cookie->produced);
+		}
+		else
+		{
+			// OpenSSL: an empty token forgoes the cookie, so the unprotected server emits its full flight.
+			CHECK(with_cookie->produced < without_cookie->produced);
+		}
+	}
+
+	SECTION("handshake")
+	{
+		auto client = connector->connect({.peer_name = "server.pal.alt.ee"});
+		REQUIRE(client);
+		auto server = acceptor->accept(peer_token);
+		REQUIRE(server);
+
+		auto result = pump(*client, *server);
+		REQUIRE_FALSE(result.error);
+		REQUIRE(result.client);
+		REQUIRE(result.server);
+	}
 }
 
 // }}}1

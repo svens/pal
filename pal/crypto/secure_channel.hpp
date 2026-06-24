@@ -146,7 +146,10 @@ using context_ptr = std::shared_ptr<context>;
 result<context_ptr> make_context (transport t, const acceptor_options &opts) noexcept;
 result<context_ptr> make_context (transport t, const connector_options &opts) noexcept;
 
-result<handshake_channel> make_channel (const context_ptr &ctx, const acceptor_handshake_options &opts) noexcept;
+result<handshake_channel> make_channel (
+	const context_ptr &ctx, const acceptor_handshake_options &opts, std::span<const std::byte> peer_token
+) noexcept;
+
 result<handshake_channel> make_channel (const context_ptr &ctx, const connector_handshake_options &opts) noexcept;
 
 } // namespace __secure_channel
@@ -355,7 +358,7 @@ private:
 	result<handshake_result> step_impl (std::span<const std::byte> in, std::span<std::byte> out) noexcept;
 
 	friend result<handshake_channel> __secure_channel::make_channel (
-		const __secure_channel::context_ptr &, const acceptor_handshake_options &
+		const __secure_channel::context_ptr &, const acceptor_handshake_options &, std::span<const std::byte>
 	) noexcept;
 	friend result<handshake_channel> __secure_channel::make_channel (
 		const __secure_channel::context_ptr &, const connector_handshake_options &
@@ -391,10 +394,27 @@ public:
 		return __secure_channel::make_context(T, opts).transform(&to_api);
 	}
 
-	/// Create a new server-side `handshake_channel`. No I/O is performed.
+	/// Create a new server-side stream `handshake_channel`. No I/O is performed.
 	[[nodiscard]] result<handshake_channel> accept (const handshake_options &opts = {}) const noexcept
+		requires(T == transport::stream)
 	{
-		return __secure_channel::make_channel(ctx_, opts);
+		return __secure_channel::make_channel(ctx_, opts, {});
+	}
+
+	/// Create a server-side datagram `handshake_channel` bound to a specific peer. No I/O is performed.
+	///
+	/// \a peer_token is an opaque, caller-supplied buffer whose raw bytes bind the DTLS anti-amplification
+	/// cookie (HelloVerifyRequest) to this peer. They MUST be a stable, unique-per-peer identifier that is
+	/// byte-identical across handshake retries — e.g. a serialization of the peer's address + port, never
+	/// raw OS sockaddr memory (which carries non-deterministic padding and the IPv6 flow label). Distinct
+	/// peers MUST map to distinct tokens; a collision lets a forged source replay another peer's cookie and
+	/// defeats the guarantee. An empty token forfeits anti-amplification (the cookie falls back to a fixed
+	/// placeholder). Available on datagram acceptors only.
+	[[nodiscard]] result<handshake_channel>
+	accept (const_buffer auto const &peer_token, const handshake_options &opts = {}) const noexcept
+		requires(T == transport::datagram)
+	{
+		return __secure_channel::make_channel(ctx_, opts, std::as_bytes(std::span{peer_token}));
 	}
 
 private:
