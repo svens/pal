@@ -14,7 +14,10 @@
 #include <pal/result.hpp>
 #include <algorithm>
 #include <compare>
+#include <cstdint>
+#include <cstring>
 #include <format>
+#include <span>
 
 #if __pal_net_posix
 	#include <netinet/in.h>
@@ -336,6 +339,52 @@ private:
 		return family() == AF_INET;
 	}
 };
+
+/// Serialize \a ep into \a out as a fixed, injective, deterministic identity token for binding the DTLS
+/// anti-amplification cookie (a `pal::crypto::peer_token_source` adapter, found by ADL). Identity-only by
+/// construction (family, address, port and IPv6 scope) so it never carries sockaddr padding or the IPv6
+/// flow label and is reproducible across handshake retries. Distinct peers map to distinct tokens (the
+/// family byte separates v4/v6 and their zero-padding). Returns the byte count written, or 0 if \a out is
+/// too small.
+template <typename Protocol>
+[[nodiscard]] size_t to_peer_token (const basic_endpoint<Protocol> &ep, std::span<std::byte> out) noexcept
+{
+	// fixed layout, injective across v4/v6 (the family byte separates them and their zero-padding):
+	constexpr size_t family_offset = 0;
+	constexpr size_t address_offset = 1;
+	constexpr size_t port_offset = 17;
+	constexpr size_t scope_offset = 19;
+	constexpr size_t token_size = 23;
+	constexpr std::byte v4_family{4};
+	constexpr std::byte v6_family{6};
+
+	if (out.size() < token_size)
+	{
+		return 0;
+	}
+	std::ranges::fill(out.first(token_size), std::byte{});
+
+	if (const auto addr = ep.address(); const auto *v4 = addr.v4())
+	{
+		out[family_offset] = v4_family;
+		const auto &bytes = v4->to_bytes();
+		std::memcpy(out.data() + address_offset, bytes.data(), bytes.size());
+	}
+	else
+	{
+		const auto *v6 = addr.v6();
+		out[family_offset] = v6_family;
+		const auto &bytes = v6->to_bytes();
+		std::memcpy(out.data() + address_offset, bytes.data(), bytes.size());
+		const auto scope = static_cast<uint32_t>(v6->scope_id());
+		std::memcpy(out.data() + scope_offset, &scope, sizeof(scope));
+	}
+
+	const auto port = static_cast<uint16_t>(ep.port());
+	std::memcpy(out.data() + port_offset, &port, sizeof(port));
+
+	return token_size;
+}
 
 } // namespace pal::net::ip
 

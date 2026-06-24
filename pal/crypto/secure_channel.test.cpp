@@ -111,7 +111,7 @@ template <typename Acceptor>
 {
 	if constexpr (Acceptor::transport_value == transport::datagram)
 	{
-		return acceptor.accept(std::span<const std::byte>{});
+		return acceptor.accept(peer_token::none);
 	}
 	else
 	{
@@ -734,6 +734,65 @@ TEMPLATE_TEST_CASE("crypto/secure_channel/factory_outlives_inputs", "", stream, 
 	CHECK(std::string_view{plain.data(), dec->produced} == pal_test::case_name());
 }
 
+// A peer_token_source whose ADL adapter writes `produce` bytes (0 declines), exercising the make() overload.
+struct fake_source //{{{1
+{
+	size_t produce;
+};
+
+size_t to_peer_token (const fake_source &source, std::span<std::byte> out) noexcept
+{
+	const auto n = (std::min)(source.produce, out.size());
+	std::ranges::fill(out.first(n), std::byte{0xAB});
+	return n;
+}
+
+TEST_CASE("crypto/secure_channel/peer_token") //{{{1
+{
+	SECTION("max_size")
+	{
+		const std::array<std::byte, peer_token::max_size> bytes{};
+		auto token = peer_token::make(bytes);
+		REQUIRE(token);
+		CHECK(token->bytes().size() == peer_token::max_size);
+	}
+
+	SECTION("overflow")
+	{
+		const std::array<std::byte, peer_token::max_size + 1> bytes{};
+		auto token = peer_token::make(bytes);
+		REQUIRE_FALSE(token);
+		CHECK(token.error() == secure_channel_errc::invalid_configuration);
+	}
+
+	SECTION("empty input rejected")
+	{
+		auto token = peer_token::make(std::span<const std::byte>{});
+		REQUIRE_FALSE(token);
+		CHECK(token.error() == secure_channel_errc::invalid_configuration);
+	}
+
+	SECTION("none")
+	{
+		CHECK(peer_token::none.empty());
+		CHECK(peer_token::none.bytes().empty());
+	}
+
+	SECTION("from source")
+	{
+		auto token = peer_token::make(fake_source{8});
+		REQUIRE(token);
+		CHECK(token->bytes().size() == 8);
+	}
+
+	SECTION("source declines")
+	{
+		auto token = peer_token::make(fake_source{0});
+		REQUIRE_FALSE(token);
+		CHECK(token.error() == secure_channel_errc::invalid_configuration);
+	}
+}
+
 TEMPLATE_TEST_CASE("crypto/secure_channel/dtls_cookie", "[!nonportable]", datagram) //{{{1
 {
 	auto chain = test_cert::load_pkcs12(test_cert::pkcs12_data);
@@ -748,7 +807,7 @@ TEMPLATE_TEST_CASE("crypto/secure_channel/dtls_cookie", "[!nonportable]", datagr
 	REQUIRE(connector);
 
 	// Opaque per-peer identity; the crypto layer never interprets it, only binds the cookie to it.
-	const std::array peer_token{
+	const std::array token_bytes{
 		std::byte{1},
 		std::byte{2},
 		std::byte{3},
@@ -758,12 +817,14 @@ TEMPLATE_TEST_CASE("crypto/secure_channel/dtls_cookie", "[!nonportable]", datagr
 		std::byte{7},
 		std::byte{8},
 	};
+	auto token = peer_token::make(token_bytes);
+	REQUIRE(token);
 
 	SECTION("amplification")
 	{
 		auto client = connector->connect({.peer_name = "server.pal.alt.ee"});
 		REQUIRE(client);
-		auto server = acceptor->accept(peer_token);
+		auto server = acceptor->accept(*token);
 		REQUIRE(server);
 
 		std::array<std::byte, io_buffer_size> client_buf{};
@@ -799,12 +860,12 @@ TEMPLATE_TEST_CASE("crypto/secure_channel/dtls_cookie", "[!nonportable]", datagr
 
 		std::array<std::byte, io_buffer_size> buf{};
 
-		auto server_with_cookie = acceptor->accept(peer_token);
+		auto server_with_cookie = acceptor->accept(*token);
 		REQUIRE(server_with_cookie);
 		auto with_cookie = server_with_cookie->step(client_hello, buf);
 		REQUIRE(with_cookie);
 
-		auto server_without_cookie = acceptor->accept(std::span<const std::byte>{});
+		auto server_without_cookie = acceptor->accept(peer_token::none);
 		REQUIRE(server_without_cookie);
 		auto without_cookie = server_without_cookie->step(client_hello, buf);
 		REQUIRE(without_cookie);
@@ -825,7 +886,7 @@ TEMPLATE_TEST_CASE("crypto/secure_channel/dtls_cookie", "[!nonportable]", datagr
 	{
 		auto client = connector->connect({.peer_name = "server.pal.alt.ee"});
 		REQUIRE(client);
-		auto server = acceptor->accept(peer_token);
+		auto server = acceptor->accept(*token);
 		REQUIRE(server);
 
 		auto result = pump(*client, *server);

@@ -241,19 +241,22 @@ make_secure_socket (
 	using Protocol = Socket::protocol_type;
 	using secure_socket = basic_secure_socket<Protocol, __socket::transport_v<Socket>>;
 
-	// TODO: bind a real per-peer token (from the connected endpoint) for DTLS anti-amplification; the empty
-	// datagram token below forfeits the cookie.
-	auto handshake = [&]
+	auto accept = [&](const auto &acceptor, const auto &opts)
 	{
 		if constexpr (__socket::transport_v<Socket> == crypto::transport::datagram)
 		{
-			return acceptor.accept(std::span<const std::byte>{}, opts);
+			return socket.remote_endpoint().and_then([&] (const auto &peer)
+			{
+				return acceptor.accept(*crypto::peer_token::make(peer), opts);
+			});
 		}
 		else
 		{
 			return acceptor.accept(opts);
 		}
-	}();
+	};
+
+	auto handshake = accept(acceptor, opts);
 	if (!handshake)
 	{
 		return unexpected(handshake.error());

@@ -162,9 +162,8 @@ struct session_state //{{{1
 	std::array<char, max_peer_name> peer_name_buf{};
 	size_t peer_name_size = 0;
 
-	static constexpr size_t max_peer_token = 64;
-	std::array<std::byte, max_peer_token> peer_token_buf{};
-	size_t peer_token_size = 0;
+	// DTLS anti-amplification cookie binding (datagram acceptor only); empty falls back to a placeholder.
+	peer_token peer_token = peer_token::none;
 
 	session_state (__secure_channel::context_ptr config, bool is_datagram, verify_relax relax) noexcept
 		: config{std::move(config)}
@@ -184,15 +183,6 @@ struct session_state //{{{1
 
 	session_state (const session_state &) = delete;
 	session_state &operator= (const session_state &) = delete;
-
-	void peer_token (std::span<const std::byte> token) noexcept
-	{
-		peer_token_size = token.size();
-		if (!token.empty())
-		{
-			std::memcpy(peer_token_buf.data(), token.data(), token.size());
-		}
-	}
 
 	void peer_name (std::string_view name) noexcept
 	{
@@ -782,19 +772,14 @@ result<context_ptr> make_context (transport t, const connector_options &opts) no
 result<handshake_channel> make_channel ( //{{{1
 	const context_ptr &ctx,
 	const acceptor_handshake_options &opts,
-	std::span<const std::byte> peer_token) noexcept
+	const peer_token &peer_token) noexcept
 {
-	if (peer_token.size() > session_state::max_peer_token)
-	{
-		return make_unexpected(secure_channel_errc::invalid_configuration);
-	}
-
 	auto state = pal::make_unique<session_state>(ctx, is_datagram(ctx->kind), opts.relax);
 	if (!state)
 	{
 		return pal::unexpected{state.error()};
 	}
-	(*state)->peer_token(peer_token);
+	(*state)->peer_token = peer_token;
 	return attorney::emit_handshake_channel(std::move(*state));
 }
 
@@ -947,22 +932,14 @@ result<handshake_result> handshake_channel::step_impl ( //{{{1
 
 	if (shared.kind == kind::datagram_acceptor)
 	{
-		if (state.peer_token_size > 0)
+		if (!state.peer_token.empty())
 		{
-			in_bufs[in_count++] = {
-				SECBUFFER_EXTRA,
-				state.peer_token_buf.data(),
-				state.peer_token_size,
-			};
+			in_bufs[in_count++] = {SECBUFFER_EXTRA, state.peer_token.bytes()};
 		}
 		else
 		{
 			static std::array placeholder = {10, 0, 0, 1, 0, 0, 0, 1};
-			in_bufs[in_count++] = {
-				SECBUFFER_EXTRA,
-				placeholder.data(),
-				placeholder.size(),
-			};
+			in_bufs[in_count++] = {SECBUFFER_EXTRA, std::as_bytes(std::span{placeholder})};
 		}
 	}
 

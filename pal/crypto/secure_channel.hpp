@@ -23,14 +23,16 @@
 #include <pal/crypto/key.hpp>
 #include <pal/crypto/tls_wire.hpp>
 #include <pal/result.hpp>
+#include <array>
+#include <concepts>
 #include <cstddef>
 #include <cstdint>
+#include <cstring>
 #include <memory>
 #include <optional>
 #include <span>
 #include <string_view>
 #include <system_error>
-#include <utility>
 
 namespace pal::crypto
 {
@@ -127,6 +129,97 @@ struct connector_handshake_options
 	verify_relax relax = verify_relax::none;
 };
 
+// peer_token {{{1
+
+// clang-format off
+
+/// A type that yields DTLS anti-amplification token bytes through an ADL `to_peer_token(source, out)`,
+/// which writes the identity bytes into \a out and returns the count written (0 to decline). Lets callers
+/// pass a domain type (e.g. a network endpoint) wherever a `peer_token` is formed, without the crypto
+/// layer knowing that type.
+template <typename T>
+concept peer_token_source = requires(const T &t, std::span<std::byte> out)
+{
+	{ to_peer_token(t, out) } -> std::same_as<size_t>;
+};
+
+// clang-format on
+
+/// Opaque, owning, bounded per-peer identity that binds the DTLS anti-amplification cookie
+/// (HelloVerifyRequest) to a single peer. The crypto layer never interprets the bytes.
+///
+/// The bytes MUST be a stable, unique-per-peer identifier that is byte-identical across handshake
+/// retries — e.g. a canonical serialization of the peer's address and port, never raw OS sockaddr
+/// memory (which carries non-deterministic padding and the IPv6 flow label). Distinct peers MUST map
+/// to distinct tokens; a collision lets a forged source replay another peer's cookie.
+///
+/// Datagram acceptors require an explicit token, so forfeiting anti-amplification is always visible at
+/// the call site as `peer_token::none`.
+class peer_token
+{
+public:
+
+	/// Maximum token length in bytes.
+	static constexpr size_t max_size = 64;
+
+	/// Empty token that forfeits anti-amplification; the sole sanctioned forfeit. Grep for
+	/// `peer_token::none` to audit every forfeit site.
+	static const peer_token none;
+
+	/// Form a token from \a bytes, failing with `invalid_configuration` unless `bytes` is non-empty and at
+	/// most `max_size` long. An empty token is reachable only as `peer_token::none`.
+	static result<peer_token> make (const_buffer auto const &bytes) noexcept
+	{
+		const auto raw = std::as_bytes(std::span{bytes});
+		if (!raw.empty() && raw.size() <= max_size)
+		{
+			return peer_token{raw};
+		}
+		return unexpected{make_error_code(secure_channel_errc::invalid_configuration)};
+	}
+
+	/// Form a token from \a source via its `to_peer_token` serializer, failing with `invalid_configuration`
+	/// when the serializer declines (writes nothing) or overflows `max_size`.
+	static result<peer_token> make (peer_token_source auto const &source) noexcept
+	{
+		peer_token token;
+		const auto written = to_peer_token(source, std::span{token.data_});
+		if (written > 0 && written <= max_size)
+		{
+			token.size_ = written;
+			return token;
+		}
+		return unexpected{make_error_code(secure_channel_errc::invalid_configuration)};
+	}
+
+	/// Raw token bytes; empty for `peer_token::none`.
+	[[nodiscard]] constexpr std::span<const std::byte> bytes () const noexcept
+	{
+		return {data_.data(), size_};
+	}
+
+	/// True when no binding material is present (anti-amplification forfeited).
+	[[nodiscard]] constexpr bool empty () const noexcept
+	{
+		return size_ == 0;
+	}
+
+private:
+
+	constexpr peer_token () noexcept = default;
+
+	explicit peer_token (std::span<const std::byte> bytes) noexcept
+		: size_{bytes.size()}
+	{
+		std::memcpy(data_.data(), bytes.data(), size_);
+	}
+
+	std::array<std::byte, max_size> data_{};
+	size_t size_ = 0;
+};
+
+inline constexpr peer_token peer_token::none{};
+
 // forward declarations {{{1
 
 class handshake_channel;
@@ -146,9 +239,8 @@ using context_ptr = std::shared_ptr<context>;
 result<context_ptr> make_context (transport t, const acceptor_options &opts) noexcept;
 result<context_ptr> make_context (transport t, const connector_options &opts) noexcept;
 
-result<handshake_channel> make_channel (
-	const context_ptr &ctx, const acceptor_handshake_options &opts, std::span<const std::byte> peer_token
-) noexcept;
+result<handshake_channel>
+make_channel (const context_ptr &ctx, const acceptor_handshake_options &opts, const peer_token &peer_token) noexcept;
 
 result<handshake_channel> make_channel (const context_ptr &ctx, const connector_handshake_options &opts) noexcept;
 
@@ -358,7 +450,7 @@ private:
 	result<handshake_result> step_impl (std::span<const std::byte> in, std::span<std::byte> out) noexcept;
 
 	friend result<handshake_channel> __secure_channel::make_channel (
-		const __secure_channel::context_ptr &, const acceptor_handshake_options &, std::span<const std::byte>
+		const __secure_channel::context_ptr &, const acceptor_handshake_options &, const peer_token &
 	) noexcept;
 	friend result<handshake_channel> __secure_channel::make_channel (
 		const __secure_channel::context_ptr &, const connector_handshake_options &
@@ -398,23 +490,17 @@ public:
 	[[nodiscard]] result<handshake_channel> accept (const handshake_options &opts = {}) const noexcept
 		requires(T == transport::stream)
 	{
-		return __secure_channel::make_channel(ctx_, opts, {});
+		return __secure_channel::make_channel(ctx_, opts, peer_token::none);
 	}
 
-	/// Create a server-side datagram `handshake_channel` bound to a specific peer. No I/O is performed.
+	/// Create a server-side datagram `handshake_channel` bound to \a token. No I/O is performed.
 	///
-	/// \a peer_token is an opaque, caller-supplied buffer whose raw bytes bind the DTLS anti-amplification
-	/// cookie (HelloVerifyRequest) to this peer. They MUST be a stable, unique-per-peer identifier that is
-	/// byte-identical across handshake retries — e.g. a serialization of the peer's address + port, never
-	/// raw OS sockaddr memory (which carries non-deterministic padding and the IPv6 flow label). Distinct
-	/// peers MUST map to distinct tokens; a collision lets a forged source replay another peer's cookie and
-	/// defeats the guarantee. An empty token forfeits anti-amplification (the cookie falls back to a fixed
-	/// placeholder). Available on datagram acceptors only.
+	/// Pass `peer_token::none` to deliberately forfeit DTLS anti-amplification.
 	[[nodiscard]] result<handshake_channel>
-	accept (const_buffer auto const &peer_token, const handshake_options &opts = {}) const noexcept
+	accept (const peer_token &peer_token, const handshake_options &opts = {}) const noexcept
 		requires(T == transport::datagram)
 	{
-		return __secure_channel::make_channel(ctx_, opts, std::as_bytes(std::span{peer_token}));
+		return __secure_channel::make_channel(ctx_, opts, peer_token);
 	}
 
 private:

@@ -18,8 +18,6 @@
 #include <array>
 #include <cstring>
 #include <mutex>
-#include <optional>
-#include <utility>
 
 namespace pal::crypto
 {
@@ -210,19 +208,8 @@ struct session_state
 	// Per-handshake snapshot of the acceptor's cookie HMAC key (copied at accept time)
 	cookie_secret_type cookie_secret{};
 
-	// DTLS anti-amplification cookie binding bytes (datagram acceptor only); empty disables the exchange.
-	static constexpr size_t max_peer_token = 64;
-	std::array<unsigned char, max_peer_token> peer_token_buf{};
-	size_t peer_token_size = 0;
-
-	void peer_token (std::span<const std::byte> token) noexcept
-	{
-		peer_token_size = token.size();
-		if (!token.empty())
-		{
-			std::memcpy(peer_token_buf.data(), token.data(), token.size());
-		}
-	}
+	// DTLS anti-amplification cookie binding (datagram acceptor only); empty disables the exchange.
+	class peer_token peer_token = peer_token::none;
 
 	static int verify_callback (int preverify_ok, ::X509_STORE_CTX *store_ctx) noexcept;
 };
@@ -238,10 +225,6 @@ int session_state::verify_callback (int preverify_ok, ::X509_STORE_CTX *store_ct
 	}
 
 	auto *state = static_cast<session_state *>(::SSL_get_ex_data(ssl, session_index()));
-	if (state == nullptr)
-	{
-		return preverify_ok;
-	}
 
 	if (preverify_ok == 1)
 	{
@@ -635,14 +618,15 @@ int alpn_select_callback ( //{{{1
 
 bool compute_cookie (const session_state &state, unsigned char *out, unsigned int *out_len) noexcept //{{{1
 {
-	const auto &secret = state.cookie_secret;
+	const auto &cookie_secret = state.cookie_secret;
+	const auto peer_token = state.peer_token.bytes();
 
 	// clang-format off
 	auto *result = ::HMAC(::EVP_sha256(),
-		secret.data(),
-		secret.size(),
-		state.peer_token_buf.data(),
-		state.peer_token_size,
+		cookie_secret.data(),
+		cookie_secret.size(),
+		reinterpret_cast<const unsigned char *>(peer_token.data()),
+		peer_token.size(),
 		out,
 		out_len
 	);
@@ -654,20 +638,12 @@ bool compute_cookie (const session_state &state, unsigned char *out, unsigned in
 int cookie_generate (::SSL *ssl, unsigned char *cookie, unsigned int *cookie_len) noexcept //{{{1
 {
 	const auto *state = static_cast<const session_state *>(::SSL_get_ex_data(ssl, session_index()));
-	if (state == nullptr)
-	{
-		return 0;
-	}
 	return compute_cookie(*state, cookie, cookie_len) ? 1 : 0;
 }
 
 int cookie_verify (::SSL *ssl, const unsigned char *cookie, unsigned int cookie_len) noexcept //{{{1
 {
 	const auto *state = static_cast<const session_state *>(::SSL_get_ex_data(ssl, session_index()));
-	if (state == nullptr)
-	{
-		return 0;
-	}
 
 	std::array<unsigned char, EVP_MAX_MD_SIZE> expected{};
 	unsigned int expected_len = 0;
@@ -681,9 +657,6 @@ int cookie_verify (::SSL *ssl, const unsigned char *cookie, unsigned int cookie_
 
 result<session_state_ptr> make_session (const context_ptr &ctx) noexcept //{{{1
 {
-	// Precondition: ctx is a valid factory context. Factories carry no null state (no default ctor), so a
-	// null here would be a use-after-move bug, not a runtime condition — deref rather than guard for it.
-
 	auto state_result = pal::make_unique<session_state>();
 	if (!state_result)
 	{
@@ -730,7 +703,10 @@ result<session_state_ptr> make_session (const context_ptr &ctx) noexcept //{{{1
 		::SSL_set_mtu(ssl.get(), dtls_mtu);
 	}
 
-	::SSL_set_ex_data(ssl.get(), session_index(), state.get());
+	if (::SSL_set_ex_data(ssl.get(), session_index(), state.get()) == 0)
+	{
+		return make_unexpected(std::errc::not_enough_memory);
+	}
 
 	state->ssl = std::move(ssl);
 	return state;
@@ -871,13 +847,8 @@ result<context_ptr> make_context (transport t, const connector_options &opts) no
 result<handshake_channel> make_channel ( //{{{1
 	const context_ptr &ctx,
 	const acceptor_handshake_options &opts,
-	std::span<const std::byte> peer_token) noexcept
+	const peer_token &peer_token) noexcept
 {
-	if (peer_token.size() > session_state::max_peer_token)
-	{
-		return make_unexpected(secure_channel_errc::invalid_configuration);
-	}
-
 	auto state_result = make_session(ctx);
 	if (!state_result)
 	{
@@ -889,7 +860,7 @@ result<handshake_channel> make_channel ( //{{{1
 
 	if (!peer_token.empty())
 	{
-		state.peer_token(peer_token);
+		state.peer_token = peer_token;
 		state.cookie_secret = ctx->cookie_secret;
 		::SSL_set_options(state.ssl.get(), SSL_OP_COOKIE_EXCHANGE);
 	}

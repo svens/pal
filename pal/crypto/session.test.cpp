@@ -241,7 +241,7 @@ template <typename Acceptor>
 {
 	if constexpr (Acceptor::transport_value == transport::datagram)
 	{
-		return acceptor.accept(std::span<const std::byte>{});
+		return acceptor.accept(peer_token::none);
 	}
 	else
 	{

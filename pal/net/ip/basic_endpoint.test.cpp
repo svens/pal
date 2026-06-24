@@ -3,6 +3,9 @@
 #include <catch2/catch_template_test_macros.hpp>
 #include <catch2/generators/catch_generators.hpp>
 #include <catch2/generators/catch_generators_range.hpp>
+#include <array>
+#include <cstddef>
+#include <vector>
 
 namespace
 {
@@ -269,6 +272,45 @@ TEMPLATE_TEST_CASE("net/ip/basic_endpoint", "", tcp, udp)
 			expected = std::format("[{}]:{}", std::string_view{buf.data(), end}, port);
 		}
 		CHECK(std::format("{}", e.masked()) == expected);
+	}
+
+	SECTION("to_peer_token")
+	{
+		std::array<std::byte, 64> buf{};
+
+		auto token = [&] (const E &e)
+		{
+			std::array<std::byte, 64> out{};
+			const auto n = to_peer_token(e, out);
+			return std::vector(out.begin(), out.begin() + n);
+		};
+
+		SECTION("deterministic")
+		{
+			const E e{A4::loopback, port};
+			CHECK(to_peer_token(e, buf) == 23);
+			CHECK(token(e) == token(e));
+		}
+
+		SECTION("distinct")
+		{
+			const E v4{A4::loopback, port};
+			const E v4_other_port{A4::loopback, port_type{60001}};
+			const E v4_other_addr{A4::any, port};
+			const E v6{A6::loopback, port};
+
+			// v4 vs v6 differ (family byte), and address/port changes each shift the token.
+			CHECK(token(v4) != token(v6));
+			CHECK(token(v4) != token(v4_other_port));
+			CHECK(token(v4) != token(v4_other_addr));
+			CHECK(token(v6) != token(E{A6::any, port}));
+		}
+
+		SECTION("buffer too small")
+		{
+			std::array<std::byte, 22> small{};
+			CHECK(to_peer_token(E{A4::loopback, port}, small) == 0);
+		}
 	}
 }
 
