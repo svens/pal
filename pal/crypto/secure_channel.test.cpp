@@ -452,6 +452,29 @@ TEMPLATE_TEST_CASE("crypto/secure_channel", "", stream, datagram) //{{{1
 		}
 	}
 
+	// Regression/SChannel: destroying one acceptor mustn't break another; both share one CurrentUser\CA
+	// intermediate entry -> never delete it on destruction.
+	SECTION("overlapping_context_destruction")
+	{
+		auto a = acceptor::make(accept_options);
+		REQUIRE(a);
+
+		{
+			// A second acceptor from the same chain, then destroyed while `a` is still live.
+			auto a2 = acceptor::make(accept_options);
+			REQUIRE(a2);
+		}
+
+		auto connector = connector::make(connect_options);
+		REQUIRE(connector);
+		auto connector_handshake = connector->connect({.peer_name = "server.pal.alt.ee"});
+		REQUIRE(connector_handshake);
+		auto acceptor_handshake = server_accept(*a);
+		REQUIRE(acceptor_handshake);
+		auto handshake = pump(*connector_handshake, *acceptor_handshake);
+		CHECK_FALSE(handshake.error);
+	}
+
 	SECTION("move_assign")
 	{
 		auto a = acceptor::make(accept_options);

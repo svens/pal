@@ -15,7 +15,11 @@
  *      Move it out to get a `connected_channel`.
  *   4. Use `connected_channel::encrypt/decrypt/close` for application I/O.
  *
- * Transport sniffing helpers are provided for callers that mux plain and (D)TLS traffic on the same socket.
+ * Platform note (Windows): SChannel ships chain intermediates during the handshake only if it finds them in a system
+ * store, so any intermediates in `acceptor_options::certificate_chain` (or `connector_options::certificate_chain` for
+ * an mTLS client) are published into `CurrentUser\CA`. They are never removed: doing so would break other live
+ * sessions sharing the intermediate, a crash would orphan them anyway, and re-publishing is idempotent (one entry
+ * per distinct intermediate).
  */
 
 #include <pal/buffer.hpp>

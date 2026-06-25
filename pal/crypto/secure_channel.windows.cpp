@@ -351,43 +351,12 @@ struct context //{{{1
 	// Custom trusted-root store; NULL means use system trust (set as hRootStore in SCHANNEL_CRED).
 	HCERTSTORE root_store = nullptr;
 
-	// Max retained cert chain (leaf + intermediates). Fixed capacity so make_context allocates nothing in
-	// its noexcept body; a deeper chain is rejected as invalid_configuration. Bounds both cert arrays.
-	static constexpr size_t max_chain_size = 8;
-
 	// Keep cert material alive so the NCRYPT key persists on disk for the credential's lifetime.
+	static constexpr size_t max_chain_size = 8;
 	std::array<certificate, max_chain_size> chain_refs{};
 	size_t chain_count = 0;
 
-	// CurrentUser/CA system store, plus the intermediate-CA contexts we added to it. When building the
-	// outgoing Certificate message SChannel only ships intermediates it finds in a system store — a spike
-	// proved it does not consult a private in-memory store during the handshake — so we add ours to this
-	// shared, persistent store and delete them again on destruction.
-	struct ca_store
-	{
-		HCERTSTORE store = nullptr;
-		std::array<PCCERT_CONTEXT, max_chain_size> certs{};
-		size_t count = 0;
-
-		~ca_store () noexcept
-		{
-			if (store)
-			{
-				for (auto *cert: std::span{certs}.first(count))
-				{
-					::CertDeleteCertificateFromStore(cert);
-				}
-				::CertCloseStore(store, 0);
-			}
-		}
-
-		// Best-effort: a failed open or add just means that intermediate is not sent.
-		void add_intermediates (std::span<const certificate> intermediates) noexcept;
-	} ca_store{};
-
-	// Offered ALPN list, prebuilt once at make_context into SChannel's SEC_APPLICATION_PROTOCOLS form and
-	// presented as a read-only SECBUFFER_APPLICATION_PROTOCOLS input on every handshake step. buffer_size is
-	// 0 when no ALPN is configured.
+	// Prebuilt ALPN list. buffer_size is 0 when no ALPN is configured.
 	struct alpn
 	{
 		static constexpr size_t max_wire_size = 256;
@@ -395,13 +364,9 @@ struct context //{{{1
 		alignas(DWORD) std::array<BYTE, max_wire_size + alpn_struct_size> buffer{};
 		ULONG buffer_size = 0;
 
-		// Encode \a protocols into buffer/buffer_size. Returns false on an empty/oversized name or overflow.
 		[[nodiscard]] bool encode (std::span<const std::string_view> protocols) noexcept;
 	} alpn{};
 
-	// Manually verify a peer cert chain against this context's trust (custom root_store if set, else system
-	// trust) after a manual-validation handshake; also checks the hostname when peer_name is non-empty.
-	// Empty error_code on success.
 	std::error_code verify_peer_cert (
 		const cert_ptr &peer_cert, std::string_view peer_name, verify_relax relax, DWORD auth_type
 	) const noexcept;
@@ -424,33 +389,6 @@ struct context //{{{1
 		}
 	}
 };
-
-void context::ca_store::add_intermediates (std::span<const certificate> intermediates) noexcept //{{{1
-{
-	if (intermediates.empty())
-	{
-		return;
-	}
-
-	store = ::CertOpenStore(CERT_STORE_PROV_SYSTEM_W, 0, 0, CERT_SYSTEM_STORE_CURRENT_USER, L"CA");
-	if (!store)
-	{
-		return;
-	}
-
-	for (const auto &cert: intermediates)
-	{
-		if (auto c = attorney::to_sys(cert))
-		{
-			PCCERT_CONTEXT added = nullptr;
-			auto rc = ::CertAddCertificateContextToStore(store, c, CERT_STORE_ADD_REPLACE_EXISTING, &added);
-			if (rc && added)
-			{
-				certs[count++] = added;
-			}
-		}
-	}
-}
 
 bool context::alpn::encode (std::span<const std::string_view> protocols) noexcept //{{{1
 {
@@ -605,6 +543,30 @@ HCERTSTORE make_cert_store (std::span<const certificate> roots) noexcept //{{{1
 	return store;
 }
 
+void publish_intermediates (std::span<const certificate> intermediates) noexcept //{{{1
+{
+	if (intermediates.empty())
+	{
+		return;
+	}
+
+	HCERTSTORE store = ::CertOpenStore(CERT_STORE_PROV_SYSTEM_W, 0, 0, CERT_SYSTEM_STORE_CURRENT_USER, L"CA");
+	if (!store)
+	{
+		return;
+	}
+
+	for (const auto &cert: intermediates)
+	{
+		if (auto c = attorney::to_sys(cert))
+		{
+			::CertAddCertificateContextToStore(store, c, CERT_STORE_ADD_REPLACE_EXISTING, nullptr);
+		}
+	}
+
+	::CertCloseStore(store, 0);
+}
+
 //}}}1
 
 } // namespace
@@ -632,7 +594,7 @@ result<context_ptr> make_context (transport_type t, const acceptor_options &opts
 
 	std::ranges::copy(opts.certificate_chain, ctx.chain_refs.begin());
 	ctx.chain_count = opts.certificate_chain.size();
-	ctx.ca_store.add_intermediates(opts.certificate_chain.subspan(1));
+	publish_intermediates(opts.certificate_chain.subspan(1));
 
 	if (!ctx.alpn.encode(opts.supported_protocols))
 	{
@@ -741,7 +703,7 @@ result<context_ptr> make_context (transport_type t, const connector_options &opt
 		cred.cCreds = 1;
 		cred.paCred = &client_cert;
 
-		ctx.ca_store.add_intermediates(opts.certificate_chain.subspan(1));
+		publish_intermediates(opts.certificate_chain.subspan(1));
 	}
 	else
 	{
