@@ -106,19 +106,6 @@ handshake_result pump (handshake_channel &client_hs, handshake_channel &server_h
 	return result;
 }
 
-template <typename Acceptor>
-[[nodiscard]] auto server_accept (const Acceptor &acceptor)
-{
-	if constexpr (Acceptor::transport == transport_type::datagram)
-	{
-		return acceptor.accept(peer_token::none);
-	}
-	else
-	{
-		return acceptor.accept();
-	}
-}
-
 // Build acceptor + connector from the given options, run the handshake to completion (or first error).
 template <typename Traits>
 handshake_result establish (
@@ -134,7 +121,7 @@ handshake_result establish (
 
 	auto connector_handshake = connector->connect({.peer_name = peer_name});
 	REQUIRE(connector_handshake);
-	auto acceptor_handshake = server_accept(*acceptor);
+	auto acceptor_handshake = Traits::accept(*acceptor);
 	REQUIRE(acceptor_handshake);
 
 	return pump(*connector_handshake, *acceptor_handshake);
@@ -160,6 +147,11 @@ struct stream
 	using acceptor = stream_acceptor;
 	using connector = stream_connector;
 	static constexpr bool is_datagram = false;
+
+	static auto accept (const acceptor &a, acceptor_handshake_options opts = {})
+	{
+		return a.accept(opts);
+	}
 };
 
 struct datagram
@@ -167,6 +159,11 @@ struct datagram
 	using acceptor = datagram_acceptor;
 	using connector = datagram_connector;
 	static constexpr bool is_datagram = true;
+
+	static auto accept (const acceptor &a, acceptor_handshake_options opts = {})
+	{
+		return a.accept(peer_token::none, opts);
+	}
 };
 
 TEST_CASE("crypto/secure_channel/error_category") //{{{1
@@ -252,6 +249,17 @@ TEMPLATE_TEST_CASE("crypto/secure_channel", "", stream, datagram) //{{{1
 		}
 	}
 
+	SECTION("encrypt_empty")
+	{
+		// Empty plaintext is a documented no-op: no bytes consumed or produced, no error.
+		auto [client, server] = connect_pair<TestType>(accept_options, connect_options);
+		std::array<std::byte, 256> buf{};
+		auto enc = client.encrypt(std::span<const std::byte>{}, buf);
+		REQUIRE(enc);
+		CHECK(enc->consumed == 0);
+		CHECK(enc->produced == 0);
+	}
+
 	SECTION("decrypt_tampered")
 	{
 		auto [client, server] = connect_pair<TestType>(accept_options, connect_options);
@@ -328,7 +336,7 @@ TEMPLATE_TEST_CASE("crypto/secure_channel", "", stream, datagram) //{{{1
 			REQUIRE(c);
 			auto connect_handshake = c->connect({.relax = relax});
 			REQUIRE(connect_handshake);
-			auto accept_handshake = server_accept(*a);
+			auto accept_handshake = TestType::accept(*a);
 			REQUIRE(accept_handshake);
 			return pump(*connect_handshake, *accept_handshake);
 		};
@@ -404,6 +412,37 @@ TEMPLATE_TEST_CASE("crypto/secure_channel", "", stream, datagram) //{{{1
 		}
 	}
 
+	// Mismatch is undetectable on SChannel.
+	if constexpr (pal::os != pal::os_type::windows)
+	{
+		SECTION("cert_key_mismatch")
+		{
+			auto ec_chain = test_cert::load_pkcs12(test_cert::pkcs12_ec_data);
+			REQUIRE_FALSE(ec_chain.empty());
+			auto ec_key = ec_chain.front().private_key();
+			REQUIRE(ec_key);
+
+			SECTION("acceptor")
+			{
+				typename acceptor::options bad = accept_options;
+				bad.private_key = *ec_key; // EC key vs the RSA leaf
+				auto a = acceptor::make(bad);
+				REQUIRE_FALSE(a);
+				CHECK(a.error() == secure_channel_errc::invalid_configuration);
+			}
+
+			SECTION("connector")
+			{
+				typename connector::options bad = connect_options;
+				bad.certificate_chain = chain;
+				bad.private_key = *ec_key;
+				auto c = connector::make(bad);
+				REQUIRE_FALSE(c);
+				CHECK(c.error() == secure_channel_errc::invalid_configuration);
+			}
+		}
+	}
+
 	SECTION("moved_from")
 	{
 		auto require_invalid_config = [] (const auto &r)
@@ -452,15 +491,16 @@ TEMPLATE_TEST_CASE("crypto/secure_channel", "", stream, datagram) //{{{1
 		}
 	}
 
-	// Regression/SChannel: destroying one acceptor mustn't break another; both share one CurrentUser\CA
-	// intermediate entry -> never delete it on destruction.
+	// Regression/SChannel (fixed):
+	// - acceptor #1 added CurrentUser\CA certs
+	// - acceptor #2 dtor removed them
+	// - a1 handshake fails
 	SECTION("overlapping_context_destruction")
 	{
-		auto a = acceptor::make(accept_options);
-		REQUIRE(a);
+		auto a1 = acceptor::make(accept_options);
+		REQUIRE(a1);
 
 		{
-			// A second acceptor from the same chain, then destroyed while `a` is still live.
 			auto a2 = acceptor::make(accept_options);
 			REQUIRE(a2);
 		}
@@ -469,7 +509,7 @@ TEMPLATE_TEST_CASE("crypto/secure_channel", "", stream, datagram) //{{{1
 		REQUIRE(connector);
 		auto connector_handshake = connector->connect({.peer_name = "server.pal.alt.ee"});
 		REQUIRE(connector_handshake);
-		auto acceptor_handshake = server_accept(*a);
+		auto acceptor_handshake = TestType::accept(*a1);
 		REQUIRE(acceptor_handshake);
 		auto handshake = pump(*connector_handshake, *acceptor_handshake);
 		CHECK_FALSE(handshake.error);
@@ -491,10 +531,36 @@ TEMPLATE_TEST_CASE("crypto/secure_channel", "", stream, datagram) //{{{1
 
 		auto connector_handshake = c_target->connect({.peer_name = "server.pal.alt.ee"});
 		REQUIRE(connector_handshake);
-		auto acceptor_handshake = server_accept(*a_target);
+		auto acceptor_handshake = TestType::accept(*a_target);
 		REQUIRE(acceptor_handshake);
 		auto handshake = pump(*connector_handshake, *acceptor_handshake);
 		CHECK_FALSE(handshake.error);
+	}
+
+	SECTION("channel_move_assign")
+	{
+		auto [client, server] = connect_pair<TestType>(accept_options, connect_options);
+
+		connected_channel cc;
+		cc = std::move(client);
+		CHECK(static_cast<bool>(cc));
+
+		// The move-assigned target keeps the live session.
+		std::array<std::byte, 4096> buf{};
+		auto enc = cc.encrypt(pal_test::case_name(), buf);
+		REQUIRE(enc);
+		std::array<char, 4096> plain{};
+		auto dec = server.decrypt(std::span{buf}.first(enc->produced), plain);
+		REQUIRE(dec);
+		CHECK(std::string_view{plain.data(), dec->produced} == pal_test::case_name());
+
+		auto cn = connector::make(connect_options);
+		REQUIRE(cn);
+		auto hs = cn->connect({.peer_name = "server.pal.alt.ee"});
+		REQUIRE(hs);
+		handshake_channel hc;
+		hc = std::move(*hs);
+		CHECK(static_cast<bool>(hc));
 	}
 
 	SECTION("make: not_enough_memory")
@@ -511,7 +577,7 @@ TEMPLATE_TEST_CASE("crypto/secure_channel", "", stream, datagram) //{{{1
 		REQUIRE(acc);
 
 		const pal_test::bad_alloc_once x;
-		auto hs = server_accept(*acc);
+		auto hs = TestType::accept(*acc);
 		REQUIRE_FALSE(hs);
 		CHECK(hs.error() == std::errc::not_enough_memory);
 	}
@@ -561,6 +627,49 @@ TEMPLATE_TEST_CASE("crypto/secure_channel", "", stream, datagram) //{{{1
 		CHECK(handshake.error == secure_channel_errc::no_application_protocol);
 	}
 
+	SECTION("alpn_none")
+	{
+		auto [client, server] = connect_pair<TestType>(accept_options, connect_options);
+		CHECK(client.selected_protocol().empty());
+		CHECK(server.selected_protocol().empty());
+	}
+
+	SECTION("mtls_client_cert")
+	{
+		auto ec_chain = test_cert::load_pkcs12(test_cert::pkcs12_ec_data);
+		REQUIRE_FALSE(ec_chain.empty());
+		auto ec_key = ec_chain.front().private_key();
+		REQUIRE(ec_key);
+		const std::array client_roots{ec_chain.front()};
+
+		accept_options.require_client_certificate = true;
+		accept_options.trusted_roots = client_roots;
+		connect_options.certificate_chain = ec_chain;
+		connect_options.private_key = *ec_key;
+
+		auto a = acceptor::make(accept_options);
+		REQUIRE(a);
+		auto c = connector::make(connect_options);
+		REQUIRE(c);
+
+		auto connect_handshake = c->connect({.peer_name = "server.pal.alt.ee"});
+		REQUIRE(connect_handshake);
+
+		auto accept_handshake = TestType::accept(*a, {.relax = verify_relax::self_signed});
+		REQUIRE(accept_handshake);
+
+		auto handshake = pump(*connect_handshake, *accept_handshake);
+		REQUIRE_FALSE(handshake.error);
+
+		auto client_on_server = handshake.server->peer_certificate();
+		REQUIRE(client_on_server);
+		CHECK_FALSE(client_on_server->is_null());
+
+		auto server_on_client = handshake.client->peer_certificate();
+		REQUIRE(server_on_client);
+		CHECK_FALSE(server_on_client->is_null());
+	}
+
 	SECTION("mtls_missing_client_cert")
 	{
 		accept_options.require_client_certificate = true;
@@ -576,6 +685,26 @@ TEMPLATE_TEST_CASE("crypto/secure_channel", "", stream, datagram) //{{{1
 			secure_channel_errc::handshake_failed,
 		};
 		CHECK(std::ranges::contains(expected, handshake.error));
+	}
+
+	SECTION("duplicate_trusted_roots")
+	{
+		const std::array dup_roots{test_cert::load_pem(test_cert::ca), test_cert::load_pem(test_cert::ca)};
+		connect_options.trusted_roots = dup_roots;
+		auto [client, server] = connect_pair<TestType>(accept_options, connect_options);
+		CHECK(static_cast<bool>(client));
+	}
+
+	// use_system_trust: OpenSSL unions system roots with trusted_roots so ca still verifies; SChannel
+	// treats it as system-only (would ignore trusted_roots), hence OpenSSL-only.
+	if constexpr (pal::os != pal::os_type::windows)
+	{
+		SECTION("use_system_trust")
+		{
+			connect_options.use_system_trust = true;
+			auto [client, server] = connect_pair<TestType>(accept_options, connect_options);
+			CHECK(static_cast<bool>(client));
+		}
 	}
 
 	SECTION("encrypt_after_close")
@@ -602,23 +731,45 @@ TEMPLATE_TEST_CASE("crypto/secure_channel", "", stream, datagram) //{{{1
 		CHECK(again->produced == 0);
 	}
 
-	SECTION("close_undersized_output")
+	SECTION("undersized_output")
 	{
-		auto [client, server] = connect_pair<TestType>(accept_options, connect_options);
-
-		std::array<std::byte, 1> tiny{};
-		auto tight = client.close_notify(tiny);
-		REQUIRE(tight);
-
-		if constexpr (TestType::is_datagram && pal::os == pal::os_type::windows)
+		SECTION("handshake")
 		{
-			// Stream (and OpenSSL DTLS) needs more than 1 byte for the close_notify record.
-			// Only SChannel datagram close is a no-op, so there is no output and nothing to overflow.
-			CHECK_NOFAIL(tight->want_output);
+			auto cn = connector::make(connect_options);
+			REQUIRE(cn);
+			auto hs = cn->connect({.peer_name = "server.pal.alt.ee"});
+			REQUIRE(hs);
+			std::array<std::byte, 1> tiny{};
+			auto step = hs->step(tiny);
+			REQUIRE(step);
+			CHECK(step->want_output);
 		}
-		else
+
+		SECTION("encrypt")
 		{
-			CHECK(tight->want_output);
+			auto [client, server] = connect_pair<TestType>(accept_options, connect_options);
+			auto enc = client.encrypt(pal_test::case_name(), std::span<std::byte>{});
+			REQUIRE(enc);
+			CHECK(enc->want_output);
+			CHECK(enc->consumed == 0);
+		}
+
+		SECTION("close")
+		{
+			auto [client, server] = connect_pair<TestType>(accept_options, connect_options);
+			std::array<std::byte, 1> tiny{};
+			auto tight = client.close_notify(tiny);
+			REQUIRE(tight);
+
+			if constexpr (TestType::is_datagram && pal::os == pal::os_type::windows)
+			{
+				// SChannel datagram close is a no-op: no output, nothing to overflow.
+				CHECK_NOFAIL(tight->want_output);
+			}
+			else
+			{
+				CHECK(tight->want_output);
+			}
 		}
 	}
 
@@ -830,7 +981,7 @@ TEMPLATE_TEST_CASE("crypto/secure_channel/factory_outlives_inputs", "", stream, 
 
 	auto connector_handshake = connector->connect({.peer_name = "server.pal.alt.ee"});
 	REQUIRE(connector_handshake);
-	auto acceptor_handshake = server_accept(*acceptor);
+	auto acceptor_handshake = TestType::accept(*acceptor);
 	REQUIRE(acceptor_handshake);
 
 	auto handshake = pump(*connector_handshake, *acceptor_handshake);
