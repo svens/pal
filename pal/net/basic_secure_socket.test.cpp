@@ -390,7 +390,6 @@ TEMPLATE_TEST_CASE("net/basic_secure_socket", "", stream, datagram) //{{{1
 		net::native_socket::close(handle.handle());
 	}
 
-#if TODO_not_enough_memory
 	SECTION("make_secure_socket/connector/not_enough_memory")
 	{
 		auto ctx = TestType::prepare();
@@ -414,7 +413,6 @@ TEMPLATE_TEST_CASE("net/basic_secure_socket", "", stream, datagram) //{{{1
 		REQUIRE_FALSE(result);
 		CHECK(result.error() == std::errc::not_enough_memory);
 	}
-#endif
 
 	SECTION("hostname_mismatch")
 	{

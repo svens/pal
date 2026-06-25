@@ -92,11 +92,6 @@ struct bio_method //{{{1
 		::BIO_clear_retry_flags(bio);
 
 		auto *io = static_cast<bio_io *>(::BIO_get_data(bio));
-		if (io == nullptr)
-		{
-			return -1;
-		}
-
 		const auto remaining = static_cast<int>(io->write_out.size() - io->write_produced);
 		const auto chunk = std::min(remaining, size);
 		if (chunk == 0)
@@ -121,11 +116,6 @@ struct bio_method //{{{1
 		::BIO_clear_retry_flags(bio);
 
 		auto *io = static_cast<bio_io *>(::BIO_get_data(bio));
-		if (io == nullptr)
-		{
-			return -1;
-		}
-
 		const auto remaining = static_cast<int>(io->read_in.size() - io->read_consumed);
 		if (remaining == 0)
 		{
@@ -219,11 +209,6 @@ int session_state::verify_callback (int preverify_ok, ::X509_STORE_CTX *store_ct
 {
 	static const auto ssl_index = ::SSL_get_ex_data_X509_STORE_CTX_idx();
 	auto *ssl = static_cast<::SSL *>(::X509_STORE_CTX_get_ex_data(store_ctx, ssl_index));
-	if (ssl == nullptr)
-	{
-		return preverify_ok;
-	}
-
 	auto *state = static_cast<session_state *>(::SSL_get_ex_data(ssl, session_index()));
 
 	if (preverify_ok == 1)

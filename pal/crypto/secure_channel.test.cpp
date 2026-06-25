@@ -382,7 +382,98 @@ TEMPLATE_TEST_CASE("crypto/secure_channel", "", stream, datagram) //{{{1
 		}
 	}
 
-#if TODO_not_enough_memory
+	SECTION("acceptor_invalid_configuration")
+	{
+		// An acceptor must present a leaf certificate and its matching private key.
+		SECTION("empty certificate chain")
+		{
+			typename acceptor::options bad = accept_options;
+			bad.certificate_chain = {};
+			auto a = acceptor::make(bad);
+			REQUIRE_FALSE(a);
+			CHECK(a.error() == secure_channel_errc::invalid_configuration);
+		}
+
+		SECTION("missing private key")
+		{
+			typename acceptor::options bad = accept_options;
+			bad.private_key = key{};
+			auto a = acceptor::make(bad);
+			REQUIRE_FALSE(a);
+			CHECK(a.error() == secure_channel_errc::invalid_configuration);
+		}
+	}
+
+	SECTION("moved_from")
+	{
+		auto require_invalid_config = [] (const auto &r)
+		{
+			REQUIRE_FALSE(r);
+			CHECK(r.error() == secure_channel_errc::invalid_configuration);
+		};
+		std::array<std::byte, 4096> buf{};
+
+		SECTION("connected_channel")
+		{
+			auto [client, server] = connect_pair<TestType>(accept_options, connect_options);
+
+			connected_channel moved = std::move(client);
+			CHECK(static_cast<bool>(moved));
+
+			CHECK(client.is_null());
+			CHECK_FALSE(static_cast<bool>(client));
+			require_invalid_config(client.encrypt(pal_test::case_name(), buf));
+			require_invalid_config(client.decrypt(std::span<const std::byte>{}, buf));
+			require_invalid_config(client.close_notify(buf));
+			CHECK(client.max_message_size() == 0);
+
+			// The moved-into channel keeps the live session and still drives real traffic.
+			auto enc = moved.encrypt(pal_test::case_name(), buf);
+			REQUIRE(enc);
+			std::array<char, 4096> plain{};
+			auto dec = server.decrypt(std::span{buf}.first(enc->produced), plain);
+			REQUIRE(dec);
+			CHECK(std::string_view{plain.data(), dec->produced} == pal_test::case_name());
+		}
+
+		SECTION("handshake_channel")
+		{
+			auto cn = connector::make(connect_options);
+			REQUIRE(cn);
+			auto hs = cn->connect({.peer_name = "server.pal.alt.ee"});
+			REQUIRE(hs);
+
+			const handshake_channel moved = std::move(*hs);
+			CHECK(static_cast<bool>(moved));
+
+			CHECK(hs->is_null());
+			CHECK_FALSE(static_cast<bool>(*hs));
+			require_invalid_config(hs->step(buf));
+		}
+	}
+
+	SECTION("move_assign")
+	{
+		auto a = acceptor::make(accept_options);
+		REQUIRE(a);
+		auto a_target = acceptor::make(accept_options);
+		REQUIRE(a_target);
+		*a_target = std::move(*a);
+
+		auto c = connector::make(connect_options);
+		REQUIRE(c);
+		auto c_target = connector::make(connect_options);
+		REQUIRE(c_target);
+		*c_target = std::move(*c);
+
+		auto connector_handshake = c_target->connect({.peer_name = "server.pal.alt.ee"});
+		REQUIRE(connector_handshake);
+		auto acceptor_handshake = server_accept(*a_target);
+		REQUIRE(acceptor_handshake);
+		auto handshake = pump(*connector_handshake, *acceptor_handshake);
+		CHECK_FALSE(handshake.error);
+	}
+
 	SECTION("make: not_enough_memory")
 	{
 		const pal_test::bad_alloc_once x;
@@ -412,7 +503,6 @@ TEMPLATE_TEST_CASE("crypto/secure_channel", "", stream, datagram) //{{{1
 		REQUIRE_FALSE(hs);
 		CHECK(hs.error() == std::errc::not_enough_memory);
 	}
-#endif
 
 	SECTION("alpn")
 	{
@@ -732,6 +822,47 @@ TEMPLATE_TEST_CASE("crypto/secure_channel/factory_outlives_inputs", "", stream, 
 	auto dec = server.decrypt(std::span{buf}.first(enc->produced), plain);
 	REQUIRE(dec);
 	CHECK(std::string_view{plain.data(), dec->produced} == pal_test::case_name());
+}
+
+TEST_CASE("crypto/secure_channel/null_channel") //{{{1
+{
+	// A default-constructed channel owns no backend session. Queries report the null state and every I/O
+	// operation is rejected with invalid_configuration instead of dereferencing the absent state.
+	auto require_invalid_config = [] (const auto &r)
+	{
+		REQUIRE_FALSE(r);
+		CHECK(r.error() == secure_channel_errc::invalid_configuration);
+	};
+	std::array<std::byte, 256> buf{};
+
+	SECTION("connected_channel")
+	{
+		connected_channel channel;
+		CHECK(channel.is_null());
+		CHECK_FALSE(static_cast<bool>(channel));
+
+		require_invalid_config(channel.encrypt(pal_test::case_name(), buf));
+		require_invalid_config(channel.decrypt(std::span<const std::byte>{}, buf));
+		require_invalid_config(channel.decrypt(buf));
+		require_invalid_config(channel.close_notify(buf));
+
+		// Accessors degrade gracefully rather than erroring: null cert, no protocol, zero capacity.
+		auto cert = channel.peer_certificate();
+		REQUIRE(cert);
+		CHECK(cert->is_null());
+		CHECK(channel.selected_protocol().empty());
+		CHECK(channel.max_message_size() == 0);
+	}
+
+	SECTION("handshake_channel")
+	{
+		handshake_channel channel;
+		CHECK(channel.is_null());
+		CHECK_FALSE(static_cast<bool>(channel));
+
+		require_invalid_config(channel.step(buf));
+		require_invalid_config(channel.step(std::span<const std::byte>{}, buf));
+	}
 }
 
 // A peer_token_source whose ADL adapter writes `produce` bytes (0 declines), exercising the make() overload.
