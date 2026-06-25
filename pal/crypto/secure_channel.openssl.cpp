@@ -18,6 +18,7 @@
 #include <array>
 #include <cstring>
 #include <mutex>
+#include <utility>
 
 namespace pal::crypto
 {
@@ -44,7 +45,7 @@ const SSL_METHOD *method_for (kind k) noexcept //{{{1
 		case kind::datagram_connector:
 			return ::DTLS_client_method();
 	}
-	return nullptr;
+	std::unreachable();
 }
 
 struct bio_io //{{{1
@@ -254,9 +255,6 @@ std::error_code map_openssl_error (const session_state &state) noexcept //{{{1
 			case SSL_R_TLSV13_ALERT_CERTIFICATE_REQUIRED:
 				ec = make_error_code(secure_channel_errc::client_certificate_required);
 				break;
-			case SSL_R_CERTIFICATE_VERIFY_FAILED:
-				ec = make_error_code(secure_channel_errc::peer_verification_failed);
-				break;
 			default:
 				break;
 		}
@@ -292,13 +290,7 @@ std::error_code map_openssl_io_error (session_state &state, int ssl_error) noexc
 
 result<ssl_ctx_ptr> make_ssl_ctx (kind k) noexcept //{{{1
 {
-	const auto *method = method_for(k);
-	if (method == nullptr)
-	{
-		return make_unexpected(secure_channel_errc::invalid_configuration);
-	}
-
-	ssl_ctx_ptr ctx{::SSL_CTX_new(method)};
+	ssl_ctx_ptr ctx{::SSL_CTX_new(method_for(k))};
 	if (!ctx)
 	{
 		return make_unexpected(std::errc::not_enough_memory);
@@ -435,15 +427,11 @@ std::string_view context::alpn::select (std::string_view client_wire) const noex
 		const auto len = static_cast<uint8_t>(server[0]);
 		server.remove_prefix(1);
 
-		if (len > server.size())
-		{
-			break;
-		}
-
 		if (const std::string_view proto(server.begin(), server.begin() + len); contains(client_wire, proto))
 		{
 			return proto;
 		}
+
 		server.remove_prefix(len);
 	}
 
@@ -505,11 +493,6 @@ namespace
 
 bool apply_cert_chain (::SSL_CTX *ctx, std::span<const certificate> chain, const key &pkey) noexcept //{{{1
 {
-	if (chain.empty())
-	{
-		return true;
-	}
-
 	if (auto *leaf = attorney::to_sys(chain[0]); leaf == nullptr || ::SSL_CTX_use_certificate(ctx, leaf) != 1)
 	{
 		return false;
@@ -523,12 +506,7 @@ bool apply_cert_chain (::SSL_CTX *ctx, std::span<const certificate> chain, const
 		}
 	}
 
-	auto *pk = attorney::to_sys(pkey);
-	if (pk == nullptr)
-	{
-		return false;
-	}
-	if (::SSL_CTX_use_PrivateKey(ctx, pk) != 1)
+	if (::SSL_CTX_use_PrivateKey(ctx, attorney::to_sys(pkey)) != 1)
 	{
 		return false;
 	}

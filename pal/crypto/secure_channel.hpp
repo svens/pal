@@ -91,6 +91,8 @@ struct acceptor_options
 	std::span<const certificate> trusted_roots = {};
 
 	/// Augment client-cert verification with system trust store (mTLS).
+	///
+	/// \see connector_options::use_system_trust
 	bool use_system_trust = false;
 
 	/// ALPN protocols this server will accept, in preference order.
@@ -111,6 +113,9 @@ struct connector_options
 	std::span<const certificate> trusted_roots = {};
 
 	/// Augment server-cert verification with system trust store.
+	///
+	/// \note Backends differ when true: OpenSSL unions `trusted_roots` with the system store, whereas
+	/// Windows/SChannel uses the system store exclusively and ignores `trusted_roots`.
 	bool use_system_trust = true;
 
 	/// Optional client certificate chain to present (mTLS).
