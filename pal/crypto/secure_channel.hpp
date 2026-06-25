@@ -236,8 +236,8 @@ struct attorney;
 struct context;
 using context_ptr = std::shared_ptr<context>;
 
-result<context_ptr> make_context (transport t, const acceptor_options &opts) noexcept;
-result<context_ptr> make_context (transport t, const connector_options &opts) noexcept;
+result<context_ptr> make_context (transport_type t, const acceptor_options &opts) noexcept;
+result<context_ptr> make_context (transport_type t, const connector_options &opts) noexcept;
 
 result<handshake_channel>
 make_channel (const context_ptr &ctx, const acceptor_handshake_options &opts, const peer_token &peer_token) noexcept;
@@ -465,12 +465,12 @@ private:
 ///
 /// Holds the backend security context (certificate chain, trust material, ALPN list, etc.). Construct once and reuse
 /// for many sessions via `accept()`. Obtain via `make()`; cheap to copy/move (`std::shared_ptr` semantics internally).
-template <transport T>
+template <transport_type T>
 class acceptor
 {
 public:
 
-	static constexpr transport transport_value = T;
+	static constexpr transport_type transport = T;
 
 	using options = acceptor_options;
 	using handshake_options = acceptor_handshake_options;
@@ -488,7 +488,7 @@ public:
 
 	/// Create a new server-side stream `handshake_channel`. No I/O is performed.
 	[[nodiscard]] result<handshake_channel> accept (const handshake_options &opts = {}) const noexcept
-		requires(T == transport::stream)
+		requires(T == transport_type::stream)
 	{
 		return __secure_channel::make_channel(ctx_, opts, peer_token::none);
 	}
@@ -498,7 +498,7 @@ public:
 	/// Pass `peer_token::none` to deliberately forfeit DTLS anti-amplification.
 	[[nodiscard]] result<handshake_channel>
 	accept (const peer_token &peer_token, const handshake_options &opts = {}) const noexcept
-		requires(T == transport::datagram)
+		requires(T == transport_type::datagram)
 	{
 		return __secure_channel::make_channel(ctx_, opts, peer_token);
 	}
@@ -521,12 +521,12 @@ private:
 // connector {{{1
 
 /// Long-lived factory for client-side (D)TLS sessions.
-template <transport T>
+template <transport_type T>
 class connector
 {
 public:
 
-	static constexpr transport transport_value = T;
+	static constexpr transport_type transport = T;
 
 	using options = connector_options;
 	using handshake_options = connector_handshake_options;
@@ -565,10 +565,10 @@ private:
 
 // public aliases {{{1
 
-using stream_acceptor = acceptor<transport::stream>;
-using stream_connector = connector<transport::stream>;
-using datagram_acceptor = acceptor<transport::datagram>;
-using datagram_connector = connector<transport::datagram>;
+using stream_acceptor = acceptor<transport_type::stream>;
+using stream_connector = connector<transport_type::stream>;
+using datagram_acceptor = acceptor<transport_type::datagram>;
+using datagram_connector = connector<transport_type::datagram>;
 
 // }}}1
 

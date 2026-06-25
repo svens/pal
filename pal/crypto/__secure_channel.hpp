@@ -38,9 +38,9 @@ constexpr bool is_datagram (kind k) noexcept
 }
 
 // Compose the matrix cell from its two axes (inverse of is_acceptor()/is_datagram()).
-constexpr kind make_kind (transport t, bool acceptor) noexcept
+constexpr kind make_kind (transport_type t, bool acceptor) noexcept
 {
-	if (t == transport::stream)
+	if (t == transport_type::stream)
 	{
 		return acceptor ? kind::stream_acceptor : kind::stream_connector;
 	}

@@ -15,10 +15,10 @@
 namespace pal::crypto
 {
 
-// transport {{{1
+// transport_type {{{1
 
 /// Selects stream (TLS) or datagram (DTLS) protocol for factory and session templates.
-enum class transport : int
+enum class transport_type : int
 {
 	stream,
 	datagram,

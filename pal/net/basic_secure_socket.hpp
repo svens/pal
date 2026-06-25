@@ -21,10 +21,10 @@ namespace __socket //{{{1
 {
 
 template <typename>
-inline constexpr crypto::transport transport_v = crypto::transport::stream;
+inline constexpr crypto::transport_type transport_v = crypto::transport_type::stream;
 
 template <typename Protocol>
-inline constexpr crypto::transport transport_v<basic_datagram_socket<Protocol>> = crypto::transport::datagram;
+inline constexpr crypto::transport_type transport_v<basic_datagram_socket<Protocol>> = crypto::transport_type::datagram;
 
 } // namespace __socket
 
@@ -38,7 +38,7 @@ inline constexpr crypto::transport transport_v<basic_datagram_socket<Protocol>> 
 /// raw transport I/O (send/receive/close at the socket level) is not exposed.
 ///
 /// Move-only; moved-from instances have \c operator bool() == false.
-template <typename Protocol, crypto::transport Transport>
+template <typename Protocol, crypto::transport_type Transport>
 class basic_secure_socket: public socket_base
 {
 public:
@@ -145,7 +145,7 @@ private:
 	/// For datagram sockets: passes results through unchanged (no FIN semantics).
 	struct device
 	{
-		static constexpr crypto::transport transport_value = Transport;
+		static constexpr crypto::transport_type transport = Transport;
 
 		socket_type socket;
 
@@ -162,7 +162,7 @@ private:
 		result<size_t> receive (std::span<std::byte> buf) noexcept
 		{
 			auto received = socket.receive(buf);
-			if constexpr (Transport == crypto::transport::stream)
+			if constexpr (Transport == crypto::transport_type::stream)
 			{
 				if (received && *received == 0)
 				{
@@ -199,16 +199,13 @@ private:
 	) noexcept;
 };
 
-// make_secure_socket {{{1
-
 /// Run a client-side TLS/DTLS handshake over a pre-connected \a socket.
 template <typename Socket>
 [[nodiscard]] result<basic_secure_socket<typename Socket::protocol_type, __socket::transport_v<Socket>>>
-make_secure_socket (
+make_secure_socket ( //{{{1
 	Socket socket,
 	const crypto::connector<__socket::transport_v<Socket>> &connector,
-	const crypto::connector_handshake_options &opts = {}
-) noexcept
+	const crypto::connector_handshake_options &opts = {}) noexcept
 {
 	using Protocol = Socket::protocol_type;
 	using secure_socket = basic_secure_socket<Protocol, __socket::transport_v<Socket>>;
@@ -232,18 +229,18 @@ make_secure_socket (
 /// Run a server-side TLS/DTLS handshake over a pre-accepted \a socket.
 template <typename Socket>
 [[nodiscard]] result<basic_secure_socket<typename Socket::protocol_type, __socket::transport_v<Socket>>>
-make_secure_socket (
+make_secure_socket ( //{{{1
 	Socket socket,
 	const crypto::acceptor<__socket::transport_v<Socket>> &acceptor,
-	const crypto::acceptor_handshake_options &opts = {}
-) noexcept
+	const crypto::acceptor_handshake_options &opts = {}) noexcept
 {
 	using Protocol = Socket::protocol_type;
 	using secure_socket = basic_secure_socket<Protocol, __socket::transport_v<Socket>>;
 
-	auto accept = [&](const auto &acceptor, const auto &opts)
+	// clang-format off
+	auto accept = [&] (const auto &acceptor, const auto &opts)
 	{
-		if constexpr (__socket::transport_v<Socket> == crypto::transport::datagram)
+		if constexpr (__socket::transport_v<Socket> == crypto::transport_type::datagram)
 		{
 			return socket.remote_endpoint().and_then([&] (const auto &peer)
 			{
@@ -255,6 +252,7 @@ make_secure_socket (
 			return acceptor.accept(opts);
 		}
 	};
+	// clang-format on
 
 	auto handshake = accept(acceptor, opts);
 	if (!handshake)

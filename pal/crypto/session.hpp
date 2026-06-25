@@ -27,7 +27,7 @@ concept io_device = requires(T &t, ConstBuffer out, MutableBuffer in)
 	requires mutable_buffer<MutableBuffer>;
 	{ t.send(out) } noexcept -> std::same_as<result<size_t>>;
 	{ t.receive(in) } noexcept -> std::same_as<result<size_t>>;
-	requires std::same_as<std::remove_cvref_t<decltype(T::transport_value)>, transport>;
+	requires std::same_as<std::remove_cvref_t<decltype(T::transport)>, transport_type>;
 };
 
 namespace __session
@@ -89,14 +89,14 @@ public:
 	explicit operator bool () const noexcept;
 
 	/// Wrap an already-established \a channel in a session.
-	static result<session> from (connected_channel &&, transport) noexcept;
+	static result<session> from (connected_channel &&, transport_type) noexcept;
 
 	/// Run the TLS handshake to completion over \a transport, returning the live session.
 	template <io_device<std::span<const std::byte>, std::span<std::byte>> T>
 	static result<session> run_handshake (T &transport, handshake_channel &handshake) noexcept
 	{
 		__session::adapter a{transport};
-		return run_handshake_impl(a, handshake, T::transport_value);
+		return run_handshake_impl(a, handshake, T::transport);
 	}
 
 	/// Encrypt \a plain and flush all ciphertext through \a transport.
@@ -147,7 +147,7 @@ private:
 
 	explicit session (impl_ptr) noexcept;
 
-	static result<session> run_handshake_impl (__session::device &, handshake_channel &, transport) noexcept;
+	static result<session> run_handshake_impl (__session::device &, handshake_channel &, transport_type) noexcept;
 	result<size_t> send_impl (__session::device &, std::span<const std::byte>) noexcept;
 	result<size_t> receive_impl (__session::device &, std::span<std::byte>) noexcept;
 	result<void> close_notify_impl (__session::device &) noexcept;

@@ -39,7 +39,7 @@ struct stream
 	using connector = crypto::stream_connector;
 	using socket_type = tcp::socket;
 	using secure_socket_type = tcp::secure_socket;
-	static constexpr crypto::transport transport_value = crypto::transport::stream;
+	static constexpr crypto::transport_type transport = crypto::transport_type::stream;
 
 	struct context
 	{
@@ -77,7 +77,7 @@ struct datagram
 	using connector = crypto::datagram_connector;
 	using socket_type = udp::socket;
 	using secure_socket_type = udp::secure_socket;
-	static constexpr crypto::transport transport_value = crypto::transport::datagram;
+	static constexpr crypto::transport_type transport = crypto::transport_type::datagram;
 
 	struct context
 	{
@@ -224,7 +224,7 @@ TEMPLATE_TEST_CASE("net/basic_secure_socket", "", stream, datagram) //{{{1
 		{
 			REQUIRE_FALSE(receive);
 			if constexpr (
-				TestType::transport_value == crypto::transport::datagram
+				TestType::transport == crypto::transport_type::datagram
 				&& pal::os == pal::os_type::windows)
 			{
 				CHECK(receive.error() == std::errc::timed_out);
@@ -329,7 +329,7 @@ TEMPLATE_TEST_CASE("net/basic_secure_socket", "", stream, datagram) //{{{1
 		CHECK(c.selected_protocol() == "http/1.1");
 
 		if constexpr (
-			TestType::transport_value == crypto::transport::datagram && pal::os == pal::os_type::windows)
+			TestType::transport == crypto::transport_type::datagram && pal::os == pal::os_type::windows)
 		{
 			// The SChannel DTLS server cannot introspect its own ALPN selection
 			// Negotiation still works on the wire.
@@ -343,7 +343,7 @@ TEMPLATE_TEST_CASE("net/basic_secure_socket", "", stream, datagram) //{{{1
 
 	SECTION("max_message_size")
 	{
-		if constexpr (TestType::transport_value == crypto::transport::stream)
+		if constexpr (TestType::transport == crypto::transport_type::stream)
 		{
 			CHECK(client.max_message_size() == SIZE_MAX);
 		}

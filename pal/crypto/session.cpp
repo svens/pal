@@ -24,9 +24,9 @@ struct session::impl_type //{{{1
 	size_t first = 0;
 	size_t last = 0;
 	bool pending_plain = false;
-	enum transport transport;
+	transport_type transport;
 
-	explicit impl_type (connected_channel channel, enum transport transport) noexcept
+	explicit impl_type (connected_channel channel, transport_type transport) noexcept
 		: channel{std::move(channel)}
 		, transport{transport}
 	{
@@ -81,7 +81,7 @@ struct session::impl_type //{{{1
 		size_t sent_total = 0;
 		while (sent_total < data.size())
 		{
-			const auto chunk = (transport == transport::datagram)
+			const auto chunk = (transport == transport_type::datagram)
 				? data.subspan(sent_total, dtls_record_size(data.subspan(sent_total)))
 				: data.subspan(sent_total);
 			auto sent = dev.send(chunk);
@@ -125,7 +125,7 @@ session::operator bool () const noexcept
 	return impl_ != nullptr;
 }
 
-result<session> session::from (connected_channel &&channel, transport transport) noexcept //{{{1
+result<session> session::from (connected_channel &&channel, transport_type transport) noexcept //{{{1
 {
 	// clang-format off
 	return pal::make_unique<impl_type>(std::move(channel), transport).transform([] (auto p)
@@ -135,8 +135,10 @@ result<session> session::from (connected_channel &&channel, transport transport)
 	// clang-format on
 }
 
-result<session>
-session::run_handshake_impl (__session::device &dev, handshake_channel &handshake, transport transport) noexcept //{{{1
+result<session> session::run_handshake_impl ( //{{{1
+	__session::device &dev,
+	handshake_channel &handshake,
+	transport_type transport) noexcept
 {
 	auto session = from(connected_channel{}, transport);
 	if (!session)

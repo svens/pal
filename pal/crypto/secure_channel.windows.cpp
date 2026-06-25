@@ -609,7 +609,7 @@ HCERTSTORE make_cert_store (std::span<const certificate> roots) noexcept //{{{1
 
 } // namespace
 
-result<context_ptr> make_context (transport t, const acceptor_options &opts) noexcept //{{{1
+result<context_ptr> make_context (transport_type t, const acceptor_options &opts) noexcept //{{{1
 {
 	if (attorney::to_sys(opts.private_key) == 0)
 	{
@@ -684,7 +684,7 @@ result<context_ptr> make_context (transport t, const acceptor_options &opts) noe
 	return *ctx_result;
 }
 
-result<context_ptr> make_context (transport t, const connector_options &opts) noexcept //{{{1
+result<context_ptr> make_context (transport_type t, const connector_options &opts) noexcept //{{{1
 {
 	if (!opts.certificate_chain.empty() && attorney::to_sys(opts.private_key) == 0)
 	{

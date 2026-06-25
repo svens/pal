@@ -16,7 +16,7 @@
 namespace pal::net
 {
 
-template <typename Protocol, crypto::transport Transport>
+template <typename Protocol, crypto::transport_type Transport>
 class basic_secure_socket;
 
 } // namespace pal::net
@@ -62,7 +62,7 @@ public:
 	}
 
 	/// DTLS socket type for UDP
-	using secure_socket = net::basic_secure_socket<udp, crypto::transport::datagram>;
+	using secure_socket = net::basic_secure_socket<udp, crypto::transport_type::datagram>;
 
 	/// Return protocol number (IPPROTO_UDP)
 	[[nodiscard]] static constexpr int protocol () noexcept

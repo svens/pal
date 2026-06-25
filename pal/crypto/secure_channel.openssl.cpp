@@ -770,7 +770,7 @@ wrap_context (kind k, ssl_ctx_ptr ssl_ctx, std::span<const std::string_view> pro
 
 } // namespace
 
-result<context_ptr> make_context (transport t, const acceptor_options &opts) noexcept //{{{1
+result<context_ptr> make_context (transport_type t, const acceptor_options &opts) noexcept //{{{1
 {
 	if (opts.certificate_chain.empty() || attorney::to_sys(opts.private_key) == nullptr)
 	{
@@ -809,7 +809,7 @@ result<context_ptr> make_context (transport t, const acceptor_options &opts) noe
 	return wrap_context(k, std::move(ssl_ctx), opts.supported_protocols);
 }
 
-result<context_ptr> make_context (transport t, const connector_options &opts) noexcept //{{{1
+result<context_ptr> make_context (transport_type t, const connector_options &opts) noexcept //{{{1
 {
 	if (!opts.certificate_chain.empty() && attorney::to_sys(opts.private_key) == nullptr)
 	{

@@ -21,7 +21,7 @@
 namespace pal::net
 {
 
-template <typename Protocol, crypto::transport Transport>
+template <typename Protocol, crypto::transport_type Transport>
 class basic_secure_socket;
 
 } // namespace pal::net
@@ -47,7 +47,7 @@ public:
 	using acceptor = net::basic_socket_acceptor<tcp>;
 
 	/// TLS socket type for TCP
-	using secure_socket = net::basic_secure_socket<tcp, crypto::transport::stream>;
+	using secure_socket = net::basic_secure_socket<tcp, crypto::transport_type::stream>;
 
 	/// Resolver type for TCP
 	using resolver = basic_resolver<tcp>;

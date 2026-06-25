@@ -29,20 +29,20 @@ struct stream //{{{1
 {
 	using acceptor = stream_acceptor;
 	using connector = stream_connector;
-	static constexpr transport transport_value = transport::stream;
+	static constexpr transport_type transport = transport_type::stream;
 };
 
 struct datagram //{{{1
 {
 	using acceptor = datagram_acceptor;
 	using connector = datagram_connector;
-	static constexpr transport transport_value = transport::datagram;
+	static constexpr transport_type transport = transport_type::datagram;
 };
 
-template <transport Transport>
+template <transport_type Transport>
 struct loopback_device //{{{1
 {
-	static constexpr transport transport_value = Transport;
+	static constexpr transport_type transport = Transport;
 
 	// receive() reads
 	std::vector<std::byte> &buffer;
@@ -76,7 +76,7 @@ struct loopback_device //{{{1
 		}
 		if (buffer.empty())
 		{
-			if constexpr (Transport == transport::datagram)
+			if constexpr (Transport == transport_type::datagram)
 			{
 				return pal::unexpected(make_error_code(std::errc::resource_unavailable_try_again));
 			}
@@ -92,10 +92,10 @@ struct loopback_device //{{{1
 		return n;
 	}
 };
-static_assert(io_device<loopback_device<transport::stream>, std::span<const std::byte>, std::span<std::byte>>);
-static_assert(io_device<loopback_device<transport::datagram>, std::span<const std::byte>, std::span<std::byte>>);
+static_assert(io_device<loopback_device<transport_type::stream>, std::span<const std::byte>, std::span<std::byte>>);
+static_assert(io_device<loopback_device<transport_type::datagram>, std::span<const std::byte>, std::span<std::byte>>);
 
-template <transport Transport>
+template <transport_type Transport>
 struct loopback_pair //{{{1
 {
 	std::vector<std::byte> c2s{};
@@ -104,7 +104,7 @@ struct loopback_pair //{{{1
 	loopback_device<Transport> server{.buffer = c2s, .sink = s2c};
 };
 
-template <transport Transport>
+template <transport_type Transport>
 struct blocking_pair //{{{1
 {
 	std::mutex mutex{};
@@ -124,7 +124,7 @@ struct blocking_pair //{{{1
 
 	struct half_device
 	{
-		static constexpr transport transport_value = Transport;
+		static constexpr transport_type transport = Transport;
 
 		blocking_pair &pair;
 		std::vector<std::byte> &buffer;
@@ -182,12 +182,23 @@ struct blocking_pair //{{{1
 		return {.pair = *this, .buffer = c2s, .sink = s2c};
 	}
 };
+
+// clang-format off
 static_assert(
-	io_device<blocking_pair<transport::stream>::half_device, std::span<const std::byte>, std::span<std::byte>>
+	io_device<
+		blocking_pair<transport_type::stream>::half_device,
+		std::span<const std::byte>,
+		std::span<std::byte>
+	>
 );
 static_assert(
-	io_device<blocking_pair<transport::datagram>::half_device, std::span<const std::byte>, std::span<std::byte>>
+	io_device<
+		blocking_pair<transport_type::datagram>::half_device,
+		std::span<const std::byte>,
+		std::span<std::byte>
+	>
 );
+// clang-format on
 
 connected_pair<connected_channel>
 pump_handshake (handshake_channel &client_handshake, handshake_channel &server_handshake) //{{{1
@@ -239,7 +250,7 @@ pump_handshake (handshake_channel &client_handshake, handshake_channel &server_h
 template <typename Acceptor>
 [[nodiscard]] auto server_accept (const Acceptor &acceptor) //{{{1
 {
-	if constexpr (Acceptor::transport_value == transport::datagram)
+	if constexpr (Acceptor::transport == transport_type::datagram)
 	{
 		return acceptor.accept(peer_token::none);
 	}
@@ -262,9 +273,9 @@ connected_pair<session> make_session_pair ( //{{{1
 
 	auto [server_channel, client_channel] = pump_handshake(*client_handshake, *server_handshake);
 
-	auto client_session = session::from(std::move(client_channel), Traits::transport_value);
+	auto client_session = session::from(std::move(client_channel), Traits::transport);
 	REQUIRE(client_session);
-	auto server_session = session::from(std::move(server_channel), Traits::transport_value);
+	auto server_session = session::from(std::move(server_channel), Traits::transport);
 	REQUIRE(server_session);
 
 	return {.server = std::move(*server_session), .client = std::move(*client_session)};
@@ -274,7 +285,7 @@ connected_pair<session> make_session_pair ( //{{{1
 
 struct good_device
 {
-	[[maybe_unused]] static constexpr transport transport_value = transport::stream;
+	[[maybe_unused]] static constexpr transport_type transport = transport_type::stream;
 
 	result<size_t> send (std::span<const std::byte>) noexcept
 	{
@@ -289,7 +300,7 @@ static_assert(io_device<good_device, std::span<const std::byte>, std::span<std::
 
 struct no_noexcept_device
 {
-	[[maybe_unused]] static constexpr transport transport_value = transport::stream;
+	[[maybe_unused]] static constexpr transport_type transport = transport_type::stream;
 
 	result<size_t> send (std::span<const std::byte>)
 	{
@@ -304,7 +315,7 @@ static_assert(!io_device<no_noexcept_device, std::span<const std::byte>, std::sp
 
 struct wrong_return_device
 {
-	[[maybe_unused]] static constexpr transport transport_value = transport::stream;
+	[[maybe_unused]] static constexpr transport_type transport = transport_type::stream;
 
 	void send (std::span<const std::byte>) noexcept
 	{
@@ -344,7 +355,7 @@ TEMPLATE_TEST_CASE("crypto/session", "", stream, datagram) //{{{1
 	REQUIRE(client_factory);
 
 	auto [server, client] = make_session_pair<TestType>(*server_factory, *client_factory);
-	loopback_pair<TestType::transport_value> io;
+	loopback_pair<TestType::transport> io;
 
 	SECTION("operator_bool")
 	{
@@ -382,7 +393,7 @@ TEMPLATE_TEST_CASE("crypto/session", "", stream, datagram) //{{{1
 
 	SECTION("run_handshake")
 	{
-		blocking_pair<TestType::transport_value> wire;
+		blocking_pair<TestType::transport> wire;
 		auto client_device = wire.client_device();
 		auto server_device = wire.server_device();
 
@@ -443,7 +454,7 @@ TEMPLATE_TEST_CASE("crypto/session", "", stream, datagram) //{{{1
 			// Assert the exact per-backend outcome rather than accepting either, so a backend that silently
 			// stops emitting close_notify is caught.
 			if constexpr (
-				TestType::transport_value == transport::datagram && pal::os == pal::os_type::windows)
+				TestType::transport == transport_type::datagram && pal::os == pal::os_type::windows)
 			{
 				CHECK(ec == std::errc::resource_unavailable_try_again);
 			}
@@ -480,7 +491,7 @@ TEMPLATE_TEST_CASE("crypto/session", "", stream, datagram) //{{{1
 	SECTION("receive_small_buffer")
 	{
 		// DTLS MTU constrains single-record size; 256 bytes is within any DTLS MTU.
-		constexpr size_t msg_size = (TestType::transport_value == transport::stream) ? 4096 : 256;
+		constexpr size_t msg_size = (TestType::transport == transport_type::stream) ? 4096 : 256;
 		const std::vector<std::byte> msg(msg_size, std::byte{0x42});
 		REQUIRE(server.send(io.server, msg));
 
@@ -498,7 +509,7 @@ TEMPLATE_TEST_CASE("crypto/session", "", stream, datagram) //{{{1
 	SECTION("send_large_payload")
 	{
 		// TLS fragments across records; DTLS is limited to one record per send (within MTU).
-		constexpr size_t msg_size = (TestType::transport_value == transport::stream) ? 40UL * 1024 : 256;
+		constexpr size_t msg_size = (TestType::transport == transport_type::stream) ? 40UL * 1024 : 256;
 		const std::vector<std::byte> msg(msg_size, std::byte{0x42});
 		auto send = client.send(io.client, msg);
 		REQUIRE(send);
@@ -548,7 +559,7 @@ TEMPLATE_TEST_CASE("crypto/session", "", stream, datagram) //{{{1
 		auto [s, c] = make_session_pair<TestType>(*sf, *cf);
 		CHECK(c.selected_protocol() == "http/1.1");
 
-		if constexpr (TestType::transport_value == transport::datagram && pal::os == pal::os_type::windows)
+		if constexpr (TestType::transport == transport_type::datagram && pal::os == pal::os_type::windows)
 		{
 			// The SChannel DTLS server cannot introspect its own ALPN selection (negotiation still works on
 			// the wire). Other backends/roles report it; accept either to hold across backends.
@@ -573,7 +584,7 @@ TEMPLATE_TEST_CASE("crypto/session", "", stream, datagram) //{{{1
 
 	SECTION("run_handshake/send_error")
 	{
-		blocking_pair<TestType::transport_value> wire;
+		blocking_pair<TestType::transport> wire;
 		auto client_device = wire.client_device();
 		client_device.inject_send_error = make_error_code(std::errc::connection_reset);
 
@@ -586,7 +597,7 @@ TEMPLATE_TEST_CASE("crypto/session", "", stream, datagram) //{{{1
 
 	SECTION("run_handshake/receive_error")
 	{
-		blocking_pair<TestType::transport_value> wire;
+		blocking_pair<TestType::transport> wire;
 		auto client_device = wire.client_device();
 		client_device.inject_receive_error = make_error_code(std::errc::connection_reset);
 
@@ -629,7 +640,7 @@ TEMPLATE_TEST_CASE("crypto/session", "", stream, datagram) //{{{1
 		std::array<char, 256> buf{};
 		auto receive = server.receive(io.server, buf);
 		REQUIRE_FALSE(receive);
-		if constexpr (TestType::transport_value == transport::stream)
+		if constexpr (TestType::transport == transport_type::stream)
 		{
 			CHECK(receive.error() == secure_channel_errc::decrypt_failed);
 		}
@@ -649,7 +660,7 @@ TEMPLATE_TEST_CASE("crypto/session", "", stream, datagram) //{{{1
 		// Datagram diverges by backend: OpenSSL writes a close_notify and surfaces the transport
 		// error; SChannel's no-op close writes nothing, so it succeeds. Accept either, but if it
 		// failed it must be the injected error.
-		if constexpr (TestType::transport_value == transport::datagram && pal::os == pal::os_type::windows)
+		if constexpr (TestType::transport == transport_type::datagram && pal::os == pal::os_type::windows)
 		{
 			if (!close_notify)
 			{

@@ -109,7 +109,7 @@ handshake_result pump (handshake_channel &client_hs, handshake_channel &server_h
 template <typename Acceptor>
 [[nodiscard]] auto server_accept (const Acceptor &acceptor)
 {
-	if constexpr (Acceptor::transport_value == transport::datagram)
+	if constexpr (Acceptor::transport == transport_type::datagram)
 	{
 		return acceptor.accept(peer_token::none);
 	}
