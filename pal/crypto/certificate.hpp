@@ -19,6 +19,11 @@
 namespace pal::crypto
 {
 
+namespace __secure_channel
+{
+struct attorney;
+}
+
 /// X.509 public key certificate wrapper.
 ///
 /// Construction: use from_der() or from_pem().
@@ -143,6 +148,7 @@ private:
 	friend class alternative_name;
 	friend class certificate_store;
 	friend class key;
+	friend struct __secure_channel::attorney;
 };
 
 inline certificate certificate::to_api (certificate::impl_ptr impl) noexcept

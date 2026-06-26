@@ -145,6 +145,14 @@
 			"cacheVariables": {
 				"CMAKE_BUILD_TYPE": "Release"
 			}
+		},
+		{
+			"name": "windows-msvc-sanitize",
+			"inherits": "default",
+			"cacheVariables": {
+				"CMAKE_BUILD_TYPE": "Debug",
+				"CMAKE_CXX_FLAGS_DEBUG": "/Zi /Ob0 /Od /fsanitize=address"
+			}
 		}
 	],
 	"buildPresets": [
@@ -211,6 +219,10 @@
 		{
 			"name": "windows-msvc-release",
 			"configurePreset": "windows-msvc-release"
+		},
+		{
+			"name": "windows-msvc-sanitize",
+			"configurePreset": "windows-msvc-sanitize"
 		}
 	],
 	"testPresets": [
@@ -296,6 +308,11 @@
 			"name": "windows-msvc-release",
 			"inherits": "default",
 			"configurePreset": "windows-msvc-release"
+		},
+		{
+			"name": "windows-msvc-sanitize",
+			"inherits": "default",
+			"configurePreset": "windows-msvc-sanitize"
 		}
 	],
 	"workflowPresets": [
@@ -409,6 +426,14 @@
 				{ "type": "configure", "name": "windows-msvc-release" },
 				{ "type": "build", "name": "windows-msvc-release" },
 				{ "type": "test", "name": "windows-msvc-release" }
+			]
+		},
+		{
+			"name": "windows-msvc-sanitize",
+			"steps": [
+				{ "type": "configure", "name": "windows-msvc-sanitize" },
+				{ "type": "build", "name": "windows-msvc-sanitize" },
+				{ "type": "test", "name": "windows-msvc-sanitize" }
 			]
 		}
 	]

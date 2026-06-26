@@ -6,7 +6,7 @@ ConstructorInitializerIndentWidth: 8
 ContinuationIndentWidth: 8
 IndentAccessModifiers: false
 IndentCaseLabels: true
-IndentPPDirectives: BeforeHash
+IndentPPDirectives: Leave
 IndentWidth: 8
 TabWidth: 8
 UseTab: Always
@@ -57,24 +57,8 @@ SortIncludes: Never
 # TODO: clang-format limitations (revisit with future versions)
 #
 # 1. Preprocessor directives can't be indented to surrounding code scope
-#    Wanted:
-#      void foo ()
-#      {
-#              #if __cond
-#              {
-#                      bar();
-#              }
-#              #endif
-#      }
-#    Gets:
-#      void foo ()
-#      {
-#      #if __cond
-#              {
-#                      bar();
-#              }
-#      #endif
-#      }
+#    Fixed in clang-format 21+ via IndentPPDirectives: Leave (now applied above).
+#    Leave preserves hand-indented PP directives; no on/off comments required.
 #
 # 2. Binary expression chains can't force one-operand-per-line
 #    Wanted:

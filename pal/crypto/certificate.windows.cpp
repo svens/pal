@@ -2,7 +2,6 @@
 
 #if __pal_crypto_windows
 
-// clang-format off
 #include <pal/crypto/__certificate.hpp>
 #include <pal/codec.hpp>
 #include <pal/memory.hpp>
@@ -11,7 +10,6 @@
 #include <algorithm>
 #include <ctime>
 #include <ncrypt.h>
-// clang-format on
 
 namespace pal::crypto
 {
@@ -67,12 +65,12 @@ certificate::impl_type::~impl_type () noexcept
 {
 	if (private_key)
 	{
-		if (delete_private_key_on_destruct)
+		if (private_key_disposal == erase)
 		{
-			// Remove the persisted key from disk; see open_pfx in certificate_store.windows.cpp.
+			// also releases handle -- do not pair with NCryptFreeObject (double-free)
 			::NCryptDeleteKey(private_key, NCRYPT_SILENT_FLAG);
 		}
-		if (free_private_key_on_destruct)
+		else if (private_key_disposal == free)
 		{
 			::NCryptFreeObject(private_key);
 		}

@@ -2,10 +2,8 @@
 
 #if __pal_crypto_openssl
 
-// clang-format off
 #include <pal/crypto/random.hpp>
 #include <openssl/rand.h>
-// clang-format on
 
 namespace pal::crypto::__crypto
 {

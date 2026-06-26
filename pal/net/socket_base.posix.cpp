@@ -2,11 +2,9 @@
 
 #if __pal_net_posix
 
-// clang-format off
 #include <pal/net/socket_base.hpp>
 #include <fcntl.h>
 #include <sys/ioctl.h>
-// clang-format on
 
 namespace pal::net
 {

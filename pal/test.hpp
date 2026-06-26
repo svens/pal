@@ -40,4 +40,12 @@ struct bad_alloc_once
 	}
 };
 
+/// Generic helper for two-sided tests
+template <typename Server, typename Client = Server>
+struct connected_pair
+{
+	Server server;
+	Client client;
+};
+
 } // namespace pal_test

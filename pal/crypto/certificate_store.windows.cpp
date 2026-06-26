@@ -2,11 +2,9 @@
 
 #if __pal_crypto_windows
 
-// clang-format off
 #include <pal/crypto/__certificate.hpp>
 #include <pal/memory.hpp>
 #include <ncrypt.h>
-// clang-format on
 
 namespace pal::crypto
 {
@@ -102,10 +100,10 @@ result<certificate::impl_ptr> certificate_store::import_pkcs12_chain (std::span<
 		return make_unexpected(std::errc::invalid_argument);
 	}
 	(*head)->private_key = static_cast<::NCRYPT_KEY_HANDLE>(pkey);
-	(*head)->free_private_key_on_destruct = (caller_must_free == TRUE);
 
-	// PKCS#12 was imported with flag=0, which persists the key to disk; the dtor must wipe it. See open_pfx
-	(*head)->delete_private_key_on_destruct = true;
+	// PKCS#12 was imported with flag=0, which persists the key to disk; erase it on destruct. NCryptDeleteKey
+	// also releases the handle, so this subsumes the free regardless of caller_must_free. See open_pfx.
+	(*head)->private_key_disposal = certificate::impl_type::erase;
 
 	auto tail = *head;
 	::PCCERT_CONTEXT it = nullptr;
@@ -171,10 +169,11 @@ result<certificate_store> certificate_store::from_user_identities () noexcept
 		if (auto pkey = acquire_borrowed_key(it, caller_must_free); pkey != 0)
 		{
 			(*node)->private_key = pkey;
-			(*node)->free_private_key_on_destruct = (caller_must_free == TRUE);
 
-			// delete_private_key_on_destruct stays false: the key belongs to
-			// the user's MY store and must not be wiped from disk.
+			// Borrowed from the user's MY store: free the handle only if we acquired our own copy
+			// (caller_must_free); never erase — the persisted key belongs to the user.
+			(*node)->private_key_disposal =
+				caller_must_free ? certificate::impl_type::free : certificate::impl_type::keep;
 		}
 
 		if (!head)

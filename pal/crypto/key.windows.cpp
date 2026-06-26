@@ -2,11 +2,9 @@
 
 #if __pal_crypto_windows
 
-// clang-format off
 #include <pal/crypto/__certificate.hpp>
 #include <pal/memory.hpp>
 #include <bcrypt.h>
-// clang-format on
 
 namespace pal::crypto
 {

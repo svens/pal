@@ -5,12 +5,17 @@
  * Test infrastructure for pal/crypto certificate tests
  */
 
+#include <pal/crypto/certificate.hpp>
+#include <pal/crypto/certificate_store.hpp>
 #include <pal/crypto/key.hpp>
 #include <pal/test.hpp>
 #include <pal/codec.hpp>
+#include <catch2/catch_test_macros.hpp>
 #include <cstddef>
+#include <ranges>
 #include <string>
 #include <string_view>
+#include <vector>
 
 namespace pal_test::cert
 {
@@ -54,6 +59,22 @@ inline std::string to_der (std::string_view pem)
 	auto result = pal::convert(pal::base64_decode, der, b64);
 	der.resize(result.ptr - der.data());
 	return der;
+}
+
+/// Load a certificate from \a info's PEM text.
+inline auto load_pem (const info &i)
+{
+	auto c = pal::crypto::certificate::from_pem(i.pem);
+	REQUIRE(c);
+	return std::move(*c);
+}
+
+/// Load a full certificate chain from a PKCS#12 blob.
+inline auto load_pkcs12 (const auto &pkcs12)
+{
+	auto store = pal::crypto::certificate_store::from_pkcs12(pkcs12);
+	REQUIRE(store);
+	return std::ranges::to<std::vector<pal::crypto::certificate>>(*store);
 }
 
 } // namespace pal_test::cert

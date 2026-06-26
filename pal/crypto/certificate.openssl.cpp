@@ -2,7 +2,6 @@
 
 #if __pal_crypto_openssl
 
-// clang-format off
 #include <pal/crypto/__certificate.hpp>
 #include <pal/codec.hpp>
 #include <pal/memory.hpp>
@@ -10,7 +9,6 @@
 #include <pal/net/ip/address_v6.hpp>
 #include <algorithm>
 #include <ctime>
-// clang-format on
 
 namespace pal::crypto
 {

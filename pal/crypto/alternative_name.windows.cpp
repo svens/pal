@@ -2,11 +2,9 @@
 
 #if __pal_crypto_windows
 
-// clang-format off
 #include <pal/crypto/__certificate.hpp>
 #include <pal/net/ip/address_v4.hpp>
 #include <pal/net/ip/address_v6.hpp>
-// clang-format on
 
 namespace pal::crypto
 {

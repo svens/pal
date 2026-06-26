@@ -2,6 +2,7 @@ list(APPEND pal_sources
 	# socket
 	pal/net/__socket.hpp
 	pal/net/basic_datagram_socket.hpp
+	pal/net/basic_secure_socket.hpp
 	pal/net/basic_socket.hpp
 	pal/net/basic_socket_acceptor.hpp
 	pal/net/basic_stream_socket.hpp
@@ -40,6 +41,7 @@ list(APPEND pal_test_sources
 	pal/net/test.hpp
 
 	# socket
+	pal/net/basic_secure_socket.test.cpp
 	pal/net/basic_socket.test.cpp
 	pal/net/basic_socket_acceptor.test.cpp
 	pal/net/socket_base.test.cpp
