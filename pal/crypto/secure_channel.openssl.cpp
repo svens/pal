@@ -248,9 +248,10 @@ std::error_code map_openssl_error (const session_state &state) noexcept //{{{1
 		switch (ERR_GET_REASON(err))
 		{
 			case SSL_R_NO_APPLICATION_PROTOCOL:
-#ifdef SSL_R_TLSV1_ALERT_NO_APPLICATION_PROTOCOL
+			// TODO: drop when CI pool has OpenSSL 3.4+
+			#ifdef SSL_R_TLSV1_ALERT_NO_APPLICATION_PROTOCOL
 			case SSL_R_TLSV1_ALERT_NO_APPLICATION_PROTOCOL:
-#endif
+			#endif
 				ec = make_error_code(secure_channel_errc::no_application_protocol);
 				break;
 			case SSL_R_PEER_DID_NOT_RETURN_A_CERTIFICATE:
