@@ -7,6 +7,12 @@
  * handshake, EncryptMessage/DecryptMessage record layer, and shutdown are driven through caller-
  * provided byte spans with no SChannel-side allocation.
  *
+ * SCHANNEL_CRED (v4) is kept deliberately; SCH_CREDENTIALS (v5) cannot serve DTLS here:
+ *
+ *  - v5 DATAGRAM flag does not select DTLS.
+ *  - v5 DTLS-only credential fails to acquire.
+ *  - v5 mixed credential silently negotiates TLS.
+ *
  * Two DTLS-specific quirks vs. stream TLS, both SChannel limitations rather than bugs:
  *
  *  - close_notify: SChannel cannot generate a DTLS close_notify (ApplyControlToken + ISC/ASC
