@@ -15,7 +15,14 @@ endif()
 set(build_dir "${project_root}/.build/${preset}")
 
 if(NOT IS_DIRECTORY "${build_dir}")
-    message(FATAL_ERROR "${build_dir} not found -- run 'ninja' first to configure all presets")
+    execute_process(
+        COMMAND ${CMAKE_COMMAND} --preset ${preset}
+        WORKING_DIRECTORY "${project_root}"
+        RESULT_VARIABLE result
+    )
+    if(result)
+        message(FATAL_ERROR "cmake --preset ${preset} failed")
+    endif()
 endif()
 
 execute_process(
