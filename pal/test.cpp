@@ -5,7 +5,25 @@
 
 #include <pal/test.hpp>
 #include <pal/version.hpp>
+#include <pal/__diagnostic.hpp>
 #include <catch2/catch_session.hpp>
+#include <csetjmp>
+#include <cstdio>
+#include <exception>
+
+#if __pal_os_windows
+	#include <io.h>
+	#define __pal_test_dup _dup
+	#define __pal_test_dup2 _dup2
+	#define __pal_test_fileno _fileno
+	#define __pal_test_close _close
+#else
+	#include <unistd.h>
+	#define __pal_test_dup dup
+	#define __pal_test_dup2 dup2
+	#define __pal_test_fileno fileno
+	#define __pal_test_close close
+#endif
 
 namespace
 {
@@ -46,6 +64,85 @@ bool pal_test::on_ci_impl () noexcept
 	static const bool has_env = (std::getenv("CI") != nullptr);
 	return has_env;
 }
+
+// NOLINTBEGIN(modernize-avoid-setjmp-longjmp)
+
+namespace
+{
+
+thread_local std::jmp_buf *terminate_env = nullptr;
+thread_local bool terminate_trapped = false;
+
+[[noreturn]] void on_terminate () noexcept
+{
+	if (terminate_env != nullptr)
+	{
+		terminate_trapped = true;
+		std::longjmp(*terminate_env, 1);
+	}
+	std::abort();
+}
+
+} // namespace
+
+std::pair<bool, std::string> pal_test::__require_terminate (void (*fn)(void *context), void *context)
+{
+	auto *previous_env = terminate_env;
+	auto previous_trapped = terminate_trapped;
+	auto previous_handler = std::set_terminate(&on_terminate);
+
+	std::jmp_buf env;
+	terminate_env = &env;
+	terminate_trapped = false;
+
+	// redirect stderr to a temp file for the duration of the call, so a
+	// pal_require() failure's diagnostic output doesn't interleave with
+	// Catch2's own reporting; captured back into a string below instead.
+	std::fflush(stderr);
+	auto *capture_file = std::tmpfile();
+	auto saved_stderr_fd = __pal_test_dup(__pal_test_fileno(stderr));
+	__pal_test_dup2(__pal_test_fileno(capture_file), __pal_test_fileno(stderr));
+
+	bool trapped;
+
+	__pal_diagnostic(push)
+	{
+		__pal_diagnostic_suppress(__pal_cpp_dtor_setjmp);
+
+		if (setjmp(env) == 0)
+		{
+			fn(context);
+			trapped = false;
+		}
+		else
+		{
+			trapped = terminate_trapped;
+		}
+	}
+	__pal_diagnostic(pop);
+
+	std::fflush(stderr);
+	__pal_test_dup2(saved_stderr_fd, __pal_test_fileno(stderr));
+	__pal_test_close(saved_stderr_fd);
+
+	std::string stderr_text;
+	auto size = std::ftell(capture_file);
+	if (size > 0)
+	{
+		stderr_text.resize(static_cast<size_t>(size));
+		std::ignore = std::fseek(capture_file, 0, SEEK_SET);
+		std::ignore = std::fread(stderr_text.data(), 1, stderr_text.size(), capture_file);
+	}
+	std::fclose(capture_file);
+
+	std::set_terminate(previous_handler);
+	terminate_env = previous_env;
+	terminate_trapped = previous_trapped;
+
+	return {trapped, std::move(stderr_text)};
+}
+
+// NOLINTEND(modernize-avoid-setjmp-longjmp)
 
 // NOLINTBEGIN(readability-inconsistent-declaration-parameter-name)
 
