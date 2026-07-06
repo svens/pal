@@ -8,10 +8,16 @@ namespace
 
 using namespace pal::async;
 
+int recycle_calls = 0;
+
+void count_recycle (task *) noexcept
+{
+	++recycle_calls;
+}
+
 struct op_test
 {
-	template <typename F>
-	static constexpr bool invocable = std::is_nothrow_invocable_v<F, int, std::error_code>;
+	using signature = void(int, std::error_code) noexcept;
 
 	template <typename F>
 	static void dispatch (task &, F &f, std::error_code ec, size_t n) noexcept
@@ -41,8 +47,7 @@ struct record_call
 // call without ever living inside the (trivially copyable only) closure storage.
 struct op_move_only
 {
-	template <typename F>
-	static constexpr bool invocable = std::is_nothrow_invocable_v<F, task_ptr &&, std::error_code>;
+	using signature = void(task_ptr &&, std::error_code) noexcept;
 
 	template <typename F>
 	static void dispatch (task &t, F &f, std::error_code ec, size_t) noexcept
@@ -69,6 +74,25 @@ TEST_CASE("async/task")
 		CHECK(t.scratch().size() == task::scratch_capacity);
 	}
 
+	SECTION("scratch_as<T> views the scratch storage as a T")
+	{
+		struct node
+		{
+			task *next;
+			int value;
+		};
+		static_assert(sizeof(node) <= task::scratch_capacity);
+
+		task t;
+		t.scratch_as<node>().next = &t;
+		t.scratch_as<node>().value = 42;
+
+		// Same storage as scratch(), and values survive across calls (bytes are reused, not reset).
+		CHECK(static_cast<void *>(&t.scratch_as<node>()) == static_cast<void *>(t.scratch().data()));
+		CHECK(t.scratch_as<node>().next == &t);
+		CHECK(t.scratch_as<node>().value == 42);
+	}
+
 	SECTION("borrow() yields a non-owning task_ptr; drop leaves the task usable")
 	{
 		task t;
@@ -85,10 +109,21 @@ TEST_CASE("async/task")
 	{
 		if constexpr (pal::build == pal::build_type::debug)
 		{
-			task t = __task::attorney::make_loop_managed();
+			task t = __task::attorney::make_loop_managed(&count_recycle);
 			auto msg = pal_test::require_terminate([&] { std::ignore = t.borrow(); });
 			CHECK(msg.contains("loop-managed"));
 		}
+	}
+
+	SECTION("dropping a loop-managed task_ptr runs its recycler")
+	{
+		recycle_calls = 0;
+		task t = __task::attorney::make_loop_managed(&count_recycle);
+		{
+			const task_ptr p{&t};
+			CHECK(p.get() == &t);
+		}
+		CHECK(recycle_calls == 1);
 	}
 
 	SECTION("bind/complete round-trip through Op::dispatch")

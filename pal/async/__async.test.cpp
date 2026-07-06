@@ -19,8 +19,7 @@ struct carrier
 
 struct op_test
 {
-	template <typename F>
-	static constexpr bool invocable = std::is_nothrow_invocable_v<F, int, std::error_code>;
+	using signature = void(int, std::error_code) noexcept;
 
 	template <typename F>
 	static void dispatch (carrier &, F &f, std::error_code ec, size_t n) noexcept
@@ -179,7 +178,7 @@ struct not_trivially_copyable
 	{
 	}
 };
-static_assert(!__async::completion_handler<not_trivially_copyable, op_test>);
+static_assert(!__async::handler<not_trivially_copyable, op_test::signature>);
 
 struct not_default_constructible
 {
@@ -190,7 +189,7 @@ struct not_default_constructible
 	{
 	}
 };
-static_assert(!__async::completion_handler<not_default_constructible, op_test>);
+static_assert(!__async::handler<not_default_constructible, op_test::signature>);
 
 struct too_big
 {
@@ -199,7 +198,7 @@ struct too_big
 	{
 	}
 };
-static_assert(!__async::completion_handler<too_big, op_test>);
+static_assert(!__async::handler<too_big, op_test::signature>);
 
 struct over_aligned
 {
@@ -208,7 +207,7 @@ struct over_aligned
 	{
 	}
 };
-static_assert(!__async::completion_handler<over_aligned, op_test>);
+static_assert(!__async::handler<over_aligned, op_test::signature>);
 
 struct wrong_signature
 {
@@ -216,7 +215,7 @@ struct wrong_signature
 	{
 	}
 };
-static_assert(!__async::completion_handler<wrong_signature, op_test>);
+static_assert(!__async::handler<wrong_signature, op_test::signature>);
 
 struct throwing_call
 {
@@ -224,8 +223,8 @@ struct throwing_call
 	{
 	}
 };
-static_assert(!__async::completion_handler<throwing_call, op_test>);
+static_assert(!__async::handler<throwing_call, op_test::signature>);
 
-static_assert(__async::completion_handler<noop, op_test>);
+static_assert(__async::handler<noop, op_test::signature>);
 
 } // namespace

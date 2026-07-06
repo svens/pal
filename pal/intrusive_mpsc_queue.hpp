@@ -6,6 +6,7 @@
  */
 
 #include <pal/__diagnostic.hpp>
+#include <array>
 #include <atomic>
 #include <cstddef>
 
@@ -127,8 +128,8 @@ public:
 
 private:
 
-	alignas(alignof(value_type)) std::byte stub_[sizeof(value_type)]{};
-	value_type *const sentry_{reinterpret_cast<value_type *>(stub_)};
+	alignas(alignof(value_type)) std::array<std::byte, sizeof(value_type)> stub_{};
+	value_type *const sentry_{reinterpret_cast<value_type *>(stub_.data())};
 
 	// clang-format off
 	__pal_diagnostic(push)

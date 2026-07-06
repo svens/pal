@@ -6,6 +6,7 @@
  */
 
 #include <pal/require.hpp>
+#include <array>
 #include <cstddef>
 #include <cstring>
 #include <new>
@@ -23,19 +24,34 @@ namespace pal::async::__async
 /// big" and "op scratch grew" are distinct compile errors.
 inline constexpr size_t closure_capacity = 64 - alignof(std::max_align_t);
 
+template <typename F, typename Signature>
+struct signature_t;
+
+template <typename F, typename R, typename... Args>
+struct signature_t<F, R(Args...) noexcept>: std::bool_constant<std::is_nothrow_invocable_r_v<R, F, Args...>>
+{
+};
+
+template <typename F, typename R, typename... Args>
+struct signature_t<F, R(Args...)>: std::bool_constant<std::is_invocable_r_v<R, F, Args...>>
+{
+};
+
 // clang-format off
 
-/// Requirements for closures bindable to a \ref completion for \a Op; checked at the public shell and never re-checked
-/// internally.
-template <typename F, typename Op>
-concept completion_handler = requires
+/// A closure bindable to a \ref completion: inline-storable (trivially copyable/destructible, default
+/// constructible, within the closure budget and alignment) and callable as \a Signature. Checked at the public
+/// shell, never re-checked internally. Spell \a Signature literally at the app boundary so the diagnostic names
+/// it verbatim; internal seams pass \c Op::signature.
+template <typename F, typename Signature>
+concept handler = requires
 {
 	requires std::is_trivially_copyable_v<F>;
 	requires std::is_trivially_destructible_v<F>;
 	requires std::is_default_constructible_v<F>;
 	requires sizeof(F) <= closure_capacity;
 	requires alignof(F) <= alignof(std::max_align_t);
-	requires Op::template invocable<F>;
+	requires signature_t<F, Signature>::value;
 };
 
 // clang-format on
@@ -47,7 +63,7 @@ concept completion_handler = requires
 ///
 /// \c Op is a type with:
 /// \code
-/// template <typename F> static constexpr bool invocable = ...; // nothrow-invocable predicate
+/// using signature = void(...) noexcept; // the handler's required call signature
 /// static void dispatch (Carrier &carrier, F &f, std::error_code ec, size_t n) noexcept;
 /// \endcode
 ///
@@ -74,20 +90,20 @@ public:
 	/// the storage/thunk freed) at the start of the matching \ref complete, before \c Op::dispatch invokes it -- so
 	/// the completion is rebindable again from inside its own callback.
 	template <typename Op>
-	void bind (completion_handler<Op> auto f) noexcept
+	void bind (handler<typename Op::signature> auto f) noexcept
 	{
 		pal_require(thunk_ == nullptr, "completion rebind while bound");
-		std::memcpy(&storage_, &f, sizeof(f));
+		std::memcpy(storage_.data(), &f, sizeof(f));
 		thunk_ = &single_shot_thunk<Op, decltype(f)>;
 	}
 
 	/// Arm multishot closure \a f for \a Op. \a f is placement-new'd into inline storage and invoked in place,
 	/// through a laundered pointer, on every \ref complete until \ref stop clears it.
 	template <typename Op>
-	void arm (completion_handler<Op> auto f) noexcept
+	void arm (handler<typename Op::signature> auto f) noexcept
 	{
 		pal_require(thunk_ == nullptr, "completion rebind while armed");
-		::new (static_cast<void *>(&storage_)) decltype(f)(std::move(f));
+		::new (static_cast<void *>(storage_.data())) decltype(f)(std::move(f));
 		thunk_ = &multishot_thunk<Op, decltype(f)>;
 	}
 
@@ -116,7 +132,7 @@ private:
 	static void single_shot_thunk (completion &self, Carrier &carrier, std::error_code ec, size_t n) noexcept
 	{
 		F f;
-		std::memcpy(&f, &self.storage_, sizeof(F));
+		std::memcpy(&f, self.storage_.data(), sizeof(F));
 		self.thunk_ = nullptr;
 		Op::dispatch(carrier, f, ec, n);
 	}
@@ -124,14 +140,14 @@ private:
 	template <typename Op, typename F>
 	static void multishot_thunk (completion &self, Carrier &carrier, std::error_code ec, size_t n) noexcept
 	{
-		auto *f = std::launder(reinterpret_cast<F *>(&self.storage_));
+		auto *f = std::launder(reinterpret_cast<F *>(self.storage_.data()));
 		Op::dispatch(carrier, *f, ec, n);
 	}
 
 	thunk_type thunk_ = nullptr;
-	alignas(std::max_align_t) std::byte storage_[closure_capacity];
+	alignas(std::max_align_t) std::array<std::byte, closure_capacity> storage_;
 };
 
-static_assert(sizeof(completion<std::max_align_t>) == 64);
+static_assert(sizeof(completion<std::max_align_t>) == cache_line_size);
 
 } // namespace pal::async::__async
