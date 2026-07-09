@@ -8,7 +8,6 @@
 #include <pal/require.hpp>
 #include <array>
 #include <cstddef>
-#include <cstring>
 #include <new>
 #include <system_error>
 #include <type_traits>
@@ -39,16 +38,15 @@ struct signature_t<F, R(Args...)>: std::bool_constant<std::is_invocable_r_v<R, F
 
 // clang-format off
 
-/// A closure bindable to a \ref completion: inline-storable (trivially copyable/destructible, default
-/// constructible, within the closure budget and alignment) and callable as \a Signature. Checked at the public
-/// shell, never re-checked internally. Spell \a Signature literally at the app boundary so the diagnostic names
-/// it verbatim; internal seams pass \c Op::signature.
+/// A closure bindable to a \ref completion: inline-storable (trivially copyable/destructible, within the
+/// closure budget and alignment) and callable as \a Signature. Lambdas capturing pointers/references/scalars
+/// qualify. Checked at the public shell, never re-checked internally. Spell \a Signature literally at the app
+/// boundary so the diagnostic names it verbatim; internal seams pass \c Op::signature.
 template <typename F, typename Signature>
 concept handler = requires
 {
 	requires std::is_trivially_copyable_v<F>;
 	requires std::is_trivially_destructible_v<F>;
-	requires std::is_default_constructible_v<F>;
 	requires sizeof(F) <= closure_capacity;
 	requires alignof(F) <= alignof(std::max_align_t);
 	requires signature_t<F, Signature>::value;
@@ -86,14 +84,14 @@ public:
 		return thunk_ != nullptr;
 	}
 
-	/// Bind single-shot closure \a f for \a Op. \a f is memcpy'd into inline storage now and copied back out (and
-	/// the storage/thunk freed) at the start of the matching \ref complete, before \c Op::dispatch invokes it -- so
+	/// Bind single-shot closure \a f for \a Op. \a f is stored inline now and copied back out (and the
+	/// storage/thunk freed) at the start of the matching \ref complete, before \c Op::dispatch invokes it -- so
 	/// the completion is rebindable again from inside its own callback.
 	template <typename Op>
 	void bind (handler<typename Op::signature> auto f) noexcept
 	{
 		pal_require(thunk_ == nullptr, "completion rebind while bound");
-		std::memcpy(storage_.data(), &f, sizeof(f));
+		::new (static_cast<void *>(storage_.data())) decltype(f)(std::move(f));
 		thunk_ = &single_shot_thunk<Op, decltype(f)>;
 	}
 
@@ -131,8 +129,7 @@ private:
 	template <typename Op, typename F>
 	static void single_shot_thunk (completion &self, Carrier &carrier, std::error_code ec, size_t n) noexcept
 	{
-		F f;
-		std::memcpy(&f, self.storage_.data(), sizeof(F));
+		F f{*std::launder(reinterpret_cast<F *>(self.storage_.data()))};
 		self.thunk_ = nullptr;
 		Op::dispatch(carrier, f, ec, n);
 	}

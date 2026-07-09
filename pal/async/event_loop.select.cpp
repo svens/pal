@@ -114,6 +114,11 @@ size_t select_poll (impl_type &base, impl_type::clock::duration timeout) noexcep
 	return 0;
 }
 
+impl_type::clock::time_point select_now (impl_type &) noexcept
+{
+	return impl_type::clock::now();
+}
+
 void select_wake (impl_type &base) noexcept
 {
 	auto &self = static_cast<select_loop &>(base);
@@ -160,8 +165,10 @@ result<event_loop> make_loop (const event_loop_config &config) noexcept
 	self->wake_w = fds[1];
 	self->poll_fn = &select_poll;
 	self->wake_fn = &select_wake;
+	self->now_fn = &select_now;
 	self->destroy_fn = &select_destroy;
 	self->config_ = config;
+	self->now_ = select_now(*self);
 
 	return event_loop{impl_ptr{self}};
 }

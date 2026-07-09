@@ -28,36 +28,6 @@ struct op_test
 	}
 };
 
-// Completion handlers must be default constructible (for the single-shot
-// copy-out local) and trivially copyable/destructible, which rules out
-// capturing lambdas; state is threaded through pointer members instead.
-struct record_call
-{
-	int *calls;
-	int *seen_value;
-	std::error_code *seen_ec;
-
-	void operator() (int v, std::error_code ec) const noexcept
-	{
-		++*calls;
-		if (seen_value != nullptr)
-		{
-			*seen_value = v;
-		}
-		if (seen_ec != nullptr)
-		{
-			*seen_ec = ec;
-		}
-	}
-};
-
-struct noop
-{
-	void operator() (int, std::error_code) const noexcept
-	{
-	}
-};
-
 TEST_CASE("async/__async")
 {
 	// clang-format off
@@ -68,11 +38,11 @@ TEST_CASE("async/__async")
 	{
 		int calls = 0, seen_value = -1;
 		std::error_code seen_ec = std::make_error_code(std::errc::io_error);
-		c.completion.bind<op_test>(record_call
+		c.completion.bind<op_test>([&](int v, std::error_code ec) noexcept
 		{
-			.calls = &calls,
-			.seen_value = &seen_value,
-			.seen_ec = &seen_ec
+			++calls;
+			seen_value = v;
+			seen_ec = ec;
 		});
 		c.completion.complete(c, {}, 5);
 		CHECK(calls == 1);
@@ -84,29 +54,13 @@ TEST_CASE("async/__async")
 	{
 		int first_calls = 0, second_calls = 0;
 
-		struct rebind_on_call
+		c.completion.bind<op_test>([&](int, std::error_code) noexcept
 		{
-			carrier *c;
-			int *first_calls;
-			int *second_calls;
-
-			void operator() (int, std::error_code) const noexcept
+			++first_calls;
+			c.completion.bind<op_test>([&second_calls](int, std::error_code) noexcept
 			{
-				++*first_calls;
-				c->completion.bind<op_test>(record_call
-				{
-					.calls = second_calls,
-					.seen_value = nullptr,
-					.seen_ec = nullptr
-				});
-			}
-		};
-
-		c.completion.bind<op_test>(rebind_on_call
-		{
-			.c = &c,
-			.first_calls = &first_calls,
-			.second_calls = &second_calls
+				++second_calls;
+			});
 		});
 
 		c.completion.complete(c, {}, 0);
@@ -121,7 +75,7 @@ TEST_CASE("async/__async")
 	{
 		if constexpr (pal::build == pal::build_type::debug)
 		{
-			c.completion.bind<op_test>(noop{});
+			c.completion.bind<op_test>([](int, std::error_code) noexcept {});
 			c.completion.complete(c, {}, 0);
 
 			auto msg = pal_test::require_terminate([&] { c.completion.complete(c, {}, 0); });
@@ -132,7 +86,7 @@ TEST_CASE("async/__async")
 	SECTION("multishot: arm invokes the closure in place across multiple completions")
 	{
 		int calls = 0;
-		c.completion.arm<op_test>(record_call{.calls = &calls, .seen_value = nullptr, .seen_ec = nullptr});
+		c.completion.arm<op_test>([&calls](int, std::error_code) noexcept { ++calls; });
 		CHECK(c.completion.armed());
 
 		c.completion.complete(c, {}, 0);
@@ -148,9 +102,9 @@ TEST_CASE("async/__async")
 	{
 		if constexpr (pal::build == pal::build_type::debug)
 		{
-			c.completion.arm<op_test>(noop{});
+			c.completion.arm<op_test>([](int, std::error_code) noexcept {});
 
-			auto msg = pal_test::require_terminate([&] { c.completion.arm<op_test>(noop{}); });
+			auto msg = pal_test::require_terminate([&] { c.completion.arm<op_test>([](int, std::error_code) noexcept {}); });
 			CHECK(msg.contains("armed"));
 
 			c.completion.stop();
@@ -169,7 +123,30 @@ TEST_CASE("async/__async")
 	// clang-format on
 }
 
-// --- constraint violations as compile-fail cases -------------------------------
+// --- handler concept: accepted and rejected closure shapes ----------------------
+
+static_assert(__async::handler<decltype([] (int, std::error_code) noexcept {}), op_test::signature>);
+
+[[maybe_unused]] void capturing_lambda_is_a_handler (int &state)
+{
+	static_assert(
+		__async::handler<decltype([&state] (int, std::error_code) noexcept { ++state; }), op_test::signature>
+	);
+	static_assert(
+		__async::handler<decltype([p = &state] (int, std::error_code) noexcept { ++*p; }), op_test::signature>
+	);
+}
+
+struct no_default_ctor
+{
+	explicit no_default_ctor (int) noexcept
+	{
+	}
+	void operator() (int, std::error_code) const noexcept
+	{
+	}
+};
+static_assert(__async::handler<no_default_ctor, op_test::signature>);
 
 struct not_trivially_copyable
 {
@@ -179,17 +156,6 @@ struct not_trivially_copyable
 	}
 };
 static_assert(!__async::handler<not_trivially_copyable, op_test::signature>);
-
-struct not_default_constructible
-{
-	explicit not_default_constructible (int) noexcept
-	{
-	}
-	void operator() (int, std::error_code) const noexcept
-	{
-	}
-};
-static_assert(!__async::handler<not_default_constructible, op_test::signature>);
 
 struct too_big
 {
@@ -224,7 +190,5 @@ struct throwing_call
 	}
 };
 static_assert(!__async::handler<throwing_call, op_test::signature>);
-
-static_assert(__async::handler<noop, op_test::signature>);
 
 } // namespace

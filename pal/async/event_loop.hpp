@@ -9,7 +9,6 @@
 #include <pal/require.hpp>
 #include <pal/result.hpp>
 #include <pal/version.hpp>
-#include <atomic>
 #include <chrono>
 #include <memory>
 
@@ -38,18 +37,6 @@ struct event_loop_stats
 
 	/// Backend wake() deliveries observed by poll()
 	uint64_t wakeups = 0;
-
-	/// Multishot completions re-armed in place
-	uint64_t rearms = 0;
-
-	/// Iterations that hit the submission-slot cap
-	uint64_t submission_exhausted = 0;
-
-	/// Completions dropped under saturation
-	uint64_t drops = 0;
-
-	/// Offloaded ops posted but not completed back
-	uint64_t offload_in_flight = 0;
 };
 
 namespace __event_loop
@@ -62,20 +49,21 @@ struct impl_type
 	// backend seam
 	size_t (*poll_fn)(impl_type &, clock::duration timeout) noexcept = nullptr;
 	void (*wake_fn)(impl_type &) noexcept = nullptr;
+	clock::time_point (*now_fn)(impl_type &) noexcept = nullptr;
 	void (*destroy_fn)(impl_type *) noexcept = nullptr;
 
 	// portable state
-	clock::time_point now_ = clock::now();
+	clock::time_point now_{};
+	task *timer_root_ = nullptr;
 	__task::attorney::task_queue inbox_{};
-	std::atomic<size_t> pending_ = 0;
 	event_loop_stats stats_{};
 	event_loop_config config_{};
 
 	~impl_type () noexcept;
 
-	// portable run() layer
 	size_t iterate (clock::duration timeout) noexcept;
 	size_t drain_inbox () noexcept;
+	size_t expire_timers () noexcept;
 };
 
 struct deleter
@@ -88,9 +76,10 @@ struct deleter
 
 using impl_ptr = std::unique_ptr<impl_type, deleter>;
 
-/// Internal op for \ref event_loop::post -- a bare deferral: run the bound handler on the loop thread. The
-/// posted task must be app-managed; \c borrow re-materializes its \c task_ptr at drain and its REQUIRE
-/// enforces that contract.
+/// Internal op for \ref event_loop::post and \ref event_loop::post_after -- a bare deferral: run the bound
+/// handler on the loop thread (a timer is a bare deferral with a deadline). The carried task must be
+/// app-managed; \c borrow re-materializes its \c task_ptr at drain/expiry and its REQUIRE enforces that
+/// contract.
 struct op_post
 {
 	using signature = void(task_ptr &&) noexcept;
@@ -104,6 +93,9 @@ struct op_post
 
 /// Enqueue an already-bound task onto the loop's inbox and wake it. Thread-safe.
 void post (impl_type &l, task_ptr &&t) noexcept;
+
+/// Push an already-bound task onto the loop's timer heap, keyed by \a deadline. Loop-thread only.
+void start_timer (impl_type &l, task_ptr &&t, impl_type::clock::time_point deadline) noexcept;
 
 } // namespace __event_loop
 
@@ -120,7 +112,9 @@ public:
 	event_loop &operator= (event_loop &&) noexcept = default;
 	~event_loop () noexcept = default;
 
-	/// Monotonic time cached once per run() iteration, so per-operation reads avoid a clock syscall.
+	/// Monotonic time cached per run() iteration, so per-operation reads avoid a clock syscall. The backend owns
+	/// the time source; the loop guarantees monotonic, cached time only, never correspondence to wall-clock
+	/// progress.
 	[[nodiscard]] const clock::time_point &now () const noexcept
 	{
 		return impl_->now_;
@@ -132,7 +126,8 @@ public:
 		return impl_->stats_;
 	}
 
-	/// Run iterations until no work remains; returns the number of completions dispatched.
+	/// Run iterations until no work remains (immediate and delayed posts); returns the number of completions
+	/// dispatched.
 	result<size_t> run () noexcept;
 
 	/// Poll without blocking: dispatch pending completions; returns the count (0 if none were ready).
@@ -150,6 +145,22 @@ public:
 	{
 		t->bind<__event_loop::op_post>(std::move(handler));
 		__event_loop::post(*impl_, std::move(t));
+	}
+
+	/// Run the completion \a handler for \a t on this loop's thread once \a delay has elapsed, measured from
+	/// \ref now (zero or negative: on the next iteration). Unlike \ref post, not thread-safe -- arm only from
+	/// the loop thread. The delayed post occupies the task's op scratch while armed.
+	///
+	/// There is no cancellation: to move the due time, keep the authoritative deadline in app state and, when
+	/// the handler fires early, re-arm for the remainder (lazy re-arm). A task still armed when the loop is
+	/// destroyed is dropped without completing; its storage remains app property, but the task stays bound and
+	/// must not be reused.
+	template <typename H>
+	void post_after (task_ptr &&t, clock::duration delay, H handler) noexcept
+		requires __async::handler<H, void(task_ptr &&) noexcept>
+	{
+		t->bind<__event_loop::op_post>(std::move(handler));
+		__event_loop::start_timer(*impl_, std::move(t), impl_->now_ + delay);
 	}
 
 private:

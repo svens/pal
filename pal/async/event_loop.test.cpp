@@ -6,6 +6,7 @@
 #include <pal/async/task.hpp>
 #include <pal/test.hpp>
 #include <catch2/catch_test_macros.hpp>
+#include <array>
 #include <atomic>
 #include <chrono>
 #include <thread>
@@ -17,30 +18,42 @@ namespace
 using namespace pal::async;
 using namespace std::chrono_literals;
 
-// No NSDMIs: the completion machinery memcpys single-shot closures, and g++'s -Wclass-memaccess rejects that
-// for any type with a non-trivial default ctor. Designated-init zero-fills the omitted members.
-struct record
+// Handlers are lambdas except where one must re-arm with itself (*this) -- a lambda cannot name itself.
+struct periodic
 {
-	int *ran;
-	task **got;
+	event_loop *loop;
+	int *fired;
 
-	void operator() (task_ptr &&p) const noexcept
+	void operator() (task_ptr &&t) const noexcept
 	{
-		++*ran;
-		if (got != nullptr)
+		if (++*fired < 3)
 		{
-			*got = p.get();
+			loop->post_after(std::move(t), 1ms, *this);
 		}
 	}
 };
 
-struct bump
+struct session
 {
-	std::atomic<int> *ran;
+	event_loop::clock::time_point deadline;
+	int expired;
+};
 
-	void operator() (task_ptr &&) const noexcept
+// The lazy re-arm idiom (there is no cancel_timer): the session holds the authoritative deadline, refresh is
+// a plain store, and a timer that fires early re-arms itself for the remainder.
+struct lazy_rearm
+{
+	event_loop *loop;
+	session *s;
+
+	void operator() (task_ptr &&t) const noexcept
 	{
-		ran->fetch_add(1, std::memory_order_relaxed);
+		if (loop->now() < s->deadline)
+		{
+			loop->post_after(std::move(t), s->deadline - loop->now(), *this);
+			return;
+		}
+		++s->expired;
 	}
 };
 
@@ -86,7 +99,14 @@ TEST_CASE("async/event_loop")
 		task t;
 		int ran = 0;
 		task *got = nullptr;
-		loop->post(t.borrow(), record{.ran = &ran, .got = &got});
+
+		// clang-format off
+		loop->post(t.borrow(), [&](task_ptr &&p) noexcept
+		{
+			++ran;
+			got = p.get();
+		});
+		// clang-format on
 
 		auto n = loop->run_once();
 		REQUIRE(n);
@@ -100,9 +120,13 @@ TEST_CASE("async/event_loop")
 	{
 		task a, b, c;
 		int ran = 0;
-		loop->post(a.borrow(), record{.ran = &ran, .got = nullptr});
-		loop->post(b.borrow(), record{.ran = &ran, .got = nullptr});
-		loop->post(c.borrow(), record{.ran = &ran, .got = nullptr});
+		const auto bump = [&ran] (task_ptr &&) noexcept
+		{
+			++ran;
+		};
+		loop->post(a.borrow(), bump);
+		loop->post(b.borrow(), bump);
+		loop->post(c.borrow(), bump);
 
 		auto n = loop->run();
 		REQUIRE(n);
@@ -119,7 +143,10 @@ TEST_CASE("async/event_loop")
 		std::thread producer{[&]
 		{
 			std::this_thread::sleep_for(20ms);
-			loop->post(t.borrow(), bump{.ran = &ran});
+			loop->post(t.borrow(), [&ran] (task_ptr &&) noexcept
+			{
+				ran.fetch_add(1, std::memory_order_relaxed);
+			});
 		}};
 		// clang-format on
 
@@ -131,6 +158,128 @@ TEST_CASE("async/event_loop")
 		CHECK(*n == 1);
 		CHECK(ran.load() == 1);
 		CHECK(loop->stats().wakeups >= 1);
+	}
+
+	SECTION("post_after: immediate")
+	{
+		task t;
+		int fired = 0;
+		task *got = nullptr;
+		// clang-format off
+		loop->post_after(t.borrow(), 0ms, [&](task_ptr &&p) noexcept
+		{
+			++fired;
+			got = p.get();
+		});
+		// clang-format on
+
+		auto n = loop->run_once();
+		REQUIRE(n);
+		CHECK(*n == 1);
+		CHECK(fired == 1);
+		CHECK(got == &t);
+		CHECK(loop->stats().completions == 1);
+	}
+
+	SECTION("post_after: expiry ordering")
+	{
+		task a, b, c;
+		std::array<int, 4> order{};
+		size_t count = 0;
+
+		loop->post_after(a.borrow(), 30ms, [&] (task_ptr &&) noexcept { order[count++] = 1; });
+		loop->post_after(b.borrow(), 10ms, [&] (task_ptr &&) noexcept { order[count++] = 2; });
+		loop->post_after(c.borrow(), 20ms, [&] (task_ptr &&) noexcept { order[count++] = 3; });
+
+		auto n = loop->run();
+		REQUIRE(n);
+		CHECK(*n == 3);
+		REQUIRE(count == 3);
+		CHECK(order[0] == 2);
+		CHECK(order[1] == 3);
+		CHECK(order[2] == 1);
+	}
+
+	SECTION("post_after: caps run_for poll timeout")
+	{
+		task t;
+		int fired = 0;
+
+		const auto before = loop->now();
+		loop->post_after(t.borrow(), 10ms, [&fired] (task_ptr &&) noexcept { ++fired; });
+
+		// run_for() returns at expiry, well before the timeout, because poll() is capped to the next deadline.
+		auto n = loop->run_for(5s);
+		REQUIRE(n);
+		CHECK(*n == 1);
+		CHECK(fired == 1);
+		CHECK(loop->now() - before < 5s);
+	}
+
+	SECTION("now: cached between iterations")
+	{
+		const auto cached = loop->now();
+		std::this_thread::sleep_for(2ms);
+		CHECK(loop->now() == cached);
+
+		std::ignore = loop->run_once();
+		CHECK(loop->now() > cached);
+	}
+
+	SECTION("post_after: rebind inside own callback")
+	{
+		task t;
+		int fired = 0;
+		loop->post_after(t.borrow(), 1ms, periodic{.loop = &*loop, .fired = &fired});
+
+		auto n = loop->run();
+		REQUIRE(n);
+		CHECK(*n == 3);
+		CHECK(fired == 3);
+	}
+
+	SECTION("post_after: lazy re-arm")
+	{
+		task t;
+		const auto base = loop->now();
+		session s{.deadline = base + 5ms, .expired = 0};
+		loop->post_after(t.borrow(), 5ms, lazy_rearm{.loop = &*loop, .s = &s});
+
+		// refresh: move the authoritative deadline without touching the armed timer
+		s.deadline = base + 40ms;
+
+		auto n = loop->run();
+		REQUIRE(n);
+		CHECK(*n == 2);
+		CHECK(s.expired == 1);
+		CHECK(loop->now() >= base + 40ms);
+	}
+
+	SECTION("run: post and post_after both pending")
+	{
+		task a, b;
+		int posted = 0, fired = 0;
+		loop->post(a.borrow(), [&posted] (task_ptr &&) noexcept { ++posted; });
+		loop->post_after(b.borrow(), 1ms, [&fired] (task_ptr &&) noexcept { ++fired; });
+
+		auto n = loop->run();
+		REQUIRE(n);
+		CHECK(*n == 2);
+		CHECK(posted == 1);
+		CHECK(fired == 1);
+	}
+
+	SECTION("post_after: pending at loop destruction")
+	{
+		task t;
+		int fired = 0;
+		{
+			auto inner = make_loop();
+			REQUIRE(inner);
+			inner->post_after(t.borrow(), 1h, [&fired] (task_ptr &&) noexcept { ++fired; });
+		}
+		// dropped without completing; no destructor REQUIRE trips, the handler never ran
+		CHECK(fired == 0);
 	}
 }
 

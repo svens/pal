@@ -26,22 +26,6 @@ struct op_test
 	}
 };
 
-struct record_call
-{
-	int *calls;
-	std::error_code *seen_ec;
-
-	void operator() (int v, std::error_code ec) const noexcept
-	{
-		++*calls;
-		if (seen_ec != nullptr)
-		{
-			*seen_ec = ec;
-		}
-		CHECK(v == 7);
-	}
-};
-
 // Op whose handler takes a move-only task_ptr&&, materialized by dispatch from
 // the carrier itself -- proves task_ptr threads through the erased completion
 // call without ever living inside the (trivially copyable only) closure storage.
@@ -53,16 +37,6 @@ struct op_move_only
 	static void dispatch (task &t, F &f, std::error_code ec, size_t) noexcept
 	{
 		f(t.borrow(), ec);
-	}
-};
-
-struct receive_task_ptr
-{
-	task_ptr *received;
-
-	void operator() (task_ptr &&p, std::error_code) const noexcept
-	{
-		*received = std::move(p);
 	}
 };
 
@@ -131,7 +105,14 @@ TEST_CASE("async/task")
 		task t;
 		int calls = 0;
 		std::error_code seen_ec = std::make_error_code(std::errc::io_error);
-		t.bind<op_test>(record_call{.calls = &calls, .seen_ec = &seen_ec});
+		// clang-format off
+		t.bind<op_test>([&](int v, std::error_code ec) noexcept
+		{
+			++calls;
+			seen_ec = ec;
+			CHECK(v == 7);
+		});
+		// clang-format on
 		t.complete({}, 7);
 		CHECK(calls == 1);
 		CHECK_FALSE(seen_ec);
@@ -141,7 +122,7 @@ TEST_CASE("async/task")
 	{
 		task t;
 		task_ptr received;
-		t.bind<op_move_only>(receive_task_ptr{.received = &received});
+		t.bind<op_move_only>([&received] (task_ptr &&p, std::error_code) noexcept { received = std::move(p); });
 		t.complete({}, 0);
 		CHECK(received.get() == &t);
 	}
