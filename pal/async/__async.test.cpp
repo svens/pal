@@ -83,6 +83,19 @@ TEST_CASE("async/__async")
 		}
 	}
 
+	SECTION("single-shot: bind while already bound is a REQUIRE violation")
+	{
+		if constexpr (pal::build == pal::build_type::debug)
+		{
+			c.completion.bind<op_test>([](int, std::error_code) noexcept {});
+
+			auto msg = pal_test::require_terminate([&] { c.completion.bind<op_test>([](int, std::error_code) noexcept {}); });
+			CHECK(msg.contains("bound"));
+
+			c.completion.complete(c, {}, 0);
+		}
+	}
+
 	SECTION("multishot: arm invokes the closure in place across multiple completions")
 	{
 		int calls = 0;

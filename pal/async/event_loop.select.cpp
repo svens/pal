@@ -49,14 +49,8 @@ struct select_loop: impl_type
 
 	~select_loop () noexcept
 	{
-		if (wake_r != -1)
-		{
-			::close(wake_r);
-		}
-		if (wake_w != -1)
-		{
-			::close(wake_w);
-		}
+		::close(wake_r);
+		::close(wake_w);
 	}
 };
 

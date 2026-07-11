@@ -55,7 +55,7 @@ struct impl_type
 	// portable state
 	clock::time_point now_{};
 	task *timer_root_ = nullptr;
-	__task::attorney::task_queue inbox_{};
+	__task::attorney::task_mpsc_queue inbox_{};
 	event_loop_stats stats_{};
 	event_loop_config config_{};
 
@@ -171,6 +171,7 @@ private:
 	}
 
 	friend result<event_loop> make_loop (const event_loop_config &) noexcept;
+	friend class thread_pool;
 
 	__event_loop::impl_ptr impl_;
 };

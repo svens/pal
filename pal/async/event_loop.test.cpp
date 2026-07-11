@@ -200,6 +200,68 @@ TEST_CASE("async/event_loop")
 		CHECK(order[2] == 1);
 	}
 
+	SECTION("post_after: many timers expire in deadline order")
+	{
+		// Insert earliest-deadline-first so the root accumulates every other timer as a child; popping that
+		// fat-child root drives the pairing heap's two-pass merge through its second-pass meld (root list > 1).
+		std::array<task, 6> timers;
+		std::array<size_t, 6> order{};
+		size_t count = 0;
+
+		for (size_t i = 0; i < timers.size(); ++i)
+		{
+			const auto delay = std::chrono::milliseconds(5 * (i + 1));
+			loop->post_after(
+				timers[i].borrow(),
+				delay,
+				[&order, &count, i] (task_ptr &&) noexcept { order[count++] = i; }
+			);
+		}
+
+		auto n = loop->run();
+		REQUIRE(n);
+		CHECK(*n == timers.size());
+		REQUIRE(count == timers.size());
+		for (size_t i = 0; i < order.size(); ++i)
+		{
+			CHECK(order[i] == i);
+		}
+	}
+
+	SECTION("run_for: negative timeout polls without blocking")
+	{
+		// A negative timeout clamped to zero; run_for returns immediately like a run_once.
+		auto n = loop->run_for(-5ms);
+		REQUIRE(n);
+		CHECK(*n == 0);
+	}
+
+	SECTION("post: cross-thread wakes an unbounded run_for")
+	{
+		// duration::max() blocks; only the producer's cross-thread wake() can unblock it.
+		task t;
+		std::atomic<int> ran = 0;
+
+		// clang-format off
+		std::thread producer{[&]
+		{
+			std::this_thread::sleep_for(20ms);
+			loop->post(t.borrow(), [&ran] (task_ptr &&) noexcept
+			{
+				ran.fetch_add(1, std::memory_order_relaxed);
+			});
+		}};
+		// clang-format on
+
+		auto n = loop->run_for(event_loop::clock::duration::max());
+		producer.join();
+
+		REQUIRE(n);
+		CHECK(*n == 1);
+		CHECK(ran.load() == 1);
+		CHECK(loop->stats().wakeups >= 1);
+	}
+
 	SECTION("post_after: caps run_for poll timeout")
 	{
 		task t;

@@ -7,6 +7,7 @@
 
 #include <pal/async/__async.hpp>
 #include <pal/intrusive_mpsc_queue.hpp>
+#include <pal/intrusive_queue.hpp>
 #include <pal/require.hpp>
 #include <array>
 #include <memory>
@@ -39,7 +40,11 @@ using recycle_fn = void (*)(task *) noexcept;
 struct layout
 {
 	__async::completion<task> completion;
-	intrusive_mpsc_queue_hook<task> hook;
+	union
+	{
+		intrusive_mpsc_queue_hook<task> mpsc_hook;
+		intrusive_queue_hook<task> hook;
+	};
 	recycle_fn recycle;
 };
 
@@ -140,7 +145,15 @@ private:
 	}
 
 	__async::completion<task> completion_;
-	intrusive_mpsc_queue_hook<task> hook_{};
+
+	// A task is in at most one queue at a time, so both hook flavors share storage;
+	// which member is active is library-internal knowledge, held per owning queue
+	union
+	{
+		intrusive_mpsc_queue_hook<task> mpsc_hook_{};
+		intrusive_queue_hook<task> hook_;
+	};
+
 	const __task::recycle_fn recycle_ = nullptr;
 
 	// Last member so it absorbs the task's tail padding into usable space (see \ref scratch_capacity).
@@ -170,9 +183,10 @@ struct attorney
 		return task{recycle};
 	}
 
-	// Kept internal: the hook stays single-owner for the library. Apps queue their own idle tasks via
-	// task::scratch_as() instead.
-	using task_queue = pal::intrusive_mpsc_queue<&task::hook_>;
+	// Kept internal: the hooks stay single-owner for the library.
+	// Apps queue their own idle tasks via task::scratch_as() instead.
+	using task_mpsc_queue = pal::intrusive_mpsc_queue<&task::mpsc_hook_>;
+	using task_queue = pal::intrusive_queue<&task::hook_>;
 };
 
 } // namespace __task
