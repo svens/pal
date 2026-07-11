@@ -8,6 +8,7 @@
 #include <pal/async/__async.hpp>
 #include <pal/intrusive_mpsc_queue.hpp>
 #include <pal/intrusive_queue.hpp>
+#include <pal/intrusive_stack.hpp>
 #include <pal/require.hpp>
 #include <array>
 #include <memory>
@@ -31,9 +32,12 @@ using task_ptr = std::unique_ptr<task, task_deleter>;
 namespace __task
 {
 
-/// Returns a loop-managed \ref task to its pool. Stored on the task; null on app-managed tasks, which own no
-/// pool storage.
-using recycle_fn = void (*)(task *) noexcept;
+/// Returns a pool-managed \ref task to its owning pool when its \ref task_ptr drops. A pool embeds one and
+/// recovers its own identity from the reference passed to \ref fn. App-managed tasks store no recycler.
+struct recycler
+{
+	void (*fn)(recycler &recycler, task &task) noexcept;
+};
 
 /// Mirrors task's non-scratch members, in order, so \c scratch_capacity fills the rest of the cache-line
 /// budget without hand-summing sizes (kept honest by the size static_assert below).
@@ -44,8 +48,9 @@ struct layout
 	{
 		intrusive_mpsc_queue_hook<task> mpsc_hook;
 		intrusive_queue_hook<task> hook;
+		intrusive_stack_hook<task> stack_hook;
 	};
-	recycle_fn recycle;
+	recycler *recycle;
 	std::span<std::byte> span;
 };
 
@@ -137,7 +142,7 @@ public:
 	}
 
 	/// Point this task's payload window at \a span. Adjust only while the task is at rest -- an op in
-	/// flight owns the window. Dropping a loop-managed task resets its window to the slot's full buffer;
+	/// flight owns the window. Dropping a pool-managed task resets its window to the slot's full buffer;
 	/// app-managed windows stay as the app last set them.
 	void span (std::span<std::byte> span) noexcept
 	{
@@ -148,14 +153,14 @@ public:
 	/// \c task_ptr leaves the task untouched for the app to reuse.
 	[[nodiscard]] task_ptr borrow () noexcept
 	{
-		pal_require(recycle_ == nullptr, "borrow() on loop-managed task");
+		pal_require(recycle_ == nullptr, "borrow() on pool-managed task");
 		return task_ptr{this};
 	}
 
 private:
 
-	explicit task (__task::recycle_fn recycle) noexcept
-		: recycle_{recycle}
+	explicit task (__task::recycler &recycle) noexcept
+		: recycle_{&recycle}
 	{
 	}
 
@@ -163,7 +168,7 @@ private:
 	{
 		if (recycle_ != nullptr)
 		{
-			recycle_(this);
+			recycle_->fn(*recycle_, *this);
 		}
 	}
 
@@ -175,9 +180,10 @@ private:
 	{
 		intrusive_mpsc_queue_hook<task> mpsc_hook_{};
 		intrusive_queue_hook<task> hook_;
+		intrusive_stack_hook<task> stack_hook_;
 	};
 
-	const __task::recycle_fn recycle_ = nullptr;
+	__task::recycler *const recycle_ = nullptr;
 	std::span<std::byte> span_{};
 
 	// Last member so it absorbs the task's tail padding into usable space (see \ref scratch_capacity).
@@ -202,7 +208,7 @@ namespace __task
 /// Grants the loop internals access to task internals kept off its public API.
 struct attorney
 {
-	static task make_loop_managed (recycle_fn recycle) noexcept
+	static task make_pool_managed (recycler &recycle) noexcept
 	{
 		return task{recycle};
 	}
@@ -211,6 +217,7 @@ struct attorney
 	// Apps queue their own idle tasks via task::scratch_as() instead.
 	using task_mpsc_queue = pal::intrusive_mpsc_queue<&task::mpsc_hook_>;
 	using task_queue = pal::intrusive_queue<&task::hook_>;
+	using task_stack = pal::intrusive_stack<&task::stack_hook_>;
 };
 
 } // namespace __task

@@ -6,6 +6,7 @@ list(APPEND pal_sources
 	pal/async/handle.hpp
 	pal/async/resolver.hpp
 	pal/async/task.hpp
+	pal/async/task_pool.hpp
 	pal/async/thread_pool.hpp
 	pal/async/thread_pool.cpp
 )
@@ -15,5 +16,6 @@ list(APPEND pal_test_sources
 	pal/async/event_loop.test.cpp
 	pal/async/resolver.test.cpp
 	pal/async/task.test.cpp
+	pal/async/task_pool.test.cpp
 	pal/async/thread_pool.test.cpp
 )

@@ -200,8 +200,9 @@ TEST_CASE("async/resolver")
 		std::atomic<bool> release = false;
 		task blocker;
 
-		// occupy the single worker so the resolve stays queued while we observe the gauge
 		// clang-format off
+
+		// occupy the single worker so the resolve stays queued while we observe the gauge
 		pool->post(*loop, blocker.borrow(),
 			[&release] (task &) noexcept
 			{
@@ -212,16 +213,16 @@ TEST_CASE("async/resolver")
 			},
 			[] (task_ptr &&) noexcept {}
 		);
-		// clang-format on
 
 		CHECK(loop->stats().offload_in_flight == 0);
 
 		int called = 0;
-		h->start_resolve(t.borrow(), "127.0.0.1", "7", numeric, [&called] (task_ptr &&, resolve_result &&) noexcept
-		{
-			++called;
-		});
+		h->start_resolve(t.borrow(), "127.0.0.1", "7",
+			[&called] (task_ptr &&, resolve_result &&) noexcept { ++called; }
+		);
 		CHECK(loop->stats().offload_in_flight == 1);
+
+		// clang-format on
 
 		release = true;
 		run_until_idle(*loop);

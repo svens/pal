@@ -9,12 +9,20 @@ namespace
 
 using namespace pal::async;
 
-int recycle_calls = 0;
-
-void count_recycle (task *) noexcept
+struct counting_recycler: __task::recycler
 {
-	++recycle_calls;
-}
+	int calls = 0;
+
+	counting_recycler () noexcept
+		: __task::recycler{count}
+	{
+	}
+
+	static void count (__task::recycler &r, task &) noexcept
+	{
+		++static_cast<counting_recycler &>(r).calls;
+	}
+};
 
 struct op_test
 {
@@ -80,13 +88,14 @@ TEST_CASE("async/task")
 		CHECK(p2.get() == &t);
 	}
 
-	SECTION("borrow() on a loop-managed task is a REQUIRE violation")
+	SECTION("borrow() on a pool-managed task is a REQUIRE violation")
 	{
 		if constexpr (pal::build == pal::build_type::debug)
 		{
-			task t = __task::attorney::make_loop_managed(&count_recycle);
+			counting_recycler r;
+			task t = __task::attorney::make_pool_managed(r);
 			auto msg = pal_test::require_terminate([&] { std::ignore = t.borrow(); });
-			CHECK(msg.contains("loop-managed"));
+			CHECK(msg.contains("pool-managed"));
 		}
 	}
 
@@ -122,15 +131,15 @@ TEST_CASE("async/task")
 		CHECK(t.span().size() == storage.size());
 	}
 
-	SECTION("dropping a loop-managed task_ptr runs its recycler")
+	SECTION("dropping a pool-managed task_ptr runs its recycler")
 	{
-		recycle_calls = 0;
-		task t = __task::attorney::make_loop_managed(&count_recycle);
+		counting_recycler r;
+		task t = __task::attorney::make_pool_managed(r);
 		{
 			const task_ptr p{&t};
 			CHECK(p.get() == &t);
 		}
-		CHECK(recycle_calls == 1);
+		CHECK(r.calls == 1);
 	}
 
 	SECTION("bind/complete round-trip through Op::dispatch")
