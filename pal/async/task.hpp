@@ -46,6 +46,7 @@ struct layout
 		intrusive_queue_hook<task> hook;
 	};
 	recycle_fn recycle;
+	std::span<std::byte> span;
 };
 
 constexpr size_t round_up (size_t n, size_t m) noexcept
@@ -74,6 +75,12 @@ public:
 
 	/// Construct an app-managed task (see \ref borrow)
 	task () noexcept = default;
+
+	/// Construct an app-managed task with payload storage \a span attached (see \ref span)
+	explicit task (std::span<std::byte> span) noexcept
+		: span_{span}
+	{
+	}
 
 	~task () noexcept = default;
 
@@ -121,6 +128,22 @@ public:
 		#endif
 	}
 
+	/// This task's payload window: storage where operations read and write payload data (received bytes,
+	/// resolved endpoints, ...), distinct from \ref scratch, which ops clobber with their own state. On
+	/// completion the op adjusts the window to the storage actually used.
+	[[nodiscard]] std::span<std::byte> span () const noexcept
+	{
+		return span_;
+	}
+
+	/// Point this task's payload window at \a span. Adjust only while the task is at rest -- an op in
+	/// flight owns the window. Dropping a loop-managed task resets its window to the slot's full buffer;
+	/// app-managed windows stay as the app last set them.
+	void span (std::span<std::byte> span) noexcept
+	{
+		span_ = span;
+	}
+
 	/// Yield an owning \c task_ptr to this app-managed task. Its recycler is null, so dropping the returned
 	/// \c task_ptr leaves the task untouched for the app to reuse.
 	[[nodiscard]] task_ptr borrow () noexcept
@@ -155,6 +178,7 @@ private:
 	};
 
 	const __task::recycle_fn recycle_ = nullptr;
+	std::span<std::byte> span_{};
 
 	// Last member so it absorbs the task's tail padding into usable space (see \ref scratch_capacity).
 	alignas(std::max_align_t) std::array<std::byte, scratch_capacity> scratch_{};

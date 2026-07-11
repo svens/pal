@@ -15,6 +15,11 @@
 namespace pal::async
 {
 
+class thread_pool;
+
+template <typename T>
+class handle;
+
 /// Backend sizing knobs: buffer-pool capacity and submission/completion ring depths.
 /// Capacities only -- no steering or scheduling policy.
 struct event_loop_config
@@ -37,6 +42,11 @@ struct event_loop_stats
 
 	/// Backend wake() deliveries observed by poll()
 	uint64_t wakeups = 0;
+
+	/// Counted offloaded operations (handle-based, e.g. start_resolve) started on this loop and not yet
+	/// completed back on it. Before teardown, quiesce by running the loop until this reaches zero.
+	/// Plain \ref thread_pool::post offloads are not counted.
+	uint64_t offload_in_flight = 0;
 };
 
 namespace __event_loop
@@ -162,6 +172,14 @@ public:
 		t->bind<__event_loop::op_post>(std::move(handler));
 		__event_loop::start_timer(*impl_, std::move(t), impl_->now_ + delay);
 	}
+
+	/// Consume the configured synchronous \a resource, returning its async \ref handle bound to this
+	/// loop, with offloaded work routed through \a pool. The handle binds heap-stable internals, so it
+	/// survives moves of both this loop and \a pool; per the teardown contract it must be destroyed
+	/// before either. Resource types with no backend setup step (e.g. resolver) cannot fail.
+	/// Defined in pal/async/handle.hpp.
+	template <typename T>
+	[[nodiscard]] result<handle<T>> make_handle (T resource, thread_pool &pool) noexcept;
 
 private:
 

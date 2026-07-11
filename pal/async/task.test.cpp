@@ -1,6 +1,7 @@
 #include <pal/async/task.hpp>
 #include <pal/test.hpp>
 #include <catch2/catch_test_macros.hpp>
+#include <array>
 #include <system_error>
 
 namespace
@@ -87,6 +88,38 @@ TEST_CASE("async/task")
 			auto msg = pal_test::require_terminate([&] { std::ignore = t.borrow(); });
 			CHECK(msg.contains("loop-managed"));
 		}
+	}
+
+	SECTION("span() is empty unless payload storage is attached")
+	{
+		const task t{};
+		CHECK(t.span().empty());
+	}
+
+	SECTION("span() views storage attached at construction")
+	{
+		std::array<std::byte, 8> storage{};
+		const task t{storage};
+		CHECK(t.span().data() == storage.data());
+		CHECK(t.span().size() == storage.size());
+	}
+
+	SECTION("span(span) adjusts the payload window at rest")
+	{
+		std::array<std::byte, 8> storage{};
+		task t{storage};
+		t.span(t.span().subspan(2, 4));
+		CHECK(t.span().data() == storage.data() + 2);
+		CHECK(t.span().size() == 4);
+	}
+
+	SECTION("span survives scratch use")
+	{
+		std::array<std::byte, 8> storage{};
+		task t{storage};
+		t.scratch_as<std::array<std::byte, task::scratch_capacity>>().fill(std::byte{0xa5});
+		CHECK(t.span().data() == storage.data());
+		CHECK(t.span().size() == storage.size());
 	}
 
 	SECTION("dropping a loop-managed task_ptr runs its recycler")

@@ -32,7 +32,9 @@ struct deleter
 using impl_ptr = std::unique_ptr<impl_type, deleter>;
 
 /// Post-back target, written into task scratch by \ref thread_pool::post. The worker copies it out before
-/// invoking the work closure, which is then free to overwrite the entire scratch.
+/// invoking the work closure, which is then free to overwrite the entire scratch. A client layering its own
+/// op state into scratch embeds this as its first member (offset 0 -- \ref thread_pool::post overwrites it
+/// at post time) and, if its post-back needs the origin, has its work closure preserve the field.
 struct record
 {
 	__event_loop::impl_type *origin;
@@ -55,8 +57,9 @@ struct op_execute
 template <typename Work, typename Handler>
 struct closure
 {
-	Work work;
-	Handler handler;
+	// no_unique_address: a stateless work or handler must not pad the other out of the closure budget
+	[[no_unique_address]] Work work;
+	[[no_unique_address]] Handler handler;
 
 	void operator() (task &t) noexcept
 	{
@@ -93,7 +96,9 @@ public:
 	/// Run \a work on one of this pool's worker threads, then \a handler on \a loop's thread (from a
 	/// subsequent run(), like \ref event_loop::post). Thread-safe.
 	///
-	/// \a work borrows the task (the pool retains ownership) and may use its entire scratch; offloaded work
+	/// \a work borrows the task (the pool retains ownership) and may use its entire scratch: the leading
+	/// \ref __thread_pool::record written here at post time is copied out by the worker before \a work
+	/// runs (clients layering their own scratch state see the record contract); offloaded work
 	/// cannot be cancelled or interrupted, and there is no error_code path -- work records its own status in
 	/// scratch for \a handler to read. \a handler receives ownership. Both closures share the task's one
 	/// inline closure budget. \a loop must outlive the operation: it is destroyable only once \a handler has
@@ -121,6 +126,7 @@ private:
 	}
 
 	friend result<thread_pool> make_thread_pool (size_t) noexcept;
+	friend class event_loop;
 
 	__thread_pool::impl_ptr impl_;
 };

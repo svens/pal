@@ -72,6 +72,7 @@ task *merge_pairs (task *first) noexcept
 impl_type::~impl_type () noexcept
 {
 	pal_require(inbox_.empty(), "event_loop destroyed with a pending inbox");
+	pal_require(stats_.offload_in_flight == 0, "event_loop destroyed with offloaded ops in flight");
 }
 
 size_t impl_type::drain_inbox () noexcept
