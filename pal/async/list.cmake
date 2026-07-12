@@ -2,7 +2,9 @@ list(APPEND pal_sources
 	pal/async/__async.hpp
 	pal/async/event_loop.hpp
 	pal/async/event_loop.cpp
-	pal/async/event_loop.select.cpp
+	pal/async/event_loop.epoll.cpp
+	pal/async/event_loop.iocp.cpp
+	pal/async/event_loop.kqueue.cpp
 	pal/async/handle.hpp
 	pal/async/resolver.hpp
 	pal/async/task.hpp

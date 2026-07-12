@@ -38,8 +38,6 @@ TEST_CASE("async/thread_pool make contract")
 	}
 }
 
-#if !__pal_os_windows
-
 // Handlers are lambdas except where one must re-post with itself (*this) -- a lambda cannot name itself.
 struct round_trip
 {
@@ -276,7 +274,5 @@ TEST_CASE("async/thread_pool destructor contract")
 		CHECK(msg.contains("pending"));
 	}
 }
-
-#endif // !__pal_os_windows
 
 } // namespace

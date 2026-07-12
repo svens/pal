@@ -25,8 +25,6 @@ using resolve_result = pal::result<std::span<const endpoint>>;
 
 constexpr auto numeric = resolver_base::numeric_host | resolver_base::numeric_service;
 
-#if !__pal_os_windows
-
 // run_for() until every counted offload has completed back; a zero-completion iteration means run_for()
 // hit its full timeout, so fail instead of spinning forever.
 void run_until_idle (event_loop &loop)
@@ -387,7 +385,5 @@ TEST_CASE("async/resolver loop destructor contract")
 		CHECK(msg.contains("offload"));
 	}
 }
-
-#endif // !__pal_os_windows
 
 } // namespace

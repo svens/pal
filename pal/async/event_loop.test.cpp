@@ -1,8 +1,5 @@
 #include <pal/async/event_loop.hpp>
 #include <pal/version.hpp>
-
-#if !__pal_os_windows
-
 #include <pal/async/task.hpp>
 #include <pal/test.hpp>
 #include <catch2/catch_test_macros.hpp>
@@ -365,5 +362,3 @@ TEST_CASE("async/event_loop destructor contract")
 }
 
 } // namespace
-
-#endif // !__pal_os_windows
