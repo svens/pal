@@ -165,15 +165,15 @@ private:
 	static_assert(std::is_standard_layout_v<op_state>); // record at offset 0, per its contract
 
 	[[no_unique_address]] net::ip::basic_resolver<Protocol> resolver_;
-	__thread_pool::impl_type *pool_;
 	__event_loop::impl_type *loop_;
+	__thread_pool::impl_type *pool_;
 
 	handle (net::ip::basic_resolver<Protocol> &&resolver,
-		__thread_pool::impl_type &pool,
-		__event_loop::impl_type &loop) noexcept
+		__event_loop::impl_type &loop,
+		__thread_pool::impl_type &pool) noexcept
 		: resolver_{std::move(resolver)}
-		, pool_{&pool}
 		, loop_{&loop}
+		, pool_{&pool}
 	{
 	}
 

@@ -51,7 +51,7 @@ class intrusive_mpsc_queue;
 /// \endcode
 ///
 /// \note push() is safe to call concurrently from multiple threads.
-/// try_pop() and empty() must only be called from a single consumer thread.
+/// try_pop() and head() must only be called from a single consumer thread.
 /// Items from the same producer are delivered in push order; items from
 /// different producers may interleave in any order.
 ///
@@ -120,10 +120,20 @@ public:
 		return nullptr;
 	}
 
-	/// Return true if the queue has no elements. Consumer thread only.
-	[[nodiscard]] bool empty () const noexcept
+	/// Return the front node without removing it, or nullptr if empty.
+	/// Consumer thread only. May transiently return nullptr while a
+	/// concurrent push() is in flight; conversely, a non-null result does
+	/// not guarantee the next try_pop() succeeds (it may still report a
+	/// transient inconsistency). The returned node remains valid and at
+	/// the front until this thread pops it.
+	[[nodiscard]] value_type *head () const noexcept
 	{
-		return tail_.load(std::memory_order_acquire) == sentry_;
+		auto *front = head_;
+		if (front == sentry_)
+		{
+			front = (front->*Next).load(std::memory_order_acquire);
+		}
+		return front;
 	}
 
 private:

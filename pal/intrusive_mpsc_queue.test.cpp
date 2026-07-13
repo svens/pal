@@ -24,14 +24,14 @@ TEST_CASE("intrusive_mpsc_queue")
 	static_assert(std::is_same_v<foo, foo::queue::value_type>);
 
 	foo::queue queue{};
-	CHECK(queue.empty());
+	CHECK(queue.head() == nullptr);
 	CHECK(queue.try_pop() == nullptr);
 
 	SECTION("push/try_pop: single")
 	{
 		foo f;
 		queue.push(f);
-		REQUIRE_FALSE(queue.empty());
+		REQUIRE(queue.head() == &f);
 		CHECK(queue.try_pop() == &f);
 	}
 
@@ -42,11 +42,11 @@ TEST_CASE("intrusive_mpsc_queue")
 		queue.push(f2);
 		queue.push(f3);
 
-		REQUIRE_FALSE(queue.empty());
+		REQUIRE(queue.head() == &f1);
 		CHECK(queue.try_pop() == &f1);
-		REQUIRE_FALSE(queue.empty());
+		REQUIRE(queue.head() == &f2);
 		CHECK(queue.try_pop() == &f2);
-		REQUIRE_FALSE(queue.empty());
+		REQUIRE(queue.head() == &f3);
 		CHECK(queue.try_pop() == &f3);
 	}
 
@@ -56,19 +56,19 @@ TEST_CASE("intrusive_mpsc_queue")
 		queue.push(f1);
 		queue.push(f2);
 
-		REQUIRE_FALSE(queue.empty());
+		REQUIRE(queue.head() == &f1);
 		CHECK(queue.try_pop() == &f1);
 
 		queue.push(f3);
 
-		REQUIRE_FALSE(queue.empty());
+		REQUIRE(queue.head() == &f2);
 		CHECK(queue.try_pop() == &f2);
 		queue.push(f2);
 
-		REQUIRE_FALSE(queue.empty());
+		REQUIRE(queue.head() == &f3);
 		CHECK(queue.try_pop() == &f3);
 
-		REQUIRE_FALSE(queue.empty());
+		REQUIRE(queue.head() == &f2);
 		CHECK(queue.try_pop() == &f2);
 	}
 
@@ -87,7 +87,7 @@ TEST_CASE("intrusive_mpsc_queue")
 		auto consumer = std::thread([&]
 		{
 			std::vector<size_t> last_seq(n_producers, 0);
-			while (finished_producers != n_producers || !queue.empty())
+			while (finished_producers != n_producers || queue.head() != nullptr)
 			{
 				if (auto *p = queue.try_pop())
 				{
@@ -152,7 +152,7 @@ TEST_CASE("intrusive_mpsc_queue")
 		CHECK(wrong_deliveries == 0);
 	}
 
-	CHECK(queue.empty());
+	CHECK(queue.head() == nullptr);
 	CHECK(queue.try_pop() == nullptr);
 }
 

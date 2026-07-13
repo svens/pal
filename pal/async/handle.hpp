@@ -23,7 +23,7 @@ class handle;
 template <typename T>
 result<handle<T>> event_loop::make_handle (T resource, thread_pool &pool) noexcept
 {
-	return handle<T>{std::move(resource), *pool.impl_, *impl_};
+	return handle<T>{std::move(resource), *impl_, *pool.impl_};
 }
 
 } // namespace pal::async

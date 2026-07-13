@@ -71,7 +71,7 @@ task *merge_pairs (task *first) noexcept
 
 impl_type::~impl_type () noexcept
 {
-	pal_require(inbox_.empty(), "event_loop destroyed with a pending inbox");
+	pal_require(inbox_.head() == nullptr, "event_loop destroyed with a pending inbox");
 	pal_require(stats_.offload_in_flight == 0, "event_loop destroyed with offloaded ops in flight");
 }
 
@@ -145,7 +145,7 @@ void start_timer (impl_type &l, task_ptr &&t, impl_type::clock::time_point deadl
 result<size_t> event_loop::run () noexcept
 {
 	size_t total = 0;
-	while (!impl_->inbox_.empty() || impl_->timer_root_ != nullptr)
+	while (impl_->inbox_.head() != nullptr || impl_->timer_root_ != nullptr)
 	{
 		total += impl_->iterate(clock::duration::max());
 	}
