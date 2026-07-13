@@ -143,7 +143,9 @@ public:
 	/// Poll without blocking: dispatch pending completions; returns the count (0 if none were ready).
 	result<size_t> run_once () noexcept;
 
-	/// Run one iteration, blocking at most \a timeout; returns the count (0 on timeout).
+	/// Run one iteration, blocking at most \a timeout; returns the count. May return 0 before \a timeout
+	/// elapses (e.g. on a wake whose work was already dispatched by an earlier iteration): 0 means nothing
+	/// was dispatched this iteration, not that the full \a timeout was consumed.
 	result<size_t> run_for (clock::duration timeout) noexcept;
 
 	/// Run the completion \a handler for \a t on this loop's thread (thread-safe).

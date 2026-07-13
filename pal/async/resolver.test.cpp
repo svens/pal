@@ -25,15 +25,18 @@ using resolve_result = pal::result<std::span<const endpoint>>;
 
 constexpr auto numeric = resolver_base::numeric_host | resolver_base::numeric_service;
 
-// run_for() until every counted offload has completed back; a zero-completion iteration means run_for()
-// hit its full timeout, so fail instead of spinning forever.
+// run_for() until every counted offload has completed back, bounded by an overall deadline: run_for()
+// may return 0 spuriously (a wake whose work was already drained), so only total elapsed time
+// distinguishes still-in-flight from hung.
 void run_until_idle (event_loop &loop)
 {
+	const auto deadline = event_loop::clock::now() + 5s;
 	while (loop.stats().offload_in_flight > 0)
 	{
-		auto r = loop.run_for(5s);
+		const auto now = event_loop::clock::now();
+		REQUIRE(now < deadline);
+		auto r = loop.run_for(deadline - now);
 		REQUIRE(r);
-		REQUIRE(*r > 0);
 	}
 }
 
@@ -276,12 +279,7 @@ TEST_CASE("async/resolver")
 		});
 		// clang-format on
 
-		while (moved_loop.stats().offload_in_flight > 0)
-		{
-			auto r = moved_loop.run_for(5s);
-			REQUIRE(r);
-			REQUIRE(*r > 0);
-		}
+		run_until_idle(moved_loop);
 		CHECK(count == 1);
 	}
 }

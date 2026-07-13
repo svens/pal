@@ -305,13 +305,13 @@ TEST_CASE("async/event_loop")
 		loop->post_after(t.borrow(), 5ms, lazy_rearm{.loop = &*loop, .s = &s});
 
 		// refresh: move the authoritative deadline without touching the armed timer
-		s.deadline = base + 40ms;
+		s.deadline = base + 500ms;
 
 		auto n = loop->run();
 		REQUIRE(n);
 		CHECK(*n == 2);
 		CHECK(s.expired == 1);
-		CHECK(loop->now() >= base + 40ms);
+		CHECK(loop->now() >= base + 500ms);
 	}
 
 	SECTION("run: post and post_after both pending")

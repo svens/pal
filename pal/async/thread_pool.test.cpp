@@ -54,16 +54,18 @@ struct round_trip
 	}
 };
 
-// run_for() until \a total completions arrive; a zero-completion iteration means run_for() hit its full
-// timeout, so fail instead of spinning forever.
+// run_for() until \a total completions arrive, bounded by an overall deadline: run_for() may return 0
+// spuriously (a wake whose work was already drained), so per-iteration progress cannot be asserted.
 void run_until (event_loop &loop, size_t total)
 {
+	const auto deadline = event_loop::clock::now() + 5s;
 	size_t n = 0;
 	while (n < total)
 	{
-		auto r = loop.run_for(5s);
+		const auto now = event_loop::clock::now();
+		REQUIRE(now < deadline);
+		auto r = loop.run_for(deadline - now);
 		REQUIRE(r);
-		REQUIRE(*r > 0);
 		n += *r;
 	}
 	CHECK(n == total);
