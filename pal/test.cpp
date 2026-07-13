@@ -25,6 +25,24 @@
 	#define __pal_test_close close
 #endif
 
+// LeakSanitizer availability: gcc defines __SANITIZE_ADDRESS__, clang answers __has_feature; MSVC ASan
+// has no leak detection, so Windows stays out even though it defines __SANITIZE_ADDRESS__ too.
+#if !__pal_os_windows
+	#ifdef __SANITIZE_ADDRESS__
+		#define __pal_test_lsan 1
+	#elifdef __has_feature
+		#if __has_feature(address_sanitizer)
+			#define __pal_test_lsan 1
+		#endif
+	#endif
+#endif
+#ifndef __pal_test_lsan
+	#define __pal_test_lsan 0
+#endif
+#if __pal_test_lsan
+	#include <sanitizer/lsan_interface.h>
+#endif
+
 namespace
 {
 
@@ -105,6 +123,14 @@ std::pair<bool, std::string> pal_test::__require_terminate (void (*fn)(void *con
 
 	bool trapped;
 
+	// the trap path leaks fn's locals by design (longjmp skips destructors -- see require_terminate());
+	// hide allocations made under fn from LeakSanitizer, keeping the rest of the binary leak-checked
+	#if __pal_test_lsan
+	{
+		__lsan_disable();
+	}
+	#endif
+
 	__pal_diagnostic(push)
 	{
 		__pal_diagnostic_suppress(__pal_cpp_dtor_setjmp);
@@ -129,6 +155,12 @@ std::pair<bool, std::string> pal_test::__require_terminate (void (*fn)(void *con
 		}
 	}
 	__pal_diagnostic(pop);
+
+	#if __pal_test_lsan
+	{
+		__lsan_enable();
+	}
+	#endif
 
 	std::fflush(stderr);
 	__pal_test_dup2(saved_stderr_fd, __pal_test_fileno(stderr));
