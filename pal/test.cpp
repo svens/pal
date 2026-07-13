@@ -111,6 +111,15 @@ std::pair<bool, std::string> pal_test::__require_terminate (void (*fn)(void *con
 
 		if (setjmp(env) == 0)
 		{
+			#if __pal_os_windows
+			{
+				// MSVC's longjmp unwinds the stack like an exception, running destructors between the
+				// longjmp and this setjmp -- defeating the deliberate leak-on-trap containment (see
+				// require_terminate()). A zeroed saved frame pointer makes longjmp skip unwinding,
+				// restoring POSIX semantics.
+				reinterpret_cast<_JUMP_BUFFER *>(&env)->Frame = 0;
+			}
+			#endif
 			fn(context);
 			trapped = false;
 		}
