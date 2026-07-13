@@ -48,5 +48,6 @@ list(APPEND pal_fuzz_sources
 	pal/codec_hex.fuzz.cpp
 )
 
+include(pal/async/list.cmake)
 include(pal/crypto/list.cmake)
 include(pal/net/list.cmake)
