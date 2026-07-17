@@ -206,17 +206,7 @@ void socket_state_deleter::operator() (socket_state *s) const noexcept
 
 	if (s->queued)
 	{
-		// intrusive_queue has no mid-queue removal; handle destruction is setup-rate, rebuilding is fine
-		// TODO(svens): not fine, add removal to intrusive_queue (keep for now, after the review as separate step)
-		socket_queue keep;
-		while (auto *it = s->loop->actionable_.try_pop())
-		{
-			if (it != s)
-			{
-				keep.push(*it);
-			}
-		}
-		s->loop->actionable_ = std::move(keep);
+		s->loop->actionable_.remove(*s);
 	}
 
 	delete s;

@@ -250,6 +250,70 @@ TEST_CASE("intrusive_queue")
 		CHECK(i == 3);
 	}
 
+	SECTION("remove: head")
+	{
+		foo f1, f2, f3;
+		queue.push(f1);
+		queue.push(f2);
+		queue.push(f3);
+
+		CHECK(queue.remove(f1));
+		CHECK(queue.try_pop() == &f2);
+		CHECK(queue.try_pop() == &f3);
+	}
+
+	SECTION("remove: middle")
+	{
+		foo f1, f2, f3;
+		queue.push(f1);
+		queue.push(f2);
+		queue.push(f3);
+
+		CHECK(queue.remove(f2));
+		CHECK(queue.try_pop() == &f1);
+		CHECK(queue.try_pop() == &f3);
+	}
+
+	SECTION("remove: tail")
+	{
+		foo f1, f2, f3;
+		queue.push(f1);
+		queue.push(f2);
+		queue.push(f3);
+
+		CHECK(queue.remove(f3));
+
+		CHECK(queue.try_pop() == &f1);
+		CHECK(queue.try_pop() == &f2);
+	}
+
+	SECTION("remove: sole element")
+	{
+		foo f;
+		queue.push(f);
+
+		CHECK(queue.remove(f));
+		CHECK(queue.empty());
+
+		queue.push(f);
+		CHECK(queue.try_pop() == &f);
+	}
+
+	SECTION("remove: not found")
+	{
+		foo f1, f2;
+		queue.push(f1);
+
+		CHECK_FALSE(queue.remove(f2));
+		CHECK(queue.try_pop() == &f1);
+	}
+
+	SECTION("remove: from empty")
+	{
+		foo f;
+		CHECK_FALSE(queue.remove(f));
+	}
+
 	SECTION("insert_sorted")
 	{
 		struct bar

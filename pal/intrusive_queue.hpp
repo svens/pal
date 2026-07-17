@@ -196,6 +196,24 @@ public:
 		}
 	}
 
+	/// Remove \a node from the queue. Returns true if \a node was found and removed. O(n).
+	bool remove (value_type &node) noexcept
+	{
+		for (value_type **it = &head_; *it; it = &((*it)->*Next))
+		{
+			if (*it == &node)
+			{
+				*it = node.*Next;
+				if (*it == nullptr)
+				{
+					tail_ = it;
+				}
+				return true;
+			}
+		}
+		return false;
+	}
+
 	/// Insert \a node before the first existing element for which \a cmp(node, element)
 	/// is true. If no such element exists, \a node is appended to the back. O(n).
 	template <typename Cmp = std::less<value_type>>
