@@ -6,7 +6,6 @@
 #include <pal/error.hpp>
 
 #include <array>
-#include <atomic>
 #include <cerrno>
 #include <chrono>
 #include <cstdint>
@@ -29,7 +28,6 @@ struct epoll_loop: impl_type
 {
 	int epoll = -1;
 	int wake = -1;
-	std::atomic<bool> signaled = false;
 
 	~epoll_loop () noexcept
 	{
@@ -53,14 +51,10 @@ void drain_wake_channel (epoll_loop &self) noexcept
 {
 	uint64_t counter{};
 	std::ignore = ::read(self.wake, &counter, sizeof(counter));
-	self.signaled.store(false, std::memory_order_release);
-	self.stats_.wakeups++;
+	on_wake(self);
 }
 
-constexpr size_t poll_batch = 64;
-constexpr unsigned drain_batch = 16;
-
-size_t epoll_poll (impl_type &base, impl_type::clock::duration timeout) noexcept
+void epoll_poll (impl_type &base, impl_type::clock::duration timeout) noexcept
 {
 	auto &self = static_cast<epoll_loop &>(base);
 
@@ -72,7 +66,9 @@ size_t epoll_poll (impl_type &base, impl_type::clock::duration timeout) noexcept
 		tsp = &ts;
 	}
 
+	constexpr size_t poll_batch = 64;
 	std::array<::epoll_event, poll_batch> events{};
+
 	int r = 0;
 	do
 	{
@@ -97,8 +93,6 @@ size_t epoll_poll (impl_type &base, impl_type::clock::duration timeout) noexcept
 			on_socket_event(state, state.send);
 		}
 	}
-
-	return 0;
 }
 
 std::error_code epoll_register_socket (impl_type &base, socket_state &state) noexcept
@@ -112,13 +106,13 @@ std::error_code epoll_register_socket (impl_type &base, socket_state &state) noe
 	return {};
 }
 
-void epoll_drain_receive (epoll_loop &self, socket_state &state) noexcept
-{
-	auto &d = state.receive;
+constexpr unsigned drain_batch = 16;
+using mmsg_array = std::array<::mmsghdr, drain_batch>;
+using mmsg_buffers_array = std::array<::iovec, drain_batch>;
 
-	std::array<::mmsghdr, drain_batch> messages{};
-	std::array<::iovec, drain_batch> buffers{};
-	unsigned count = 0;
+size_t make_mmsg (socket_state::direction &d, mmsg_array &messages, mmsg_buffers_array &buffers, auto name_len) noexcept
+{
+	size_t count = 0;
 	for (auto &t: d.pending)
 	{
 		if (count == drain_batch)
@@ -127,11 +121,21 @@ void epoll_drain_receive (epoll_loop &self, socket_state &state) noexcept
 		}
 		buffers[count] = {.iov_base = t.span().data(), .iov_len = t.span().size()};
 		messages[count].msg_hdr.msg_name = io(t).endpoint.data();
-		messages[count].msg_hdr.msg_namelen = io_state::endpoint_capacity;
+		messages[count].msg_hdr.msg_namelen = name_len(t);
 		messages[count].msg_hdr.msg_iov = &buffers[count];
 		messages[count].msg_hdr.msg_iovlen = 1;
 		++count;
 	}
+	return count;
+}
+
+void epoll_drain_receive (epoll_loop &self, socket_state &state) noexcept
+{
+	auto &d = state.receive;
+
+	mmsg_array messages{};
+	mmsg_buffers_array buffers{};
+	const auto count = make_mmsg(d, messages, buffers, [] (task &) { return io_state::endpoint_capacity; });
 
 	int r = 0;
 	do
@@ -172,23 +176,9 @@ void epoll_drain_send (epoll_loop &self, socket_state &state) noexcept
 {
 	auto &d = state.send;
 
-	std::array<::mmsghdr, drain_batch> messages{};
-	std::array<::iovec, drain_batch> buffers{};
-	unsigned count = 0;
-	for (auto &t: d.pending)
-	{
-		if (count == drain_batch)
-		{
-			break;
-		}
-		auto &op = io(t);
-		buffers[count] = {.iov_base = t.span().data(), .iov_len = t.span().size()};
-		messages[count].msg_hdr.msg_name = op.endpoint.data();
-		messages[count].msg_hdr.msg_namelen = op.endpoint_size;
-		messages[count].msg_hdr.msg_iov = &buffers[count];
-		messages[count].msg_hdr.msg_iovlen = 1;
-		++count;
-	}
+	mmsg_array messages{};
+	mmsg_buffers_array buffers{};
+	const auto count = make_mmsg(d, messages, buffers, [] (task &t) { return io(t).endpoint_size; });
 
 	int r = 0;
 	do
@@ -240,11 +230,8 @@ impl_type::clock::time_point epoll_now (impl_type &) noexcept
 void epoll_wake (impl_type &base) noexcept
 {
 	auto &self = static_cast<epoll_loop &>(base);
-	if (!self.signaled.exchange(true, std::memory_order_acq_rel))
-	{
-		const uint64_t one = 1;
-		std::ignore = ::write(self.wake, &one, sizeof(one));
-	}
+	const uint64_t one = 1;
+	std::ignore = ::write(self.wake, &one, sizeof(one));
 }
 
 void epoll_destroy (impl_type *base) noexcept

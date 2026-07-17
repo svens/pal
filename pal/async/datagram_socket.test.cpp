@@ -8,6 +8,7 @@
 #include <array>
 #include <chrono>
 #include <cstring>
+#include <optional>
 #include <span>
 #include <string_view>
 #include <tuple>
@@ -97,6 +98,17 @@ TEMPLATE_TEST_CASE("async/datagram_socket", "", udp_v4, udp_v6)
 		CHECK(confirm.value() >= 256 * 1024);
 	}
 
+	SECTION("make_handle: dead socket")
+	{
+		auto dead = make_sync_socket<TestType>();
+		REQUIRE(dead);
+		close_native_handle(*dead);
+
+		auto h = loop->make_handle(std::move(*dead));
+		REQUIRE_FALSE(h);
+		CHECK(h.error() == std::errc::bad_file_descriptor);
+	}
+
 	SECTION("receive: armed before the datagram arrives")
 	{
 		std::array<std::byte, 64> receive_storage{};
@@ -157,6 +169,47 @@ TEMPLATE_TEST_CASE("async/datagram_socket", "", udp_v4, udp_v6)
 		CHECK(source == *peer_endpoint);
 		REQUIRE(receive_task.span().size() == payload.size());
 		CHECK(std::memcmp(receive_task.span().data(), payload.data(), payload.size()) == 0);
+	}
+
+	SECTION("receive: more ops armed than datagrams")
+	{
+		std::array<std::byte, 64> first_storage{}, parked_storage{};
+		task first_task{first_storage}, parked_task{parked_storage};
+
+		int received = 0, canceled = 0;
+
+		{
+			auto doomed = make_async_socket<TestType>(*loop);
+			REQUIRE(doomed);
+			auto doomed_endpoint = doomed->local_endpoint();
+			REQUIRE(doomed_endpoint);
+
+			// clang-format off
+			doomed->start_receive_from(first_task.borrow(), [&] (task_ptr &&, receive_result &&r) noexcept
+			{
+				REQUIRE(r);
+				++received;
+			});
+			doomed->start_receive_from(parked_task.borrow(), [&] (task_ptr &&, receive_result &&r) noexcept
+			{
+				REQUIRE_FALSE(r);
+				CHECK(r.error() == std::errc::operation_canceled);
+				++canceled;
+			});
+			// clang-format on
+
+			REQUIRE(peer->send_to(*doomed_endpoint, case_name()));
+			run_until(*loop, [&] { return received == 1; });
+
+			CHECK(canceled == 0);
+			CHECK(loop->stats().io_in_flight == 1);
+		}
+
+		auto n = loop->run_once();
+		REQUIRE(n);
+		CHECK(*n == 1);
+		CHECK(canceled == 1);
+		CHECK(loop->stats().io_in_flight == 0);
 	}
 
 	SECTION("receive: batched: more datagrams than one drain quantum")
@@ -437,6 +490,49 @@ TEMPLATE_TEST_CASE("async/datagram_socket", "", udp_v4, udp_v6)
 		CHECK(*n == 1);
 		CHECK(canceled == 1);
 		CHECK(ec == std::errc::operation_canceled);
+		CHECK(loop->stats().io_in_flight == 0);
+	}
+
+	SECTION("cancel: destruction while queued for drain")
+	{
+		std::array<std::byte, 64> trigger_storage{}, destroyer_storage{}, send_storage{};
+		task trigger_task{trigger_storage}, destroyer_task{destroyer_storage}, send_task{send_storage};
+		send_task.span(as_span(send_storage).first(1));
+
+		auto doomed = make_async_socket<TestType>(*loop);
+		REQUIRE(doomed);
+		std::optional<async_socket> b{std::move(*doomed)};
+
+		auto n = loop->run_once();
+		REQUIRE(n);
+		CHECK(*n == 0);
+
+		int received = 0, canceled = 0;
+
+		// clang-format off
+		socket->start_receive_from(trigger_task.borrow(), [&] (task_ptr &&, receive_result &&r) noexcept
+		{
+			REQUIRE(r);
+			b->start_send_to(send_task.borrow(), *peer_endpoint, [&] (task_ptr &&, send_result &&s) noexcept
+			{
+				REQUIRE_FALSE(s);
+				CHECK(s.error() == std::errc::operation_canceled);
+				++canceled;
+			});
+			++received;
+		});
+		socket->start_receive_from(destroyer_task.borrow(), [&] (task_ptr &&, receive_result &&r) noexcept
+		{
+			REQUIRE(r);
+			b.reset();
+			++received;
+		});
+		// clang-format on
+
+		REQUIRE(peer->send_to(*socket_endpoint, std::string_view{"x"}));
+		REQUIRE(peer->send_to(*socket_endpoint, std::string_view{"y"}));
+		run_until(*loop, [&] { return received == 2 && canceled == 1; });
+
 		CHECK(loop->stats().io_in_flight == 0);
 	}
 

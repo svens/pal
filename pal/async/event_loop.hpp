@@ -9,6 +9,7 @@
 #include <pal/intrusive_queue.hpp>
 #include <pal/result.hpp>
 #include <array>
+#include <atomic>
 #include <chrono>
 #include <memory>
 
@@ -61,33 +62,23 @@ namespace __event_loop
 
 struct impl_type;
 
-/// Reactor socket-op scratch state, common to every reactor op type. The public shell writes the inputs at op start;
-/// the backend drain writes the outputs and parks the task on the loop's ready queue, whose dispatch reads everything
-/// from here
 struct io_state
 {
-	/// Endpoint storage capacity: fits any internet-family socket address
 	static constexpr size_t endpoint_capacity = 32;
 
 	alignas(std::max_align_t) std::array<std::byte, endpoint_capacity> endpoint;
 	uint32_t endpoint_size;
 
-	// completion outputs
 	std::error_code ec;
 	size_t bytes;
 	bool truncated;
 };
 
-/// This task's reactor op state, layered into its op scratch.
 [[nodiscard]] inline io_state &io (task &t) noexcept
 {
 	return t.scratch_as<io_state>();
 }
 
-/// Per-socket reactor state slot, heap-allocated at make_handle (setup-rate path) and owned by the handle through
-/// \ref socket_state_ptr; registered once with the backend poller (edge-triggered, both directions), so the backend can
-/// recover it from event user data. Edge-triggered bookkeeping per direction: pending-op FIFO plus readiness flag -- an
-/// edge sets the flag, only drain exhaustion clears it.
 struct socket_state
 {
 	struct direction
@@ -107,7 +98,6 @@ struct socket_state
 	bool queued = false;
 	intrusive_queue_hook<socket_state> hook{};
 
-	/// True if some direction can make progress.
 	[[nodiscard]] bool actionable () const noexcept
 	{
 		return receive.actionable() || send.actionable();
@@ -116,9 +106,6 @@ struct socket_state
 
 using socket_queue = intrusive_queue<&socket_state::hook>;
 
-/// Deleter for \ref socket_state_ptr: synthesize \c operation_canceled completions for every op pending on \a s via its
-/// loop's ready queue (handlers fire only from run()), detach \a s from the actionable list, then free the slot.
-/// Loop-thread only.
 struct socket_state_deleter
 {
 	void operator() (socket_state *s) const noexcept;
@@ -130,16 +117,15 @@ struct impl_type
 {
 	using clock = std::chrono::steady_clock;
 
-	// backend seam
-	size_t (*poll_fn)(impl_type &, clock::duration timeout) noexcept = nullptr;
+	void (*poll_fn)(impl_type &, clock::duration timeout) noexcept = nullptr;
 	void (*wake_fn)(impl_type &) noexcept = nullptr;
 	clock::time_point (*now_fn)(impl_type &) noexcept = nullptr;
 	void (*destroy_fn)(impl_type *) noexcept = nullptr;
 	std::error_code (*register_socket_fn)(impl_type &, socket_state &) noexcept = nullptr;
 	void (*drain_fn)(impl_type &, socket_state &) noexcept = nullptr;
 
-	// portable state
 	clock::time_point now_{};
+	std::atomic<bool> signaled_ = false;
 	task *timer_root_ = nullptr;
 	__task::attorney::task_mpsc_queue inbox_{};
 	socket_queue actionable_{};
@@ -148,6 +134,16 @@ struct impl_type
 	event_loop_config config_{};
 
 	~impl_type () noexcept;
+
+	[[nodiscard]] bool has_work () const noexcept
+	{
+		// clang-format off
+		return inbox_.head() != nullptr
+			|| timer_root_ != nullptr
+			|| stats_.io_in_flight != 0
+			|| stats_.offload_in_flight != 0;
+		// clang-format on
+	}
 
 	size_t iterate (clock::duration timeout) noexcept;
 	size_t drain_inbox () noexcept;
@@ -166,10 +162,6 @@ struct deleter
 
 using impl_ptr = std::unique_ptr<impl_type, deleter>;
 
-/// Internal op for \ref event_loop::post and \ref event_loop::post_after -- a bare deferral: run the bound
-/// handler on the loop thread (a timer is a bare deferral with a deadline). The carried task must be
-/// app-managed; \c borrow re-materializes its \c task_ptr at drain/expiry and its REQUIRE enforces that
-/// contract.
 struct op_post
 {
 	using signature = void(task_ptr &&) noexcept;
@@ -181,19 +173,11 @@ struct op_post
 	}
 };
 
-/// Enqueue an already-bound task onto the loop's inbox and wake it. Thread-safe.
 void post (impl_type &l, task_ptr &&t) noexcept;
-
-/// Push an already-bound task onto the loop's timer heap, keyed by \a deadline. Loop-thread only.
 void start_timer (impl_type &l, task_ptr &&t, impl_type::clock::time_point deadline) noexcept;
-
-/// Queue already-bound \a t on \a s's direction \a d pending FIFO; if that direction is already known
-/// ready, \a s joins its loop's actionable list for the next run() drain. Loop-thread only.
 void start_socket_op (task_ptr &&t, socket_state &s, socket_state::direction &d) noexcept;
-
-/// Backend event decode: record readiness on \a s's direction \a d; with ops pending there, \a s joins
-/// its loop's actionable list.
 void on_socket_event (socket_state &s, socket_state::direction &d) noexcept;
+void on_wake (impl_type &l) noexcept;
 
 } // namespace __event_loop
 

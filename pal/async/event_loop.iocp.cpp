@@ -5,7 +5,6 @@
 #include <pal/async/event_loop.hpp>
 #include <pal/error.hpp>
 
-#include <atomic>
 #include <chrono>
 #include <new>
 #include <windows.h>
@@ -22,7 +21,6 @@ namespace
 struct iocp_loop: impl_type
 {
 	::HANDLE port = nullptr;
-	std::atomic<bool> signaled = false;
 
 	~iocp_loop () noexcept
 	{
@@ -40,7 +38,7 @@ constexpr ::DWORD to_milliseconds (impl_type::clock::duration d) noexcept
 	return static_cast<::DWORD>((msecs > cap) ? cap : msecs);
 }
 
-size_t iocp_poll (impl_type &base, impl_type::clock::duration timeout) noexcept
+void iocp_poll (impl_type &base, impl_type::clock::duration timeout) noexcept
 {
 	auto &self = static_cast<iocp_loop &>(base);
 
@@ -56,12 +54,9 @@ size_t iocp_poll (impl_type &base, impl_type::clock::duration timeout) noexcept
 	{
 		if (entry.lpCompletionKey == wake_key)
 		{
-			self.signaled.store(false, std::memory_order_release);
-			self.stats_.wakeups++;
+			on_wake(self);
 		}
 	}
-
-	return 0;
 }
 
 impl_type::clock::time_point iocp_now (impl_type &) noexcept
@@ -72,10 +67,7 @@ impl_type::clock::time_point iocp_now (impl_type &) noexcept
 void iocp_wake (impl_type &base) noexcept
 {
 	auto &self = static_cast<iocp_loop &>(base);
-	if (!self.signaled.exchange(true, std::memory_order_acq_rel))
-	{
-		std::ignore = ::PostQueuedCompletionStatus(self.port, 0, wake_key, nullptr);
-	}
+	std::ignore = ::PostQueuedCompletionStatus(self.port, 0, wake_key, nullptr);
 }
 
 void iocp_destroy (impl_type *base) noexcept

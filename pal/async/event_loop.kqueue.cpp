@@ -6,7 +6,6 @@
 #include <pal/error.hpp>
 
 #include <array>
-#include <atomic>
 #include <cerrno>
 #include <chrono>
 #include <fcntl.h>
@@ -27,7 +26,6 @@ namespace
 struct kqueue_loop: impl_type
 {
 	int kq = -1;
-	std::atomic<bool> signaled = false;
 
 	~kqueue_loop () noexcept
 	{
@@ -51,7 +49,7 @@ constexpr ::timespec to_timespec (impl_type::clock::duration d) noexcept
 constexpr size_t poll_batch = 64;
 constexpr size_t drain_batch = 16;
 
-size_t kqueue_poll (impl_type &base, impl_type::clock::duration timeout) noexcept
+void kqueue_poll (impl_type &base, impl_type::clock::duration timeout) noexcept
 {
 	auto &self = static_cast<kqueue_loop &>(base);
 
@@ -75,8 +73,7 @@ size_t kqueue_poll (impl_type &base, impl_type::clock::duration timeout) noexcep
 		const auto &event = events[i];
 		if (event.filter == EVFILT_USER)
 		{
-			self.signaled.store(false, std::memory_order_release);
-			self.stats_.wakeups++;
+			on_wake(self);
 		}
 		else if (event.filter == EVFILT_READ)
 		{
@@ -89,8 +86,6 @@ size_t kqueue_poll (impl_type &base, impl_type::clock::duration timeout) noexcep
 			on_socket_event(state, state.send);
 		}
 	}
-
-	return 0;
 }
 
 std::error_code kqueue_register_socket (impl_type &base, socket_state &state) noexcept
@@ -205,12 +200,9 @@ impl_type::clock::time_point kqueue_now (impl_type &) noexcept
 void kqueue_wake (impl_type &base) noexcept
 {
 	auto &self = static_cast<kqueue_loop &>(base);
-	if (!self.signaled.exchange(true, std::memory_order_acq_rel))
-	{
-		struct ::kevent trigger{};
-		EV_SET(&trigger, wake_ident, EVFILT_USER, 0, NOTE_TRIGGER, 0, nullptr);
-		std::ignore = ::kevent(self.kq, &trigger, 1, nullptr, 0, nullptr);
-	}
+	struct ::kevent trigger{};
+	EV_SET(&trigger, wake_ident, EVFILT_USER, 0, NOTE_TRIGGER, 0, nullptr);
+	std::ignore = ::kevent(self.kq, &trigger, 1, nullptr, 0, nullptr);
 }
 
 void kqueue_destroy (impl_type *base) noexcept

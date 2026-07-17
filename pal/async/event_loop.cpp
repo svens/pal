@@ -11,8 +11,8 @@ namespace __event_loop
 namespace
 {
 
-/// Armed timer's op state: https://en.wikipedia.org/wiki/Pairing_heap node. No decrease-key/removal: there
-/// is no cancellation, deadline moves use the lazy re-arm idiom.
+// Armed timer's op state: https://en.wikipedia.org/wiki/Pairing_heap node. No decrease-key/removal: there
+// is no cancellation, deadline moves use the lazy re-arm idiom.
 struct timer_state
 {
 	impl_type::clock::time_point deadline;
@@ -36,8 +36,8 @@ task *meld (task *a, task *b) noexcept
 	return a;
 }
 
-/// Standard pairing-heap two-pass merge of a popped root's child list; iterative, so heap size never costs
-/// stack depth.
+// Standard pairing-heap two-pass merge of a popped root's child list; iterative, so heap size never costs
+// stack depth.
 task *merge_pairs (task *first) noexcept
 {
 	task *paired = nullptr;
@@ -144,13 +144,14 @@ size_t impl_type::iterate (clock::duration timeout) noexcept
 		timeout = std::min(timeout, deadline > now_ ? deadline - now_ : clock::duration::zero());
 	}
 
-	n += poll_fn(*this, timeout);
+	poll_fn(*this, timeout);
 
 	now_ = now_fn(*this);
 
 	n += drain_inbox();
 	n += expire_timers();
 
+	// dispatch first: handler-issued ops drain same iteration
 	n += dispatch_ready();
 	drain_actionable();
 
@@ -162,7 +163,16 @@ void post (impl_type &l, task_ptr &&t) noexcept
 {
 	auto *raw = t.release();
 	l.inbox_.push(*raw);
-	l.wake_fn(l);
+	if (!l.signaled_.exchange(true, std::memory_order_acq_rel))
+	{
+		l.wake_fn(l);
+	}
+}
+
+void on_wake (impl_type &l) noexcept
+{
+	l.signaled_.store(false, std::memory_order_release);
+	l.stats_.wakeups++;
 }
 
 void start_timer (impl_type &l, task_ptr &&t, impl_type::clock::time_point deadline) noexcept
@@ -217,7 +227,7 @@ void socket_state_deleter::operator() (socket_state *s) const noexcept
 result<size_t> event_loop::run () noexcept
 {
 	size_t total = 0;
-	while (impl_->inbox_.head() != nullptr || impl_->timer_root_ != nullptr || impl_->stats_.io_in_flight != 0)
+	while (impl_->has_work())
 	{
 		total += impl_->iterate(clock::duration::max());
 	}
