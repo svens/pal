@@ -46,7 +46,7 @@ struct op_execute
 	using signature = void(task &) noexcept;
 
 	template <typename F>
-	static void dispatch (task &t, F &f, std::error_code, size_t) noexcept
+	static void dispatch (task &t, F &f) noexcept
 	{
 		f(t);
 	}

@@ -5,6 +5,7 @@
 #include <pal/async/event_loop.hpp>
 #include <pal/error.hpp>
 
+#include <array>
 #include <atomic>
 #include <cerrno>
 #include <chrono>
@@ -12,6 +13,7 @@
 #include <new>
 #include <sys/epoll.h>
 #include <sys/eventfd.h>
+#include <sys/socket.h>
 #include <unistd.h>
 
 namespace pal::async
@@ -55,6 +57,9 @@ void drain_wake_channel (epoll_loop &self) noexcept
 	self.stats_.wakeups++;
 }
 
+constexpr size_t poll_batch = 64;
+constexpr unsigned drain_batch = 16;
+
 size_t epoll_poll (impl_type &base, impl_type::clock::duration timeout) noexcept
 {
 	auto &self = static_cast<epoll_loop &>(base);
@@ -67,19 +72,164 @@ size_t epoll_poll (impl_type &base, impl_type::clock::duration timeout) noexcept
 		tsp = &ts;
 	}
 
-	::epoll_event event{};
+	std::array<::epoll_event, poll_batch> events{};
 	int r = 0;
 	do
 	{
-		r = ::epoll_pwait2(self.epoll, &event, 1, tsp, nullptr);
+		r = ::epoll_pwait2(self.epoll, events.data(), events.size(), tsp, nullptr);
 	} while (r < 0 && errno == EINTR);
 
-	if (r > 0)
+	for (int i = 0; i < r; ++i)
 	{
-		drain_wake_channel(self);
+		const auto &event = events[i];
+		if (event.data.ptr == nullptr)
+		{
+			drain_wake_channel(self);
+			continue;
+		}
+		auto &state = *static_cast<socket_state *>(event.data.ptr);
+		if ((event.events & (EPOLLIN | EPOLLERR | EPOLLHUP)) != 0)
+		{
+			on_socket_event(state, state.receive);
+		}
+		if ((event.events & (EPOLLOUT | EPOLLERR | EPOLLHUP)) != 0)
+		{
+			on_socket_event(state, state.send);
+		}
 	}
 
 	return 0;
+}
+
+std::error_code epoll_register_socket (impl_type &base, socket_state &state) noexcept
+{
+	auto &self = static_cast<epoll_loop &>(base);
+	::epoll_event event{.events = EPOLLIN | EPOLLOUT | EPOLLET, .data = {.ptr = &state}};
+	if (::epoll_ctl(self.epoll, EPOLL_CTL_ADD, static_cast<int>(state.handle), &event) == -1)
+	{
+		return {errno, std::generic_category()};
+	}
+	return {};
+}
+
+void epoll_drain_receive (epoll_loop &self, socket_state &state) noexcept
+{
+	auto &d = state.receive;
+
+	std::array<::mmsghdr, drain_batch> messages{};
+	std::array<::iovec, drain_batch> buffers{};
+	unsigned count = 0;
+	for (auto &t: d.pending)
+	{
+		if (count == drain_batch)
+		{
+			break;
+		}
+		buffers[count] = {.iov_base = t.span().data(), .iov_len = t.span().size()};
+		messages[count].msg_hdr.msg_name = io(t).endpoint.data();
+		messages[count].msg_hdr.msg_namelen = io_state::endpoint_capacity;
+		messages[count].msg_hdr.msg_iov = &buffers[count];
+		messages[count].msg_hdr.msg_iovlen = 1;
+		++count;
+	}
+
+	int r = 0;
+	do
+	{
+		r = ::recvmmsg(static_cast<int>(state.handle), messages.data(), count, 0, nullptr);
+	} while (r < 0 && errno == EINTR);
+
+	if (r < 0)
+	{
+		if (errno == EAGAIN || errno == EWOULDBLOCK)
+		{
+			d.ready = false;
+		}
+		else
+		{
+			// batch error attribution: -1 belongs to the head-of-FIFO op
+			task *t = d.pending.pop();
+			io(*t).ec.assign(errno, std::generic_category());
+			self.ready_.push(*t);
+		}
+		return;
+	}
+
+	for (int i = 0; i < r; ++i)
+	{
+		task *t = d.pending.pop();
+		auto &op = io(*t);
+		op.bytes = messages[i].msg_len;
+		op.endpoint_size = messages[i].msg_hdr.msg_namelen;
+		op.truncated = (messages[i].msg_hdr.msg_flags & MSG_TRUNC) != 0;
+		self.ready_.push(*t);
+	}
+	// Partial return: the flag stays set. A deferred mid-batch outcome (EAGAIN or a per-message error --
+	// mmsg reports neither on the partial call) surfaces on the revisit's syscall.
+}
+
+void epoll_drain_send (epoll_loop &self, socket_state &state) noexcept
+{
+	auto &d = state.send;
+
+	std::array<::mmsghdr, drain_batch> messages{};
+	std::array<::iovec, drain_batch> buffers{};
+	unsigned count = 0;
+	for (auto &t: d.pending)
+	{
+		if (count == drain_batch)
+		{
+			break;
+		}
+		auto &op = io(t);
+		buffers[count] = {.iov_base = t.span().data(), .iov_len = t.span().size()};
+		messages[count].msg_hdr.msg_name = op.endpoint.data();
+		messages[count].msg_hdr.msg_namelen = op.endpoint_size;
+		messages[count].msg_hdr.msg_iov = &buffers[count];
+		messages[count].msg_hdr.msg_iovlen = 1;
+		++count;
+	}
+
+	int r = 0;
+	do
+	{
+		r = ::sendmmsg(static_cast<int>(state.handle), messages.data(), count, 0);
+	} while (r < 0 && errno == EINTR);
+
+	if (r < 0)
+	{
+		if (errno == EAGAIN || errno == EWOULDBLOCK)
+		{
+			d.ready = false;
+		}
+		else
+		{
+			task *t = d.pending.pop();
+			io(*t).ec.assign(errno, std::generic_category());
+			self.ready_.push(*t);
+		}
+		return;
+	}
+
+	for (int i = 0; i < r; ++i)
+	{
+		task *t = d.pending.pop();
+		io(*t).bytes = messages[i].msg_len;
+		self.ready_.push(*t);
+	}
+}
+
+void epoll_drain (impl_type &base, socket_state &state) noexcept
+{
+	auto &self = static_cast<epoll_loop &>(base);
+	if (state.receive.actionable())
+	{
+		epoll_drain_receive(self, state);
+	}
+	if (state.send.actionable())
+	{
+		epoll_drain_send(self, state);
+	}
 }
 
 impl_type::clock::time_point epoll_now (impl_type &) noexcept
@@ -147,6 +297,8 @@ result<event_loop> make_loop (const event_loop_config &config) noexcept
 	self->wake_fn = &epoll_wake;
 	self->now_fn = &epoll_now;
 	self->destroy_fn = &epoll_destroy;
+	self->register_socket_fn = &epoll_register_socket;
+	self->drain_fn = &epoll_drain;
 	self->config_ = config;
 	self->now_ = epoll_now(*self);
 

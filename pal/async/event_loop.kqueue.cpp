@@ -5,12 +5,14 @@
 #include <pal/async/event_loop.hpp>
 #include <pal/error.hpp>
 
+#include <array>
 #include <atomic>
 #include <cerrno>
 #include <chrono>
 #include <fcntl.h>
 #include <new>
 #include <sys/event.h>
+#include <sys/socket.h>
 #include <unistd.h>
 
 namespace pal::async
@@ -46,6 +48,9 @@ constexpr ::timespec to_timespec (impl_type::clock::duration d) noexcept
 	};
 }
 
+constexpr size_t poll_batch = 64;
+constexpr size_t drain_batch = 16;
+
 size_t kqueue_poll (impl_type &base, impl_type::clock::duration timeout) noexcept
 {
 	auto &self = static_cast<kqueue_loop &>(base);
@@ -58,20 +63,138 @@ size_t kqueue_poll (impl_type &base, impl_type::clock::duration timeout) noexcep
 		tsp = &ts;
 	}
 
-	struct ::kevent event{};
+	std::array<struct ::kevent, poll_batch> events{};
 	int r = 0;
 	do
 	{
-		r = ::kevent(self.kq, nullptr, 0, &event, 1, tsp);
+		r = ::kevent(self.kq, nullptr, 0, events.data(), static_cast<int>(events.size()), tsp);
 	} while (r < 0 && errno == EINTR);
 
-	if (r > 0)
+	for (int i = 0; i < r; ++i)
 	{
-		self.signaled.store(false, std::memory_order_release);
-		self.stats_.wakeups++;
+		const auto &event = events[i];
+		if (event.filter == EVFILT_USER)
+		{
+			self.signaled.store(false, std::memory_order_release);
+			self.stats_.wakeups++;
+		}
+		else if (event.filter == EVFILT_READ)
+		{
+			auto &state = *static_cast<socket_state *>(event.udata);
+			on_socket_event(state, state.receive);
+		}
+		else if (event.filter == EVFILT_WRITE)
+		{
+			auto &state = *static_cast<socket_state *>(event.udata);
+			on_socket_event(state, state.send);
+		}
 	}
 
 	return 0;
+}
+
+std::error_code kqueue_register_socket (impl_type &base, socket_state &state) noexcept
+{
+	auto &self = static_cast<kqueue_loop &>(base);
+	std::array<struct ::kevent, 2> reg{};
+	EV_SET(reg.data(), static_cast<uintptr_t>(state.handle), EVFILT_READ, EV_ADD | EV_CLEAR, 0, 0, &state);
+	EV_SET(&reg[1], static_cast<uintptr_t>(state.handle), EVFILT_WRITE, EV_ADD | EV_CLEAR, 0, 0, &state);
+	if (::kevent(self.kq, reg.data(), static_cast<int>(reg.size()), nullptr, 0, nullptr) == -1)
+	{
+		return {errno, std::generic_category()};
+	}
+	return {};
+}
+
+void kqueue_drain_receive (kqueue_loop &self, socket_state &state) noexcept
+{
+	auto &d = state.receive;
+	for (size_t i = 0; i < drain_batch && d.actionable(); ++i)
+	{
+		auto &t = *d.pending.head();
+		auto &op = io(t);
+
+		::iovec buffer{.iov_base = t.span().data(), .iov_len = t.span().size()};
+		::msghdr message{};
+		message.msg_name = op.endpoint.data();
+		message.msg_namelen = io_state::endpoint_capacity;
+		message.msg_iov = &buffer;
+		message.msg_iovlen = 1;
+
+		ssize_t r = 0;
+		do
+		{
+			r = ::recvmsg(static_cast<int>(state.handle), &message, 0);
+		} while (r < 0 && errno == EINTR);
+
+		if (r < 0)
+		{
+			if (errno == EAGAIN || errno == EWOULDBLOCK)
+			{
+				d.ready = false;
+				return;
+			}
+			op.ec.assign(errno, std::generic_category());
+		}
+		else
+		{
+			op.bytes = static_cast<size_t>(r);
+			op.endpoint_size = message.msg_namelen;
+			op.truncated = (message.msg_flags & MSG_TRUNC) != 0;
+		}
+		self.ready_.push(*d.pending.pop());
+	}
+}
+
+void kqueue_drain_send (kqueue_loop &self, socket_state &state) noexcept
+{
+	auto &d = state.send;
+	for (size_t i = 0; i < drain_batch && d.actionable(); ++i)
+	{
+		auto &t = *d.pending.head();
+		auto &op = io(t);
+
+		::iovec buffer{.iov_base = t.span().data(), .iov_len = t.span().size()};
+		::msghdr message{};
+		message.msg_name = op.endpoint.data();
+		message.msg_namelen = op.endpoint_size;
+		message.msg_iov = &buffer;
+		message.msg_iovlen = 1;
+
+		ssize_t r = 0;
+		do
+		{
+			r = ::sendmsg(static_cast<int>(state.handle), &message, 0);
+		} while (r < 0 && errno == EINTR);
+
+		if (r < 0)
+		{
+			if (errno == EAGAIN || errno == EWOULDBLOCK)
+			{
+				d.ready = false;
+				return;
+			}
+			op.ec.assign(errno, std::generic_category());
+		}
+		else
+		{
+			op.bytes = static_cast<size_t>(r);
+		}
+		self.ready_.push(*d.pending.pop());
+	}
+}
+
+void kqueue_drain (impl_type &base, socket_state &state) noexcept
+{
+	auto &self = static_cast<kqueue_loop &>(base);
+	if (state.receive.actionable())
+	{
+		kqueue_drain_receive(self, state);
+	}
+	if (state.send.actionable())
+	{
+		kqueue_drain_send(self, state);
+	}
 }
 
 impl_type::clock::time_point kqueue_now (impl_type &) noexcept
@@ -131,6 +254,8 @@ result<event_loop> make_loop (const event_loop_config &config) noexcept
 	self->wake_fn = &kqueue_wake;
 	self->now_fn = &kqueue_now;
 	self->destroy_fn = &kqueue_destroy;
+	self->register_socket_fn = &kqueue_register_socket;
+	self->drain_fn = &kqueue_drain;
 	self->config_ = config;
 	self->now_ = kqueue_now(*self);
 

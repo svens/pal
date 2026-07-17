@@ -102,9 +102,9 @@ public:
 	}
 
 	/// \see __async::completion::complete
-	void complete (std::error_code ec, size_t n) noexcept
+	void complete () noexcept
 	{
-		completion_.complete(*this, ec, n);
+		completion_.complete(*this);
 	}
 
 	/// This task's op-specific scratch storage.

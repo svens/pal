@@ -52,7 +52,7 @@ void impl_type::run () noexcept
 
 			// copy the post-back target out: the work closure may overwrite all of scratch
 			auto *origin = t->scratch_as<record>().origin;
-			t->complete({}, 0);
+			t->complete();
 			__event_loop::post(*origin, task_ptr{t});
 
 			lock.lock();

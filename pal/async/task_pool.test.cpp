@@ -1,7 +1,6 @@
 #include <pal/async/task_pool.hpp>
 #include <pal/test.hpp>
 #include <catch2/catch_test_macros.hpp>
-#include <system_error>
 #include <tuple>
 #include <utility>
 
@@ -18,7 +17,7 @@ struct op_recycle
 	using signature = void(task_ptr &&) noexcept;
 
 	template <typename F>
-	static void dispatch (task &t, F &f, std::error_code, size_t) noexcept
+	static void dispatch (task &t, F &f) noexcept
 	{
 		f(task_ptr{&t});
 	}
@@ -94,7 +93,7 @@ TEST_CASE("async/task_pool")
 			const auto own = std::move(p);
 		});
 		// clang-format on
-		carrier.complete({}, 0);
+		carrier.complete();
 		CHECK(calls == 1);
 
 		auto t = pool.try_acquire();

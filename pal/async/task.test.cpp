@@ -2,7 +2,6 @@
 #include <pal/test.hpp>
 #include <catch2/catch_test_macros.hpp>
 #include <array>
-#include <system_error>
 
 namespace
 {
@@ -24,14 +23,19 @@ struct counting_recycler: __task::recycler
 	}
 };
 
+struct op_state
+{
+	int value;
+};
+
 struct op_test
 {
-	using signature = void(int, std::error_code) noexcept;
+	using signature = void(int) noexcept;
 
 	template <typename F>
-	static void dispatch (task &, F &f, std::error_code ec, size_t n) noexcept
+	static void dispatch (task &t, F &f) noexcept
 	{
-		f(static_cast<int>(n), ec);
+		f(t.scratch_as<op_state>().value);
 	}
 };
 
@@ -40,12 +44,12 @@ struct op_test
 // call without ever living inside the (trivially copyable only) closure storage.
 struct op_move_only
 {
-	using signature = void(task_ptr &&, std::error_code) noexcept;
+	using signature = void(task_ptr &&) noexcept;
 
 	template <typename F>
-	static void dispatch (task &t, F &f, std::error_code ec, size_t) noexcept
+	static void dispatch (task &t, F &f) noexcept
 	{
-		f(t.borrow(), ec);
+		f(t.borrow());
 	}
 };
 
@@ -146,26 +150,24 @@ TEST_CASE("async/task")
 	{
 		task t;
 		int calls = 0;
-		std::error_code seen_ec = std::make_error_code(std::errc::io_error);
 		// clang-format off
-		t.bind<op_test>([&](int v, std::error_code ec) noexcept
+		t.bind<op_test>([&](int v) noexcept
 		{
 			++calls;
-			seen_ec = ec;
 			CHECK(v == 7);
 		});
 		// clang-format on
-		t.complete({}, 7);
+		t.scratch_as<op_state>() = {.value = 7};
+		t.complete();
 		CHECK(calls == 1);
-		CHECK_FALSE(seen_ec);
 	}
 
 	SECTION("move-only task_ptr threads through the erased call")
 	{
 		task t;
 		task_ptr received;
-		t.bind<op_move_only>([&received] (task_ptr &&p, std::error_code) noexcept { received = std::move(p); });
-		t.complete({}, 0);
+		t.bind<op_move_only>([&received] (task_ptr &&p) noexcept { received = std::move(p); });
+		t.complete();
 		CHECK(received.get() == &t);
 	}
 }

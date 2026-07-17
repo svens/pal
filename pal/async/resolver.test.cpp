@@ -21,7 +21,7 @@ using resolver = udp::resolver;
 using endpoint = udp::endpoint;
 using pal::net::ip::port_type;
 using pal::net::ip::resolver_base;
-using resolve_result = pal::result<std::span<const endpoint>>;
+using resolve_result = pal::result<pal::async::resolve_result<udp>>;
 
 constexpr auto numeric = resolver_base::numeric_host | resolver_base::numeric_service;
 
@@ -69,11 +69,11 @@ TEST_CASE("async/resolver")
 			got = p.get();
 			if (r)
 			{
-				count = r->size();
-				data = r->data();
-				if (!r->empty())
+				count = r->endpoints.size();
+				data = r->endpoints.data();
+				if (!r->endpoints.empty())
 				{
-					first = (*r)[0];
+					first = r->endpoints[0];
 				}
 			}
 		});
@@ -105,10 +105,10 @@ TEST_CASE("async/resolver")
 		{
 			if (r)
 			{
-				count = r->size();
-				if (!r->empty())
+				count = r->endpoints.size();
+				if (!r->endpoints.empty())
 				{
-					first = (*r)[0];
+					first = r->endpoints[0];
 				}
 			}
 		});
@@ -131,8 +131,8 @@ TEST_CASE("async/resolver")
 		{
 			if (r)
 			{
-				count = r->size();
-				for (const auto &ep: *r)
+				count = r->endpoints.size();
+				for (const auto &ep: r->endpoints)
 				{
 					loopback = loopback && ep.address().is_loopback();
 				}
@@ -173,9 +173,9 @@ TEST_CASE("async/resolver")
 		// clang-format off
 		h->start_resolve(t.borrow(), "127.0.0.1", "7", numeric, [&] (task_ptr &&, resolve_result &&r) noexcept
 		{
-			if (r && !r->empty())
+			if (r && !r->endpoints.empty())
 			{
-				seen[0] = (*r)[0].port();
+				seen[0] = r->endpoints[0].port();
 			}
 		});
 
@@ -183,9 +183,9 @@ TEST_CASE("async/resolver")
 
 		h->start_resolve(t.borrow(), "127.0.0.1", "9", numeric, [&] (task_ptr &&, resolve_result &&r) noexcept
 		{
-			if (r && !r->empty())
+			if (r && !r->endpoints.empty())
 			{
-				seen[1] = (*r)[0].port();
+				seen[1] = r->endpoints[0].port();
 			}
 		});
 		// clang-format on
@@ -275,7 +275,7 @@ TEST_CASE("async/resolver")
 		// clang-format off
 		h->start_resolve(t.borrow(), "127.0.0.1", "7", numeric, [&count] (task_ptr &&, resolve_result &&r) noexcept
 		{
-			count = r ? r->size() : 0;
+			count = r ? r->endpoints.size() : 0;
 		});
 		// clang-format on
 

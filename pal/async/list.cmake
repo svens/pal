@@ -1,5 +1,6 @@
 list(APPEND pal_sources
 	pal/async/__async.hpp
+	pal/async/datagram_socket.hpp
 	pal/async/event_loop.hpp
 	pal/async/event_loop.cpp
 	pal/async/event_loop.epoll.cpp
@@ -15,6 +16,7 @@ list(APPEND pal_sources
 
 list(APPEND pal_test_sources
 	pal/async/__async.test.cpp
+	pal/async/datagram_socket.test.cpp
 	pal/async/event_loop.test.cpp
 	pal/async/resolver.test.cpp
 	pal/async/task.test.cpp

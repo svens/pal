@@ -6,9 +6,9 @@
  */
 
 #include <pal/async/task.hpp>
-#include <pal/require.hpp>
+#include <pal/intrusive_queue.hpp>
 #include <pal/result.hpp>
-#include <pal/version.hpp>
+#include <array>
 #include <chrono>
 #include <memory>
 
@@ -47,10 +47,84 @@ struct event_loop_stats
 	/// completed back on it. Before teardown, quiesce by running the loop until this reaches zero.
 	/// Plain \ref thread_pool::post offloads are not counted.
 	uint64_t offload_in_flight = 0;
+
+	/// Poller-plane I/O operations (handle-based, e.g. start_receive_from) started on this loop and not
+	/// yet dispatched: parked in a resource's pending queues awaiting readiness, or awaiting dispatch
+	/// from the ready queue. A completing op is excluded before its handler runs, so a handler observing zero is
+	/// the operation that drained the loop. Before teardown, quiesce like \ref offload_in_flight: destroy the
+	/// handles (cancelling their parked ops), then run the loop until this reaches zero.
+	uint64_t io_in_flight = 0;
 };
 
 namespace __event_loop
 {
+
+struct impl_type;
+
+/// Reactor socket-op scratch state, common to every reactor op type. The public shell writes the inputs at op start;
+/// the backend drain writes the outputs and parks the task on the loop's ready queue, whose dispatch reads everything
+/// from here
+struct io_state
+{
+	/// Endpoint storage capacity: fits any internet-family socket address
+	static constexpr size_t endpoint_capacity = 32;
+
+	alignas(std::max_align_t) std::array<std::byte, endpoint_capacity> endpoint;
+	uint32_t endpoint_size;
+
+	// completion outputs
+	std::error_code ec;
+	size_t bytes;
+	bool truncated;
+};
+
+/// This task's reactor op state, layered into its op scratch.
+[[nodiscard]] inline io_state &io (task &t) noexcept
+{
+	return t.scratch_as<io_state>();
+}
+
+/// Per-socket reactor state slot, heap-allocated at make_handle (setup-rate path) and owned by the handle through
+/// \ref socket_state_ptr; registered once with the backend poller (edge-triggered, both directions), so the backend can
+/// recover it from event user data. Edge-triggered bookkeeping per direction: pending-op FIFO plus readiness flag -- an
+/// edge sets the flag, only drain exhaustion clears it.
+struct socket_state
+{
+	struct direction
+	{
+		__task::attorney::task_queue pending{};
+		bool ready = false;
+
+		[[nodiscard]] bool actionable () const noexcept
+		{
+			return ready && !pending.empty();
+		}
+	};
+
+	impl_type *const loop;
+	const std::intptr_t handle;
+	direction receive{}, send{};
+	bool queued = false;
+	intrusive_queue_hook<socket_state> hook{};
+
+	/// True if some direction can make progress.
+	[[nodiscard]] bool actionable () const noexcept
+	{
+		return receive.actionable() || send.actionable();
+	}
+};
+
+using socket_queue = intrusive_queue<&socket_state::hook>;
+
+/// Deleter for \ref socket_state_ptr: synthesize \c operation_canceled completions for every op pending on \a s via its
+/// loop's ready queue (handlers fire only from run()), detach \a s from the actionable list, then free the slot.
+/// Loop-thread only.
+struct socket_state_deleter
+{
+	void operator() (socket_state *s) const noexcept;
+};
+
+using socket_state_ptr = std::unique_ptr<socket_state, socket_state_deleter>;
 
 struct impl_type
 {
@@ -61,11 +135,15 @@ struct impl_type
 	void (*wake_fn)(impl_type &) noexcept = nullptr;
 	clock::time_point (*now_fn)(impl_type &) noexcept = nullptr;
 	void (*destroy_fn)(impl_type *) noexcept = nullptr;
+	std::error_code (*register_socket_fn)(impl_type &, socket_state &) noexcept = nullptr;
+	void (*drain_fn)(impl_type &, socket_state &) noexcept = nullptr;
 
 	// portable state
 	clock::time_point now_{};
 	task *timer_root_ = nullptr;
 	__task::attorney::task_mpsc_queue inbox_{};
+	socket_queue actionable_{};
+	__task::attorney::task_queue ready_{};
 	event_loop_stats stats_{};
 	event_loop_config config_{};
 
@@ -74,6 +152,8 @@ struct impl_type
 	size_t iterate (clock::duration timeout) noexcept;
 	size_t drain_inbox () noexcept;
 	size_t expire_timers () noexcept;
+	void drain_actionable () noexcept;
+	size_t dispatch_ready () noexcept;
 };
 
 struct deleter
@@ -95,7 +175,7 @@ struct op_post
 	using signature = void(task_ptr &&) noexcept;
 
 	template <typename F>
-	static void dispatch (task &t, F &f, std::error_code, size_t) noexcept
+	static void dispatch (task &t, F &f) noexcept
 	{
 		f(t.borrow());
 	}
@@ -106,6 +186,14 @@ void post (impl_type &l, task_ptr &&t) noexcept;
 
 /// Push an already-bound task onto the loop's timer heap, keyed by \a deadline. Loop-thread only.
 void start_timer (impl_type &l, task_ptr &&t, impl_type::clock::time_point deadline) noexcept;
+
+/// Queue already-bound \a t on \a s's direction \a d pending FIFO; if that direction is already known
+/// ready, \a s joins its loop's actionable list for the next run() drain. Loop-thread only.
+void start_socket_op (task_ptr &&t, socket_state &s, socket_state::direction &d) noexcept;
+
+/// Backend event decode: record readiness on \a s's direction \a d; with ops pending there, \a s joins
+/// its loop's actionable list.
+void on_socket_event (socket_state &s, socket_state::direction &d) noexcept;
 
 } // namespace __event_loop
 
@@ -182,6 +270,15 @@ public:
 	/// Defined in pal/async/handle.hpp.
 	template <typename T>
 	[[nodiscard]] result<handle<T>> make_handle (T resource, thread_pool &pool) noexcept;
+
+	/// \copydoc make_handle(T, thread_pool &)
+	///
+	/// Overload for poller-plane resources (e.g. datagram socket) that route no work through a
+	/// thread_pool. Setup is the backend registration moment: sockets are switched to non-blocking and
+	/// registered with the poller, either of which can fail; platforms whose backend has no socket
+	/// machinery yet report \c operation_not_supported.
+	template <typename T>
+	[[nodiscard]] result<handle<T>> make_handle (T resource) noexcept;
 
 private:
 

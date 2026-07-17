@@ -9,7 +9,6 @@
 #include <array>
 #include <cstddef>
 #include <new>
-#include <system_error>
 #include <type_traits>
 #include <utility>
 
@@ -62,7 +61,7 @@ concept handler = requires
 /// \c Op is a type with:
 /// \code
 /// using signature = void(...) noexcept; // the handler's required call signature
-/// static void dispatch (Carrier &carrier, F &f, std::error_code ec, size_t n) noexcept;
+/// static void dispatch (Carrier &carrier, F &f) noexcept;
 /// \endcode
 ///
 /// Non-copyable, non-movable: a completion is always accessed in place, embedded in its carrier.
@@ -113,32 +112,32 @@ public:
 		thunk_ = nullptr;
 	}
 
-	/// Invoke the bound closure via \c Op::dispatch(carrier, f, ec, n). For a single-shot completion, the closure
+	/// Invoke the bound closure via \c Op::dispatch(carrier, f). For a single-shot completion, the closure
 	/// is copied out and the thunk cleared before \c Op::dispatch runs, so a double-complete without rebind
 	/// null-derefs at no extra cost in release.
-	void complete (Carrier &carrier, std::error_code ec, size_t n) noexcept
+	void complete (Carrier &carrier) noexcept
 	{
 		pal_require(thunk_ != nullptr, "complete on unbound completion");
-		thunk_(*this, carrier, ec, n);
+		thunk_(*this, carrier);
 	}
 
 private:
 
-	using thunk_type = void (*)(completion &, Carrier &, std::error_code, size_t) noexcept;
+	using thunk_type = void (*)(completion &, Carrier &) noexcept;
 
 	template <typename Op, typename F>
-	static void single_shot_thunk (completion &self, Carrier &carrier, std::error_code ec, size_t n) noexcept
+	static void single_shot_thunk (completion &self, Carrier &carrier) noexcept
 	{
 		F f{*std::launder(reinterpret_cast<F *>(self.storage_.data()))};
 		self.thunk_ = nullptr;
-		Op::dispatch(carrier, f, ec, n);
+		Op::dispatch(carrier, f);
 	}
 
 	template <typename Op, typename F>
-	static void multishot_thunk (completion &self, Carrier &carrier, std::error_code ec, size_t n) noexcept
+	static void multishot_thunk (completion &self, Carrier &carrier) noexcept
 	{
 		auto *f = std::launder(reinterpret_cast<F *>(self.storage_.data()));
-		Op::dispatch(carrier, *f, ec, n);
+		Op::dispatch(carrier, *f);
 	}
 
 	thunk_type thunk_ = nullptr;

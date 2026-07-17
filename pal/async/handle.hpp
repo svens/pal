@@ -17,13 +17,25 @@ namespace pal::async
 /// a curated read-mostly subset of the resource's own API. One-way -- there is no release back to sync;
 /// destruction closes the resource (subject to the teardown contract). Defined per resource type as a
 /// specialization in its own header (e.g. pal/async/resolver.hpp); there is no generic handle.
+///
+/// Each specialization owns its construction via a static factory \c make:
+/// - offload-plane resources take \c (T &&, __event_loop::impl_type &, __thread_pool::impl_type &)
+/// - poller-plane resources \c (T &&, __event_loop::impl_type &)
+///
+/// Passing the wrong \ref event_loop::make_handle overload for the resource type fails to compile.
 template <typename T>
 class handle;
 
 template <typename T>
 result<handle<T>> event_loop::make_handle (T resource, thread_pool &pool) noexcept
 {
-	return handle<T>{std::move(resource), *impl_, *pool.impl_};
+	return handle<T>::make(std::move(resource), *impl_, *pool.impl_);
+}
+
+template <typename T>
+result<handle<T>> event_loop::make_handle (T resource) noexcept
+{
+	return handle<T>::make(std::move(resource), *impl_);
 }
 
 } // namespace pal::async
