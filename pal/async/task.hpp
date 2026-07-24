@@ -213,6 +213,11 @@ struct attorney
 		return task{recycle};
 	}
 
+	[[nodiscard]] static recycler *recycler_of (const task &t) noexcept
+	{
+		return t.recycle_;
+	}
+
 	// Kept internal: the hooks stay single-owner for the library.
 	// Apps queue their own idle tasks via task::scratch_as() instead.
 	using task_mpsc_queue = pal::intrusive_mpsc_queue<&task::mpsc_hook_>;

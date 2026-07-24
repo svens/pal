@@ -108,6 +108,33 @@ TEST_CASE("async/task_pool")
 		CHECK(t->span().size() == 8);
 	}
 
+	SECTION("reset_span() restores the payload window without recycling")
+	{
+		auto t = pool.try_acquire();
+		const auto *data = t->span().data();
+		t->span(t->span().subspan(2, 4));
+
+		pool.reset_span(*t);
+		CHECK(t->span().data() == data);
+		CHECK(t->span().size() == default_buffer_size);
+
+		// the task stayed in flight: only the remaining slot is acquirable
+		auto a = pool.try_acquire();
+		CHECK(a != nullptr);
+		CHECK(pool.try_acquire() == nullptr);
+	}
+
+	SECTION("reset_span() on a task from another pool is a REQUIRE violation")
+	{
+		if constexpr (pal::build == pal::build_type::debug)
+		{
+			task_pool<2> other;
+			auto t = pool.try_acquire();
+			auto msg = pal_test::require_terminate([&] { other.reset_span(*t); });
+			CHECK(msg.contains("another pool"));
+		}
+	}
+
 	SECTION("borrow() on a pool task is a REQUIRE violation")
 	{
 		if constexpr (pal::build == pal::build_type::debug)
