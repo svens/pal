@@ -7,9 +7,10 @@ if(NOT clang_format)
 endif()
 
 include("${project_root}/pal/list.cmake")
+include("${project_root}/samples/list.cmake")
 
 execute_process(
-    COMMAND ${clang_format} -i ${pal_sources} ${pal_test_sources} ${pal_fuzz_sources}
+    COMMAND ${clang_format} -i ${pal_sources} ${pal_test_sources} ${pal_fuzz_sources} ${samples_sources}
     WORKING_DIRECTORY "${project_root}"
     RESULT_VARIABLE result
     ERROR_VARIABLE stderr
