@@ -116,7 +116,7 @@ struct blocking_pair //{{{1
 	void close () noexcept
 	{
 		{
-			const std::scoped_lock lock{mutex};
+			const std::lock_guard lock{mutex};
 			closed = true;
 		}
 		cv.notify_all();
@@ -141,7 +141,7 @@ struct blocking_pair //{{{1
 			}
 			auto bytes = std::as_bytes(std::span{buf});
 			{
-				const std::scoped_lock lock{pair.mutex};
+				const std::lock_guard lock{pair.mutex};
 				sink.append_range(bytes);
 			}
 			pair.cv.notify_all();

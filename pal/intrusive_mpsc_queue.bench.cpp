@@ -66,25 +66,25 @@ struct locked
 
 	task *alloc () noexcept
 	{
-		const std::scoped_lock lock{pool_mutex};
+		const std::lock_guard lock{pool_mutex};
 		return pool.try_pop();
 	}
 
 	static void release (task &task) noexcept
 	{
-		const std::scoped_lock lock{task.owner->pool_mutex};
+		const std::lock_guard lock{task.owner->pool_mutex};
 		task.owner->pool.push(task);
 	}
 
 	static void enqueue (task_queue &queue, task &task) noexcept
 	{
-		const std::scoped_lock lock{queue_mutex};
+		const std::lock_guard lock{queue_mutex};
 		queue.push(task);
 	}
 
 	static task *dequeue (task_queue &queue) noexcept
 	{
-		const std::scoped_lock lock{queue_mutex};
+		const std::lock_guard lock{queue_mutex};
 		return queue.try_pop();
 	}
 };

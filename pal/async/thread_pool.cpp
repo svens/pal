@@ -29,7 +29,7 @@ struct impl_type
 impl_type::~impl_type () noexcept
 {
 	{
-		const std::scoped_lock lock{mutex};
+		const std::lock_guard lock{mutex};
 		pal_require(queue.empty(), "thread_pool destroyed with a pending queue");
 		stop = true;
 	}
@@ -71,7 +71,7 @@ void impl_type::run () noexcept
 void submit (impl_type &pool, task &t) noexcept
 {
 	{
-		const std::scoped_lock lock{pool.mutex};
+		const std::lock_guard lock{pool.mutex};
 		pool.queue.push(t);
 	}
 	pool.pending.notify_one();

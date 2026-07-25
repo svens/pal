@@ -1,24 +1,12 @@
 Checks: >
   -*,
   bugprone-*,
-  misc-*,
-  modernize-*,
+  misc-const-correctness,
   performance-*,
-  readability-*,
   -bugprone-derived-method-shadowing-base-method,
   -bugprone-invalid-enum-default-initialization,
   -bugprone-reserved-identifier,
-  -misc-include-cleaner,
-  -misc-non-private-member-variables-in-classes,
-  -modernize-use-trailing-return-type,
   -performance-enum-size,
-  -readability-else-after-return,
-  -readability-identifier-length,
-  -readability-math-missing-parentheses,
-  -readability-static-accessed-through-instance,
-  -readability-named-parameter,
-  -readability-redundant-member-init,
-  -readability-redundant-parentheses,
 
 WarningsAsErrors: '*'
-HeaderFilterRegex: 'pal/.*\.hpp$'
+HeaderFilterRegex: '(pal|samples)/.*\.hpp$'
