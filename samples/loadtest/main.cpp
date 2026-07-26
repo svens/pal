@@ -64,7 +64,7 @@ struct config
 
 	explicit config (std::span<const char *const> args)
 	{
-		parse_command_line(args, [this] (std::string_view option, std::string_view argument)
+		parse_command_line(args, [this](std::string_view option, std::string_view argument)
 		{
 			if (option == "server")
 			{
@@ -287,7 +287,8 @@ private:
 		return error == std::errc::resource_unavailable_try_again
 			|| error == std::errc::operation_would_block
 			|| error == std::errc::timed_out
-			|| error == std::errc::interrupted;
+			|| error == std::errc::interrupted
+		;
 	}
 };
 

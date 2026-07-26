@@ -99,7 +99,7 @@ public:
 		const auto mask = __network_v6::make_mask(prefix_length_);
 		return std::ranges::all_of(
 			std::views::zip(addr.to_bytes(), mask, address_.to_bytes()),
-			[] (auto t)
+			[](auto t)
 			{
 				auto [b, m, a] = t;
 				return (b & m) == a;

@@ -97,13 +97,11 @@ TEST_CASE("async/event_loop")
 		int ran = 0;
 		task *got = nullptr;
 
-		// clang-format off
 		loop->post(t.borrow(), [&](task_ptr &&p) noexcept
 		{
 			++ran;
 			got = p.get();
 		});
-		// clang-format on
 
 		auto n = loop->run_once();
 		REQUIRE(n);
@@ -117,7 +115,7 @@ TEST_CASE("async/event_loop")
 	{
 		task a, b, c;
 		int ran = 0;
-		const auto bump = [&ran] (task_ptr &&) noexcept
+		const auto bump = [&ran](task_ptr &&) noexcept
 		{
 			++ran;
 		};
@@ -136,16 +134,14 @@ TEST_CASE("async/event_loop")
 		task t;
 		std::atomic<int> ran = 0;
 
-		// clang-format off
 		std::thread producer{[&]
 		{
 			std::this_thread::sleep_for(20ms);
-			loop->post(t.borrow(), [&ran] (task_ptr &&) noexcept
+			loop->post(t.borrow(), [&ran](task_ptr &&) noexcept
 			{
 				ran.fetch_add(1, std::memory_order_relaxed);
 			});
 		}};
-		// clang-format on
 
 		// run_for() blocks in poll() until the producer thread's wake() unblocks it, well before the timeout.
 		auto n = loop->run_for(5s);
@@ -162,13 +158,11 @@ TEST_CASE("async/event_loop")
 		task t;
 		int fired = 0;
 		task *got = nullptr;
-		// clang-format off
 		loop->post_after(t.borrow(), 0ms, [&](task_ptr &&p) noexcept
 		{
 			++fired;
 			got = p.get();
 		});
-		// clang-format on
 
 		auto n = loop->run_once();
 		REQUIRE(n);
@@ -184,9 +178,9 @@ TEST_CASE("async/event_loop")
 		std::array<int, 4> order{};
 		size_t count = 0;
 
-		loop->post_after(a.borrow(), 30ms, [&] (task_ptr &&) noexcept { order[count++] = 1; });
-		loop->post_after(b.borrow(), 10ms, [&] (task_ptr &&) noexcept { order[count++] = 2; });
-		loop->post_after(c.borrow(), 20ms, [&] (task_ptr &&) noexcept { order[count++] = 3; });
+		loop->post_after(a.borrow(), 30ms, [&](task_ptr &&) noexcept { order[count++] = 1; });
+		loop->post_after(b.borrow(), 10ms, [&](task_ptr &&) noexcept { order[count++] = 2; });
+		loop->post_after(c.borrow(), 20ms, [&](task_ptr &&) noexcept { order[count++] = 3; });
 
 		auto n = loop->run();
 		REQUIRE(n);
@@ -211,7 +205,7 @@ TEST_CASE("async/event_loop")
 			loop->post_after(
 				timers[i].borrow(),
 				delay,
-				[&order, &count, i] (task_ptr &&) noexcept { order[count++] = i; }
+				[&order, &count, i](task_ptr &&) noexcept { order[count++] = i; }
 			);
 		}
 
@@ -239,16 +233,14 @@ TEST_CASE("async/event_loop")
 		task t;
 		std::atomic<int> ran = 0;
 
-		// clang-format off
 		std::thread producer{[&]
 		{
 			std::this_thread::sleep_for(20ms);
-			loop->post(t.borrow(), [&ran] (task_ptr &&) noexcept
+			loop->post(t.borrow(), [&ran](task_ptr &&) noexcept
 			{
 				ran.fetch_add(1, std::memory_order_relaxed);
 			});
 		}};
-		// clang-format on
 
 		auto n = loop->run_for(event_loop::clock::duration::max());
 		producer.join();
@@ -265,7 +257,7 @@ TEST_CASE("async/event_loop")
 		int fired = 0;
 
 		const auto before = loop->now();
-		loop->post_after(t.borrow(), 10ms, [&fired] (task_ptr &&) noexcept { ++fired; });
+		loop->post_after(t.borrow(), 10ms, [&fired](task_ptr &&) noexcept { ++fired; });
 
 		// run_for() returns at expiry, well before the timeout, because poll() is capped to the next deadline.
 		auto n = loop->run_for(5s);
@@ -318,8 +310,8 @@ TEST_CASE("async/event_loop")
 	{
 		task a, b;
 		int posted = 0, fired = 0;
-		loop->post(a.borrow(), [&posted] (task_ptr &&) noexcept { ++posted; });
-		loop->post_after(b.borrow(), 1ms, [&fired] (task_ptr &&) noexcept { ++fired; });
+		loop->post(a.borrow(), [&posted](task_ptr &&) noexcept { ++posted; });
+		loop->post_after(b.borrow(), 1ms, [&fired](task_ptr &&) noexcept { ++fired; });
 
 		auto n = loop->run();
 		REQUIRE(n);
@@ -335,7 +327,7 @@ TEST_CASE("async/event_loop")
 		{
 			auto inner = make_loop();
 			REQUIRE(inner);
-			inner->post_after(t.borrow(), 1h, [&fired] (task_ptr &&) noexcept { ++fired; });
+			inner->post_after(t.borrow(), 1h, [&fired](task_ptr &&) noexcept { ++fired; });
 		}
 		// dropped without completing; no destructor REQUIRE trips, the handler never ran
 		CHECK(fired == 0);
@@ -349,13 +341,11 @@ TEST_CASE("async/event_loop destructor contract")
 		// A loop destroyed with an undrained inbox means a task is still live -> REQUIRE crash.
 		static task t;
 
-		// clang-format off
 		auto msg = pal_test::require_terminate([]
 		{
 			auto loop = make_loop().value();
-			loop.post(t.borrow(), [] (task_ptr &&) noexcept {});
+			loop.post(t.borrow(), [](task_ptr &&) noexcept {});
 		});
-		// clang-format on
 
 		CHECK(msg.contains("inbox"));
 	}

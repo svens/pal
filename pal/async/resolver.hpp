@@ -138,8 +138,6 @@ private:
 	__event_loop::impl_type *loop_;
 	__thread_pool::impl_type *pool_;
 
-	// clang-format off
-
 	handle (net::ip::basic_resolver<Protocol> &&resolver,
 		__event_loop::impl_type &loop,
 		__thread_pool::impl_type &pool) noexcept
@@ -158,7 +156,7 @@ private:
 
 	static auto do_resolve () noexcept
 	{
-		return [] (task &w) noexcept
+		return [](task &w) noexcept
 		{
 			auto &op = w.scratch_as<op_state>();
 			if (auto r = op.resolver.resolve(op.name, op.service, op.flags); r)
@@ -189,7 +187,7 @@ private:
 	template <typename H>
 	static auto on_ready (H handler) noexcept
 	{
-		return [h = std::move(handler)] (task_ptr &&p) mutable noexcept
+		return [h = std::move(handler)](task_ptr &&p) mutable noexcept
 		{
 			const auto &op = p->scratch_as<op_state>();
 			--op.record.origin->stats_.offload_in_flight;
@@ -204,8 +202,6 @@ private:
 			}
 		};
 	}
-
-	// clang-format on
 
 	friend class event_loop;
 };

@@ -71,7 +71,7 @@ template <typename F>
 std::string require_terminate (F &&fn)
 {
 	auto [trapped, stderr_text] = __require_terminate(
-		[] (void *context) { (*static_cast<std::remove_reference_t<F> *>(context))(); }, &fn
+		[](void *context) { (*static_cast<std::remove_reference_t<F> *>(context))(); }, &fn
 	);
 	REQUIRE(trapped);
 	return stderr_text;

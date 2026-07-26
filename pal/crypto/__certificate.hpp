@@ -7,7 +7,7 @@
  * \internal distinguished_name::impl_type is embedded by value inside
  * certificate::impl_type rather than holding a certificate::impl_ptr owner
  * like other property types. This allows subject_name()/issuer_name() to use
- * the shared_ptr aliasing constructor — zero extra allocation. DN is always
+ * the shared_ptr aliasing constructor -- zero extra allocation. DN is always
  * present in a valid certificate and always accessed, making eager embedding
  * the right tradeoff. Optional/lazy properties (alternative_name, key) use
  * the owner pattern instead.

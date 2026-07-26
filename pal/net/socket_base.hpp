@@ -113,7 +113,7 @@ namespace __socket
 template <typename Socket>
 constexpr auto to_api () noexcept
 {
-	return [] (native_socket &&socket) noexcept
+	return [](native_socket &&socket) noexcept
 	{
 		return Socket{std::move(socket)};
 	};
@@ -130,7 +130,7 @@ public:
 	using native_handle_type = native_socket::handle_type;
 
 	/// Bitmask flags for send/receive operations
-	enum message_flags : int
+	enum message_flags: int
 	{
 		/// Peek at incoming message, without removing it from queue
 		message_peek = MSG_PEEK,
@@ -146,7 +146,7 @@ public:
 	};
 
 	/// Socket state change waiting types
-	enum wait_type : int
+	enum wait_type: int
 	{
 		/// Wait for socket to become readable
 		wait_read = POLLIN,
@@ -159,7 +159,7 @@ public:
 	};
 
 	/// Socket shutdown types
-	enum shutdown_type : int
+	enum shutdown_type: int
 	{
 		/// Disable further receive operations
 		shutdown_receive = SHUT_RD,

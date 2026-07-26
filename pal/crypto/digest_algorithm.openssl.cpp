@@ -2,8 +2,6 @@
 
 #if __pal_crypto_openssl
 
-// clang-format off
-
 #include <pal/crypto/digest_algorithm.hpp>
 #define OPENSSL_SUPPRESS_DEPRECATED
 #include <openssl/md5.h>
@@ -117,7 +115,5 @@ __pal_crypto_digest_algorithm(__pal_crypto_impl_hmac)
 #undef __pal_crypto_impl_hmac
 
 } // namespace pal::crypto::algorithm
-
-// clang-format on
 
 #endif // __pal_crypto_openssl

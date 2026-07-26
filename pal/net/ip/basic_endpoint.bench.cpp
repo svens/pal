@@ -6,7 +6,7 @@
 // v6/with_copy       12.6 ns     29.5 ns       18.6 ns
 //
 // v6/with_copy retains the old approach (copy 16 bytes into address_v6, then hash)
-// for comparison. v6/no_copy hashes sin6_addr.s6_addr directly — adopted as the
+// for comparison. v6/no_copy hashes sin6_addr.s6_addr directly -- adopted as the
 // implementation because MSVC does not optimize away the intermediate copy (~25%
 // slower), while clang and GCC optimize both paths to equivalent code.
 

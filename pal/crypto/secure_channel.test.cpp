@@ -51,9 +51,8 @@ handshake_result pump (handshake_channel &client_hs, handshake_channel &server_h
 
 	// Step one side: read its inbound bytes, append handshake output to its outbound buffer. Returns
 	// false (with result.error set) on a step error.
-	auto step_side = [&] (handshake_channel &handshake, std::optional<connected_channel> &slot, wire &in, wire &out)
+	auto step_side = [&](handshake_channel &handshake, std::optional<connected_channel> &slot, wire &in, wire &out)
 	{
-		// clang-format off
 
 		if (slot || !handshake)
 		{
@@ -86,7 +85,6 @@ handshake_result pump (handshake_channel &client_hs, handshake_channel &server_h
 
 		return true;
 
-		// clang-format on
 	};
 
 	for (int i = 0; i < 32 && !(result.client && result.server); ++i)
@@ -111,8 +109,7 @@ template <typename Traits>
 handshake_result establish (
 	const typename Traits::acceptor::options &accept_options,
 	const typename Traits::connector::options &connect_options,
-	std::string_view peer_name = "server.pal.alt.ee"
-)
+	std::string_view peer_name = "server.pal.alt.ee")
 {
 	auto acceptor = Traits::acceptor::make(accept_options);
 	REQUIRE(acceptor);
@@ -132,8 +129,7 @@ template <typename Traits>
 std::pair<connected_channel, connected_channel> connect_pair (
 	const typename Traits::acceptor::options &accept_options,
 	const typename Traits::connector::options &connect_options,
-	std::string_view peer_name = "server.pal.alt.ee"
-)
+	std::string_view peer_name = "server.pal.alt.ee")
 {
 	auto handshake = establish<Traits>(accept_options, connect_options, peer_name);
 	REQUIRE_FALSE(handshake.error);
@@ -328,7 +324,7 @@ TEMPLATE_TEST_CASE("crypto/secure_channel", "", stream, datagram) //{{{1
 		const typename acceptor::options ec_accept{.certificate_chain = ec_chain, .private_key = *ec_key};
 		const typename connector::options strict_connect{.trusted_roots = {}, .use_system_trust = false};
 
-		auto run = [&] (verify_relax relax)
+		auto run = [&](verify_relax relax)
 		{
 			auto a = acceptor::make(ec_accept);
 			REQUIRE(a);
@@ -445,7 +441,7 @@ TEMPLATE_TEST_CASE("crypto/secure_channel", "", stream, datagram) //{{{1
 
 	SECTION("moved_from")
 	{
-		auto require_invalid_config = [] (const auto &r)
+		auto require_invalid_config = [](const auto &r)
 		{
 			REQUIRE_FALSE(r);
 			CHECK(r.error() == secure_channel_errc::invalid_configuration);
@@ -874,7 +870,7 @@ TEMPLATE_TEST_CASE("crypto/secure_channel", "", stream, datagram) //{{{1
 		{
 			// A record header declaring the maximum length, then body bytes that never complete it, dripped
 			// in small chunks. The receiver accumulates until its record buffer saturates, at which point
-			// decrypt must error instead of buffering forever — on SChannel the cipher_buf saturation
+			// decrypt must error instead of buffering forever -- on SChannel the cipher_buf saturation
 			// guard, on OpenSSL record_overflow at the record layer. Regression for the oversized-record
 			// receive livelock. The loop bound caps the test: a regressed build keeps returning want_input,
 			// exits the loop with dec still valid, and fails the assertion rather than hanging.
@@ -884,7 +880,7 @@ TEMPLATE_TEST_CASE("crypto/secure_channel", "", stream, datagram) //{{{1
 				std::byte{0x17}, // content type: application_data
 				std::byte{0x03}, // legacy record version (TLS 1.2)
 				std::byte{0x03},
-				std::byte{0xff}, // declared length 0xffff — beyond what any record may carry
+				std::byte{0xff}, // declared length 0xffff -- beyond what any record may carry
 				std::byte{0xff},
 			};
 			const std::array<std::byte, 512> body{};
@@ -1002,7 +998,7 @@ TEST_CASE("crypto/secure_channel/null_channel") //{{{1
 {
 	// A default-constructed channel owns no backend session. Queries report the null state and every I/O
 	// operation is rejected with invalid_configuration instead of dereferencing the absent state.
-	auto require_invalid_config = [] (const auto &r)
+	auto require_invalid_config = [](const auto &r)
 	{
 		REQUIRE_FALSE(r);
 		CHECK(r.error() == secure_channel_errc::invalid_configuration);
@@ -1150,7 +1146,7 @@ TEMPLATE_TEST_CASE("crypto/secure_channel/dtls_cookie", "[!nonportable]", datagr
 		auto flight = server->step(std::span{client_buf}.first(ch2->produced), server_buf);
 		REQUIRE(flight);
 
-		// The large flight is gated behind the cookie round-trip — the anti-amplification guarantee.
+		// The large flight is gated behind the cookie round-trip -- the anti-amplification guarantee.
 		CHECK(hvr->produced < flight->produced);
 	}
 
@@ -1177,7 +1173,7 @@ TEMPLATE_TEST_CASE("crypto/secure_channel/dtls_cookie", "[!nonportable]", datagr
 
 		if constexpr (pal::os == pal::os_type::windows)
 		{
-			// SChannel always runs the cookie exchange, so the empty-token server still gates — same HVR.
+			// SChannel always runs the cookie exchange, so the empty-token server still gates -- same HVR.
 			CHECK(with_cookie->produced == without_cookie->produced);
 		}
 		else

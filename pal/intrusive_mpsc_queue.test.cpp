@@ -82,8 +82,6 @@ TEST_CASE("intrusive_mpsc_queue")
 		std::atomic<size_t> finished_producers{};
 		bool ordering_ok = true;
 
-		// clang-format off
-
 		auto consumer = std::thread([&]
 		{
 			std::vector<size_t> last_seq(n_producers, 0);
@@ -134,9 +132,7 @@ TEST_CASE("intrusive_mpsc_queue")
 			});
 		}
 
-		// clang-format on
-
-		std::ranges::for_each(producers, [] (auto &t) { t.join(); });
+		std::ranges::for_each(producers, [](auto &t) { t.join(); });
 		consumer.join();
 
 		CHECK(ordering_ok);

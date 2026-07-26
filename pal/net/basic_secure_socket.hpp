@@ -237,12 +237,11 @@ make_secure_socket ( //{{{1
 	using Protocol = Socket::protocol_type;
 	using secure_socket = basic_secure_socket<Protocol, __socket::transport_v<Socket>>;
 
-	// clang-format off
-	auto accept = [&] (const auto &acceptor, const auto &opts)
+	auto accept = [&](const auto &acceptor, const auto &opts)
 	{
 		if constexpr (__socket::transport_v<Socket> == crypto::transport_type::datagram)
 		{
-			return socket.remote_endpoint().and_then([&] (const auto &peer)
+			return socket.remote_endpoint().and_then([&](const auto &peer)
 			{
 				return acceptor.accept(*crypto::peer_token::make(peer), opts);
 			});
@@ -252,7 +251,6 @@ make_secure_socket ( //{{{1
 			return acceptor.accept(opts);
 		}
 	};
-	// clang-format on
 
 	auto handshake = accept(acceptor, opts);
 	if (!handshake)

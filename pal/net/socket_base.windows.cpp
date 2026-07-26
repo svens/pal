@@ -64,7 +64,7 @@ const result<void> &init () noexcept
 
 		static auto load_ex (void *fn, GUID id) noexcept
 		{
-			return [=] (native_socket &&socket)
+			return [=](native_socket &&socket)
 			{
 				return load_ex_impl(fn, id, std::move(socket));
 			};
@@ -76,7 +76,7 @@ const result<void> &init () noexcept
 				.and_then(load_ex(&ConnectEx, WSAID_CONNECTEX))
 				.and_then(load_ex(&AcceptEx, WSAID_ACCEPTEX))
 				.and_then(load_ex(&GetAcceptExSockaddrs, WSAID_GETACCEPTEXSOCKADDRS))
-				.transform([] (auto &&) { /* result<native_socket> -> result<void> */ });
+				.transform([](auto &&) { /* result<native_socket> -> result<void> */ });
 		}
 
 		static result<void> load () noexcept

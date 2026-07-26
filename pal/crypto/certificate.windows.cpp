@@ -113,8 +113,6 @@ alternative_name_value certificate::impl_type::init_san_value () const noexcept
 		return result;
 	}
 
-	// clang-format off
-
 	const asn_decoder<::CERT_ALT_NAME_INFO, 3 * 1024> decoder{X509_ALTERNATE_NAME, ext->Value.pbData, ext->Value.cbData};
 	if (!decoder.is_valid)
 	{
@@ -122,7 +120,7 @@ alternative_name_value certificate::impl_type::init_san_value () const noexcept
 	}
 
 	std::array<char, 256> buf{};
-	const auto to_dns_view = [&buf] (::LPCWSTR wide) noexcept -> std::string_view
+	const auto to_dns_view = [&buf](::LPCWSTR wide) noexcept -> std::string_view
 	{
 		const auto len = ::WideCharToMultiByte(
 			CP_UTF8,
@@ -137,7 +135,7 @@ alternative_name_value certificate::impl_type::init_san_value () const noexcept
 		return len > 0 ? std::string_view{buf.data(), static_cast<size_t>(len - 1)} : std::string_view{};
 	};
 
-	const auto to_ip_view = [&buf] (const ::CRYPT_DATA_BLOB &ip) noexcept -> std::string_view
+	const auto to_ip_view = [&buf](const ::CRYPT_DATA_BLOB &ip) noexcept -> std::string_view
 	{
 		const char *end = nullptr;
 		if (ip.cbData == sizeof(net::ip::address_v4::bytes_type))
@@ -154,8 +152,6 @@ alternative_name_value certificate::impl_type::init_san_value () const noexcept
 		}
 		return {};
 	};
-
-	// clang-format on
 
 	auto *p = result.data_.data();
 	for (auto i = 0u; i < decoder.value.cAltEntry && p != nullptr; ++i)
@@ -286,8 +282,6 @@ result<key> certificate::public_key () const noexcept
 {
 	::BCRYPT_KEY_HANDLE pkey = {};
 
-	// clang-format off
-
 	auto status = ::CryptImportPublicKeyInfoEx2(
 		X509_ASN_ENCODING,
 		&impl_->x509->pCertInfo->SubjectPublicKeyInfo,
@@ -300,14 +294,12 @@ result<key> certificate::public_key () const noexcept
 	{
 		return pal::make_shared<key::impl_type>(impl_, pkey)
 			.transform(key::to_api)
-			.or_else([&pkey] (std::error_code ec) -> result<key>
+			.or_else([&pkey](std::error_code ec) -> result<key>
 			{
 				::BCryptDestroyKey(pkey);
 				return pal::unexpected{std::move(ec)};
 			});
 	}
-
-	// clang-format on
 
 	return make_unexpected(std::errc::invalid_argument);
 }

@@ -74,13 +74,11 @@ public:
 	/// Compute digest of all \a inputs in a single step.
 	static result<digest_type> one_shot (const_buffer auto const &...inputs) noexcept
 	{
-		// clang-format off
-		return make().transform([&] (auto h)
+		return make().transform([&](auto h)
 		{
 			(h.update(inputs), ...);
 			return h.finish();
 		});
-		// clang-format on
 	}
 
 private:

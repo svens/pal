@@ -5,7 +5,7 @@
  * Backend-shared internal vocabulary for the (D)TLS secure channel (internal).
  *
  * \internal Included by the platform backends (secure_channel.openssl.cpp / secure_channel.windows.cpp),
- * never by the public header — keeps these implementation details off the public API surface.
+ * never by the public header -- keeps these implementation details off the public API surface.
  */
 
 #include <pal/crypto/tls_wire.hpp>

@@ -110,9 +110,7 @@ alternative_name_value certificate::impl_type::init_san_value () const noexcept
 		return result;
 	}
 
-	// clang-format off
-
-	static constexpr auto to_dns_view = [] (const ASN1_STRING *s) noexcept -> std::string_view
+	static constexpr auto to_dns_view = [](const ASN1_STRING *s) noexcept -> std::string_view
 	{
 		return
 		{
@@ -122,7 +120,7 @@ alternative_name_value certificate::impl_type::init_san_value () const noexcept
 	};
 
 	std::array<char, net::ip::address_v6::max_string_length + 1> buf{};
-	const auto to_ip_view = [&buf] (const ASN1_STRING *s) noexcept -> std::string_view
+	const auto to_ip_view = [&buf](const ASN1_STRING *s) noexcept -> std::string_view
 	{
 		const auto *bytes = reinterpret_cast<const uint8_t *>(::ASN1_STRING_get0_data(s));
 		const auto size = static_cast<size_t>(::ASN1_STRING_length(s));
@@ -141,8 +139,6 @@ alternative_name_value certificate::impl_type::init_san_value () const noexcept
 		}
 		return {};
 	};
-
-	// clang-format on
 
 	auto *p = result.data_.data();
 	const auto count = sk_GENERAL_NAME_num(names.get());

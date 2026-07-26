@@ -137,12 +137,11 @@ struct impl_type
 
 	[[nodiscard]] bool has_work () const noexcept
 	{
-		// clang-format off
 		return inbox_.head() != nullptr
 			|| timer_root_ != nullptr
 			|| stats_.io_in_flight != 0
-			|| stats_.offload_in_flight != 0;
-		// clang-format on
+			|| stats_.offload_in_flight != 0
+		;
 	}
 
 	size_t iterate (clock::duration timeout) noexcept;

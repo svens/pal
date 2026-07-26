@@ -86,13 +86,11 @@ TEST_CASE("async/task_pool")
 	{
 		task &carrier = *pool.try_acquire().release();
 		int calls = 0;
-		// clang-format off
-		carrier.bind<op_recycle>([&calls] (task_ptr &&p) noexcept
+		carrier.bind<op_recycle>([&calls](task_ptr &&p) noexcept
 		{
 			++calls;
 			const auto own = std::move(p);
 		});
-		// clang-format on
 		carrier.complete();
 		CHECK(calls == 1);
 
@@ -149,14 +147,12 @@ TEST_CASE("async/task_pool")
 	{
 		if constexpr (pal::build == pal::build_type::debug)
 		{
-			// clang-format off
 			auto msg = pal_test::require_terminate([]
 			{
 				task_ptr t;
 				task_pool<1> inner;
 				t = inner.try_acquire();
 			});
-			// clang-format on
 			CHECK(msg.contains("in flight"));
 		}
 	}

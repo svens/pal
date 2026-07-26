@@ -135,7 +135,7 @@ void epoll_drain_receive (epoll_loop &self, socket_state &state) noexcept
 
 	mmsg_array messages{};
 	mmsg_buffers_array buffers{};
-	const auto count = make_mmsg(d, messages, buffers, [] (task &) { return io_state::endpoint_capacity; });
+	const auto count = make_mmsg(d, messages, buffers, [](task &) { return io_state::endpoint_capacity; });
 
 	int r = 0;
 	do
@@ -178,7 +178,7 @@ void epoll_drain_send (epoll_loop &self, socket_state &state) noexcept
 
 	mmsg_array messages{};
 	mmsg_buffers_array buffers{};
-	const auto count = make_mmsg(d, messages, buffers, [] (task &t) { return io(t).endpoint_size; });
+	const auto count = make_mmsg(d, messages, buffers, [](task &t) { return io(t).endpoint_size; });
 
 	int r = 0;
 	do

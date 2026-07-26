@@ -67,11 +67,10 @@ TEST_CASE("crypto/certificate_filter")
 		{
 			// Strict policy: input must be canonical lowercase hex.
 			std::string upper{test_cert::server.fingerprint};
-			std::ranges::transform(
-				upper,
-				upper.begin(),
-				[] (char c) { return static_cast<char>((c >= 'a' && c <= 'f') ? c - ('a' - 'A') : c); }
-			);
+			std::ranges::transform(upper, upper.begin(), [](char c)
+			{
+				return static_cast<char>((c >= 'a' && c <= 'f') ? c - ('a' - 'A') : c);
+			});
 			const auto cert = store.find_first(cf::with_thumbprint(upper));
 			CHECK(cert.is_null());
 		}
@@ -94,7 +93,7 @@ TEST_CASE("crypto/certificate_filter")
 
 		SECTION("wildcard_san_match")
 		{
-			// SAN contains "*.pal.alt.ee" — matches single-level subdomain.
+			// SAN contains "*.pal.alt.ee" -- matches single-level subdomain.
 			const auto cert = store.find_first(cf::with_fqdn("api.pal.alt.ee"));
 			REQUIRE(cert);
 			CHECK(cert.fingerprint() == test_cert::server.fingerprint);
@@ -187,12 +186,10 @@ TEST_CASE("crypto/certificate_filter")
 			auto issued_by_ca = cf::is_issued_by(ca);
 			auto self_signed = cf::is_self_signed();
 
-			// clang-format off
-			const auto cert = store.find_first([issued_by_ca, self_signed] (const certificate &c) noexcept
+			const auto cert = store.find_first([issued_by_ca, self_signed](const certificate &c) noexcept
 			{
 				return issued_by_ca(c) && !self_signed(c);
 			});
-			// clang-format on
 
 			REQUIRE(cert);
 			CHECK(cert.fingerprint() == test_cert::intermediate.fingerprint);
@@ -207,7 +204,8 @@ TEST_CASE("crypto/certificate_filter")
 			// iteration order; verify the predicate works without locking down
 			// which specific cert was first.
 			const auto issuer_matches = cert.fingerprint() == test_cert::ca.fingerprint
-				|| cert.fingerprint() == test_cert::intermediate.fingerprint;
+				|| cert.fingerprint() == test_cert::intermediate.fingerprint
+			;
 			CHECK(issuer_matches);
 		}
 	}
@@ -227,8 +225,8 @@ TEST_CASE("crypto/certificate_filter")
 
 		SECTION("logical_and")
 		{
-			// "Leaf with a private key valid right now" — typical real-world query.
-			auto pred = [] (const certificate &c) noexcept
+			// "Leaf with a private key valid right now" -- typical real-world query.
+			auto pred = [](const certificate &c) noexcept
 			{
 				return c.private_key().has_value() && c.not_expired_at(certificate::clock_type::now());
 			};
@@ -251,7 +249,7 @@ TEST_CASE("crypto/certificate_store/find_first")
 	SECTION("no_match")
 	{
 		const auto store = load_store();
-		const auto cert = store.find_first([] (const certificate &) noexcept { return false; });
+		const auto cert = store.find_first([](const certificate &) noexcept { return false; });
 		CHECK(cert.is_null());
 	}
 
@@ -259,7 +257,7 @@ TEST_CASE("crypto/certificate_store/find_first")
 	{
 		const auto store = load_store();
 		// Always-true predicate must return the head of iteration.
-		const auto cert = store.find_first([] (const certificate &) noexcept { return true; });
+		const auto cert = store.find_first([](const certificate &) noexcept { return true; });
 		REQUIRE(cert);
 		CHECK(cert.fingerprint() == test_cert::server.fingerprint);
 	}

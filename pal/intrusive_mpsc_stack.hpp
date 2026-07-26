@@ -64,8 +64,6 @@ public:
 	intrusive_mpsc_stack (const intrusive_mpsc_stack &) = delete;
 	intrusive_mpsc_stack &operator= (const intrusive_mpsc_stack &) = delete;
 
-	// clang-format off
-
 	/// Push \a node onto the top of the stack. Thread-safe; may be called
 	/// concurrently from multiple producer threads. All writes to \a node
 	/// before push() happen-before any reads from the returned node after
@@ -106,8 +104,6 @@ public:
 
 		return nullptr;
 	}
-
-	// clang-format on
 
 	/// Return true if the stack has no elements. Consumer thread only.
 	[[nodiscard]] bool empty () const noexcept

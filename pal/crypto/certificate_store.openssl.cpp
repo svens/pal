@@ -88,15 +88,13 @@ result<certificate::impl_ptr> certificate_store::import_pkcs12_chain (std::span<
 
 result<certificate_store> certificate_store::import_pkcs12 (std::span<const std::byte> data) noexcept
 {
-	// clang-format off
 
-	return import_pkcs12_chain(data).and_then([] (certificate::impl_ptr head) -> result<certificate_store>
+	return import_pkcs12_chain(data).and_then([](certificate::impl_ptr head) -> result<certificate_store>
 	{
 		return pal::make_shared<certificate_store::impl_type>(std::move(head))
 			.transform(certificate_store::to_api);
 	});
 
-	// clang-format on
 }
 
 void certificate_store::advance (certificate &cert) noexcept

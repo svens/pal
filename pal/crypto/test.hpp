@@ -53,7 +53,7 @@ inline std::string to_der (std::string_view pem)
 	}
 
 	std::string b64{pem};
-	std::erase_if(b64, [] (unsigned char c) { return std::isspace(c); });
+	std::erase_if(b64, [](unsigned char c) { return std::isspace(c); });
 
 	std::string der(pal::convert_max_size(pal::base64_decode, b64), '\0');
 	auto result = pal::convert(pal::base64_decode, der, b64);

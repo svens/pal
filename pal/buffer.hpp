@@ -14,9 +14,6 @@
 namespace pal
 {
 
-// clang-format off
-// Requires expression braces: Allman style not applied (see .clang-format TODO #7)
-
 /// Requirements for types used as read-only I/O buffer
 template <typename T>
 concept const_buffer = requires(const T &b)
@@ -48,8 +45,6 @@ concept mutable_buffer_sequence =
 	mutable_buffer<std::ranges::range_value_t<T>> &&
 	std::ranges::input_range<T>
 ;
-
-// clang-format on
 
 namespace __buffer
 {

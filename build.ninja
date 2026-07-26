@@ -14,12 +14,6 @@ build coverage-html: action
 build coverage-lcov: action
   name = coverage-lcov
 
-build format-check: action
-  name = format-check
-
-build format: action
-  name = format
-
 build fuzz-check: action
   name = fuzz-check
 
@@ -41,8 +35,11 @@ build ninja: action
 build sanitize: action
   name = sanitize
 
-build smoke: action
+build smoke: action || style-check
   name = smoke
+
+build style-check: action
+  name = style-check
 
 build tidy: action
   name = tidy

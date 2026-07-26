@@ -241,7 +241,8 @@ std::error_code map_openssl_error (const session_state &state) noexcept //{{{1
 	{
 		ec = state.verify_error == X509_V_ERR_HOSTNAME_MISMATCH
 			? make_error_code(secure_channel_errc::peer_hostname_mismatch)
-			: make_error_code(secure_channel_errc::peer_verification_failed);
+			: make_error_code(secure_channel_errc::peer_verification_failed)
+		;
 	}
 	else if (const auto err = ::ERR_peek_last_error(); err != 0)
 	{
@@ -401,7 +402,7 @@ bool context::alpn::encode (std::span<const std::string_view> protocols) noexcep
 
 std::string_view context::alpn::select (std::string_view client_wire) const noexcept
 {
-	static constexpr auto contains = [] (std::string_view list, std::string_view proto) noexcept
+	static constexpr auto contains = [](std::string_view list, std::string_view proto) noexcept
 	{
 		while (!list.empty())
 		{
@@ -453,8 +454,6 @@ struct attorney //{{{1
 		return k.impl_ ? &k.impl_->pkey : nullptr;
 	}
 
-	// clang-format off
-
 	static result<certificate> from_sys (::X509 *x509) noexcept
 	{
 		if (x509 == nullptr)
@@ -462,7 +461,7 @@ struct attorney //{{{1
 			return certificate{};
 		}
 
-		return pal::make_shared<certificate::impl_type>(cert_ptr{x509}).transform([] (auto impl)
+		return pal::make_shared<certificate::impl_type>(cert_ptr{x509}).transform([](auto impl)
 		{
 			return certificate::to_api(std::move(impl));
 		});
@@ -471,7 +470,7 @@ struct attorney //{{{1
 	template <typename... Args>
 	static result<handshake_channel> emit_handshake_channel (Args &&...args) noexcept
 	{
-		return pal::make_unique<handshake_channel::impl_type>(std::forward<Args>(args)...).transform([] (auto impl)
+		return pal::make_unique<handshake_channel::impl_type>(std::forward<Args>(args)...).transform([](auto impl)
 		{
 			return handshake_channel{std::move(impl)};
 		});
@@ -480,13 +479,12 @@ struct attorney //{{{1
 	template <typename... Args>
 	static result<connected_channel> emit_connected_channel (Args &&...args) noexcept
 	{
-		return pal::make_unique<connected_channel::impl_type>(std::forward<Args>(args)...).transform([] (auto impl)
+		return pal::make_unique<connected_channel::impl_type>(std::forward<Args>(args)...).transform([](auto impl)
 		{
 			return connected_channel{std::move(impl)};
 		});
 	}
 
-	// clang-format on
 };
 
 //}}}1
@@ -536,9 +534,8 @@ bool apply_trust (::SSL_CTX *ctx, std::span<const certificate> roots, bool use_s
 		return true;
 	}
 
-	// clang-format off
 	::X509_STORE *store = ::SSL_CTX_get_cert_store(ctx);
-	return std::ranges::all_of(roots, [store] (const certificate &root) noexcept
+	return std::ranges::all_of(roots, [store](const certificate &root) noexcept
 	{
 		if (auto *x509 = attorney::to_sys(root); x509 == nullptr)
 		{
@@ -557,7 +554,6 @@ bool apply_trust (::SSL_CTX *ctx, std::span<const certificate> roots, bool use_s
 		}
 		return true;
 	});
-	// clang-format on
 }
 
 int alpn_select_callback ( //{{{1
@@ -587,7 +583,6 @@ bool compute_cookie (const session_state &state, unsigned char *out, unsigned in
 	const auto &cookie_secret = state.cookie_secret;
 	const auto peer_token = state.peer_token.bytes();
 
-	// clang-format off
 	auto *result = ::HMAC(::EVP_sha256(),
 		cookie_secret.data(),
 		cookie_secret.size(),
@@ -596,7 +591,6 @@ bool compute_cookie (const session_state &state, unsigned char *out, unsigned in
 		out,
 		out_len
 	);
-	// clang-format on
 
 	return result != nullptr;
 }

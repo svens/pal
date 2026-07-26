@@ -62,12 +62,11 @@ constexpr std::string_view
 
 /// \}
 
-/// Returns RFC 1779 §2.3 alias for \a oid, or \a oid itself if none exists.
+/// Returns RFC 1779 section 2.3 alias for \a oid, or \a oid itself if none exists.
 constexpr std::string_view alias_or (std::string_view oid) noexcept
 {
 	using namespace std::string_view_literals;
 
-	// clang-format off
 	constexpr auto map = std::to_array<std::pair<std::string_view, std::string_view>>(
 	{
 		{ common_name, "CN"sv },
@@ -78,7 +77,6 @@ constexpr std::string_view alias_or (std::string_view oid) noexcept
 		{ state_or_province_name, "ST"sv },
 		{ street_address, "STREET"sv },
 	});
-	// clang-format on
 
 	for (const auto &[key, alias]: map)
 	{

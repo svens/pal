@@ -141,7 +141,6 @@ private:
 	alignas(alignof(value_type)) std::array<std::byte, sizeof(value_type)> stub_{};
 	value_type *const sentry_{reinterpret_cast<value_type *>(stub_.data())};
 
-	// clang-format off
 	__pal_diagnostic(push)
 	__pal_diagnostic_suppress(__pal_aligned_struct_padding)
 
@@ -149,7 +148,6 @@ private:
 	alignas(cache_line_size) value_type *head_{sentry_};
 
 	__pal_diagnostic (pop)
-	// clang-format on
 };
 
 } // namespace pal

@@ -202,14 +202,12 @@ private:
 	scope_id_type scope_id_;
 };
 
-// clang-format off
 inline constexpr address_v6 address_v6::any{
 	address_v6::bytes_type{0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0}
 };
 inline constexpr address_v6 address_v6::loopback{
 	address_v6::bytes_type{0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1}
 };
-// clang-format on
 
 /// Return new address from \a bytes with optional \a scope_id
 [[nodiscard]] constexpr address_v6

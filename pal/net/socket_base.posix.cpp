@@ -76,11 +76,9 @@ result<void> native_socket::listen (int backlog) const noexcept
 namespace
 {
 
-// clang-format off
 #ifndef SO_NOSIGPIPE
 	constexpr int SO_NOSIGPIPE = -1;
 #endif
-// clang-format on
 
 __socket::handle_type init (__socket::handle_type h) noexcept
 {

@@ -30,7 +30,6 @@ struct op_test
 
 TEST_CASE("async/__async")
 {
-	// clang-format off
 
 	carrier c;
 
@@ -131,17 +130,16 @@ TEST_CASE("async/__async")
 		}
 	}
 
-	// clang-format on
 }
 
 // --- handler concept: accepted and rejected closure shapes ----------------------
 
-static_assert(__async::handler<decltype([] (int) noexcept {}), op_test::signature>);
+static_assert(__async::handler<decltype([](int) noexcept {}), op_test::signature>);
 
 [[maybe_unused]] void capturing_lambda_is_a_handler (int &state)
 {
-	static_assert(__async::handler<decltype([&state] (int) noexcept { ++state; }), op_test::signature>);
-	static_assert(__async::handler<decltype([p = &state] (int) noexcept { ++*p; }), op_test::signature>);
+	static_assert(__async::handler<decltype([&state](int) noexcept { ++state; }), op_test::signature>);
+	static_assert(__async::handler<decltype([p = &state](int) noexcept { ++*p; }), op_test::signature>);
 }
 
 struct no_default_ctor

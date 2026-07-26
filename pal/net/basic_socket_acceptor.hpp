@@ -11,8 +11,6 @@
 namespace pal::net
 {
 
-// clang-format off
-
 /// Listens for and accepts incoming stream connections.
 template <typename AcceptableProtocol>
 class basic_socket_acceptor: public socket_base
@@ -79,7 +77,7 @@ public:
 	[[nodiscard]] result<socket_type> accept (endpoint_type &endpoint) noexcept
 	{
 		auto size = endpoint.capacity();
-		return socket_.accept(endpoint.data(), &size).and_then([&] (auto socket) -> result<socket_type>
+		return socket_.accept(endpoint.data(), &size).and_then([&](auto socket) -> result<socket_type>
 		{
 			return endpoint.resize(size).transform([&socket]
 			{
@@ -146,7 +144,7 @@ template <acceptable_protocol AcceptableProtocol>
 	const typename AcceptableProtocol::endpoint &endpoint) noexcept
 {
 	return make_socket_acceptor(protocol).and_then(
-		[&] (auto acceptor) -> result<basic_socket_acceptor<AcceptableProtocol>>
+		[&](auto acceptor) -> result<basic_socket_acceptor<AcceptableProtocol>>
 		{
 			return acceptor.bind(endpoint)
 				.and_then([&] { return acceptor.listen(); })
@@ -163,7 +161,5 @@ template <acceptable_protocol AcceptableProtocol>
 {
 	return __socket::to_api<basic_socket_acceptor<AcceptableProtocol>>()(native_socket{handle, protocol.family()});
 }
-
-// clang-format on
 
 } // namespace pal::net

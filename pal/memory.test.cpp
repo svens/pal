@@ -46,7 +46,7 @@ TEST_CASE("temporary_buffer")
 
 	SECTION("heap failure")
 	{
-		auto f = [] ()
+		auto f = []()
 		{
 			const pal_test::bad_alloc_once x;
 			pal::temporary_buffer<1> buf{2};
@@ -83,7 +83,7 @@ TEST_CASE("temporary_buffer")
 
 	SECTION("heap failure: larger buffer")
 	{
-		auto f = [] ()
+		auto f = []()
 		{
 			const pal_test::bad_alloc_once x;
 			pal::temporary_buffer<2> buf{3};
@@ -112,7 +112,7 @@ TEST_CASE("temporary_buffer")
 
 TEST_CASE("alloc_result - void")
 {
-	static constexpr auto throw_bad_alloc = [] (bool do_throw)
+	static constexpr auto throw_bad_alloc = [](bool do_throw)
 	{
 		if (do_throw)
 		{

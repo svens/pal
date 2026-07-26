@@ -48,8 +48,6 @@ using uri = alternative_name_entry_value<uri_label>;
 
 } // namespace alt_name
 
-// clang-format off
-
 /// Single entry in an alternative name extension.
 using alternative_name_entry = std::variant<
 	std::monostate,
@@ -58,8 +56,6 @@ using alternative_name_entry = std::variant<
 	alt_name::ip,
 	alt_name::uri
 >;
-
-// clang-format on
 
 /// Sequence of entries from a certificate's Subject or Issuer Alternative Name extension.
 /// Absent extension or OOM during construction yields an empty range.
@@ -133,7 +129,7 @@ public:
 		return entry_;
 	}
 
-	pointer operator->() const noexcept
+	pointer operator-> () const noexcept
 	{
 		return &entry_;
 	}

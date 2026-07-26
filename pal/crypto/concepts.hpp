@@ -12,8 +12,6 @@
 namespace pal::crypto
 {
 
-// clang-format off
-
 template <typename T>
 concept digest_algorithm = requires
 {
@@ -29,7 +27,5 @@ concept signature_scheme = requires
 	{ T::id } -> std::convertible_to<std::string_view>;
 	{ T::is_deterministic } -> std::convertible_to<bool>;
 };
-
-// clang-format on
 
 } // namespace pal::crypto

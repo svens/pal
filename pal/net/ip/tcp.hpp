@@ -52,15 +52,11 @@ public:
 	/// Resolver type for TCP
 	using resolver = basic_resolver<tcp>;
 
-	// clang-format off
-
 	/// Disable Nagle's algorithm
 	using no_delay = socket_option<bool,
 		socket_option_level{IPPROTO_TCP},
 		socket_option_name{TCP_NODELAY}
 	>;
-
-	// clang-format on
 
 	/// Construct TCP protocol for address \a family
 	constexpr explicit tcp (int family) noexcept

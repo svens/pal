@@ -150,13 +150,11 @@ TEST_CASE("async/task")
 	{
 		task t;
 		int calls = 0;
-		// clang-format off
 		t.bind<op_test>([&](int v) noexcept
 		{
 			++calls;
 			CHECK(v == 7);
 		});
-		// clang-format on
 		t.scratch_as<op_state>() = {.value = 7};
 		t.complete();
 		CHECK(calls == 1);
@@ -166,7 +164,7 @@ TEST_CASE("async/task")
 	{
 		task t;
 		task_ptr received;
-		t.bind<op_move_only>([&received] (task_ptr &&p) noexcept { received = std::move(p); });
+		t.bind<op_move_only>([&received](task_ptr &&p) noexcept { received = std::move(p); });
 		t.complete();
 		CHECK(received.get() == &t);
 	}

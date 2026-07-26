@@ -77,7 +77,7 @@ TEST_CASE("crypto/tls_wire")
 			CHECK(sniff_stream(std::span{hello}.first(5)) == wire_protocol::need_more);
 
 			// Corrupt one gated header field at a time; each demotes an otherwise-valid record to plain.
-			const auto corrupt = [&] (size_t i, uint8_t v)
+			const auto corrupt = [&](size_t i, uint8_t v)
 			{
 				auto bytes = hello;
 				bytes[i] = std::byte{v};
@@ -115,7 +115,7 @@ TEST_CASE("crypto/tls_wire")
 			CHECK(sniff_datagram(std::span{hello}.first(12)) == wire_protocol::plain);
 
 			// Corrupt one gated header field at a time; each demotes an otherwise-valid record to plain.
-			const auto corrupt = [&] (size_t i, uint8_t v)
+			const auto corrupt = [&](size_t i, uint8_t v)
 			{
 				auto bytes = hello;
 				bytes[i] = std::byte{v};
@@ -139,7 +139,7 @@ TEST_CASE("crypto/tls_wire")
 	SECTION("dtls_record_size")
 	{
 		// DTLS 1.2 record header is 13 bytes with a 16-bit length at offset 11.
-		const auto make_record = [] (uint16_t length, size_t total)
+		const auto make_record = [](uint16_t length, size_t total)
 		{
 			std::vector<std::byte> bytes(total, std::byte{0});
 			if (total > 12)

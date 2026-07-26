@@ -15,7 +15,6 @@ static_assert(alias_or("unknown"sv) == "unknown"sv);
 
 TEST_CASE("crypto/oid")
 {
-	// clang-format off
 	auto [oid, alias] = GENERATE(table<std::string_view, std::string_view>({
 		{ common_name, "CN"sv },
 		{ country_name, "C"sv },
@@ -26,7 +25,6 @@ TEST_CASE("crypto/oid")
 		{ street_address, "STREET"sv },
 		{ "unknown"sv, "unknown"sv },
 	}));
-	// clang-format on
 
 	CHECK(alias_or(oid) == alias);
 }

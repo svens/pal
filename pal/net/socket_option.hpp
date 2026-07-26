@@ -76,7 +76,7 @@ struct socket_option_storage<bool>: socket_option_storage<int>
 		return value();
 	}
 
-	constexpr bool operator!() const noexcept
+	constexpr bool operator! () const noexcept
 	{
 		return !value();
 	}
@@ -128,8 +128,6 @@ struct socket_option: socket_option_storage<T>
 
 /// \defgroup socket_option Socket options
 /// \{
-
-// clang-format off
 
 /// Non-blocking I/O
 using non_blocking_io = socket_option<bool,
@@ -272,8 +270,6 @@ using send_timeout = io_timeout<
 	socket_option_level{SOL_SOCKET},
 	socket_option_name{SO_SNDTIMEO}
 >;
-
-// clang-format on
 
 /// \}
 

@@ -22,7 +22,6 @@ std::to_chars_result alternative_name::to_chars (char *first, char *last) const 
 {
 	auto *p = first;
 
-	// clang-format off
 	const auto append = [&]<typename... Ts>(const std::variant<Ts...> &e) noexcept -> bool
 	{
 		return (... && [&]<typename T>() noexcept -> bool
@@ -45,7 +44,6 @@ std::to_chars_result alternative_name::to_chars (char *first, char *last) const 
 			return true;
 		}.template operator()<Ts>());
 	};
-	// clang-format on
 
 	for (const auto &entry: *this)
 	{

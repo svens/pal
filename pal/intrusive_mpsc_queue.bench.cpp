@@ -121,8 +121,6 @@ void run_bench (Catch::Benchmark::Chronometer &meter, size_t producer_count)
 	std::atomic<bool> running = true;
 	std::barrier start_barrier{std::ssize(producers) + 2}, end_barrier{std::ssize(producers) + 2};
 
-	// clang-format off
-
 	for (auto &producer: producers)
 	{
 		producer.thread = std::thread([&]
@@ -186,12 +184,10 @@ void run_bench (Catch::Benchmark::Chronometer &meter, size_t producer_count)
 		end_barrier.arrive_and_wait();
 	});
 
-	// clang-format on
-
 	running = false;
 	start_barrier.arrive_and_wait();
 
-	std::ranges::for_each(producers, [] (auto &producer) { producer.thread.join(); });
+	std::ranges::for_each(producers, [](auto &producer) { producer.thread.join(); });
 	consumer.join();
 }
 

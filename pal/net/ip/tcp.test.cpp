@@ -38,7 +38,7 @@ TEMPLATE_TEST_CASE("net/ip/tcp", "[!nonportable]", tcp_v4, tcp_v6, tcp_v6_only)
 	using endpoint_t = protocol_t::endpoint;
 
 	std::array<char, 1024> recv_buf{};
-	auto recv_view = [&] (size_t n) noexcept
+	auto recv_view = [&](size_t n) noexcept
 	{
 		return std::string_view{recv_buf.data(), n};
 	};
@@ -120,7 +120,7 @@ TEMPLATE_TEST_CASE("net/ip/tcp", "[!nonportable]", tcp_v4, tcp_v6, tcp_v6_only)
 			REQUIRE_NOTHROW(sender.get_option(send_buf_size).value());
 
 			// Set timeout before filling so each blocked send times out quickly.
-			// Loop until a send actually blocks — avoids fragile "exactly N sends" assumption.
+			// Loop until a send actually blocks -- avoids fragile "exactly N sends" assumption.
 			REQUIRE_NOTHROW(sender.set_option(pal::net::send_timeout{10ms}).value());
 			const std::string data(send_buf_size.value() + recv_buf_size.value(), 'X');
 			pal::result<size_t> send;

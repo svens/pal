@@ -120,8 +120,7 @@ TEMPLATE_TEST_CASE("async/datagram_socket", "", udp_v4, udp_v6)
 		endpoint source{};
 		bool truncated = true;
 
-		// clang-format off
-		socket->start_receive_from(receive_task.borrow(), [&] (task_ptr &&p, receive_result &&r) noexcept
+		socket->start_receive_from(receive_task.borrow(), [&](task_ptr &&p, receive_result &&r) noexcept
 		{
 			REQUIRE(r);
 			source = r->endpoint;
@@ -129,7 +128,6 @@ TEMPLATE_TEST_CASE("async/datagram_socket", "", udp_v4, udp_v6)
 			++received;
 			std::ignore = p;
 		});
-		// clang-format on
 
 		REQUIRE(peer->send_to(*socket_endpoint, payload));
 		run_until(*loop, [&] { return received == 1; });
@@ -155,14 +153,12 @@ TEMPLATE_TEST_CASE("async/datagram_socket", "", udp_v4, udp_v6)
 		int received = 0;
 		endpoint source{};
 
-		// clang-format off
-		socket->start_receive_from(receive_task.borrow(), [&] (task_ptr &&, receive_result &&r) noexcept
+		socket->start_receive_from(receive_task.borrow(), [&](task_ptr &&, receive_result &&r) noexcept
 		{
 			REQUIRE(r);
 			source = r->endpoint;
 			++received;
 		});
-		// clang-format on
 
 		run_until(*loop, [&] { return received == 1; });
 
@@ -184,19 +180,17 @@ TEMPLATE_TEST_CASE("async/datagram_socket", "", udp_v4, udp_v6)
 			auto doomed_endpoint = doomed->local_endpoint();
 			REQUIRE(doomed_endpoint);
 
-			// clang-format off
-			doomed->start_receive_from(first_task.borrow(), [&] (task_ptr &&, receive_result &&r) noexcept
+			doomed->start_receive_from(first_task.borrow(), [&](task_ptr &&, receive_result &&r) noexcept
 			{
 				REQUIRE(r);
 				++received;
 			});
-			doomed->start_receive_from(parked_task.borrow(), [&] (task_ptr &&, receive_result &&r) noexcept
+			doomed->start_receive_from(parked_task.borrow(), [&](task_ptr &&, receive_result &&r) noexcept
 			{
 				REQUIRE_FALSE(r);
 				CHECK(r.error() == std::errc::operation_canceled);
 				++canceled;
 			});
-			// clang-format on
 
 			REQUIRE(peer->send_to(*doomed_endpoint, case_name()));
 			run_until(*loop, [&] { return received == 1; });
@@ -223,11 +217,10 @@ TEMPLATE_TEST_CASE("async/datagram_socket", "", udp_v4, udp_v6)
 		size_t received = 0;
 		std::array<bool, count> seen{};
 
-		// clang-format off
 		for (size_t i = 0; i < count; ++i)
 		{
 			receive_tasks[i].span(as_span(receive_storage[i]));
-			socket->start_receive_from(receive_tasks[i].borrow(), [&] (task_ptr &&p, receive_result &&r) noexcept
+			socket->start_receive_from(receive_tasks[i].borrow(), [&](task_ptr &&p, receive_result &&r) noexcept
 			{
 				REQUIRE(r);
 				REQUIRE(p->span().size() == 1);
@@ -235,7 +228,6 @@ TEMPLATE_TEST_CASE("async/datagram_socket", "", udp_v4, udp_v6)
 				++received;
 			});
 		}
-		// clang-format on
 
 		for (size_t i = 0; i < count; ++i)
 		{
@@ -266,14 +258,12 @@ TEMPLATE_TEST_CASE("async/datagram_socket", "", udp_v4, udp_v6)
 		int received = 0;
 		bool truncated = false;
 
-		// clang-format off
-		socket->start_receive_from(receive_task.borrow(), [&] (task_ptr &&, receive_result &&r) noexcept
+		socket->start_receive_from(receive_task.borrow(), [&](task_ptr &&, receive_result &&r) noexcept
 		{
 			REQUIRE(r);
 			truncated = r->truncated;
 			++received;
 		});
-		// clang-format on
 
 		REQUIRE(peer->send_to(*socket_endpoint, wire));
 		run_until(*loop, [&] { return received == 1; });
@@ -300,14 +290,12 @@ TEMPLATE_TEST_CASE("async/datagram_socket", "", udp_v4, udp_v6)
 
 		int received = 0;
 
-		// clang-format off
-		socket->start_receive_from(receive_task.borrow(), [&] (task_ptr &&, receive_result &&r) noexcept
+		socket->start_receive_from(receive_task.borrow(), [&](task_ptr &&, receive_result &&r) noexcept
 		{
 			REQUIRE(r);
 			CHECK(r->truncated);
 			++received;
 		});
-		// clang-format on
 
 		REQUIRE(peer->send_to(*socket_endpoint, wire));
 		run_until(*loop, [&] { return received == 1; });
@@ -331,13 +319,11 @@ TEMPLATE_TEST_CASE("async/datagram_socket", "", udp_v4, udp_v6)
 
 		int sent = 0;
 
-		// clang-format off
-		socket->start_send_to(send_task.borrow(), *peer_endpoint, [&] (task_ptr &&, send_result &&r) noexcept
+		socket->start_send_to(send_task.borrow(), *peer_endpoint, [&](task_ptr &&, send_result &&r) noexcept
 		{
 			REQUIRE(r);
 			++sent;
 		});
-		// clang-format on
 
 		run_until(*loop, [&] { return sent == 1; });
 
@@ -361,18 +347,16 @@ TEMPLATE_TEST_CASE("async/datagram_socket", "", udp_v4, udp_v6)
 
 		size_t sent = 0;
 
-		// clang-format off
 		for (size_t i = 0; i < count; ++i)
 		{
 			send_storage[i][0] = static_cast<std::byte>(i);
 			send_tasks[i].span(as_span(send_storage[i]).first(1));
-			socket->start_send_to(send_tasks[i].borrow(), *peer_endpoint, [&] (task_ptr &&, send_result &&r) noexcept
+			socket->start_send_to(send_tasks[i].borrow(), *peer_endpoint, [&](task_ptr &&, send_result &&r) noexcept
 			{
 				REQUIRE(r);
 				++sent;
 			});
 		}
-		// clang-format on
 
 		run_until(*loop, [&] { return sent == count; });
 
@@ -403,14 +387,12 @@ TEMPLATE_TEST_CASE("async/datagram_socket", "", udp_v4, udp_v6)
 		int failed = 0;
 		std::error_code ec{};
 
-		// clang-format off
-		socket->start_send_to(send_task.borrow(), *peer_endpoint, [&] (task_ptr &&, send_result &&r) noexcept
+		socket->start_send_to(send_task.borrow(), *peer_endpoint, [&](task_ptr &&, send_result &&r) noexcept
 		{
 			REQUIRE_FALSE(r);
 			ec = r.error();
 			++failed;
 		});
-		// clang-format on
 
 		run_until(*loop, [&] { return failed == 1; });
 		CHECK(ec == std::errc::message_size);
@@ -429,11 +411,10 @@ TEMPLATE_TEST_CASE("async/datagram_socket", "", udp_v4, udp_v6)
 		size_t sent = 0, received = 0;
 		std::array<bool, count> seen{};
 
-		// clang-format off
 		for (size_t i = 0; i < count; ++i)
 		{
 			receive_tasks[i].span(as_span(receive_storage[i]));
-			socket->start_receive_from(receive_tasks[i].borrow(), [&] (task_ptr &&p, receive_result &&r) noexcept
+			socket->start_receive_from(receive_tasks[i].borrow(), [&](task_ptr &&p, receive_result &&r) noexcept
 			{
 				REQUIRE(r);
 				REQUIRE(p->span().size() == 1);
@@ -443,13 +424,12 @@ TEMPLATE_TEST_CASE("async/datagram_socket", "", udp_v4, udp_v6)
 
 			send_storage[i][0] = static_cast<std::byte>(i);
 			send_tasks[i].span(as_span(send_storage[i]).first(1));
-			sender->start_send_to(send_tasks[i].borrow(), *socket_endpoint, [&] (task_ptr &&, send_result &&r) noexcept
+			sender->start_send_to(send_tasks[i].borrow(), *socket_endpoint, [&](task_ptr &&, send_result &&r) noexcept
 			{
 				REQUIRE(r);
 				++sent;
 			});
 		}
-		// clang-format on
 
 		run_until(*loop, [&] { return sent == count && received == count; });
 
@@ -471,15 +451,13 @@ TEMPLATE_TEST_CASE("async/datagram_socket", "", udp_v4, udp_v6)
 			auto doomed = make_async_socket<TestType>(*loop);
 			REQUIRE(doomed);
 
-			// clang-format off
-			doomed->start_receive_from(receive_task.borrow(), [&] (task_ptr &&, receive_result &&r) noexcept
+			doomed->start_receive_from(receive_task.borrow(), [&](task_ptr &&, receive_result &&r) noexcept
 			{
 				REQUIRE_FALSE(r);
 				ec = r.error();
 				CHECK(loop->stats().io_in_flight == 0);
 				++canceled;
 			});
-			// clang-format on
 		}
 
 		// synthesized completion is delivered from run(), io_uring close-parity
@@ -509,11 +487,10 @@ TEMPLATE_TEST_CASE("async/datagram_socket", "", udp_v4, udp_v6)
 
 		int received = 0, canceled = 0;
 
-		// clang-format off
-		socket->start_receive_from(trigger_task.borrow(), [&] (task_ptr &&, receive_result &&r) noexcept
+		socket->start_receive_from(trigger_task.borrow(), [&](task_ptr &&, receive_result &&r) noexcept
 		{
 			REQUIRE(r);
-			b->start_send_to(send_task.borrow(), *peer_endpoint, [&] (task_ptr &&, send_result &&s) noexcept
+			b->start_send_to(send_task.borrow(), *peer_endpoint, [&](task_ptr &&, send_result &&s) noexcept
 			{
 				REQUIRE_FALSE(s);
 				CHECK(s.error() == std::errc::operation_canceled);
@@ -521,13 +498,12 @@ TEMPLATE_TEST_CASE("async/datagram_socket", "", udp_v4, udp_v6)
 			});
 			++received;
 		});
-		socket->start_receive_from(destroyer_task.borrow(), [&] (task_ptr &&, receive_result &&r) noexcept
+		socket->start_receive_from(destroyer_task.borrow(), [&](task_ptr &&, receive_result &&r) noexcept
 		{
 			REQUIRE(r);
 			b.reset();
 			++received;
 		});
-		// clang-format on
 
 		REQUIRE(peer->send_to(*socket_endpoint, std::string_view{"x"}));
 		REQUIRE(peer->send_to(*socket_endpoint, std::string_view{"y"}));
@@ -548,14 +524,12 @@ TEMPLATE_TEST_CASE("async/datagram_socket", "", udp_v4, udp_v6)
 
 		int received = 0;
 
-		// clang-format off
-		socket->start_receive_from(std::move(t), [&] (task_ptr &&p, receive_result &&r) noexcept
+		socket->start_receive_from(std::move(t), [&](task_ptr &&p, receive_result &&r) noexcept
 		{
 			REQUIRE(r);
 			++received;
 			std::ignore = p; // dropping recycles back into the pool
 		});
-		// clang-format on
 
 		REQUIRE(peer->send_to(*socket_endpoint, case_name()));
 		run_until(*loop, [&] { return received == 1; });
@@ -576,15 +550,13 @@ TEST_CASE("async/datagram_socket destructor contract")
 		static std::array<std::byte, 64> storage{};
 		static task t{storage};
 
-		// clang-format off
 		auto msg = pal_test::require_terminate([]
 		{
 			auto loop = make_loop().value();
 			auto socket = make_sync_socket<udp_v4>().value();
 			auto h = loop.make_handle(std::move(socket)).value();
-			h.start_receive_from(t.borrow(), [] (task_ptr &&, receive_result &&) noexcept {});
+			h.start_receive_from(t.borrow(), [](task_ptr &&, receive_result &&) noexcept {});
 		});
-		// clang-format on
 
 		CHECK(msg.contains("I/O ops"));
 	}

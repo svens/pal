@@ -85,8 +85,6 @@ TEST_CASE("spsc_bounded_queue")
 		std::atomic<bool> producer_done{};
 		bool ordering_ok = true;
 
-		// clang-format off
-
 		auto consumer = std::thread([&]
 		{
 			size_t last_seq = 0;
@@ -118,8 +116,6 @@ TEST_CASE("spsc_bounded_queue")
 			}
 		}
 		producer_done = true;
-
-		// clang-format on
 
 		consumer.join();
 

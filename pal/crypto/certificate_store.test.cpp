@@ -102,7 +102,6 @@ TEST_CASE("crypto/certificate_store")
 			REQUIRE(fps.size() == 4);
 			CHECK(fps.front() == test_cert::server.fingerprint);
 
-			// clang-format off
 			const std::set<std::string_view> rest{fps.begin() + 1, fps.end()};
 			CHECK(rest == std::set
 			{
@@ -110,7 +109,6 @@ TEST_CASE("crypto/certificate_store")
 				test_cert::intermediate.fingerprint,
 				test_cert::ca.fingerprint,
 			});
-			// clang-format on
 		}
 
 		SECTION("post_increment")

@@ -138,7 +138,7 @@ public:
 			return *node_;
 		}
 
-		[[nodiscard]] value_type *operator->() const noexcept
+		[[nodiscard]] value_type *operator-> () const noexcept
 		{
 			return node_;
 		}

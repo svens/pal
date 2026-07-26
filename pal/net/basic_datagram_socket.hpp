@@ -11,8 +11,6 @@
 namespace pal::net
 {
 
-// clang-format off
-
 /// Datagram socket for sending and receiving discrete messages.
 ///
 /// \note Vectored I/O supports up to socket_base::io_vector_max_size buffers,
@@ -37,7 +35,7 @@ public:
 		message.set(std::forward<Buffers>(bufs)...);
 		message.flags(flags);
 		message.name(sender.data(), sender.capacity());
-		return this->socket_.receive(message).and_then([&] (size_t bytes) -> result<size_t>
+		return this->socket_.receive(message).and_then([&](size_t bytes) -> result<size_t>
 		{
 			return sender.resize(message.msg_namelen).transform([bytes]
 			{
@@ -132,7 +130,7 @@ template <protocol Protocol>
 	const Protocol &protocol,
 	const typename Protocol::endpoint &endpoint) noexcept
 {
-	return make_datagram_socket(protocol).and_then([&] (auto socket) -> result<basic_datagram_socket<Protocol>>
+	return make_datagram_socket(protocol).and_then([&](auto socket) -> result<basic_datagram_socket<Protocol>>
 	{
 		return socket.bind(endpoint).transform([&]
 		{
@@ -149,7 +147,5 @@ template <protocol Protocol>
 {
 	return __socket::to_api<basic_datagram_socket<Protocol>>()(native_socket{handle, protocol.family()});
 }
-
-// clang-format on
 
 } // namespace pal::net

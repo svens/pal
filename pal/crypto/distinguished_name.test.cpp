@@ -22,7 +22,7 @@ TEST_CASE("crypto/distinguished_name")
 {
 	SECTION("iterator/encoding_order")
 	{
-		// encoding order is least-to-most-significant (C → ST → O → OU → CN)
+		// encoding order is least-to-most-significant (C -> ST -> O -> OU -> CN)
 		// no_cn: O=PAL, OU=PAL Test
 		std::string result;
 		for (auto [oid, value]: subject(test_cert::no_cn))

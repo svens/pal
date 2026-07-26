@@ -11,7 +11,6 @@ namespace
 using namespace pal_test;
 using namespace pal::crypto::algorithm;
 
-// clang-format off
 // NOLINTBEGIN(bugprone-throwing-static-initialization)
 
 constexpr std::string_view empty{};
@@ -170,7 +169,5 @@ TEMPLATE_TEST_CASE("crypto/hash", "", md5, sha1, sha256, sha384, sha512)
 		CHECK(h.error() == std::errc::not_enough_memory);
 	}
 }
-
-// clang-format on
 
 } // namespace

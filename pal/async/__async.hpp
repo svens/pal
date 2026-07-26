@@ -35,8 +35,6 @@ struct signature_t<F, R(Args...)>: std::bool_constant<std::is_invocable_r_v<R, F
 {
 };
 
-// clang-format off
-
 /// A closure bindable to a \ref completion: inline-storable (trivially copyable/destructible, within the
 /// closure budget and alignment) and callable as \a Signature. Lambdas capturing pointers/references/scalars
 /// qualify. Checked at the public shell, never re-checked internally. Spell \a Signature literally at the app
@@ -50,8 +48,6 @@ concept handler = requires
 	requires alignof(F) <= alignof(std::max_align_t);
 	requires signature_t<F, Signature>::value;
 };
-
-// clang-format on
 
 /// Soft-core completion dispatch unit: one erased "completion thunk" function pointer plus inline closure storage,
 /// embedded both in \c task (single-shot ops, timers) and in per-op socket-state slots (multishot recv/accept,

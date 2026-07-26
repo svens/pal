@@ -121,8 +121,7 @@ TEMPLATE_TEST_CASE(
 	(with<ecdsa, sha1>),
 	(with<ecdsa, sha256>),
 	(with<ecdsa, sha384>),
-	(with<ecdsa, sha512>)
-)
+	(with<ecdsa, sha512>))
 {
 	auto &p = TestType::provider();
 	auto &v = TestType::verifier();

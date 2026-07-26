@@ -38,7 +38,7 @@ TEMPLATE_TEST_CASE("net/ip/udp", "", udp_v4, udp_v6)
 	using endpoint_t = protocol_t::endpoint;
 
 	std::array<char, 1024> recv_buf{};
-	auto recv_view = [&] (size_t n) noexcept
+	auto recv_view = [&](size_t n) noexcept
 	{
 		return std::string_view{recv_buf.data(), n};
 	};

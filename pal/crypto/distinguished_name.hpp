@@ -27,7 +27,7 @@ public:
 
 	/// Single entry in a distinguished name: an OID and its associated value.
 	/// Both string_views remain valid until the next iterator advancement or
-	/// iterator destruction — do not hold them past operator++().
+	/// iterator destruction -- do not hold them past operator++().
 	struct entry
 	{
 		std::string_view oid;
@@ -99,7 +99,7 @@ public:
 		return entry_;
 	}
 
-	pointer operator->() const noexcept
+	pointer operator-> () const noexcept
 	{
 		return &entry_;
 	}

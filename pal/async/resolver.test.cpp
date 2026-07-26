@@ -62,8 +62,7 @@ TEST_CASE("async/resolver")
 		std::thread::id handler_thread{};
 		task *got = nullptr;
 
-		// clang-format off
-		h->start_resolve(t.borrow(), "127.0.0.1", "7", numeric, [&] (task_ptr &&p, resolve_result &&r) noexcept
+		h->start_resolve(t.borrow(), "127.0.0.1", "7", numeric, [&](task_ptr &&p, resolve_result &&r) noexcept
 		{
 			handler_thread = std::this_thread::get_id();
 			got = p.get();
@@ -77,7 +76,6 @@ TEST_CASE("async/resolver")
 				}
 			}
 		});
-		// clang-format on
 
 		CHECK(loop->stats().offload_in_flight == 1);
 		run_until_idle(*loop);
@@ -100,8 +98,7 @@ TEST_CASE("async/resolver")
 		size_t count = 0;
 		endpoint first{};
 
-		// clang-format off
-		h->start_resolve(t.borrow(), "::1", "7", numeric, [&] (task_ptr &&, resolve_result &&r) noexcept
+		h->start_resolve(t.borrow(), "::1", "7", numeric, [&](task_ptr &&, resolve_result &&r) noexcept
 		{
 			if (r)
 			{
@@ -112,7 +109,6 @@ TEST_CASE("async/resolver")
 				}
 			}
 		});
-		// clang-format on
 
 		run_until_idle(*loop);
 		REQUIRE(count == 1);
@@ -126,8 +122,7 @@ TEST_CASE("async/resolver")
 		size_t count = 0;
 		bool loopback = true;
 
-		// clang-format off
-		h->start_resolve(t.borrow(), "127.0.0.1", "7", [&] (task_ptr &&, resolve_result &&r) noexcept
+		h->start_resolve(t.borrow(), "127.0.0.1", "7", [&](task_ptr &&, resolve_result &&r) noexcept
 		{
 			if (r)
 			{
@@ -138,7 +133,6 @@ TEST_CASE("async/resolver")
 				}
 			}
 		});
-		// clang-format on
 
 		run_until_idle(*loop);
 		REQUIRE(count >= 1);
@@ -150,8 +144,7 @@ TEST_CASE("async/resolver")
 		std::error_code ec{};
 		bool had_value = true;
 
-		// clang-format off
-		h->start_resolve(t.borrow(), "host.not.found", "7", [&] (task_ptr &&, resolve_result &&r) noexcept
+		h->start_resolve(t.borrow(), "host.not.found", "7", [&](task_ptr &&, resolve_result &&r) noexcept
 		{
 			had_value = r.has_value();
 			if (!r)
@@ -159,7 +152,6 @@ TEST_CASE("async/resolver")
 				ec = r.error();
 			}
 		});
-		// clang-format on
 
 		run_until_idle(*loop);
 		CHECK_FALSE(had_value);
@@ -170,8 +162,7 @@ TEST_CASE("async/resolver")
 	{
 		std::array<port_type, 2> seen{};
 
-		// clang-format off
-		h->start_resolve(t.borrow(), "127.0.0.1", "7", numeric, [&] (task_ptr &&, resolve_result &&r) noexcept
+		h->start_resolve(t.borrow(), "127.0.0.1", "7", numeric, [&](task_ptr &&, resolve_result &&r) noexcept
 		{
 			if (r && !r->endpoints.empty())
 			{
@@ -181,14 +172,13 @@ TEST_CASE("async/resolver")
 
 		run_until_idle(*loop);
 
-		h->start_resolve(t.borrow(), "127.0.0.1", "9", numeric, [&] (task_ptr &&, resolve_result &&r) noexcept
+		h->start_resolve(t.borrow(), "127.0.0.1", "9", numeric, [&](task_ptr &&, resolve_result &&r) noexcept
 		{
 			if (r && !r->endpoints.empty())
 			{
 				seen[1] = r->endpoints[0].port();
 			}
 		});
-		// clang-format on
 
 		run_until_idle(*loop);
 
@@ -201,29 +191,25 @@ TEST_CASE("async/resolver")
 		std::atomic<bool> release = false;
 		task blocker;
 
-		// clang-format off
-
 		// occupy the single worker so the resolve stays queued while we observe the gauge
 		pool->post(*loop, blocker.borrow(),
-			[&release] (task &) noexcept
+			[&release](task &) noexcept
 			{
 				while (!release)
 				{
 					std::this_thread::yield();
 				}
 			},
-			[] (task_ptr &&) noexcept {}
+			[](task_ptr &&) noexcept {}
 		);
 
 		CHECK(loop->stats().offload_in_flight == 0);
 
 		int called = 0;
 		h->start_resolve(t.borrow(), "127.0.0.1", "7",
-			[&called] (task_ptr &&, resolve_result &&) noexcept { ++called; }
+			[&called](task_ptr &&, resolve_result &&) noexcept { ++called; }
 		);
 		CHECK(loop->stats().offload_in_flight == 1);
-
-		// clang-format on
 
 		release = true;
 		run_until_idle(*loop);
@@ -240,9 +226,8 @@ TEST_CASE("async/resolver")
 		session s{};
 		int delivered = 0, discarded = 0;
 
-		// clang-format off
 		h->start_resolve(t.borrow(), "127.0.0.1", "7", numeric,
-			[&s, &delivered, &discarded, generation = s.generation] (task_ptr &&, resolve_result &&) noexcept
+			[&s, &delivered, &discarded, generation = s.generation](task_ptr &&, resolve_result &&) noexcept
 			{
 				if (generation != s.generation)
 				{
@@ -254,7 +239,6 @@ TEST_CASE("async/resolver")
 				}
 			}
 		);
-		// clang-format on
 
 		// app "recycles" the session while the op is in flight; the closure's generation goes stale
 		++s.generation;
@@ -272,12 +256,10 @@ TEST_CASE("async/resolver")
 
 		size_t count = 0;
 
-		// clang-format off
-		h->start_resolve(t.borrow(), "127.0.0.1", "7", numeric, [&count] (task_ptr &&, resolve_result &&r) noexcept
+		h->start_resolve(t.borrow(), "127.0.0.1", "7", numeric, [&count](task_ptr &&, resolve_result &&r) noexcept
 		{
 			count = r ? r->endpoints.size() : 0;
 		});
-		// clang-format on
 
 		run_until_idle(moved_loop);
 		CHECK(count == 1);
@@ -288,11 +270,10 @@ TEST_CASE("async/resolver start_resolve contracts")
 {
 	if constexpr (pal::build == pal::build_type::debug)
 	{
-		const auto handler = [] (task_ptr &&, resolve_result &&) noexcept {};
+		const auto handler = [](task_ptr &&, resolve_result &&) noexcept {};
 
 		SECTION("payload storage required")
 		{
-			// clang-format off
 			auto msg = pal_test::require_terminate([&]
 			{
 				auto loop = make_loop().value();
@@ -301,14 +282,12 @@ TEST_CASE("async/resolver start_resolve contracts")
 				task t;
 				h.start_resolve(t.borrow(), "127.0.0.1", "7", numeric, handler);
 			});
-			// clang-format on
 
 			CHECK(msg.contains("payload"));
 		}
 
 		SECTION("payload alignment required")
 		{
-			// clang-format off
 			auto msg = pal_test::require_terminate([&]
 			{
 				auto loop = make_loop().value();
@@ -318,14 +297,12 @@ TEST_CASE("async/resolver start_resolve contracts")
 				task t{std::span{storage}.subspan(1)};
 				h.start_resolve(t.borrow(), "127.0.0.1", "7", numeric, handler);
 			});
-			// clang-format on
 
 			CHECK(msg.contains("misaligned"));
 		}
 
 		SECTION("canonical_name is not supported")
 		{
-			// clang-format off
 			auto msg = pal_test::require_terminate([&]
 			{
 				auto loop = make_loop().value();
@@ -335,7 +312,6 @@ TEST_CASE("async/resolver start_resolve contracts")
 				task t{storage};
 				h.start_resolve(t.borrow(), "127.0.0.1", "7", resolver_base::canonical_name, handler);
 			});
-			// clang-format on
 
 			CHECK(msg.contains("canonical_name"));
 		}
@@ -346,7 +322,7 @@ TEST_CASE("async/resolver loop destructor contract")
 {
 	if constexpr (pal::build == pal::build_type::debug)
 	{
-		const auto handler = [] (task_ptr &&, resolve_result &&) noexcept {};
+		const auto handler = [](task_ptr &&, resolve_result &&) noexcept {};
 
 		// A loop destroyed with a counted offload in flight -> REQUIRE crash. The single worker is held
 		// on `blocker` (posting back to the leaked `keeper`), so the resolve is still queued and the
@@ -355,20 +331,19 @@ TEST_CASE("async/resolver loop destructor contract")
 		alignas(endpoint) static std::array<std::byte, sizeof(endpoint)> storage{};
 		static std::atomic<bool> release = false;
 
-		// clang-format off
 		auto msg = pal_test::require_terminate([&]
 		{
 			auto keeper = make_loop().value();
 			auto pool = make_thread_pool(1).value();
 			pool.post(keeper, blocker.borrow(),
-				[] (task &) noexcept
+				[](task &) noexcept
 				{
 					while (!release)
 					{
 						std::this_thread::yield();
 					}
 				},
-				[] (task_ptr &&) noexcept {}
+				[](task_ptr &&) noexcept {}
 			);
 
 			auto loop = make_loop().value();
@@ -376,7 +351,6 @@ TEST_CASE("async/resolver loop destructor contract")
 			pending.span(storage);
 			h.start_resolve(pending.borrow(), "127.0.0.1", "7", numeric, handler);
 		});
-		// clang-format on
 
 		// unblock the leaked worker (the trapped terminate leaked the pool without joining it)
 		release = true;

@@ -76,7 +76,8 @@ public:
 	/// dead padding.
 	static constexpr size_t scratch_capacity =
 		__task::round_up(sizeof(__task::layout) + min_scratch_capacity, cache_line_size)
-		- sizeof(__task::layout);
+		- sizeof(__task::layout)
+	;
 
 	/// Construct an app-managed task (see \ref borrow)
 	task () noexcept = default;

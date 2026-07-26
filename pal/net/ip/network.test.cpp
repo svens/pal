@@ -97,14 +97,12 @@ TEST_CASE("net/ip/network")
 		CHECK_FALSE(n6.is_subnet_of(n4)); // cross-family
 	}
 
-	// clang-format off
 	auto [view, net, is_v4] = GENERATE(table<std::string, N, bool>({
 		{ "0.0.0.0/0", N{*make_network_v4(A4::any, 0)}, true },
 		{ "192.168.0.0/16", N{*make_network_v4(B4{192,168,0,0}, 16)}, true },
 		{ "::/0", N{*make_network_v6(A6::any, 0)}, false },
 		{ "2001:db8::/32", N{*make_network_v6(B6{0x20,0x01,0x0d,0xb8,0,0,0,0,0,0,0,0,0,0,0,0}, 32)}, false },
 	}));
-	// clang-format on
 
 	CAPTURE(view);
 

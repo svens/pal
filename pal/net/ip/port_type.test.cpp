@@ -8,7 +8,6 @@ using namespace pal::net::ip;
 
 TEST_CASE("net/ip/port_type")
 {
-	// clang-format off
 
 	SECTION("named values")
 	{
@@ -24,8 +23,6 @@ TEST_CASE("net/ip/port_type")
 			__pal_net_ip_port_type(check_sv)
 		#undef check_sv
 	}
-
-	// clang-format on
 
 	SECTION("arithmetic")
 	{

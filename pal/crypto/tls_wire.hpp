@@ -18,7 +18,7 @@ namespace pal::crypto
 // transport_type {{{1
 
 /// Selects stream (TLS) or datagram (DTLS) protocol for factory and session templates.
-enum class transport_type : int
+enum class transport_type: int
 {
 	stream,
 	datagram,
@@ -30,7 +30,7 @@ enum class transport_type : int
 ///
 /// Default `none` requires strict trust-chain verification. Bits enable
 /// specific deviations; combine with bitwise operators.
-enum class verify_relax : unsigned
+enum class verify_relax: unsigned
 {
 	none = 0,
 
@@ -49,7 +49,7 @@ constexpr verify_relax operator& (verify_relax a, verify_relax b) noexcept
 	return static_cast<verify_relax>(std::to_underlying(a) & std::to_underlying(b));
 }
 
-constexpr verify_relax operator~(verify_relax a) noexcept
+constexpr verify_relax operator~ (verify_relax a) noexcept
 {
 	return static_cast<verify_relax>(~std::to_underlying(a));
 }
@@ -189,7 +189,8 @@ constexpr size_t dtls_record_size (const_buffer auto const &input) noexcept
 
 	// 16-bit big-endian record length
 	const auto length = (std::to_integer<size_t>(bytes[length_offset]) << 8U)
-		| (std::to_integer<size_t>(bytes[length_offset + 1]));
+		| (std::to_integer<size_t>(bytes[length_offset + 1]))
+	;
 
 	const auto claimed = length + header_size;
 	return claimed > bytes.size() ? bytes.size() : claimed;

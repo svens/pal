@@ -77,7 +77,7 @@ struct config
 
 	explicit config (std::span<const char *const> args)
 	{
-		parse_command_line(args, [this] (std::string_view option, std::string_view argument)
+		parse_command_line(args, [this](std::string_view option, std::string_view argument)
 		{
 			if (option == "client.port")
 			{
@@ -250,7 +250,7 @@ private:
 
 	auto on_allocation_sent () noexcept
 	{
-		return [this] (pal::async::task_ptr &&p, send_result &&r) noexcept
+		return [this](pal::async::task_ptr &&p, send_result &&r) noexcept
 		{
 			if (r)
 			{
@@ -267,7 +267,7 @@ private:
 	auto on_client_receive () noexcept
 	{
 		// NOLINTNEXTLINE(bugprone-exception-escape): OOM, terminating is fine
-		return [this] (pal::async::task_ptr &&p, receive_result &&r) noexcept
+		return [this](pal::async::task_ptr &&p, receive_result &&r) noexcept
 		{
 			if (!r)
 			{
@@ -319,7 +319,7 @@ private:
 
 	auto on_forward_sent () noexcept
 	{
-		return [this] (pal::async::task_ptr &&p, send_result &&r) noexcept
+		return [this](pal::async::task_ptr &&p, send_result &&r) noexcept
 		{
 			if (r)
 			{
@@ -336,7 +336,7 @@ private:
 	auto on_peer_receive () noexcept
 	{
 		// NOLINTNEXTLINE(bugprone-exception-escape): OOM, terminating is fine
-		return [this] (pal::async::task_ptr &&p, receive_result &&r) noexcept
+		return [this](pal::async::task_ptr &&p, receive_result &&r) noexcept
 		{
 			if (!r)
 			{

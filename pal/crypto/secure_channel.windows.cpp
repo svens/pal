@@ -22,7 +22,7 @@
  *
  *  - ALPN on the acceptor: the DTLS server negotiates ALPN correctly on the wire (the client sees
  *    the selection, and a protocol mismatch is rejected at handshake time), but it cannot introspect
- *    its own choice afterwards — SECPKG_ATTR_APPLICATION_PROTOCOL reports "none". So a datagram
+ *    its own choice afterwards -- SECPKG_ATTR_APPLICATION_PROTOCOL reports "none". So a datagram
  *    acceptor's selected_protocol() is empty.
  */
 
@@ -94,8 +94,6 @@ struct sec_buffer_desc: ::SecBufferDesc
 
 // (D)TLS context request flags {{{1
 
-// clang-format off
-
 constexpr DWORD isc_stream_flags =
 	ISC_REQ_SEQUENCE_DETECT |
 	ISC_REQ_REPLAY_DETECT |
@@ -118,12 +116,15 @@ constexpr DWORD asc_dtls_flags =
 	ASC_REQ_EXTENDED_ERROR |
 	ASC_REQ_DATAGRAM;
 
-// clang-format on
-
 const wchar_t *to_wide (std::string_view utf8, std::span<wchar_t> buf) noexcept //{{{1
 {
 	const int n = ::MultiByteToWideChar(
-		CP_UTF8, 0, utf8.data(), static_cast<int>(utf8.size()), buf.data(), static_cast<int>(buf.size() - 1)
+		CP_UTF8,
+		0,
+		utf8.data(),
+		static_cast<int>(utf8.size()),
+		buf.data(),
+		static_cast<int>(buf.size() - 1)
 	);
 	return n > 0 ? buf.data() : nullptr;
 }
@@ -271,14 +272,13 @@ struct connected_channel::impl_type //{{{1
 		std::ignore = ::QueryContextAttributesW(&this->state->security_ctx, SECPKG_ATTR_STREAM_SIZES, &sizes);
 
 		// Negotiated ALPN. Works for stream (both roles) and the datagram client. The datagram *server*
-		// cannot introspect its own selection — SChannel reports ProtoNegoStatus "none" even though it
-		// selected and sent the protocol — so a datagram acceptor's selected_protocol() is empty.
+		// cannot introspect its own selection -- SChannel reports ProtoNegoStatus "none" even though it
+		// selected and sent the protocol -- so a datagram acceptor's selected_protocol() is empty.
 		SecPkgContext_ApplicationProtocol alpn_attr = {};
 		const auto ss = ::QueryContextAttributesW(
 			&this->state->security_ctx, SECPKG_ATTR_APPLICATION_PROTOCOL, &alpn_attr
 		);
 
-		// clang-format off
 		if (ss == SEC_E_OK
 			&& alpn_attr.ProtoNegoStatus == SecApplicationProtocolNegotiationStatus_Success
 			&& alpn_attr.ProtocolIdSize > 0 && alpn_attr.ProtocolIdSize <= alpn.max_id_size)
@@ -286,7 +286,6 @@ struct connected_channel::impl_type //{{{1
 			std::memcpy(alpn.storage.data(), alpn_attr.ProtocolId, alpn_attr.ProtocolIdSize);
 			alpn.view = {alpn.storage.data(), alpn_attr.ProtocolIdSize};
 		}
-		// clang-format on
 	}
 };
 
@@ -325,12 +324,10 @@ struct attorney //{{{1
 		return 0;
 	}
 
-	// clang-format off
-
 	template <typename... Args>
 	static result<handshake_channel> emit_handshake_channel (Args &&...args) noexcept
 	{
-		return pal::make_unique<handshake_channel::impl_type>(std::forward<Args>(args)...).transform([] (auto impl)
+		return pal::make_unique<handshake_channel::impl_type>(std::forward<Args>(args)...).transform([](auto impl)
 		{
 			return handshake_channel{std::move(impl)};
 		});
@@ -339,13 +336,12 @@ struct attorney //{{{1
 	template <typename... Args>
 	static result<connected_channel> emit_connected_channel (Args &&...args) noexcept
 	{
-		return pal::make_unique<connected_channel::impl_type>(std::forward<Args>(args)...).transform([] (auto impl)
+		return pal::make_unique<connected_channel::impl_type>(std::forward<Args>(args)...).transform([](auto impl)
 		{
 			return connected_channel{std::move(impl)};
 		});
 	}
 
-	// clang-format on
 };
 
 struct context //{{{1
@@ -374,7 +370,10 @@ struct context //{{{1
 	} alpn{};
 
 	std::error_code verify_peer_cert (
-		const cert_ptr &peer_cert, std::string_view peer_name, verify_relax relax, DWORD auth_type
+		const cert_ptr &peer_cert,
+		std::string_view peer_name,
+		verify_relax relax,
+		DWORD auth_type
 	) const noexcept;
 
 	explicit context (enum kind kind) noexcept
@@ -506,10 +505,9 @@ std::error_code context::verify_peer_cert ( //{{{1
 
 		if (policy_status.dwError != 0)
 		{
-			result = make_error_code(
-				policy_status.dwError == CERT_E_CN_NO_MATCH
-					? secure_channel_errc::peer_hostname_mismatch
-					: secure_channel_errc::peer_verification_failed
+			result = make_error_code(policy_status.dwError == CERT_E_CN_NO_MATCH
+				? secure_channel_errc::peer_hostname_mismatch
+				: secure_channel_errc::peer_verification_failed
 			);
 		}
 	}
@@ -849,12 +847,10 @@ std::error_code session_state::verify_peer () noexcept //{{{1
 	const auto ss = ::QueryContextAttributesW(&security_ctx, SECPKG_ATTR_REMOTE_CERT_CONTEXT, &raw);
 	if (ss != SEC_E_OK || raw == nullptr)
 	{
-		// clang-format off
 		return make_error_code(acceptor
 			? secure_channel_errc::client_certificate_required
 			: secure_channel_errc::peer_verification_failed
 		);
-		// clang-format on
 	}
 	cert_ptr peer_cert{raw};
 
@@ -1135,7 +1131,7 @@ result<channel_result> connected_channel::decrypt_impl ( //{{{1
 			// DTLS silently discards records that fail authentication (RFC 6347): drop this record,
 			// produce nothing, surface no error and no peer_closed. The context survives, so the next
 			// valid record decrypts normally. (This is the inverse of the stream path, and closes the
-			// truncation/DoS hole — a forged datagram can no longer tear the connection down.)
+			// truncation/DoS hole -- a forged datagram can no longer tear the connection down.)
 			return r;
 		}
 		return make_unexpected(secure_channel_errc::decrypt_failed);
@@ -1212,7 +1208,7 @@ result<channel_result> connected_channel::close_impl (std::span<std::byte> out) 
 	}
 
 	// Datagram: SChannel cannot generate a DTLS close_notify (ApplyControlToken + ISC/ASC renegotiates
-	// rather than shutting down). Close is a best-effort local no-op — mark the channel closed so
+	// rather than shutting down). Close is a best-effort local no-op -- mark the channel closed so
 	// encrypt() returns `closed`; the peer detects closure via the transport. The receive path still
 	// reports peer_closed if a peer that does emit close_notify (e.g. OpenSSL) sends one.
 	if (state.is_datagram)
