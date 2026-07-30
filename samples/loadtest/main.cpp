@@ -57,9 +57,10 @@ struct config
 	pal::net::ip::address server = pal::net::ip::address_v4::loopback;
 	pal::net::ip::port_type port = pal::net::ip::port_type::stun;
 	size_t streams = 1;
-	size_t kbps = 59;
-	size_t payload = 200;
-	size_t seconds = 0;
+	size_t kbps = 48;
+	size_t payload = 120;
+	seconds warmup{0};
+	seconds runtime{0};
 	statistics::thresholds limits{};
 
 	explicit config (std::span<const char *const> args)
@@ -86,9 +87,13 @@ struct config
 			{
 				payload = parse<size_t>(option, argument);
 			}
-			else if (option == "seconds")
+			else if (option == "warmup")
 			{
-				seconds = parse<size_t>(option, argument);
+				warmup = parse<seconds::rep>(option, argument) * 1s;
+			}
+			else if (option == "runtime")
+			{
+				runtime = parse<seconds::rep>(option, argument) * 1s;
 			}
 			else if (option == "max-loss")
 			{
@@ -96,7 +101,7 @@ struct config
 			}
 			else if (option == "max-rtt-ms")
 			{
-				limits.max_rtt = milliseconds{parse<milliseconds::rep>(option, argument)};
+				limits.max_rtt = parse<milliseconds::rep>(option, argument) * 1ms;
 			}
 			else
 			{
@@ -124,7 +129,8 @@ struct config
 		std::println(" > streams={}", streams);
 		std::println(" > kbps={}", kbps);
 		std::println(" > payload={}", payload);
-		std::println(" > seconds={}", seconds);
+		std::println(" > warmup={}", warmup);
+		std::println(" > runtime={}", runtime);
 	}
 };
 
@@ -304,11 +310,18 @@ void run_load (const ::config &config, std::deque<stream> &streams, statistics &
 
 	const auto start = steady_clock::now();
 	auto now = start;
-	const auto stop_time = config.seconds != 0 ? start + seconds{config.seconds} : steady_clock::time_point::max();
+	const auto measure_from = start + config.warmup;
+	const auto stop_time = config.runtime != 0s ? measure_from + config.runtime : steady_clock::time_point::max();
 	auto next_report = start + config::report_interval;
+
+	if (config.warmup != 0s)
+	{
+		std::println("\nwarm-up ({}), thresholds not applied", config.warmup);
+	}
 
 	uint64_t bytes_sent = 0;
 	size_t stream_idx = 0;
+	bool measuring = false;
 
 	while (!stopped && now < stop_time)
 	{
@@ -326,7 +339,20 @@ void run_load (const ::config &config, std::deque<stream> &streams, statistics &
 
 		if (now >= next_report)
 		{
-			stats.report_and_reset(now, config.limits);
+			if (!measuring && next_report - config::report_interval >= measure_from)
+			{
+				measuring = true;
+				if (config.runtime != 0s)
+				{
+					std::println("\nrunning ({})", config.runtime);
+				}
+				else
+				{
+					std::println("\nrunning");
+				}
+			}
+
+			stats.report_and_reset(now, measuring ? config.limits : statistics::thresholds{});
 			next_report += config::report_interval;
 		}
 
@@ -345,6 +371,7 @@ int run (const ::config &config)
 
 	std::mt19937_64 rng{std::random_device{}()};
 	std::deque<stream> streams;
+	std::println("\nallocating {} streams", config.streams);
 	rx.setup(streams, rng);
 	std::println(" > {} streams allocated", streams.size());
 

@@ -60,8 +60,8 @@ struct config
 	static constexpr size_t peer_task_count = 2'000;
 
 	static inline const pal::net::reuse_port reuse_port{pal::os != pal::os_type::windows};
-	static inline const pal::net::send_buffer_size send_buffer_size{16 * 1024 * 1024};
-	static inline const pal::net::receive_buffer_size receive_buffer_size{16 * 1024 * 1024};
+	static inline const pal::net::send_buffer_size send_buffer_size{2 * 1024 * 1024};
+	static inline const pal::net::receive_buffer_size receive_buffer_size{2 * 1024 * 1024};
 
 	size_t threads = std::thread::hardware_concurrency();
 

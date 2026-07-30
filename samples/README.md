@@ -29,17 +29,20 @@ loadtester-side processes share one machine, servers may be remote):
   role) drained by one receiver thread. Traffic is one-way peer-to-client; sender
   and receiver share a clock, so reported `rtt` is exact one-way latency, not a
   round trip. Pacing is a self-correcting 1 ms token bucket; loss is detected by
-  send-window eviction (`common/packet_tracker.hpp`), so in-flight counts beyond
-  the window misreport as loss; jitter is an RFC 3550-style EWMA.
-  `--max-loss` / `--max-rtt-ms` turn threshold violations into a nonzero exit code.
-  Scale by launching more loadtest processes (per machine and across machines);
-  degraded stats in any of them signal the server-side limit. Processes are
-  unpinned by design so concurrent instances spread across cores.
+  send-window eviction, so in-flight counts beyond the window misreport as loss;
+  the reported `jitter` is an RFC 3550-style EWMA over every stream at once, so
+  it is the spread of the arrival stream as a whole rather than per-session jitter,
+  and is reported rather than gated. `--max-loss` / `--max-rtt-ms` turn threshold
+  violations into a nonzero exit code, and `--warmup` seconds of startup transient
+  are reported but not judged, on top of the `--runtime` that is. Scale by
+  launching more loadtest processes (per machine and across machines); degraded
+  stats in any of them signal the server-side limit. Processes are unpinned by
+  design so concurrent instances spread across cores.
 
 ## Running
 
     udp_relay_mturn --threads=4
-    loadtest --server=127.0.0.1 --streams=100 --kbps=59 --payload=200 --seconds=60
+    loadtest --server=127.0.0.1 --streams=100 --runtime=60
 
 Platform notes:
 
@@ -50,4 +53,4 @@ Platform notes:
   process: softirq processing runs on the sending CPU, so CPU-keyed CBPF steering
   sees a single CPU. Cross-listener distribution requires a real NIC with RSS.
 - fd limits, NIC/IRQ tuning and cluster deployment are external concerns; see
-  `scripts/loadtest/` (pending) for host tuning and deployment.
+  `scripts/loadtest/` for host tuning, deployment and measurement.
