@@ -1,0 +1,54 @@
+#!/bin/sh
+## NIC receive flow hashing, and the channels it spreads over
+## see docs/tune_linux.md, 4.1 Receive flow hashing
+
+. "$(dirname "$0")/_common.sh"
+require_verb show apply
+
+nic=$(get_nic)
+report "nic" "$nic"
+
+hash_fields()
+{
+	ethtool --show-ntuple "$nic" rx-flow-hash udp4 2>/dev/null
+}
+
+# sdfn: source and destination, address and port.
+hash_state()
+{
+	if echo "$1" | grep -q "src port" && echo "$1" | grep -q "dst port"; then
+		echo sdfn
+	else
+		echo "address only"
+	fi
+}
+
+echo "-- rx-flow-hash udp4"
+fields=$(hash_fields)
+if [ -z "$fields" ]; then
+	report "verdict" "unavailable: not configurable on $nic"
+else
+	echo "$fields"
+	if [ "$(hash_state "$fields")" = sdfn ]; then
+		report "verdict" "already sdfn; apply would change nothing"
+	else
+		report "verdict" "address-only; apply would add the ports"
+	fi
+fi
+
+echo
+echo "-- channels"
+ethtool --show-channels "$nic" 2>/dev/null || echo "  <unsupported>"
+
+if [ "$verb" = apply ]; then
+	require_root
+	echo
+	if [ -z "$fields" ]; then
+		verify "rx-flow-hash udp4" sdfn ""
+	else
+		ethtool --config-ntuple "$nic" rx-flow-hash udp4 sdfn || \
+			echo "warning: UDP flow hashing rejected on $nic" >&2
+		verify "rx-flow-hash udp4" sdfn "$(hash_state "$(hash_fields)")"
+	fi
+	verify_exit
+fi

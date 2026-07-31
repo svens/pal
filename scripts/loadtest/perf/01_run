@@ -1,0 +1,27 @@
+#!/bin/sh
+# Record a profile of an executable while it runs under load.
+#
+# usage: 01_run <executable> [args...]
+#
+# --all-cpus because the relay's work is spread over per-CPU threads and softirq
+# context, so a single-CPU profile would miss most of it.
+# --call-graph dwarf because the samples are built without frame pointers; dwarf
+# unwinding is slower to record but produces usable stacks.
+#
+# Run 00_sysctl once first, then 02_report on the same executable name.
+
+set -e
+
+target=$1
+if [ -z "$target" ]; then
+	echo "usage: $(basename "$0") <executable> [args...]" >&2
+	exit 2
+fi
+
+if [ ! -x "$target" ]; then
+	echo "not executable: '$target'" >&2
+	exit 1
+fi
+
+shift
+perf record --all-cpus --call-graph dwarf -- "$target" "$@"

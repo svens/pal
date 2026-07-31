@@ -1,0 +1,36 @@
+#!/bin/sh
+## every tuning stage, in packet-path order
+## see docs/tune_linux.md, 9 Ordering constraints
+#
+# The order is a property of the stages, not of whoever calls them, so it is
+# listed here rather than globbed: rings are sized before the coalescing window
+# that depends on them, and both precede XPS for a driver that reallocates its
+# queues on resize and clears the map with them. mlx5 does not.
+#
+# A stage that fails does not stop the rest: an unsupported knob on one machine
+# should not leave the others untouched. The exit status is nonzero if any of
+# them failed, so a caller still learns.
+
+. "$(dirname "$0")/_common.sh"
+require_verb show apply
+
+here=$(dirname "$0")
+failed=""
+
+echo "== 00_boot (report only, whatever the verb)"
+"$here/00_boot" show || failed="${failed} 00_boot"
+
+for stage in 01_cpu 02_ethtool_hash 02_ethtool_ring 02_ethtool_coalesce 03_irq 05_sysctl 06_xps; do
+	echo
+	echo "== $stage $verb"
+	"$here/$stage" "$verb" || failed="${failed} $stage"
+done
+
+echo
+echo "== 04_rps skipped by design (see its header)"
+
+if [ -n "$failed" ]; then
+	echo
+	echo "failed:${failed}" >&2
+	exit 1
+fi

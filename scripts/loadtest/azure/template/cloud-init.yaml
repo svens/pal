@@ -1,0 +1,34 @@
+#cloud-config
+
+# Provisioning for the Linux loadtest VMs. The admin account and its SSH key
+# come from the bicep template's osProfile, so nothing here creates users.
+
+ssh_pwauth: no
+
+package_update: true
+package_upgrade: true
+packages:
+- ethtool
+- htop
+- iproute2
+- linux-tools-azure
+- numactl
+- tmux
+
+write_files:
+# The relay holds one session entry per client and loadtest opens one sender
+# socket per stream, so a run of a few thousand sessions blows straight through
+# the default 1024.
+- path: /etc/security/limits.d/90-loadtest.conf
+  content: |
+    * soft nofile 1048576
+    * hard nofile 1048576
+
+runcmd:
+- systemctl mask --now unattended-upgrades.service apt-daily.timer apt-daily-upgrade.timer
+- snap refresh --hold || true
+
+power_state:
+  mode: reboot
+  condition: ['test', '-e', '/var/run/reboot-required']
+  message: rebooting onto the upgraded kernel

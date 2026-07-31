@@ -1,0 +1,70 @@
+#!/bin/sh
+## CPU frequency and idle states -- remove the latency floor
+## see docs/tune_linux.md, 3.2 Clock and idle states
+
+. "$(dirname "$0")/_common.sh"
+require_verb show apply
+
+if [ -d /sys/devices/system/cpu/cpu0/cpufreq ]; then
+	report "governor" "$(cat /sys/devices/system/cpu/cpu0/cpufreq/scaling_governor 2>/dev/null)"
+	report "available" "$(cat /sys/devices/system/cpu/cpu0/cpufreq/scaling_available_governors 2>/dev/null)"
+	report "cur freq" "$(cat /sys/devices/system/cpu/cpu0/cpufreq/scaling_cur_freq 2>/dev/null)"
+else
+	report "governor" "<no cpufreq: frequency is the hypervisor's>"
+fi
+
+# The driver names why there are no states to list: 'none' is a guest whose idle
+# depth belongs to the hypervisor, which is a different machine from one whose
+# states exist and were turned off.
+if [ -r /sys/devices/system/cpu/cpuidle/current_driver ]; then
+	report "cpuidle driver" "$(cat /sys/devices/system/cpu/cpuidle/current_driver)"
+	report "cpuidle governor" "$(cat /sys/devices/system/cpu/cpuidle/current_governor 2>/dev/null)"
+fi
+
+if [ -d /sys/devices/system/cpu/cpu0/cpuidle ]; then
+	for state in /sys/devices/system/cpu/cpu0/cpuidle/state*; do
+		[ -d "$state" ] || continue
+		report "$(basename "$state") $(cat "${state}/name")" \
+			"exit latency $(cat "${state}/latency")us, disabled=$(cat "${state}/disable" 2>/dev/null)"
+	done
+else
+	report "cpuidle states" "<none exposed>"
+fi
+
+if [ "$verb" = apply ]; then
+	require_root
+	echo
+	if [ -d /sys/devices/system/cpu/cpu0/cpufreq ]; then
+		for governor in /sys/devices/system/cpu/cpu*/cpufreq/scaling_governor; do
+			echo performance > "$governor" 2>/dev/null || \
+				echo "warning: $governor rejected 'performance'" >&2
+		done
+
+		# One line for the set rather than one per CPU: a partial write is what
+		# matters, and naming every CPU would bury it.
+		off=$(grep -Lx performance /sys/devices/system/cpu/cpu*/cpufreq/scaling_governor 2>/dev/null | wc -l | tr -d ' ')
+		if [ "$off" -eq 0 ]; then
+			verify "governor" performance performance
+		else
+			verify "governor" performance "performance on all but $off CPUs"
+		fi
+	else
+		verify "governor" performance ""
+	fi
+
+	# Shallow-only idling, where the guest is permitted to ask.
+	if [ -d /sys/devices/system/cpu/cpu0/cpuidle ]; then
+		for state in /sys/devices/system/cpu/cpu*/cpuidle/state[2-9]; do
+			[ -w "${state}/disable" ] || continue
+			echo 1 > "${state}/disable" 2>/dev/null || true
+		done
+		left=$(grep -Lx 1 /sys/devices/system/cpu/cpu*/cpuidle/state[2-9]/disable 2>/dev/null | wc -l | tr -d ' ')
+		verify "deep C-states disabled" 0 "$left"
+		echo "deeper C-states need intel_idle.max_cstate=1 on the kernel command line"
+		echo "to be excluded for good; see 00_boot for how boot parameters are handled"
+	else
+		echo "no cpuidle states on this machine; idle depth is the hypervisor's"
+	fi
+
+	verify_exit
+fi

@@ -1,0 +1,133 @@
+# CLUSTER
+
+How to get machines and how to stop paying for them. Running a ladder on them is
+[measure.md](measure.md); tuning them is [tune_linux.md](tune_linux.md).
+
+Everything here drives `az` from your workstation through `azure/*.cmake`. It
+assumes an Azure subscription you control.
+
+## 1. Subscription, login and quota
+
+1. Log in first: `az login`, or `az login --use-device-code` from a machine
+   without a browser.
+2. Confirm which subscription `az` is pointed at before deploying. Every
+   subscription holds its resource group under the same name, so pointing at the
+   wrong one produces a second cluster rather than an error.
+3. Check the regional vCPU quota for the VM families in `cluster.conf` before
+   the first deploy, against the sizes and `client_count` it sets. A full
+   cluster can sit at the cap, leaving no room for anything else in that region.
+4. Quota is per family and per region. A size that is unrestricted on one
+   subscription may be zone-restricted or unavailable on another, which surfaces
+   at deploy time rather than at validate time.
+
+## 2. Cluster shape
+
+1. `cluster.conf` holds the cluster shape and the run defaults. Every value goes
+   through `default()`, so any of them can be overridden per invocation.
+2. `ninja` lists the actions, each with the one-line description its own script
+   carries, and `ninja <action>` runs one.
+3. `build.ninja` is a convenience wrapper only. ninja cannot forward variables,
+   so the `cmake -P` form is the one that takes overrides.
+
+        ninja deploy
+        cmake -Dclient_count=2 -P azure/deploy.cmake
+
+4. The VMs and their fixed private addresses:
+
+   | VM | address | role |
+   |---|---|---|
+   | `relay-linux` | 10.0.0.4 | relay under test |
+   | `relay-windows` | 10.0.0.5 | in the template, not deployed by default |
+   | `loadtest-1..N` | 10.0.0.6+ | load generators |
+
+5. Addresses are static so that `--server` values and shell history survive a
+   stop/start cycle.
+6. `validate`, `show` and `config` are the only actions that leave the cluster
+   alone, and `config` does not reach Azure at all. `deploy`, `start`, `stop`,
+   `deallocate` and `destroy` change the cluster; `ship`, `tune`, `run`, `sweep`
+   and the `*-relay-*` pair change what is running on it.
+
+## 3. Deploy
+
+1. `deploy` is several minutes, dominated by the image upgrade and its reboot.
+   It then polls `cloud-init status` on each Linux VM until all report done, or
+   gives up at its cap and names why each one is still pending. No individual
+   failure aborts the wait early, so a genuinely broken deploy costs the full
+   cap -- the deliberate trade for not mistaking a transient for a permanent.
+2. Azure keeps the subscription-scoped deployment record after `destroy`, so
+   querying it by name returns the *last* deploy's outputs whether or not that
+   cluster still exists. Use `ninja show` instead, which reads the resources.
+3. Host tuning does not survive a reboot, a deallocate/start cycle or a
+   redeploy. Re-apply it after any of them, per
+   [using these scripts](tune_linux.md#1-using-these-scripts).
+
+## 4. Building and shipping
+
+1. Nothing is built on the cluster; `ship` copies binaries onto it. The template
+   hardcodes the image, so the build host's glibc and libstdc++ must be no newer
+   than that image's. Building on the same release is one way, linking
+   statically another.
+2. The relay and the load generator are built by the containing project in a
+   release configuration, and are not part of a default build. `ship` looks in a
+   default build directory, names the exact preset and build command when the
+   binaries are not there, and takes `-Dbuild_dir=<path>` to look elsewhere.
+3. `ship` copies the relay binary, `host/` and `perf/` to the relay, and the
+   generator plus `host/` to each client. It also copies `~/.tmux.conf` when you
+   have one, so an interactive session on a throwaway VM behaves like a local
+   one.
+4. Re-shipping while the relay is running is safe. The binary is unlinked rather
+   than overwritten, so the running process keeps the old inode and carries on,
+   and the next start picks up the new file.
+5. Clients are deliberately left untuned: a client that becomes the bottleneck
+   should be visible rather than tuned away.
+
+## 5. Access
+
+1. `deploy` generates a passphraseless keypair per cluster in `.ssh/` beside
+   these scripts, not in `~/.ssh`, and installs the public half on the Linux
+   VMs. No personal key reaches a throwaway VM, and a leaked one grants nothing
+   once the VMs are gone. There is no password login.
+2. `deploy` also writes `.ssh/local.conf`, which points `IdentityFile` at that
+   key, so reach a VM with `ssh -F .ssh/local.conf relay-linux`.
+3. `-Dssh_public_key_file=<path>` substitutes your own key instead, in which
+   case ssh falls back to its usual identity search rather than the generated
+   one. `-Dssh_public_key_text=<key>` passes one inline.
+4. Control sockets live under `$TMPDIR/<resource group>` rather than beside the
+   checkout, with `-Dcontrol_dir=<path>` as the escape hatch. A unix socket path
+   is capped at 104 bytes and ssh binds `ControlPath` under a temporary name
+   that consumes 17 of them, so a path beside a deep checkout silently fails to
+   multiplex.
+
+## 6. Cost and lifecycle
+
+1. There is no auto-shutdown. A cluster left running bills until something stops
+   it.
+2. `deallocate` is not the end of the bill. It stops compute, but disks and
+   static public addresses keep charging, so a stopped cluster still costs
+   something every month.
+3. Only deleting the resource group returns to zero, which makes `destroy` the
+   normal end of a session rather than a rare event. `deallocate` is for the gap
+   between two runs on the same day.
+4. `destroy` takes a confirmation naming the group. That doubles as the
+   subscription check from
+   [subscription, login and quota](#1-subscription-login-and-quota).
+
+        cmake -Dconfirm=<group name> -P azure/destroy.cmake
+
+5. `destroy` also removes the generated `.ssh/` material and the control
+   sockets.
+6. Cost scales with vCPU-hours, so the client count is the main lever. A ladder
+   needs enough clients that the relay rather than a client is the limit, which
+   [measure.md](measure.md) covers; below that, fewer clients is cheaper and no
+   less valid.
+
+## 7. Windows relay
+
+1. `relay-windows` is in the template but not deployed by default, and waits on
+   the IOCP socket backend. Until then `deploy_relay_windows` stays off.
+2. It has no SSH-key equivalent, so `deploy` generates a password and prints it
+   once. Rotate it with `az vm user update`.
+3. Reaching it over SSH rather than RDP is possible in principle, but transport
+   is the smaller half of the problem: the remote command vocabulary used
+   throughout is POSIX, and the host counters have no Windows counterpart that
+   counts the same things. The VM needs its own command set regardless.

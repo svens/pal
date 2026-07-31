@@ -1,0 +1,242 @@
+#!/bin/sh
+## receive-path counters -- the numbers that say whether tuning helped
+#
+# Tuning without measuring teaches the wrong lesson, and loadtest only sees the
+# client side: it reports loss and rtt as observed by a receiver, which cannot
+# distinguish "the relay was slow" from "the kernel dropped it before the relay
+# saw it" from "we ran out of CPU". These counters are the relay-side other half.
+#
+# usage:
+#   counters show                     human-readable dump
+#   counters snapshot <file>          machine-readable "key value" lines
+#   counters delta <before> <after>   difference between two snapshots
+#
+# What to read, and what it means when it moves:
+#
+#   UdpRcvbufErrors    the socket buffer was full: the relay was not reading fast
+#                      enough, or SO_RCVBUF was clamped by rmem_max (see 05_sysctl)
+#   UdpInErrors        malformed or unroutable datagrams; should stay flat
+#   UdpNoPorts         nothing bound to the destination port -- the relay is not
+#                      listening where the client thinks it is
+#   softnet.dropped    the per-CPU backlog overflowed before softirq processing;
+#                      netdev_max_backlog is the ceiling
+#   softnet.squeezed   a softirq pass ran out of budget with work still queued.
+#                      Rising with dropped flat means netdev_budget, not backlog
+#   nic.*discard*      the NIC had nowhere to put a packet: ring too small, or
+#                      the queue's CPU could not keep up (02_ethtool_ring)
+#   machine.cpu        machine-wide busy share, and how much of it is softirq.
+#                      High softirq means the kernel's receive path dominates and
+#                      application work will not move the limit; high process
+#                      time with low softirq means the opposite
+#   machine.steal      CPU the hypervisor took. Anything sustained here means the
+#                      run measured the neighbours, not the relay
+#   relay.cpu_ticks    relay process CPU time, which excludes softirq -- always
+#                      lower than machine.cpu, and the gap is the point
+#
+# The relay is found by name, so this reports on udp_relay_mturn specifically.
+
+. "$(dirname "$0")/_common.sh"
+require_verb show snapshot delta
+
+relay_process=udp_relay_mturn
+
+emit()
+{
+	printf '%s %s\n' "$1" "$2"
+}
+
+collect()
+{
+	nic=$(get_nic)
+	emit meta.nic "$nic"
+	emit meta.cpus "$(nproc --all)"
+
+	# Azure serves one VM size from more than one host generation, and sessions
+	# per core is not comparable across them, so the row's own hardware travels
+	# with every measurement rather than being remembered separately.
+	cpu_model=$(sed -n 's/^model name[[:space:]]*: //p' /proc/cpuinfo | head -n 1 | tr -s ' ')
+	[ -n "$cpu_model" ] || cpu_model=$(uname -m)
+	emit meta.cpu_model "$cpu_model"
+
+	emit meta.clk_tck "$(getconf CLK_TCK)"
+	emit meta.kernel "$(uname -r)"
+
+	# Wall clock, so a delta can be turned into a rate.
+	emit time.uptime "$(cut -d' ' -f1 /proc/uptime)"
+
+	# Machine-wide CPU in jiffies. /proc/<pid>/stat below cannot see softirq
+	# time, which is where a large share of a relay's cost is spent and which
+	# grows with packet rate -- so the process figure alone understates the load
+	# exactly where it matters. steal comes from the same line: if the hypervisor
+	# took the CPU away, neither this number nor the run is worth recording.
+	awk '/^cpu /{
+		printf "cpu.user %d\n", $2
+		printf "cpu.nice %d\n", $3
+		printf "cpu.system %d\n", $4
+		printf "cpu.idle %d\n", $5
+		printf "cpu.iowait %d\n", $6
+		printf "cpu.irq %d\n", $7
+		printf "cpu.softirq %d\n", $8
+		printf "cpu.steal %d\n", $9
+		exit
+	}' /proc/stat
+
+	# -az reports absolute values without resetting the running history file,
+	# which matters because two snapshots must be on the same baseline.
+	nstat -az 2>/dev/null | awk '
+		/^(Udp|Ip)/ { printf "nstat.%s %s\n", $1, $2 }
+	'
+
+	# Columns are hex, per CPU: 1 processed, 2 dropped, 3 time_squeeze. Parsed
+	# by hand because strtonum is a gawk extension and Ubuntu ships mawk.
+	awk '
+		function hex(s)
+		{
+			n = 0
+			s = tolower(s)
+			for (i = 1; i <= length(s); i++)
+			{
+				c = index("0123456789abcdef", substr(s, i, 1))
+				if (c == 0) { return n }
+				n = n * 16 + (c - 1)
+			}
+			return n
+		}
+		{
+			processed += hex($1)
+			dropped += hex($2)
+			squeezed += hex($3)
+		}
+		END {
+			printf "softnet.processed %d\n", processed
+			printf "softnet.dropped %d\n", dropped
+			printf "softnet.squeezed %d\n", squeezed
+		}
+	' /proc/net/softnet_stat
+
+	nic_discards | sed 's/^/nic./'
+
+	pid=$(pidof "$relay_process" 2>/dev/null | cut -d' ' -f1)
+	if [ -n "$pid" ]; then
+		# Fields 14 and 15 of /proc/<pid>/stat are utime and stime. The
+		# process name can contain spaces inside parentheses, so count
+		# fields from the closing one.
+		emit relay.pid "$pid"
+		awk '{
+			for (i = 1; i <= NF; i++)
+			{
+				if ($i ~ /\)$/)
+				{
+					printf "relay.cpu_ticks %d\n", $(i + 12) + $(i + 13)
+					exit
+				}
+			}
+		}' "/proc/${pid}/stat"
+		emit relay.threads "$(ls "/proc/${pid}/task" | wc -l)"
+	else
+		emit relay.pid none
+		emit relay.cpu_ticks 0
+	fi
+}
+
+case $verb in
+show)
+	collect
+	;;
+
+snapshot)
+	target=$2
+	if [ -z "$target" ]; then
+		echo "usage: $(basename "$0") snapshot <file>" >&2
+		exit 2
+	fi
+	collect > "$target"
+	;;
+
+delta)
+	before=$2
+	after=$3
+	if [ ! -r "$before" ] || [ ! -r "$after" ]; then
+		echo "usage: $(basename "$0") delta <before> <after>" >&2
+		exit 2
+	fi
+	awk '
+		NR == FNR { first[$1] = $2; next }
+		{
+			key = $1
+			if (key ~ /^meta\./)
+			{
+				if (key == "meta.cpus") { cpus = $2 + 0 }
+				if (key == "meta.clk_tck") { tck = $2 + 0 }
+				# Printed whole: a model name is the one value here
+				# that carries spaces.
+				value = $0
+				sub(/^[^ ]+[ ]+/, "", value)
+				printf "%-40s %s\n", key, value
+				next
+			}
+			if (!(key in first)) { next }
+			if (key == "time.uptime")
+			{
+				elapsed = $2 - first[key]
+				printf "%-40s %.1fs\n", "elapsed", elapsed
+				next
+			}
+			if (key == "relay.pid")
+			{
+				relay_before = first[key]
+				relay_after = $2
+				next
+			}
+			if ($2 !~ /^[0-9]+$/) { next }
+			diff = $2 - first[key]
+			if (key == "relay.cpu_ticks")
+			{
+				ticks = diff
+				next
+			}
+			# Jiffy counts are only meaningful as shares of their own
+			# total, so they are summed here and reported at the end
+			# rather than printed raw.
+			if (key ~ /^cpu\./)
+			{
+				cpu[key] = diff
+				cpu_total += diff
+				next
+			}
+			if (diff != 0) { printf "%-40s %+d\n", key, diff }
+		}
+		END {
+			if (cpu_total > 0)
+			{
+				busy = cpu_total - cpu["cpu.idle"] - cpu["cpu.iowait"]
+				# Parenthesised, or printf reads the comparison
+				# as an output redirection.
+				printf "%-40s %.0f%% busy, %.0f%% of it softirq\n", "machine.cpu",
+					100 * busy / cpu_total,
+					(busy > 0 ? 100 * cpu["cpu.softirq"] / busy : 0)
+				if (cpu["cpu.steal"] > 0)
+				{
+					printf "%-40s %.1f%% -- the hypervisor took this; the run is suspect\n",
+						"machine.steal", 100 * cpu["cpu.steal"] / cpu_total
+				}
+			}
+			if (elapsed > 0 && tck > 0)
+			{
+				if (relay_after == "none" || relay_after != relay_before)
+				{
+					printf "%-40s unmeasurable: pid %s -> %s\n", "relay.cpu",
+						relay_before, relay_after
+				}
+				else
+				{
+					seconds = ticks / tck
+					printf "%-40s %.1fs (%.0f%% of one core", "relay.cpu", seconds, 100 * seconds / elapsed
+					if (cpus > 0) { printf ", %.0f%% of %d", 100 * seconds / elapsed / cpus, cpus }
+					printf ")\n"
+				}
+			}
+		}
+	' "$before" "$after"
+	;;
+esac

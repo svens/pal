@@ -1,0 +1,56 @@
+#!/bin/sh
+## boot-time CPU isolation -- report only
+## see docs/tune_linux.md, 3.1 CPU isolation
+
+. "$(dirname "$0")/_common.sh"
+require_verb show apply
+
+nproc_total=$(nproc --all)
+
+report "cmdline" "$(cat /proc/cmdline)"
+report "cpus" "$nproc_total"
+
+for name in isolcpus nohz_full rcu_nocbs irqaffinity; do
+	value=$(sed -n "s/.*\b${name}=\([^ ]*\).*/\1/p" /proc/cmdline)
+	report "$name" "${value:-<unset>}"
+done
+
+if [ -r /sys/devices/system/cpu/nohz_full ]; then
+	active=$(cat /sys/devices/system/cpu/nohz_full)
+	report "nohz_full (active)" "${active:-<none>}"
+fi
+
+if [ "$verb" = apply ]; then
+	# Whole physical cores on each side of the split. An SMT sibling of a
+	# housekeeping CPU is not isolated in any useful sense: it shares execution
+	# resources with the CPU taking every interrupt, so a set like 1-3 on a
+	# two-core machine hands the relay one CPU that competes with all the
+	# housekeeping it was supposed to be shielded from.
+	cores=$(for cpu in /sys/devices/system/cpu/cpu[0-9]*; do
+		siblings="$cpu/topology/thread_siblings_list"
+		if [ -r "$siblings" ]; then
+			cat "$siblings"
+		else
+			echo "${cpu##*/cpu}"
+		fi
+	done | sort -u -V)
+
+	housekeeping=$(echo "$cores" | head -n 1)
+	isolated=$(echo "$cores" | tail -n +2 | paste -sd, -)
+
+	echo
+	if [ -z "$isolated" ]; then
+		echo "Only one physical core ($housekeeping): nothing to isolate."
+	else
+		echo "Add to /etc/default/grub, then 'update-grub' and reboot:"
+		echo
+		echo "  GRUB_CMDLINE_LINUX=\"isolcpus=${isolated} nohz_full=${isolated} rcu_nocbs=${isolated} irqaffinity=${housekeeping}\""
+		echo
+		echo "Run the relay with as many threads as there are isolated CPUs,"
+		echo "each pinned to one of them."
+	fi
+	echo
+	echo "This confines every IRQ to ${housekeeping}, which rules out 03_irq's"
+	echo "spread across CPUs: pick isolation for a pinned single-queue workload,"
+	echo "IRQ spreading for multi-queue RSS."
+fi
