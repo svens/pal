@@ -1,0 +1,55 @@
+#!/usr/bin/env bpftrace
+/*
+ * ## How long a datagram waits in the socket queue before userspace takes it
+ * ## see docs/profile.md, 7 Queue delay
+ *
+ * usage: bt/queue_delay [seconds, default 30]
+ *
+ * The only shipped script probing kernel functions, so a kernel upgrade can
+ * break it. An empty histogram means the probes did not attach:
+ *
+ *   bpftrace -l 'kprobe:__udp_enqueue_schedule_skb'
+ *   bpftrace -l 'kprobe:skb_consume_udp'
+ */
+
+/* One datagram in 64 is timed; docs/profile.md, 7 Queue delay says why. */
+let @enqueued = hash(4096);
+
+BEGIN
+{
+	@seconds = $1 > 0 ? $1 : 30;
+	@elapsed = 0;
+	@seen = 0;
+}
+
+kprobe:__udp_enqueue_schedule_skb
+{
+	@seen++;
+	if (@seen % 64 == 0)
+	{
+		@enqueued[arg1] = nsecs;
+	}
+}
+
+kprobe:skb_consume_udp /@enqueued[arg1]/
+{
+	@queue_delay_us = hist((nsecs - @enqueued[arg1]) / 1000);
+	$dropped = delete(@enqueued, arg1);
+}
+
+interval:s:1
+{
+	@elapsed++;
+	if (@elapsed >= @seconds)
+	{
+		exit();
+	}
+}
+
+END
+{
+	clear(@enqueued);
+	clear(@seconds);
+	clear(@elapsed);
+	clear(@seen);
+}

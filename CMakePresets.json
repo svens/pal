@@ -29,6 +29,16 @@
 			}
 		},
 		{
+			"name": "linux-gcc-profile",
+			"inherits": "default",
+			"cacheVariables": {
+				"CMAKE_CXX_COMPILER": "g++",
+				"CMAKE_BUILD_TYPE": "Release",
+				"CMAKE_CXX_FLAGS": "-g -fno-omit-frame-pointer",
+				"PAL_SAMPLES": "ON"
+			}
+		},
+		{
 			"name": "linux-gcc-sanitize",
 			"inherits": "default",
 			"cacheVariables": {
@@ -173,6 +183,10 @@
 		{
 			"name": "linux-gcc-release",
 			"configurePreset": "linux-gcc-release"
+		},
+		{
+			"name": "linux-gcc-profile",
+			"configurePreset": "linux-gcc-profile"
 		},
 		{
 			"name": "linux-gcc-sanitize",

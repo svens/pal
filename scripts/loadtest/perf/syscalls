@@ -1,0 +1,30 @@
+#!/bin/sh
+## Count the packet-path syscalls over a window
+## see docs/profile.md, 6 Syscalls per packet
+#
+# usage: syscalls <seconds>
+#
+# Tracepoints rather than hardware counters, so this works on a guest with no
+# virtual PMU. Datagrams per syscall is computed from these counts and the
+# window's 'host/counters delta'.
+
+set -e
+
+seconds=$1
+if [ -z "$seconds" ]; then
+	echo "usage: $(basename "$0") <seconds>" >&2
+	exit 2
+fi
+
+if [ "$(id -u)" -ne 0 ]; then
+	echo "$(basename "$0"): must run as root" >&2
+	exit 1
+fi
+
+perf stat --all-cpus \
+	-e syscalls:sys_enter_recvmmsg \
+	-e syscalls:sys_enter_sendmmsg \
+	-e syscalls:sys_enter_recvmsg \
+	-e syscalls:sys_enter_sendmsg \
+	-e syscalls:sys_enter_epoll_pwait2 \
+	-- sleep "$seconds"

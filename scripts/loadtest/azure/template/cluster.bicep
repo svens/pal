@@ -204,10 +204,11 @@ resource machine 'Microsoft.Compute/virtualMachines@2021-07-01' = [for (vm, i) i
 			computerName: vm.name
 			adminUsername: username
 			adminPassword: vm.windows ? password : null
-			allowExtensionOperations: true
+			allowExtensionOperations: vm.windows
 			customData: vm.windows ? null : loadFileAsBase64('cloud-init.yaml')
 			linuxConfiguration: vm.windows ? null : {
 				disablePasswordAuthentication: true
+				provisionVMAgent: false
 				ssh: {
 					publicKeys: [
 						{

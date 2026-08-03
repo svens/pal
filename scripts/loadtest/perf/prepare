@@ -1,0 +1,37 @@
+#!/bin/sh
+## Let perf observe this machine, and report what it can see here
+## see docs/profile.md, 3 Capture
+#
+# Both sysctls weaken the machine's isolation and suit a loadtest VM only.
+# Neither is persisted: a reboot restores the defaults.
+#
+#   perf_event_paranoid=-1  lifts the restriction on what perf may observe
+#   kptr_restrict=0         exposes kernel pointers, without which kernel frames
+#                           collapse into unresolved addresses
+
+. "$(dirname "$0")/../host/_common.sh"
+require_verb show apply
+require_root
+
+report "kernel" "$(uname -r)"
+report "perf" "$(perf --version 2>/dev/null || echo '<not installed>')"
+report "bpftrace" "$(bpftrace --version 2>/dev/null | head -1 || echo '<not installed>')"
+report "perf_event_paranoid" "$(cat /proc/sys/kernel/perf_event_paranoid)"
+report "kptr_restrict" "$(cat /proc/sys/kernel/kptr_restrict)"
+
+if perf stat -e cycles true 2>&1 | grep -q 'not supported'; then
+	report "hardware events" "unavailable: sampling falls back to cpu-clock"
+else
+	report "hardware events" "available: cycles counted"
+fi
+
+if [ "$verb" = apply ]; then
+	echo
+	sysctl --load=- <<EOF
+kernel.perf_event_paranoid=-1
+kernel.kptr_restrict=0
+EOF
+	verify "perf_event_paranoid" "-1" "$(cat /proc/sys/kernel/perf_event_paranoid)"
+	verify "kptr_restrict" "0" "$(cat /proc/sys/kernel/kptr_restrict)"
+	verify_exit
+fi

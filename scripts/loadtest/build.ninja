@@ -69,4 +69,19 @@ build run: action
 build sweep: action
   name = sweep
 
+build profile-ship: action
+  name = profile-ship
+
+build profile: action
+  name = profile
+
+build profile-baseline: action
+  name = profile-baseline
+
+build profile-compare: action
+  name = profile-compare
+
+build profile-clear: action
+  name = profile-clear
+
 default help

@@ -1,0 +1,31 @@
+#!/bin/sh
+## Sample the whole machine for a window, into perf-<name>.data
+## see docs/profile.md, 3 Capture
+#
+# usage: record <seconds> <name> [hz]
+#
+# --call-graph fp needs the profile build, which 'ship' puts here when pointed at .build/linux-gcc-profile.
+
+set -e
+
+seconds=$1
+name=$2
+hz=${3:-99}
+
+if [ -z "$seconds" ] || [ -z "$name" ]; then
+	echo "usage: $(basename "$0") <seconds> <name> [hz]" >&2
+	exit 2
+fi
+
+if [ "$(id -u)" -ne 0 ]; then
+	echo "$(basename "$0"): must run as root" >&2
+	exit 1
+fi
+
+cd "$(dirname "$0")"
+perf record --all-cpus --freq "$hz" --call-graph fp --output "perf-${name}.data" -- sleep "$seconds"
+
+if [ -n "$SUDO_USER" ]; then
+	chown "$SUDO_USER" "perf-${name}.data"
+fi
+echo "wrote $(pwd)/perf-${name}.data"

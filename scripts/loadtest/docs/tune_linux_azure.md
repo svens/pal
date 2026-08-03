@@ -98,24 +98,26 @@ Everything here is a property of the platform rather than of Linux.
        Dropping the table and unloading nf_conntrack would take the chain
        traversal as well, roughly 9% together.
 
-3. No script removes it, and none should. Production nodes running Kubernetes
-   have conntrack and cannot give it up, because kube-proxy implements Service
-   DNAT with it. A tuning script that quietly deleted it would make every ladder
-   describe a machine the service never runs on.
-4. Removal is therefore a manual step taken before a ceiling sweep and recorded
-   against the row it produced.
-5. The agent reinstalls the table while a ladder runs, and the `ct state` rule
-   reloads `nf_conntrack` with it, so the removal is three steps and the first
-   is stopping the agent.
-
-       sudo systemctl stop walinuxagent
-       sudo nft delete table ip security
-       sudo modprobe -r xt_conntrack nf_conntrack nf_defrag_ipv4 nf_defrag_ipv6
-
-   Read the ruleset and `lsmod` again when the ladder ends: a row is a ceiling
-   row only if both are still empty.
+3. The VMs are provisioned without either. `azure/template/cloud-init.yaml`
+   removes the agent package, deletes the table it installed before that point,
+   and leaves a `modprobe.d` file denying `nf_conntrack` the load. The template
+   sets `provisionVMAgent: false`, so the platform stops expecting an agent.
+4. The package goes rather than the service, because the agent also ships
+   `walinuxagent-network-setup.service`, which installs the table before
+   `network-pre.target`.
+5. A ladder here measures the relay and `pal`, not a deployment. Production
+   nodes running Kubernetes have conntrack and cannot give it up, because
+   kube-proxy implements Service DNAT with it, so a capacity claim for such a
+   node subtracts what item 6 records.
 6. What the table costs at a fixed load, rather than at a knee, is
    [what netfilter costs](results.md#32-what-netfilter-costs).
+7. Measuring that cost again means putting both back and rebooting.
+
+       sudo rm /etc/modprobe.d/90-loadtest.conf
+       sudo apt -y install walinuxagent
+       sudo reboot
+
+   Read `nft list ruleset` and `lsmod` before trusting a row either way.
 
 ## 5. What the hypervisor owns
 

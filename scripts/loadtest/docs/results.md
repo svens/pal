@@ -1,7 +1,6 @@
 # RESULTS
 
-Measurements worth keeping, and what no ladder has established yet. The rules
-governing what may be recorded here are
+The rules governing what may be recorded here are
 [what makes a valid row](measure.md#7-what-makes-a-valid-row); this file is
 data.
 
@@ -9,8 +8,8 @@ data.
 
 1. Every row is the audio profile unless its notes say otherwise, which is why
    there is no profile column.
-2. Say in the notes whether a row is as deployed or a ceiling measured with
-   netfilter removed. The two are not comparable, for the reason in
+2. Say in the notes whether a row is a ceiling or as deployed. The two are not
+   comparable, for the reason in
    [what makes a valid row](measure.md#7-what-makes-a-valid-row) item 4.
 3. `machine busy` is the whole machine, not the relay process.
 4. `sessions/core` is the headline figure, and `core` means vCPU.

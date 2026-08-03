@@ -42,10 +42,8 @@ assumes an Azure subscription you control.
 
 5. Addresses are static so that `--server` values and shell history survive a
    stop/start cycle.
-6. `validate`, `show` and `config` are the only actions that leave the cluster
-   alone, and `config` does not reach Azure at all. `deploy`, `start`, `stop`,
-   `deallocate` and `destroy` change the cluster; `ship`, `tune`, `run`, `sweep`
-   and the `*-relay-*` pair change what is running on it.
+6. `validate` and `show` read the cluster and leave it alone; `config` and
+   `profile-clear` work from local files alone.
 
 ## 3. Deploy
 

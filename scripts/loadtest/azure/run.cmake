@@ -5,7 +5,7 @@ if(runtime LESS_EQUAL 0)
 	message(FATAL_ERROR "runtime must be positive: an unbounded run never returns here")
 endif()
 
-run_once(failures kpps mbps busy faults ${streams})
+run_once(failures kpps mbps busy faults packet_ns ${streams})
 
 if(failures)
 	message(FATAL_ERROR "${failures} client process(es) exceeded max-loss=${max_loss} or max-rtt-ms=${max_rtt_ms}")

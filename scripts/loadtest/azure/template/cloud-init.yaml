@@ -8,25 +8,29 @@ ssh_pwauth: no
 package_update: true
 package_upgrade: true
 packages:
+- bpftrace
 - ethtool
-- htop
-- iproute2
 - linux-tools-azure
-- numactl
 - tmux
 
 write_files:
-# The relay holds one session entry per client and loadtest opens one sender
-# socket per stream, so a run of a few thousand sessions blows straight through
-# the default 1024.
+# Set ulimit -n for loadtester (socket per session)
 - path: /etc/security/limits.d/90-loadtest.conf
   content: |
     * soft nofile 1048576
     * hard nofile 1048576
 
+# Prevent nf_conntrack installed by waagent (see also runcmd nft and modprobe)
+- path: /etc/modprobe.d/90-loadtest.conf
+  content: |
+    install nf_conntrack /bin/false
+
 runcmd:
 - systemctl mask --now unattended-upgrades.service apt-daily.timer apt-daily-upgrade.timer
 - snap refresh --hold || true
+- apt -y remove walinuxagent
+- nft delete table ip security || true
+- modprobe -r xt_conntrack nf_conntrack nf_defrag_ipv4 nf_defrag_ipv6 || true
 
 power_state:
   mode: reboot

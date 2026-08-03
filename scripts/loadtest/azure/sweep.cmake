@@ -30,7 +30,7 @@ while(streams_at LESS_EQUAL ${sweep_max})
 		start_relay(relay-linux "relay-${streams_at}.log")
 	endif()
 
-	run_once(failures kpps mbps busy faults ${streams_at})
+	run_once(failures kpps mbps busy faults packet_ns ${streams_at})
 
 	# A relay that died during the step is the result, not a step to restart past.
 	relay_pid(pid relay-linux)

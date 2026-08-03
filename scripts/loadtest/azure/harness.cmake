@@ -68,6 +68,51 @@ function(relay_rx_rate out_kpps out_mbps before after) #{{{1
 	set(${out_mbps} "${mbps}" PARENT_SCOPE)
 endfunction()
 
+function(relay_packet_cost out before after) #{{{1
+	# Nanoseconds of machine CPU one received datagram cost.
+	set(${out} "?" PARENT_SCOPE)
+
+	snapshot_value(clk_tck "${after}" meta.clk_tck)
+	if(clk_tck STREQUAL "" OR clk_tck LESS_EQUAL 0)
+		return()
+	endif()
+
+	set(jiffies 0)
+	set(idle 0)
+	set(iowait 0)
+	foreach(key user nice system idle iowait irq softirq steal)
+		snapshot_value(before_value "${before}" cpu.${key})
+		snapshot_value(after_value "${after}" cpu.${key})
+		if(after_value STREQUAL "")
+			return()
+		endif()
+		if(before_value STREQUAL "")
+			set(before_value 0)
+		endif()
+		math(EXPR delta "${after_value} - ${before_value}")
+		math(EXPR jiffies "${jiffies} + ${delta}")
+		if(key STREQUAL "idle")
+			set(idle "${delta}")
+		elseif(key STREQUAL "iowait")
+			set(iowait "${delta}")
+		endif()
+	endforeach()
+	math(EXPR busy_jiffies "${jiffies} - ${idle} - ${iowait}")
+
+	snapshot_value(packets_before "${before}" nstat.UdpInDatagrams)
+	snapshot_value(packets_after "${after}" nstat.UdpInDatagrams)
+	if(packets_after STREQUAL "" OR packets_before STREQUAL "")
+		return()
+	endif()
+	math(EXPR packets "${packets_after} - ${packets_before}")
+
+	if(busy_jiffies LESS_EQUAL 0 OR packets LESS_EQUAL 0)
+		return()
+	endif()
+	math(EXPR ns "${busy_jiffies} * 1000000000 / (${clk_tck} * ${packets})")
+	set(${out} "${ns}" PARENT_SCOPE)
+endfunction()
+
 function(relay_faults out out_busy before after) #{{{1
 	# Only counters meaning the packet never reached the relay. Two exclusions are
 	# deliberate: UdpRcvbufErrors is the service saturating, which is the thing
@@ -128,14 +173,14 @@ function(relay_faults out out_busy before after) #{{{1
 	set(${out_busy} "${busy}" PARENT_SCOPE)
 endfunction()
 
-function(run_once out_failures out_kpps out_mbps out_busy out_faults streams) #{{{1
+function(run_once out_failures out_kpps out_mbps out_busy out_faults out_packet_ns streams) #{{{1
 	# Launches the clients, waits for them, and prints the relay-side counter
 	# deltas for the same window. Sets ${out_failures} to the number of client
 	# processes that exited nonzero, i.e. that saw a threshold violation,
 	# ${out_kpps} / ${out_mbps} to the relay's measured receive rate over the same
 	# window, ${out_busy} to the percentage of the relay machine's CPU that window
-	# consumed, and ${out_faults} to any host-side drops that make the step
-	# unrepresentative.
+	# consumed, ${out_faults} to any host-side drops that make the step
+	# unrepresentative, and ${out_packet_ns} to what one datagram cost that machine.
 	#
 	# The relay is expected to be running already: it is the side you watch, so it
 	# belongs in a tmux session rather than under this script.
@@ -158,12 +203,21 @@ function(run_once out_failures out_kpps out_mbps out_busy out_faults streams) #{
 		message(FATAL_ERROR "runtime=${runtime} is too short a counter window to measure")
 	endif()
 
+	# Starting a capture costs the relay a burst of drops. The harness starts it
+	# when its own warm-up sleep returns, so the clients are given five seconds
+	# more and the burst lands before any of them applies a threshold. Launch skew
+	# alone decides which side of the boundary it falls on otherwise.
+	set(client_warmup "${warmup}")
+	if(DEFINED during_window)
+		math(EXPR client_warmup "${warmup} + 5")
+	endif()
+
 	set(args
 		"--server=${relay_private}"
 		"--streams=${streams}"
 		"--kbps=${kbps}"
 		"--payload=${payload}"
-		"--warmup=${warmup}"
+		"--warmup=${client_warmup}"
 		"--runtime=${runtime}"
 		"--max-loss=${max_loss}"
 		"--max-rtt-ms=${max_rtt_ms}"
@@ -193,6 +247,15 @@ function(run_once out_failures out_kpps out_mbps out_busy out_faults streams) #{
 
 	execute_process(COMMAND "${CMAKE_COMMAND}" -E sleep ${warmup})
 	remote_run(relay-linux "sudo ${remote_dir}/host/counters snapshot ${remote_dir}/counters.before")
+
+	# Anything the caller wants measured over the same seconds as the counters,
+	# started here and expected to stop itself within the window: a profile that
+	# spans a different interval than the packet counts cannot be divided by them.
+	# Detached, because this call has to return for the window to be the window.
+	if(DEFINED during_window)
+		remote_run(relay-linux "nohup ${during_window} >${remote_dir}/during_window.log 2>&1 &")
+	endif()
+
 	execute_process(COMMAND "${CMAKE_COMMAND}" -E sleep ${window})
 	remote_run(relay-linux "sudo ${remote_dir}/host/counters snapshot ${remote_dir}/counters.after")
 
@@ -200,7 +263,7 @@ function(run_once out_failures out_kpps out_mbps out_busy out_faults streams) #{
 	# appear on its own; the grace period covers handshake retries and startup
 	# skew. Elapsed rather than the sum of the sleeps: a poll is one ssh per
 	# client, and on a slow cluster that is the larger half.
-	math(EXPR limit "${warmup} + ${runtime} + 120")
+	math(EXPR limit "${client_warmup} + ${runtime} + 120")
 	seconds_now(started)
 	set(waited 0)
 	set(pending "${cluster_clients}")
@@ -248,6 +311,7 @@ function(run_once out_failures out_kpps out_mbps out_busy out_faults streams) #{
 	message(STATUS "relay rx: ${kpps} Kpps, ${mbps} Mbps")
 
 	relay_faults(faults busy "${before_text}" "${after_text}")
+	relay_packet_cost(packet_ns "${before_text}" "${after_text}")
 	message(STATUS "machine busy: ${busy}%")
 	if(faults)
 		# One call rather than one per fault: each message(WARNING) carries its
@@ -264,4 +328,5 @@ function(run_once out_failures out_kpps out_mbps out_busy out_faults streams) #{
 	set(${out_mbps} "${mbps}" PARENT_SCOPE)
 	set(${out_busy} "${busy}" PARENT_SCOPE)
 	set(${out_faults} "${faults}" PARENT_SCOPE)
+	set(${out_packet_ns} "${packet_ns}" PARENT_SCOPE)
 endfunction()

@@ -1,0 +1,26 @@
+#!/bin/sh
+## Record samples and syscall counts over one window
+## see docs/profile.md, 3 Capture
+#
+# usage: capture <seconds> <name> [hz]
+
+set -e
+
+seconds=$1
+name=$2
+hz=$3
+
+if [ -z "$seconds" ] || [ -z "$name" ]; then
+	echo "usage: $(basename "$0") <seconds> <name> [hz]" >&2
+	exit 2
+fi
+
+here=$(dirname "$0")
+"$here/syscalls" "$seconds" > "${here}/perf-${name}.syscalls" 2>&1 &
+"$here/record" "$seconds" "$name" $hz
+wait
+
+if [ -n "$SUDO_USER" ]; then
+	chown "$SUDO_USER" "${here}/perf-${name}.syscalls"
+fi
+echo "wrote ${here}/perf-${name}.syscalls"

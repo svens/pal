@@ -439,6 +439,21 @@ function(remote_copy host dest) #{{{1
 	endif()
 endfunction()
 
+function(remote_fetch host source dest) #{{{1
+	# source is relative to the login account's home directory, dest is a local path
+	if(NOT scp_exe)
+		message(FATAL_ERROR "scp not found")
+	endif()
+	ssh_drop_dead_control("${host}")
+	execute_process(
+		COMMAND "${scp_exe}" ${ssh_options} "${host}:${source}" "${dest}"
+		RESULT_VARIABLE result
+	)
+	if(result)
+		message(FATAL_ERROR "${host}: fetching ${source} failed (exit ${result})")
+	endif()
+endfunction()
+
 function(seconds_now out) #{{{1
 	string(TIMESTAMP now "%s" UTC)
 	set(${out} "${now}" PARENT_SCOPE)

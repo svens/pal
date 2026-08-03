@@ -106,7 +106,8 @@ loss and rtt from a receiver, which cannot separate "the relay was slow" from
    clamped the request below what the process asked for, which turns it back
    into a host problem;
    [socket buffer ceilings](tune_linux.md#72-socket-buffer-ceilings) prints both
-   halves.
+   halves. Under `profile`, some of it is the capture starting, per
+   [capture](profile.md#3-capture) item 4.
 3. **A tuning signal, not a verdict.** `softnet.squeezed` with `dropped` flat
    means a softirq pass was cut short by its allowance rather than by load. Some
    of that is normal at high packet rates; see
@@ -163,28 +164,24 @@ headroom.
    it is least trustworthy exactly where it would be used.
 4. Rows are of two kinds and comparing across them is meaningless.
 
-   1. **As deployed.** Netfilter present, as the production nodes have it. This
-      is the number that predicts capacity.
-   2. **Ceiling.** Netfilter removed by hand before the sweep. This bounds what
-      the relay could reach with nothing else in the way, and is the useful
-      starting point for profiling the relay itself. It is never the deployable
-      figure.
+   1. **Ceiling.** Netfilter absent, which is how the VMs are provisioned. This
+      bounds what the relay reaches with nothing else in the way, and is the
+      starting point for profiling the relay itself. It is a deployable figure
+      only where a node can give conntrack up.
+   2. **As deployed.** Netfilter restored by hand before the sweep, as the
+      production nodes have it. This is the number that predicts capacity.
 
-   Nothing in `host/` removes it and nothing should, for the reason in
-   [the guest agent's netfilter table](tune_linux_azure.md#4-the-guest-agents-netfilter-table).
-   Note which kind a row is when adding it.
+   Which kind a row is has to be read off the host rather than assumed, per
+   [the guest agent's netfilter table](tune_linux_azure.md#4-the-guest-agents-netfilter-table)
+   item 7. Note which kind a row is when adding it.
 5. The headline figure is sessions per core at a fixed loss and rtt threshold.
    Raw Mbps does not survive a change of VM size; sessions per core does.
 
 ## 8. Profiling
 
-    sudo perf/00_sysctl                  # once per boot
-    perf/01_run ./<relay> --threads=4
-    perf/02_report <relay>               # writes perf_<relay>.svg
-
-A flame graph shows where CPU went. It does not show why packets were dropped,
-which is [relay-side counters](#5-relay-side-counters). `02_report` needs
-FlameGraph's `stackcollapse-perf.pl` and `flamegraph.pl` on `PATH`.
+[profile.md](profile.md) owns the capture, the stage budget and the toolchain. A
+profile says what a packet cost; [relay-side counters](#5-relay-side-counters)
+say why one was dropped.
 
 ## 9. Caveats
 

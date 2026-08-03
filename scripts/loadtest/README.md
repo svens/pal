@@ -10,6 +10,7 @@ own kernel counters are read alongside what the generators report.
 |---|---|
 | [cluster](docs/cluster.md) | getting machines, access, cost and lifecycle |
 | [measure](docs/measure.md) | running a ladder and reading what comes back |
+| [profile](docs/profile.md) | where the time inside a packet goes |
 | [tune_linux](docs/tune_linux.md) | every host knob, what it does, and what it was worth |
 | [tune_linux_azure](docs/tune_linux_azure.md) | what an Azure guest changes about the above |
 | [results](docs/results.md) | measurements, and what no ladder has settled yet |
@@ -26,27 +27,32 @@ point or `sweep` a ladder, ending with `destroy`. The actions, their ninja
 targets and the form that takes overrides are
 [cluster shape](docs/cluster.md#2-cluster-shape).
 
-Two things that are easy to get wrong:
+Three things that are easy to get wrong:
 
 1. `destroy` is the normal end of a session, not a rare event, per
    [cost and lifecycle](docs/cluster.md#6-cost-and-lifecycle).
 2. Tuning does not survive a reboot, a deallocate/start cycle or a redeploy, per
    [using these scripts](docs/tune_linux.md#1-using-these-scripts).
+3. The VMs are provisioned without conntrack, so every number here is a ceiling,
+   per
+   [the guest agent's netfilter table](docs/tune_linux_azure.md#4-the-guest-agents-netfilter-table).
 
 ## 3. Layout
 
-Two kinds of script, split by where they run.
+Three kinds of script, split by where they run.
 
 1. `azure/*.cmake` runs on your workstation and drives `az`. CMake rather than
    shell because the workstation's OS varies.
 2. `host/*` and `perf/*` run on a VM, as root, against a Linux kernel. Shell,
    because there is no cross-platform version of writing to `/sys`.
+3. `tools/*` runs on your workstation over what a VM sent back.
 
 The rest of the tree:
 
     cluster.conf     cluster shape and run defaults, all overridable
     build.ninja      convenience wrapper over the cmake actions
     docs/            the documents above
+    .profile/        capture artifacts, gitignored
 
 ## 4. References
 
