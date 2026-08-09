@@ -17,25 +17,21 @@ own kernel counters are read alongside what the generators report.
 
 ## 2. Quickstart
 
+A session starts with `az login`, then `deploy`, `ship`, `tune`, and `run` a point
+or `sweep` a ladder, ending with `destroy`.
+
 Every action has a ninja target, so `ninja <action>` runs one and `ninja help`
-lists them all with the one-line description each script carries. Ninja cannot
-forward variables, so an action that needs an override is invoked as `cmake
--D<name>=<value> -P azure/<action>.cmake`.
+lists them all with the one-line description each script carries.
 
-A session starts with `az login`, then `deploy`, `ship`, `tune`, and `run` a
-point or `sweep` a ladder, ending with `destroy`. The actions, their ninja
-targets and the form that takes overrides are
-[cluster shape](docs/cluster.md#2-cluster-shape).
+    ninja deploy
+    cmake -Dclient_count=2 -P azure/deploy.cmake
 
-Three things that are easy to get wrong:
+Both forms exist because ninja cannot forward variables: `ninja <action>` always
+uses what `cluster.conf` holds, and the `cmake -P` form is the one that takes
+overrides.
 
-1. `destroy` is the normal end of a session, not a rare event, per
-   [cost and lifecycle](docs/cluster.md#6-cost-and-lifecycle).
-2. Tuning does not survive a reboot, a deallocate/start cycle or a redeploy, per
-   [using these scripts](docs/tune_linux.md#1-using-these-scripts).
-3. The VMs are provisioned without conntrack, so every number here is a ceiling,
-   per
-   [the guest agent's netfilter table](docs/tune_linux_azure.md#4-the-guest-agents-netfilter-table).
+`destroy` is the normal end of a session rather than a rare event, per
+[cost and lifecycle](docs/cluster.md#6-cost-and-lifecycle).
 
 ## 3. Layout
 

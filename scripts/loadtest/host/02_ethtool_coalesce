@@ -1,6 +1,6 @@
 #!/bin/sh
 ## NIC interrupt moderation, and the offload flags never written
-## see docs/tune_linux.md, 4.3 Interrupt coalescing
+## see docs/tune_linux.md, Interrupt coalescing
 
 . "$(dirname "$0")/_common.sh"
 require_verb show apply

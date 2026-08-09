@@ -1,8 +1,8 @@
 ## List available targets
 
-# Targets come from build.ninja and descriptions from each action's own '##'
-# header, so neither is restated here. A helper included by the actions carries a
-# plain '#' instead and is therefore not a target.
+# Targets come from build.ninja and descriptions from each action's own '##' header.
+# A helper included by the actions opens with a plain '#', which is what keeps it out
+# of this list.
 
 file(READ "${CMAKE_CURRENT_LIST_DIR}/../build.ninja" text)
 string(REPLACE ";" "\\;" text "${text}")
@@ -12,14 +12,10 @@ set(target "")
 set(entries "")
 set(width 0)
 foreach(line IN LISTS lines)
-	if(line MATCHES "^build ([^ :]+): (action|relay)$")
+	if(line MATCHES "^build ([^ :]+): action$")
 		set(target "${CMAKE_MATCH_1}")
-		set(rule "${CMAKE_MATCH_2}")
 	elseif(target AND line MATCHES "^  name = (.+)$")
 		set(script "${CMAKE_MATCH_1}")
-		if(rule STREQUAL "relay")
-			set(script "${script}-relay")
-		endif()
 		file(STRINGS "${CMAKE_CURRENT_LIST_DIR}/${script}.cmake" header LIMIT_COUNT 1)
 		string(REGEX REPLACE "^## " "" header "${header}")
 		list(APPEND entries "${target}\t${header}")

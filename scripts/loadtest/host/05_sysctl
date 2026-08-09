@@ -1,6 +1,6 @@
 #!/bin/sh
 ## kernel networking stack -- queue and buffer sizes
-## see docs/tune_linux.md, 7 Kernel queues and buffers
+## see docs/tune_linux.md, Kernel queues and buffers
 
 . "$(dirname "$0")/_common.sh"
 require_verb show apply
@@ -89,9 +89,6 @@ if [ "$verb" = apply ]; then
 	require_root
 	echo "$targets" | sysctl --load=- > /dev/null
 
-	# Re-read every one of them. A name the kernel does not have is skipped by
-	# sysctl with a message and a nonzero exit that --load swallows, so the
-	# written value is the only evidence that it took.
 	echo
 	for pair in $targets; do
 		name=${pair%%=*}

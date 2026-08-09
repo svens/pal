@@ -1,7 +1,7 @@
 #!/usr/bin/env bpftrace
 /*
  * ## How deep the pending queues run and how often a drain empties them
- * ## see docs/profile.md, 8 Pending flow
+ * ## see docs/profile.md, Pending flow
  *
  * usage: run from the directory holding the relay binary, since the uprobes name
  * it by relative path:

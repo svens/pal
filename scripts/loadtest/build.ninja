@@ -1,17 +1,12 @@
 ninja_required_version = 1.1
 
-# Standalone on purpose: nothing at repository level references this file, and
-# it references nothing there. Run it from this directory, which is what the
-# action paths below are relative to.
+# Standalone: nothing at repository level references this file, and it references
+# nothing there. Run it from this directory, which the action paths are relative
+# to.
 
 rule action
   command = cmake -P azure/$name.cmake
   description = $name
-  pool = console
-
-rule relay
-  command = cmake -Dhost=$host -P azure/${name}-relay.cmake
-  description = $name $host
   pool = console
 
 build help: action
@@ -47,21 +42,11 @@ build ship: action
 build tune: action
   name = tune
 
-build start-relay-linux: relay
-  name = start
-  host = relay-linux
+build start-relay: action
+  name = start-relay
 
-build start-relay-windows: relay
-  name = start
-  host = relay-windows
-
-build stop-relay-linux: relay
-  name = stop
-  host = relay-linux
-
-build stop-relay-windows: relay
-  name = stop
-  host = relay-windows
+build stop-relay: action
+  name = stop-relay
 
 build run: action
   name = run

@@ -1,6 +1,6 @@
 #!/bin/sh
 ## boot-time CPU isolation -- report only
-## see docs/tune_linux.md, 3.1 CPU isolation
+## see docs/tune_linux.md, CPU isolation
 
 . "$(dirname "$0")/_common.sh"
 require_verb show apply

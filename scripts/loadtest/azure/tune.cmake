@@ -1,10 +1,9 @@
 ## Apply every host tuning stage on the relay, in order
 include("${CMAKE_CURRENT_LIST_DIR}/common.cmake")
 
-# The verb is passed through, so the same action reads the host without changing
-# it: -Dverb=show before -Dverb=apply is the check this suite is built around.
+# -Dverb=show reads the host without changing it.
 default(verb apply)
-default(host relay-linux)
+default(host ${relay_host})
 
 load_manifest()
 host_field(os "${host}" os)

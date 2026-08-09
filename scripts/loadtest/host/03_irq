@@ -1,6 +1,6 @@
 #!/bin/sh
 ## IRQ affinity -- one receive queue's interrupt per CPU
-## see docs/tune_linux.md, 5 Interrupt affinity
+## see docs/tune_linux.md, Interrupt affinity
 
 . "$(dirname "$0")/_common.sh"
 require_verb show apply
@@ -63,8 +63,6 @@ if [ "$verb" = apply ]; then
 			echo "warning: irq $irq rejected mask $mask (managed by the driver?)" >&2
 	done
 
-	# Re-read rather than trust the write: a driver-managed interrupt keeps its
-	# own mapping, and irqbalance rewrites any it is still running to manage.
 	echo
 	for pair in $assignments; do
 		irq=${pair%%=*}

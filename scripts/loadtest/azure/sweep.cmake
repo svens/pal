@@ -4,21 +4,17 @@ include("${CMAKE_CURRENT_LIST_DIR}/harness.cmake")
 # The ramp needs no output parsing: loadtest's exit code is the only contract it
 # offers, and --max-loss / --max-rtt-ms turn it into a pass/fail oracle.
 
-if(runtime LESS_EQUAL 0)
-	message(FATAL_ERROR "runtime must be positive: an unbounded run never returns here")
-endif()
-
 load_manifest()
-relay_pid(pid relay-linux)
+relay_pid(pid ${relay_host})
 if(pid)
 	message(FATAL_ERROR
-		"relay already running on relay-linux as ${pid}, so its state is unknown "
-		"-- a previous sweep may have aborted. Stop it with 'ninja stop-relay-linux'"
+		"relay already running on ${relay_host} as ${pid}, so its state is unknown "
+		"-- a previous sweep may have aborted. Stop it with 'ninja stop-relay'"
 	)
 endif()
 
 if(NOT relay_restart)
-	start_relay(relay-linux relay.log)
+	start_relay(${relay_host} relay.log)
 endif()
 
 set(passed 0)
@@ -27,48 +23,47 @@ set(streams_at ${sweep_start})
 while(streams_at LESS_EQUAL ${sweep_max})
 	message(CHECK_START "sweep: ${streams_at} streams per client")
 	if(relay_restart)
-		start_relay(relay-linux "relay-${streams_at}.log")
+		start_relay(${relay_host} "relay-${streams_at}.log")
 	endif()
 
-	run_once(failures kpps mbps busy faults packet_ns ${streams_at})
+	run_once(step ${streams_at})
 
 	# A relay that died during the step is the result, not a step to restart past.
-	relay_pid(pid relay-linux)
+	relay_pid(pid ${relay_host})
 	if(NOT pid)
 		message(CHECK_FAIL "relay exited")
-		message(FATAL_ERROR "relay died during the ${streams_at} step: see ${remote_dir}/relay-${streams_at}.log on relay-linux")
+		message(FATAL_ERROR "relay died during the ${streams_at} step: see ${remote_dir}/relay-${streams_at}.log on ${relay_host}")
 	endif()
 
 	if(relay_restart)
-		stop_relay(relay-linux)
+		stop_relay(${relay_host})
 	endif()
 
-	if(failures)
+	if(step_failures)
 		message(CHECK_FAIL "thresholds exceeded")
 		set(broke TRUE)
 		break()
 	endif()
 	message(CHECK_PASS "ok")
-	# Kept per step, so that the reported figures belong to the last point that
-	# passed rather than to the one that broke.
+	# Kept per step, so the reported figures belong to the last point that passed
+	# rather than to the one that broke.
 	set(passed ${streams_at})
-	set(passed_kpps ${kpps})
-	set(passed_mbps ${mbps})
-	set(passed_busy "${busy}")
-	set(passed_faults "${faults}")
+	set(passed_kpps ${step_kpps})
+	set(passed_mbps ${step_mbps})
+	set(passed_busy "${step_busy}")
+	set(passed_faults "${step_faults}")
 	math(EXPR streams_at "${streams_at} + ${sweep_step}")
 endwhile()
 
 if(NOT relay_restart)
-	stop_relay(relay-linux)
+	stop_relay(${relay_host})
 endif()
 
 if(passed EQUAL 0)
 	message(FATAL_ERROR "no passing point: ${sweep_start} streams per client already violates the thresholds")
 endif()
 
-list(LENGTH cluster_clients count)
-math(EXPR sessions "${count} * ${passed}")
+client_sessions(sessions ${passed})
 if(broke)
 	message(STATUS "knee: ${passed} streams per client passes and ${streams_at} does not, so ${sessions} sessions is the limit")
 else()

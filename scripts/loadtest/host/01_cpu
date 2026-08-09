@@ -1,6 +1,6 @@
 #!/bin/sh
 ## CPU frequency and idle states -- remove the latency floor
-## see docs/tune_linux.md, 3.2 Clock and idle states
+## see docs/tune_linux.md, Clock and idle states
 
 . "$(dirname "$0")/_common.sh"
 require_verb show apply
@@ -40,8 +40,6 @@ if [ "$verb" = apply ]; then
 				echo "warning: $governor rejected 'performance'" >&2
 		done
 
-		# One line for the set rather than one per CPU: a partial write is what
-		# matters, and naming every CPU would bury it.
 		off=$(grep -Lx performance /sys/devices/system/cpu/cpu*/cpufreq/scaling_governor 2>/dev/null | wc -l | tr -d ' ')
 		if [ "$off" -eq 0 ]; then
 			verify "governor" performance performance

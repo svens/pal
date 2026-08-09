@@ -1,6 +1,6 @@
 #!/bin/sh
 ## NIC receive flow hashing, and the channels it spreads over
-## see docs/tune_linux.md, 4.1 Receive flow hashing
+## see docs/tune_linux.md, Receive flow hashing
 
 . "$(dirname "$0")/_common.sh"
 require_verb show apply

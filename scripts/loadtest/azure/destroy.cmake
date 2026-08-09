@@ -1,9 +1,9 @@
 ## Delete the resource group and everything in it
 include("${CMAKE_CURRENT_LIST_DIR}/common.cmake")
 
-# cmake script mode cannot read a confirmation from the terminal, so it is an
-# argument instead. Naming the group rather than passing a bare yes doubles as
-# the check that az is pointed at the subscription you think it is.
+# cmake script mode cannot read a confirmation from the terminal, so it arrives as
+# an argument. Naming the group doubles as the check that az is pointed at the
+# intended subscription.
 if(NOT DEFINED confirm OR NOT confirm STREQUAL "${resource_group}")
 	message(FATAL_ERROR
 		"refusing to delete without confirmation.\n"

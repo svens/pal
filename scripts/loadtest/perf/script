@@ -1,6 +1,6 @@
 #!/bin/sh
 ## Turn perf-<name>.data into the gzipped text the workstation folds
-## see docs/profile.md, 5 Folding happens on the workstation
+## see docs/profile.md, Folding happens on the workstation
 #
 # usage: script <name>
 
@@ -14,7 +14,7 @@ fi
 
 cd "$(dirname "$0")"
 if [ ! -r "perf-${name}.data" ]; then
-	echo "no perf-${name}.data here: run 'record' first" >&2
+	echo "no perf-${name}.data here: run 'capture' first" >&2
 	exit 1
 fi
 

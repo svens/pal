@@ -1,15 +1,7 @@
 ## Stop the relay
 include("${CMAKE_CURRENT_LIST_DIR}/common.cmake")
 
-if(NOT DEFINED host)
-	message(FATAL_ERROR "no host: run this through 'ninja stop-relay-linux' or 'ninja stop-relay-windows'")
-endif()
-
-load_manifest()
-list(FIND cluster_relays "${host}" index)
-if(index LESS 0)
-	message(FATAL_ERROR "'${host}' is not a relay in this cluster: ${cluster_relays}")
-endif()
+default(host ${relay_host})
 
 relay_pid(pid "${host}")
 if(NOT pid)

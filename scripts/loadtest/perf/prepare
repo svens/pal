@@ -1,6 +1,6 @@
 #!/bin/sh
 ## Let perf observe this machine, and report what it can see here
-## see docs/profile.md, 3 Capture
+## see docs/profile.md, Capture
 #
 # Both sysctls weaken the machine's isolation and suit a loadtest VM only.
 # Neither is persisted: a reboot restores the defaults.

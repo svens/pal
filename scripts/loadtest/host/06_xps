@@ -1,6 +1,6 @@
 #!/bin/sh
 ## Transmit Packet Steering -- one transmit queue per CPU
-## see docs/tune_linux.md, 8 Transmit queue mapping
+## see docs/tune_linux.md, Transmit queue mapping
 
 . "$(dirname "$0")/_common.sh"
 require_verb show apply

@@ -1,12 +1,9 @@
 # Inbound rules for the Windows relay, to be run on the VM before traffic
-# arrives.
+# arrives. The NSG opens these ranges at the network level and this opens them on
+# the host; they are cluster.conf's client_ports and peer_ports.
 #
-# LocalOnlyMapping keeps the mapping per local port for UDP, which is what a
-# relay needs -- without it Windows treats the traffic as a connection and
-# rewrites the mapping per remote peer.
-#
-# The port ranges mirror cluster.conf (client_ports and peer_ports); the NSG
-# opens them at the network level and this opens them on the host.
+# LocalOnlyMapping keeps the mapping per local port for UDP. Without it Windows
+# treats the traffic as a connection and rewrites the mapping per remote peer.
 
 $Rules = @(
 	@{ Name = 'pal_relay_client'; Protocol = 'UDP'; LocalPort = '3478-3479'; LocalOnlyMapping = $True }

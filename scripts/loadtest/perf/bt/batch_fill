@@ -1,13 +1,12 @@
 #!/usr/bin/env bpftrace
 /*
  * ## How full each recvmmsg and sendmmsg batch runs
- * ## see docs/profile.md, 6 Syscalls per packet
+ * ## see docs/profile.md, Syscalls per packet
  *
  * usage: bt/batch_fill [seconds, default 30]
  *
- * The distribution behind the average in docs/profile.md, 6 Syscalls per packet.
- * Stable syscall tracepoints only. The exit field is the count of messages the
- * call returned, or a negative errno.
+ * The distribution behind the average. Stable syscall tracepoints only. The exit
+ * field is the count of messages the call returned, or a negative errno.
  */
 
 BEGIN

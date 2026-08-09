@@ -1,7 +1,7 @@
 #!/usr/bin/env bpftrace
 /*
  * ## How long a datagram waits in the socket queue before userspace takes it
- * ## see docs/profile.md, 7 Queue delay
+ * ## see docs/profile.md, Queue delay
  *
  * usage: bt/queue_delay [seconds, default 30]
  *

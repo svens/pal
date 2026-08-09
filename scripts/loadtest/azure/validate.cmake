@@ -1,11 +1,10 @@
 ## Check that the templates and parameters would deploy
 
-# Placeholders for the two values validation does not look at: the template
-# treats the key as an opaque string and the address as an NSG source, while
-# what is being checked is sizes, counts, ports and resource schemas. Supplying
-# them here keeps validate from generating a keypair and from depending on a
-# third-party address lookup, neither of which a check should need. The
-# parameter set still comes from deploy_args, so the two cannot drift apart.
+# Placeholders for the two values validation does not look at: the template treats
+# the key as an opaque string and the address as an NSG source, and what is checked
+# is sizes, counts, ports and resource schemas. Supplying them here keeps validate
+# from generating a keypair and from depending on a third-party address lookup. The
+# parameter set still comes from deploy_args.
 #
 # TEST-NET-3 (RFC 5737) and a keypair whose private half was discarded.
 set(login_ip 203.0.113.1)

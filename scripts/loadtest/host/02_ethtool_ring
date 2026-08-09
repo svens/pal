@@ -1,6 +1,6 @@
 #!/bin/sh
 ## NIC ring sizes, and the discard counters that judge them
-## see docs/tune_linux.md, 4.2 Ring sizes
+## see docs/tune_linux.md, Ring sizes
 
 . "$(dirname "$0")/_common.sh"
 require_verb show apply

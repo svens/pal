@@ -80,9 +80,8 @@ irq_name()
 }
 
 # Whether an interrupt carries packets, as opposed to the device's own async,
-# command or error notifications. Excluding by role rather than listing the queue
-# spellings of every driver: an unrecognised name is treated as a queue, which is
-# what the caller would have assumed anyway.
+# command or error notifications. Excluded by role, so an unrecognised name counts
+# as a queue.
 irq_is_queue()
 {
 	case $(irq_name "$1") in
@@ -94,7 +93,7 @@ irq_is_queue()
 }
 
 # Driver counters that mean the NIC threw a packet away, as "name value" pairs.
-# Names differ per driver, so match loosely rather than assuming mlx5 spellings.
+# Names differ per driver, so the match is loose.
 nic_discards()
 {
 	ethtool -S "$(get_nic)" 2>/dev/null | awk '
@@ -111,9 +110,9 @@ cpu_mask()
 	printf '%x' $((1 << $1))
 }
 
-# A mask read back from sysfs, which comes zero-padded and comma-grouped, so
-# comparisons are on the significant digits rather than on the text. Empty for a
-# device the kernel keeps no mask for, which is a third outcome and not a zero.
+# A mask read back from sysfs, which comes zero-padded and comma-grouped, reduced to
+# its significant digits. Empty for a device the kernel keeps no mask for, which
+# callers treat as a third outcome alongside match and mismatch.
 mask_value()
 {
 	tr -d ',' < "$1" 2>/dev/null | sed 's/^0*//;s/^$/0/'
@@ -124,14 +123,14 @@ report()
 	printf '%-32s %s\n' "$1" "$2"
 }
 
-# Set by verify() when a write did not take, so a stage can exit nonzero rather
-# than leave the caller to read the output.
+# Set by verify() when a write did not take; verify_exit turns it into a nonzero
+# exit status.
 verify_failed=""
 
 # What a write actually produced, against what it asked for. Every knob here can
-# refuse or ignore a write and still return success, so apply re-reads instead of
-# assuming. An absent knob is a third outcome and not a failure: a guest with no
-# cpufreq is a different machine from one whose governor was rejected.
+# refuse or ignore a write and still return success, so apply re-reads. A knob the
+# machine does not have is a third outcome: a guest with no cpufreq is a different
+# machine from one whose governor was rejected.
 verify()
 {
 	if [ -z "$3" ]; then
