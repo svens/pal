@@ -24,10 +24,16 @@ namespace __event_loop
 namespace
 {
 
+constexpr unsigned drain_batch = 16;
+using mmsg_array = std::array<::mmsghdr, drain_batch>;
+using mmsg_buffers_array = std::array<::iovec, drain_batch>;
+
 struct epoll_loop: impl_type
 {
 	int epoll = -1;
 	int wake = -1;
+	mmsg_array messages{};
+	mmsg_buffers_array buffers{};
 
 	~epoll_loop () noexcept
 	{
@@ -106,11 +112,7 @@ std::error_code epoll_register_socket (impl_type &base, socket_state &state) noe
 	return {};
 }
 
-constexpr unsigned drain_batch = 16;
-using mmsg_array = std::array<::mmsghdr, drain_batch>;
-using mmsg_buffers_array = std::array<::iovec, drain_batch>;
-
-size_t make_mmsg (socket_state::direction &d, mmsg_array &messages, mmsg_buffers_array &buffers, auto name_len) noexcept
+size_t make_mmsg (epoll_loop &self, socket_state::direction &d, auto name_len) noexcept
 {
 	size_t count = 0;
 	for (auto &t: d.pending)
@@ -119,11 +121,9 @@ size_t make_mmsg (socket_state::direction &d, mmsg_array &messages, mmsg_buffers
 		{
 			break;
 		}
-		buffers[count] = {.iov_base = t.span().data(), .iov_len = t.span().size()};
-		messages[count].msg_hdr.msg_name = io(t).endpoint.data();
-		messages[count].msg_hdr.msg_namelen = name_len(t);
-		messages[count].msg_hdr.msg_iov = &buffers[count];
-		messages[count].msg_hdr.msg_iovlen = 1;
+		self.buffers[count] = {.iov_base = t.span().data(), .iov_len = t.span().size()};
+		self.messages[count].msg_hdr.msg_name = io(t).endpoint.data();
+		self.messages[count].msg_hdr.msg_namelen = name_len(t);
 		++count;
 	}
 	return count;
@@ -133,9 +133,8 @@ void epoll_drain_receive (epoll_loop &self, socket_state &state) noexcept
 {
 	auto &d = state.receive;
 
-	mmsg_array messages{};
-	mmsg_buffers_array buffers{};
-	const auto count = make_mmsg(d, messages, buffers, [](task &) { return io_state::endpoint_capacity; });
+	auto &messages = self.messages;
+	const auto count = make_mmsg(self, d, [](task &) { return io_state::endpoint_capacity; });
 
 	int r = 0;
 	do
@@ -176,9 +175,8 @@ void epoll_drain_send (epoll_loop &self, socket_state &state) noexcept
 {
 	auto &d = state.send;
 
-	mmsg_array messages{};
-	mmsg_buffers_array buffers{};
-	const auto count = make_mmsg(d, messages, buffers, [](task &t) { return io(t).endpoint_size; });
+	auto &messages = self.messages;
+	const auto count = make_mmsg(self, d, [](task &t) { return io(t).endpoint_size; });
 
 	int r = 0;
 	do
@@ -276,6 +274,12 @@ result<event_loop> make_loop (const event_loop_config &config) noexcept
 		::close(wake);
 		::close(epoll);
 		return make_unexpected(std::errc::not_enough_memory);
+	}
+
+	for (size_t i = 0; i < drain_batch; ++i)
+	{
+		self->messages[i].msg_hdr.msg_iov = &self->buffers[i];
+		self->messages[i].msg_hdr.msg_iovlen = 1;
 	}
 
 	self->epoll = epoll;

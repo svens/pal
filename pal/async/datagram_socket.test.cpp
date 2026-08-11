@@ -85,6 +85,8 @@ TEMPLATE_TEST_CASE("async/datagram_socket", "", udp_v4, udp_v6)
 	auto peer_endpoint = peer->local_endpoint();
 	REQUIRE(peer_endpoint);
 
+	const auto payload = case_name();
+
 	SECTION("make_handle: curated re-exports")
 	{
 		CHECK(socket_endpoint->port() != port_type::unspecified);
@@ -114,8 +116,6 @@ TEMPLATE_TEST_CASE("async/datagram_socket", "", udp_v4, udp_v6)
 		std::array<std::byte, 64> receive_storage{};
 		task receive_task{receive_storage};
 
-		const auto payload = case_name();
-
 		int received = 0;
 		endpoint source{};
 		bool truncated = true;
@@ -142,8 +142,6 @@ TEMPLATE_TEST_CASE("async/datagram_socket", "", udp_v4, udp_v6)
 	{
 		std::array<std::byte, 64> receive_storage{};
 		task receive_task{receive_storage};
-
-		const auto payload = case_name();
 
 		REQUIRE(peer->send_to(*socket_endpoint, payload));
 		auto n = loop->run_once();
@@ -192,7 +190,7 @@ TEMPLATE_TEST_CASE("async/datagram_socket", "", udp_v4, udp_v6)
 				++canceled;
 			});
 
-			REQUIRE(peer->send_to(*doomed_endpoint, case_name()));
+			REQUIRE(peer->send_to(*doomed_endpoint, payload));
 			run_until(*loop, [&] { return received == 1; });
 
 			CHECK(canceled == 0);
@@ -313,7 +311,6 @@ TEMPLATE_TEST_CASE("async/datagram_socket", "", udp_v4, udp_v6)
 		std::array<std::byte, 64> send_storage{};
 		task send_task{send_storage};
 
-		const auto payload = case_name();
 		std::memcpy(send_storage.data(), payload.data(), payload.size());
 		send_task.span(as_span(send_storage).first(payload.size()));
 
@@ -398,6 +395,72 @@ TEMPLATE_TEST_CASE("async/datagram_socket", "", udp_v4, udp_v6)
 		CHECK(ec == std::errc::message_size);
 	}
 
+	SECTION("send: task reuse after failed op")
+	{
+		std::vector<std::byte> send_storage(70'000);
+		task send_task{send_storage};
+
+		int failed = 0, sent = 0;
+
+		socket->start_send_to(send_task.borrow(), *peer_endpoint, [&](task_ptr &&, send_result &&r) noexcept
+		{
+			REQUIRE_FALSE(r);
+			CHECK(r.error() == std::errc::message_size);
+			++failed;
+		});
+
+		run_until(*loop, [&] { return failed == 1; });
+
+		std::memcpy(send_storage.data(), payload.data(), payload.size());
+		send_task.span(as_span(send_storage).first(payload.size()));
+
+		socket->start_send_to(send_task.borrow(), *peer_endpoint, [&](task_ptr &&, send_result &&r) noexcept
+		{
+			REQUIRE(r);
+			++sent;
+		});
+
+		run_until(*loop, [&] { return sent == 1; });
+
+		endpoint source{};
+		std::array<char, 64> wire{};
+		auto n = peer->receive_from(source, wire);
+		REQUIRE(n);
+		REQUIRE(*n == payload.size());
+		CHECK(std::memcmp(wire.data(), payload.data(), payload.size()) == 0);
+	}
+
+	SECTION("send: reply to receive source")
+	{
+		std::array<std::byte, 64> storage{};
+		task echo_task{storage};
+
+		int received = 0, replied = 0;
+
+		socket->start_receive_from(echo_task.borrow(), [&](task_ptr &&p, receive_result &&r) noexcept
+		{
+			REQUIRE(r);
+			CHECK(r->endpoint == *peer_endpoint);
+			++received;
+			socket->start_reply(std::move(p), [&](task_ptr &&, send_result &&s) noexcept
+			{
+				REQUIRE(s);
+				++replied;
+			});
+		});
+
+		REQUIRE(peer->send_to(*socket_endpoint, payload));
+		run_until(*loop, [&] { return received == 1 && replied == 1; });
+
+		endpoint source{};
+		std::array<char, 64> wire{};
+		auto n = peer->receive_from(source, wire);
+		REQUIRE(n);
+		REQUIRE(*n == payload.size());
+		CHECK(std::memcmp(wire.data(), payload.data(), payload.size()) == 0);
+		CHECK(source == *socket_endpoint);
+	}
+
 	SECTION("both-async: send and receive drains share one loop")
 	{
 		static constexpr size_t count = 32;
@@ -460,7 +523,6 @@ TEMPLATE_TEST_CASE("async/datagram_socket", "", udp_v4, udp_v6)
 			});
 		}
 
-		// synthesized completion is delivered from run(), io_uring close-parity
 		CHECK(canceled == 0);
 		CHECK(loop->stats().io_in_flight == 1);
 		auto n = loop->run_once();
@@ -477,9 +539,7 @@ TEMPLATE_TEST_CASE("async/datagram_socket", "", udp_v4, udp_v6)
 		task trigger_task{trigger_storage}, destroyer_task{destroyer_storage}, send_task{send_storage};
 		send_task.span(as_span(send_storage).first(1));
 
-		auto doomed = make_async_socket<TestType>(*loop);
-		REQUIRE(doomed);
-		std::optional<async_socket> b{std::move(*doomed)};
+		std::optional<async_socket> doomed{make_async_socket<TestType>(*loop).value()};
 
 		auto n = loop->run_once();
 		REQUIRE(n);
@@ -490,7 +550,7 @@ TEMPLATE_TEST_CASE("async/datagram_socket", "", udp_v4, udp_v6)
 		socket->start_receive_from(trigger_task.borrow(), [&](task_ptr &&, receive_result &&r) noexcept
 		{
 			REQUIRE(r);
-			b->start_send_to(send_task.borrow(), *peer_endpoint, [&](task_ptr &&, send_result &&s) noexcept
+			doomed->start_send_to(send_task.borrow(), *peer_endpoint, [&](task_ptr &&, send_result &&s) noexcept
 			{
 				REQUIRE_FALSE(s);
 				CHECK(s.error() == std::errc::operation_canceled);
@@ -501,7 +561,7 @@ TEMPLATE_TEST_CASE("async/datagram_socket", "", udp_v4, udp_v6)
 		socket->start_receive_from(destroyer_task.borrow(), [&](task_ptr &&, receive_result &&r) noexcept
 		{
 			REQUIRE(r);
-			b.reset();
+			doomed.reset();
 			++received;
 		});
 
@@ -509,6 +569,78 @@ TEMPLATE_TEST_CASE("async/datagram_socket", "", udp_v4, udp_v6)
 		REQUIRE(peer->send_to(*socket_endpoint, std::string_view{"y"}));
 		run_until(*loop, [&] { return received == 2 && canceled == 1; });
 
+		CHECK(loop->stats().io_in_flight == 0);
+	}
+
+	SECTION("cancel: destruction overtakes a completed receive")
+	{
+		std::array<std::byte, 64> first_storage{}, second_storage{};
+		task first_task{first_storage}, second_task{second_storage};
+
+		int received = 0, canceled = 0;
+		std::error_code ec{};
+
+		std::optional<async_socket> doomed{make_async_socket<TestType>(*loop).value()};
+		auto doomed_endpoint = doomed->local_endpoint();
+		REQUIRE(doomed_endpoint);
+
+		doomed->start_receive_from(first_task.borrow(), [&](task_ptr &&, receive_result &&r) noexcept
+		{
+			REQUIRE(r);
+			doomed.reset();
+			++received;
+		});
+		doomed->start_receive_from(second_task.borrow(), [&](task_ptr &&, receive_result &&r) noexcept
+		{
+			REQUIRE_FALSE(r);
+			ec = r.error();
+			++canceled;
+		});
+
+		REQUIRE(peer->send_to(*doomed_endpoint, payload));
+		REQUIRE(peer->send_to(*doomed_endpoint, payload));
+		run_until(*loop, [&] { return received == 1 && canceled == 1; });
+
+		CHECK(ec == std::errc::operation_canceled);
+		CHECK(loop->stats().io_in_flight == 0);
+	}
+
+	SECTION("cancel: destruction leaves other sockets' completions intact")
+	{
+		std::array<std::byte, 64> destroyer_storage{}, doomed_storage{}, live_storage{};
+		task destroyer_task{destroyer_storage}, doomed_task{doomed_storage}, live_task{live_storage};
+
+		int received = 0, canceled = 0;
+
+		std::optional<async_socket> doomed{make_async_socket<TestType>(*loop).value()};
+		auto doomed_endpoint = doomed->local_endpoint();
+		REQUIRE(doomed_endpoint);
+
+		doomed->start_receive_from(destroyer_task.borrow(), [&](task_ptr &&, receive_result &&r) noexcept
+		{
+			REQUIRE(r);
+			doomed.reset();
+			++received;
+		});
+		doomed->start_receive_from(doomed_task.borrow(), [&](task_ptr &&, receive_result &&r) noexcept
+		{
+			REQUIRE_FALSE(r);
+			CHECK(r.error() == std::errc::operation_canceled);
+			++canceled;
+		});
+		socket->start_receive_from(live_task.borrow(), [&](task_ptr &&, receive_result &&r) noexcept
+		{
+			REQUIRE(r);
+			++received;
+		});
+
+		REQUIRE(peer->send_to(*doomed_endpoint, payload));
+		REQUIRE(peer->send_to(*doomed_endpoint, payload));
+		REQUIRE(peer->send_to(*socket_endpoint, payload));
+		run_until(*loop, [&] { return received == 2 && canceled == 1; });
+
+		REQUIRE(live_task.span().size() == payload.size());
+		CHECK(std::memcmp(live_task.span().data(), payload.data(), payload.size()) == 0);
 		CHECK(loop->stats().io_in_flight == 0);
 	}
 
@@ -531,7 +663,7 @@ TEMPLATE_TEST_CASE("async/datagram_socket", "", udp_v4, udp_v6)
 			std::ignore = p; // dropping recycles back into the pool
 		});
 
-		REQUIRE(peer->send_to(*socket_endpoint, case_name()));
+		REQUIRE(peer->send_to(*socket_endpoint, payload));
 		run_until(*loop, [&] { return received == 1; });
 
 		// LIFO freelist: the recycled task comes back first, window reset to the slot's full buffer

@@ -139,6 +139,27 @@ TEST_CASE("async/resolver")
 		CHECK(loopback);
 	}
 
+	SECTION("start_resolve: excess results dropped at payload capacity")
+	{
+		t.span(t.span().first(sizeof(endpoint) / 2));
+
+		size_t count = SIZE_MAX;
+		bool had_value = false;
+
+		h->start_resolve(t.borrow(), "127.0.0.1", "7", numeric, [&](task_ptr &&, resolve_result &&r) noexcept
+		{
+			had_value = r.has_value();
+			if (r)
+			{
+				count = r->endpoints.size();
+			}
+		});
+
+		run_until_idle(*loop);
+		CHECK(had_value);
+		CHECK(count == 0);
+	}
+
 	SECTION("start_resolve: host not found")
 	{
 		std::error_code ec{};

@@ -11,6 +11,8 @@ namespace __event_loop
 namespace
 {
 
+constexpr size_t max_rounds_per_poll = 4;
+
 // Armed timer's op state: https://en.wikipedia.org/wiki/Pairing_heap node. No decrease-key/removal: there
 // is no cancellation, deadline moves use the lazy re-arm idiom.
 struct timer_state
@@ -131,8 +133,6 @@ size_t impl_type::dispatch_ready () noexcept
 
 size_t impl_type::iterate (clock::duration timeout) noexcept
 {
-	now_ = now_fn(*this);
-
 	auto n = drain_inbox();
 	if (n > 0 || !ready_.empty() || !actionable_.empty())
 	{
@@ -140,6 +140,7 @@ size_t impl_type::iterate (clock::duration timeout) noexcept
 	}
 	else if (timer_root_ != nullptr)
 	{
+		now_ = now_fn(*this);
 		const auto &deadline = timer(*timer_root_).deadline;
 		timeout = std::min(timeout, deadline > now_ ? deadline - now_ : clock::duration::zero());
 	}
@@ -151,9 +152,16 @@ size_t impl_type::iterate (clock::duration timeout) noexcept
 	n += drain_inbox();
 	n += expire_timers();
 
-	// dispatch first: handler-issued ops drain same iteration
-	n += dispatch_ready();
-	drain_actionable();
+	for (auto round = max_rounds_per_poll; round != 0; --round)
+	{
+		drain_actionable();
+		const auto dispatched = dispatch_ready();
+		if (dispatched == 0)
+		{
+			break;
+		}
+		n += dispatched;
+	}
 
 	stats_.completions += n;
 	return n;
@@ -185,6 +193,7 @@ void start_timer (impl_type &l, task_ptr &&t, impl_type::clock::time_point deadl
 void start_socket_op (task_ptr &&t, socket_state &s, socket_state::direction &d) noexcept
 {
 	++s.loop->stats_.io_in_flight;
+	io(*t).owner = &s;
 	d.pending.push(*t.release());
 	if (d.ready && !s.queued)
 	{
@@ -205,12 +214,14 @@ void on_socket_event (socket_state &s, socket_state::direction &d) noexcept
 
 void socket_state_deleter::operator() (socket_state *s) const noexcept
 {
-	for (auto *d: {&s->receive, &s->send})
+	s->loop->ready_.splice(std::move(s->receive.pending));
+	s->loop->ready_.splice(std::move(s->send.pending));
+
+	for (auto &t: s->loop->ready_)
 	{
-		while (auto *t = d->pending.try_pop())
+		if (io(t).owner == s)
 		{
-			io(*t).ec = std::make_error_code(std::errc::operation_canceled);
-			s->loop->ready_.push(*t);
+			io(t).ec = std::make_error_code(std::errc::operation_canceled);
 		}
 	}
 

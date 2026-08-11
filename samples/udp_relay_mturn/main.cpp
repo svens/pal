@@ -42,6 +42,9 @@ using async_socket = pal::async::handle<sync_socket>;
 using receive_result = pal::result<async_socket::receive_from_result>;
 using send_result = pal::result<async_socket::send_to_result>;
 
+// NOLINTBEGIN(bugprone-exception-escape): OOM, terminating is fine
+// NOLINTBEGIN(bugprone-unchecked-optional-access): canceled-before-dispatch keeps empty access unreachable
+
 namespace
 {
 
@@ -266,7 +269,6 @@ private:
 
 	auto on_client_receive () noexcept
 	{
-		// NOLINTNEXTLINE(bugprone-exception-escape): OOM, terminating is fine
 		return [this](pal::async::task_ptr &&p, receive_result &&r) noexcept
 		{
 			if (!r)
@@ -292,10 +294,7 @@ private:
 				std::memcpy(p->span().data(), &response, sizeof(response));
 				p->span(p->span().first(sizeof(response)));
 
-				if (client_)
-				{
-					client_->start_send_to(std::move(p), r->endpoint, on_allocation_sent());
-				}
+				client_->start_reply(std::move(p), on_allocation_sent());
 				return;
 			}
 
@@ -305,10 +304,7 @@ private:
 
 	void start_client_receive (pal::async::task_ptr &&t) noexcept
 	{
-		if (client_)
-		{
-			client_->start_receive_from(std::move(t), on_client_receive());
-		}
+		client_->start_receive_from(std::move(t), on_client_receive());
 	}
 
 	void rearm_peer (pal::async::task_ptr &&p) noexcept
@@ -335,7 +331,6 @@ private:
 
 	auto on_peer_receive () noexcept
 	{
-		// NOLINTNEXTLINE(bugprone-exception-escape): OOM, terminating is fine
 		return [this](pal::async::task_ptr &&p, receive_result &&r) noexcept
 		{
 			if (!r)
@@ -353,10 +348,7 @@ private:
 			{
 				if (const auto *client = clients_.load(relay::session(p->span())))
 				{
-					if (client_)
-					{
-						client_->start_send_to(std::move(p), *client, on_forward_sent());
-					}
+					client_->start_send_to(std::move(p), *client, on_forward_sent());
 					return;
 				}
 			}
@@ -367,10 +359,7 @@ private:
 
 	void start_peer_receive (pal::async::task_ptr &&t) noexcept
 	{
-		if (peer_)
-		{
-			peer_->start_receive_from(std::move(t), on_peer_receive());
-		}
+		peer_->start_receive_from(std::move(t), on_peer_receive());
 	}
 
 	static sync_socket make_socket (pal::net::ip::port_type port)
@@ -492,7 +481,6 @@ void run (const ::config &config)
 
 } // namespace
 
-// NOLINTNEXTLINE(bugprone-exception-escape): OOM, terminating is fine
 int main (int argc, const char *argv[])
 {
 	std::setvbuf(stdout, nullptr, _IOLBF, 0);
@@ -507,3 +495,6 @@ int main (int argc, const char *argv[])
 		return EXIT_FAILURE;
 	}
 }
+
+// NOLINTEND(bugprone-unchecked-optional-access)
+// NOLINTEND(bugprone-exception-escape)

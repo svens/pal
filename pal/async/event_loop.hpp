@@ -53,7 +53,7 @@ struct event_loop_stats
 	/// yet dispatched: parked in a resource's pending queues awaiting readiness, or awaiting dispatch
 	/// from the ready queue. A completing op is excluded before its handler runs, so a handler observing zero is
 	/// the operation that drained the loop. Before teardown, quiesce like \ref offload_in_flight: destroy the
-	/// handles (cancelling their parked ops), then run the loop until this reaches zero.
+	/// handles (cancelling their undispatched ops), then run the loop until this reaches zero.
 	uint64_t io_in_flight = 0;
 };
 
@@ -61,6 +61,7 @@ namespace __event_loop
 {
 
 struct impl_type;
+struct socket_state;
 
 struct io_state
 {
@@ -72,6 +73,7 @@ struct io_state
 	std::error_code ec;
 	size_t bytes;
 	bool truncated;
+	socket_state *owner;
 };
 
 [[nodiscard]] inline io_state &io (task &t) noexcept
@@ -193,9 +195,9 @@ public:
 	event_loop &operator= (event_loop &&) noexcept = default;
 	~event_loop () noexcept = default;
 
-	/// Monotonic time cached per run() iteration, so per-operation reads avoid a clock syscall. The backend owns
-	/// the time source; the loop guarantees monotonic, cached time only, never correspondence to wall-clock
-	/// progress.
+	/// Monotonic time cached per run() iteration, updated after each poll, so per-operation reads avoid a
+	/// clock syscall. The backend owns the time source; the loop guarantees monotonic, cached time only, never
+	/// correspondence to wall-clock progress.
 	[[nodiscard]] const clock::time_point &now () const noexcept
 	{
 		return impl_->now_;

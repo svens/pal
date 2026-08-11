@@ -10,9 +10,9 @@
 #include <pal/net/socket_option.hpp>
 #include <pal/require.hpp>
 #include <pal/result.hpp>
-#include <algorithm>
 #include <cstdint>
 #include <cstring>
+#include <memory>
 #include <new>
 #include <utility>
 
@@ -24,8 +24,9 @@ namespace pal::async
 template <typename Protocol>
 struct receive_from_result
 {
-	/// Datagram source
-	Protocol::endpoint endpoint;
+	/// Datagram source, referencing storage inside the task: valid until the task's next
+	/// \c start_*, copy to retain
+	const Protocol::endpoint &endpoint;
 
 	/// True if the datagram was larger than the payload window and cut to it
 	bool truncated;
@@ -57,12 +58,21 @@ struct op_receive_from
 			f(std::move(p), unexpected{op.ec});
 			return;
 		}
-		result_type r{.endpoint = {}, .truncated = op.truncated};
-		std::memcpy(
-			r.endpoint.data(), op.endpoint.data(), std::min<size_t>(op.endpoint_size, r.endpoint.capacity())
-		);
 		t.span(t.span().first(op.bytes));
-		f(std::move(p), std::move(r));
+		f(std::move(p), result_type{.endpoint = source(op), .truncated = op.truncated});
+	}
+
+	static const Protocol::endpoint &source (__event_loop::io_state &op) noexcept
+	{
+		#ifdef __cpp_lib_start_lifetime_as
+		{
+			return *std::start_lifetime_as<typename Protocol::endpoint>(op.endpoint.data());
+		}
+		#else
+		{
+			return *reinterpret_cast<const typename Protocol::endpoint *>(op.endpoint.data());
+		}
+		#endif
 	}
 };
 
@@ -95,8 +105,9 @@ struct op_send_to
 /// pal/net API; make_handle switches it to non-blocking and registers it with the loop's poller.
 ///
 /// Contracts: \c start_* and destruction are loop-thread-only (violations are undefined behavior, not checked).
-/// Destruction with ops in flight synthesizes \c operation_canceled completions, delivered from a subsequent run() --
-/// run the loop until they have been dispatched before destroying it.
+/// Destruction cancels every op of this socket not yet dispatched as \c operation_canceled completions, delivered from
+/// a subsequent run(); run the loop until they have been dispatched before destroying it. A completion other than \c
+/// operation_canceled proves the socket was alive at dispatch, so handlers start ops on it without a liveness check.
 template <typename Protocol>
 class handle<net::basic_datagram_socket<Protocol>>
 {
@@ -121,7 +132,7 @@ public:
 		requires __async::handler<H, void(task_ptr &&, result<receive_from_result> &&) noexcept>
 	{
 		pal_require(!t->span().empty(), "start_receive_from without task payload storage");
-		__event_loop::io(*t) = {};
+		__event_loop::io(*t).ec = {};
 		t->bind<__datagram_socket::op_receive_from<Protocol>>(std::move(handler));
 		__event_loop::start_socket_op(std::move(t), *state_, state_->receive);
 	}
@@ -137,9 +148,24 @@ public:
 		requires __async::handler<H, void(task_ptr &&, result<send_to_result> &&) noexcept>
 	{
 		auto &op = __event_loop::io(*t);
-		op = {};
+		op.ec = {};
 		std::memcpy(op.endpoint.data(), recipient.data(), recipient.size());
 		op.endpoint_size = static_cast<uint32_t>(recipient.size());
+		t->bind<__datagram_socket::op_send_to<Protocol>>(std::move(handler));
+		__event_loop::start_socket_op(std::move(t), *state_, state_->send);
+	}
+
+	/// Queue an asynchronous send_to of \a t's payload window (\ref task::span) back to the source of \a t's
+	/// most recent completed receive, still held in the task's op state: \a t must arrive here from a
+	/// \c start_receive_from completion, with no other operation on it in between. Otherwise behaves like
+	/// \ref start_send_to.
+	template <typename H>
+	void start_reply (task_ptr &&t, H handler) noexcept
+		requires __async::handler<H, void(task_ptr &&, result<send_to_result> &&) noexcept>
+	{
+		auto &op = __event_loop::io(*t);
+		pal_require(op.endpoint_size != 0, "start_reply without a completed receive");
+		op.ec = {};
 		t->bind<__datagram_socket::op_send_to<Protocol>>(std::move(handler));
 		__event_loop::start_socket_op(std::move(t), *state_, state_->send);
 	}
