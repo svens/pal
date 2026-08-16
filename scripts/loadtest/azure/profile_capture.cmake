@@ -102,7 +102,8 @@ endmacro()
 
 macro(profile_capture passes) #{{{1
 	# Requires profile_preflight. Leaves ${passes} captures under profile_dir, each
-	# as a folded file, a markdown budget and its tab-separated sibling.
+	# as a folded file, a markdown budget, its tab-separated sibling and the relay's
+	# own log.
 	message(STATUS "profiling ${stamp}: ${relay_arg_text}")
 
 	foreach(pass RANGE 1 ${passes})
@@ -125,10 +126,11 @@ macro(profile_capture passes) #{{{1
 		endif()
 
 		remote_run(${relay_host} "${remote_dir}/perf/script ${label}")
+		stop_relay(${relay_host})
+
 		remote_fetch(${relay_host} "${remote_dir}/perf/perf-${label}.txt.gz" "${profile_dir}/${label}.txt.gz")
 		remote_fetch(${relay_host} "${remote_dir}/perf/perf-${label}.syscalls" "${profile_dir}/${label}.syscalls")
-
-		stop_relay(${relay_host})
+		remote_fetch(${relay_host} "${remote_dir}/relay-profile-${pass}.log" "${profile_dir}/${label}.relay.log")
 
 		set(packet_ns_${pass} "${capture_packet_ns}")
 		message(CHECK_PASS "${capture_kpps} Kpps, ${capture_busy}% busy, ${capture_packet_ns} ns/packet")

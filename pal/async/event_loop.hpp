@@ -21,18 +21,22 @@ class thread_pool;
 template <typename T>
 class handle;
 
-/// Backend sizing knobs: buffer-pool capacity and submission/completion ring depths.
-/// Capacities only -- no steering or scheduling policy.
+/// Backend tuning knobs. Nothing here selects which resource runs next.
 struct event_loop_config
 {
-	static constexpr size_t default_buffer_count = 8192;
-	size_t buffer_count = default_buffer_count;
-
-	static constexpr uint16_t default_buffer_size = 2000;
-	uint16_t buffer_size = default_buffer_size;
-
+	size_t buffer_count = 8192;
+	uint16_t buffer_size = 2000;
 	size_t submission_depth = 0;
 	size_t completion_depth = 0;
+
+	/// Maximum readiness events harvested per backend poll. Must be in [1, \ref max_poll_batch].
+	static constexpr size_t max_poll_batch = 1024;
+	size_t poll_batch = 64;
+
+	/// Maximum operations completed per socket direction per drain visit: the loop's fairness quantum.
+	/// Must be in [1, \ref max_drain_batch].
+	static constexpr size_t max_drain_batch = 256;
+	size_t drain_batch = 64;
 };
 
 /// Per-loop observability counters. Only the loop thread mutates them.
@@ -59,6 +63,15 @@ struct event_loop_stats
 
 namespace __event_loop
 {
+
+[[nodiscard]] constexpr bool is_valid (const event_loop_config &config) noexcept
+{
+	return config.poll_batch >= 1
+		&& config.poll_batch <= event_loop_config::max_poll_batch
+		&& config.drain_batch >= 1
+		&& config.drain_batch <= event_loop_config::max_drain_batch
+	;
+}
 
 struct impl_type;
 struct socket_state;
@@ -279,7 +292,8 @@ private:
 };
 
 /// Create an event loop with the default backend for this platform, or an error if the platform has no
-/// backend or a resource limit is hit.
+/// backend or a resource limit is hit. Returns std::errc::invalid_argument when \a config carries an
+/// out-of-range batch bound.
 result<event_loop> make_loop (const event_loop_config &config = {}) noexcept;
 
 } // namespace pal::async

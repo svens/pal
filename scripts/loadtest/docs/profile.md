@@ -151,6 +151,11 @@ Artifacts land in `.profile/` under the stamp
 
     difffolded.pl before.folded after.folded | flamegraph.pl > diff.svg
 
+Each capture's relay log travels with it as `<label>.relay.log`, holding the
+configuration the relay printed at startup. What a run varied beyond what
+[the stamp](#4-comparing-captures) names -- batch bounds, handler cost -- is
+read from there.
+
 ## 6. Syscalls per packet
 
 `UdpInDatagrams` divided by the `recvmmsg` count is datagrams per receive syscall. `pal`

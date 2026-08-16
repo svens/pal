@@ -23,9 +23,12 @@ namespace __event_loop
 namespace
 {
 
+using poll_array = std::array<struct ::kevent, event_loop_config::max_poll_batch>;
+
 struct kqueue_loop: impl_type
 {
 	int kq = -1;
+	poll_array events{};
 
 	~kqueue_loop () noexcept
 	{
@@ -46,9 +49,6 @@ constexpr ::timespec to_timespec (impl_type::clock::duration d) noexcept
 	};
 }
 
-constexpr size_t poll_batch = 64;
-constexpr size_t drain_batch = 16;
-
 void kqueue_poll (impl_type &base, impl_type::clock::duration timeout) noexcept
 {
 	auto &self = static_cast<kqueue_loop &>(base);
@@ -61,16 +61,22 @@ void kqueue_poll (impl_type &base, impl_type::clock::duration timeout) noexcept
 		tsp = &ts;
 	}
 
-	std::array<struct ::kevent, poll_batch> events{};
 	int r = 0;
 	do
 	{
-		r = ::kevent(self.kq, nullptr, 0, events.data(), static_cast<int>(events.size()), tsp);
+		r = ::kevent(
+			self.kq,
+			nullptr,
+			0,
+			self.events.data(),
+			static_cast<int>(self.config_.poll_batch),
+			tsp
+		);
 	} while (r < 0 && errno == EINTR);
 
 	for (int i = 0; i < r; ++i)
 	{
-		const auto &event = events[i];
+		const auto &event = self.events[i];
 		if (event.filter == EVFILT_USER)
 		{
 			on_wake(self);
@@ -104,7 +110,7 @@ std::error_code kqueue_register_socket (impl_type &base, socket_state &state) no
 void kqueue_drain_receive (kqueue_loop &self, socket_state &state) noexcept
 {
 	auto &d = state.receive;
-	for (size_t i = 0; i < drain_batch && d.actionable(); ++i)
+	for (size_t i = 0; i < self.config_.drain_batch && d.actionable(); ++i)
 	{
 		auto &t = *d.pending.head();
 		auto &op = io(t);
@@ -144,7 +150,7 @@ void kqueue_drain_receive (kqueue_loop &self, socket_state &state) noexcept
 void kqueue_drain_send (kqueue_loop &self, socket_state &state) noexcept
 {
 	auto &d = state.send;
-	for (size_t i = 0; i < drain_batch && d.actionable(); ++i)
+	for (size_t i = 0; i < self.config_.drain_batch && d.actionable(); ++i)
 	{
 		auto &t = *d.pending.head();
 		auto &op = io(t);
@@ -217,6 +223,11 @@ void kqueue_destroy (impl_type *base) noexcept
 result<event_loop> make_loop (const event_loop_config &config) noexcept
 {
 	using namespace __event_loop;
+
+	if (!is_valid(config))
+	{
+		return make_unexpected(std::errc::invalid_argument);
+	}
 
 	const int kq = ::kqueue();
 	if (kq == -1)

@@ -206,8 +206,7 @@ TEMPLATE_TEST_CASE("async/datagram_socket", "", udp_v4, udp_v6)
 
 	SECTION("receive: batched: more datagrams than one drain quantum")
 	{
-		// exceeds the backend drain batch (16), so the direction spans multiple quanta/batches
-		static constexpr size_t count = 32;
+		static constexpr size_t count = 2 * event_loop_config{}.drain_batch;
 
 		std::array<std::array<std::byte, 8>, count> receive_storage{};
 		std::array<task, count> receive_tasks;
@@ -234,6 +233,56 @@ TEMPLATE_TEST_CASE("async/datagram_socket", "", udp_v4, udp_v6)
 		}
 
 		run_until(*loop, [&] { return received == count; });
+
+		for (size_t i = 0; i < count; ++i)
+		{
+			CHECK(seen[i]);
+		}
+	}
+
+	SECTION("receive: non-default batch bounds")
+	{
+		static constexpr size_t drain_batch = 2;
+
+		event_loop_config config{};
+		config.poll_batch = 1;
+		config.drain_batch = drain_batch;
+
+		auto tuned = make_loop(config);
+		REQUIRE(tuned);
+
+		auto tuned_socket = make_async_socket<TestType>(*tuned);
+		REQUIRE(tuned_socket);
+		auto tuned_endpoint = tuned_socket->local_endpoint();
+		REQUIRE(tuned_endpoint);
+
+		static constexpr size_t count = 4 * drain_batch;
+
+		std::array<std::array<std::byte, 8>, count> receive_storage{};
+		std::array<task, count> receive_tasks;
+
+		size_t received = 0;
+		std::array<bool, count> seen{};
+
+		for (size_t i = 0; i < count; ++i)
+		{
+			receive_tasks[i].span(as_span(receive_storage[i]));
+			tuned_socket->start_receive_from(receive_tasks[i].borrow(), [&](task_ptr &&p, receive_result &&r) noexcept
+			{
+				REQUIRE(r);
+				REQUIRE(p->span().size() == 1);
+				seen[std::to_integer<size_t>(p->span()[0])] = true;
+				++received;
+			});
+		}
+
+		for (size_t i = 0; i < count; ++i)
+		{
+			const char value = static_cast<char>(i);
+			REQUIRE(peer->send_to(*tuned_endpoint, std::string_view{&value, 1}));
+		}
+
+		run_until(*tuned, [&] { return received == count; });
 
 		for (size_t i = 0; i < count; ++i)
 		{
@@ -337,7 +386,7 @@ TEMPLATE_TEST_CASE("async/datagram_socket", "", udp_v4, udp_v6)
 
 	SECTION("send: batched: more datagrams than one drain quantum")
 	{
-		static constexpr size_t count = 32;
+		static constexpr size_t count = 2 * event_loop_config{}.drain_batch;
 
 		std::array<std::array<std::byte, 8>, count> send_storage{};
 		std::array<task, count> send_tasks;

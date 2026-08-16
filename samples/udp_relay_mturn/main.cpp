@@ -68,6 +68,10 @@ struct config
 
 	size_t threads = std::thread::hardware_concurrency();
 
+	pal::async::event_loop_config loop{};
+
+	nanoseconds handler_spin{};
+
 	struct
 	{
 		pal::net::ip::port_type port = pal::net::ip::port_type::stun;
@@ -94,6 +98,18 @@ struct config
 			{
 				threads = parse<size_t>(option, argument);
 			}
+			else if (option == "drain_batch")
+			{
+				loop.drain_batch = parse<size_t>(option, argument);
+			}
+			else if (option == "poll_batch")
+			{
+				loop.poll_batch = parse<size_t>(option, argument);
+			}
+			else if (option == "handler_spin_ns")
+			{
+				handler_spin = nanoseconds{parse<nanoseconds::rep>(option, argument)};
+			}
 			else
 			{
 				throw std::runtime_error(std::format("invalid option '{}'", option));
@@ -112,8 +128,23 @@ struct config
 		std::println(" > client.port={}", client.port);
 		std::println(" > peer.port={}", peer.port);
 		std::println(" > threads={}", threads);
+		std::println(" > poll_batch={}", loop.poll_batch);
+		std::println(" > drain_batch={}", loop.drain_batch);
+		std::println(" > handler_spin_ns={}", handler_spin.count());
 	}
 };
+
+void spin (nanoseconds duration) noexcept
+{
+	if (duration <= nanoseconds::zero())
+	{
+		return;
+	}
+	const auto deadline = steady_clock::now() + duration;
+	while (steady_clock::now() < deadline)
+	{
+	}
+}
 
 class client_map
 {
@@ -169,7 +200,7 @@ public:
 
 	explicit listener (const ::config &config)
 		: config_{config}
-		, loop_{pal::async::make_loop().value()}
+		, loop_{make_event_loop(config.loop)}
 		, client_{loop_.make_handle(make_socket(config.client.port)).value()}
 		, peer_{loop_.make_handle(make_socket(config.peer.port)).value()}
 	{
@@ -280,6 +311,7 @@ private:
 				return;
 			}
 
+			spin(config_.handler_spin);
 			metrics_.in.inc(p->span().size());
 
 			if (p->span().size() == sizeof(relay::registration))
@@ -342,6 +374,7 @@ private:
 				return;
 			}
 
+			spin(config_.handler_spin);
 			metrics_.in.inc(p->span().size());
 
 			if (p->span().size() >= sizeof(relay::header))
@@ -360,6 +393,16 @@ private:
 	void start_peer_receive (pal::async::task_ptr &&t) noexcept
 	{
 		peer_->start_receive_from(std::move(t), on_peer_receive());
+	}
+
+	static pal::async::event_loop make_event_loop (const pal::async::event_loop_config &config)
+	{
+		auto loop = pal::async::make_loop(config);
+		if (loop)
+		{
+			return std::move(*loop);
+		}
+		throw std::runtime_error(std::format("event_loop: {}", loop.error().message()));
 	}
 
 	static sync_socket make_socket (pal::net::ip::port_type port)

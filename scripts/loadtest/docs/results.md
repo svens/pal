@@ -90,11 +90,85 @@ thread at 4600 sessions on `Standard_F4s_v2`. The capture and the stage patterns
     Measured: a packet cost 3255 ns. The relay sample held 2.0% and pal's event
     loop 3.8%, against 43.0% softirq receive and 37.4% send path.
 
-    Measured: one recvmmsg per 14.1 datagrams and one sendmmsg per 15.4,
-    against the 16 slots drain_batch offers. Syscall entry and exit came to
-    1.2% of machine busy, 38 ns of the 3255.
+    Measured: one recvmmsg per 14.1 datagrams and one sendmmsg per 15.4, at a
+    drain_batch of 16. Syscall entry and exit came to 1.2% of machine busy,
+    38 ns of the 3255.
 
-## 5. Open
+## 5. Batch bounds
+
+`event_loop_config` bounds one drain visit with `drain_batch` and one poll
+harvest with `poll_batch`. Everything below is
+[the standard point](profile.md#2-the-standard-point) with a synthetic per-packet
+handler cost, `udp_relay_mturn --handler_spin_ns`.
+
+### 5.1 What drain_batch is worth
+
+| drain_batch | ns/packet | syscall entry and exit ns | datagrams/recvmmsg | datagrams/sendmmsg |
+|---|---|---|---|---|
+| 16 | 3043 | 31.5 | 14.1 | 15.4 |
+| 32 | 3062 | 33.4 | 24.6 | 29.2 |
+| 64 | 3132 | 20.9 | 39.2 | 53.0 |
+| 128 | 2971 | 18.7 | 53.7 | 84.2 |
+| 256 | 3029 | 24.6 | 62.8 | 117.5 |
+
+1. The whole packet does not rank the values: every delta sits at or below the
+   pair floor, which for the send stage alone is 119 ns.
+2. The stage that moves is syscall entry and exit, against a pair floor near 6,
+   and it stops at 64.
+3. Supply is not what stops it. `perf/bt/batch_fill` put 64% of recvmmsg calls
+   at the cap when the cap was 64, against 91% when it was 16.
+
+### 5.2 What a working handler changes
+
+The per-packet saving is fixed, while a batch's last datagram waits for every
+earlier datagram in it to be handled. The two move against each other as the
+handler grows.
+
+| handler_spin_ns | ns/packet at 16 | ns/packet at 64 |
+|---|---|---|
+| 0 | 3043 | 3132 |
+| 250 | 3510 | 3361 |
+| 500 | 3670 | 3541 |
+| 1000 | 4218 | 4117 |
+
+    Measured: at 500 ns of handler, one thread held 82% of a core at 16 and
+    79.5% at 64.
+
+Queue delay at 500 ns of handler, `perf/bt/queue_delay`:
+
+| drain_batch | mode | beyond 4 ms | beyond 8 ms |
+|---|---|---|---|
+| 16 | [256,512) us | 0.76% | 155 samples |
+| 64 | [512,1K) us | 0.31% | none |
+
+1. The wait is the smaller term: 32 us at 64 slots and 500 ns, against a queue
+   whose mode is already hundreds of us.
+2. Client rtt cannot see any of it, being quantised to 1 ms over a 5 ms path.
+
+### 5.3 Where the knee lands
+
+Both values reach the knee
+[one thread already records](#31-what-each-thread-count-reaches), on a later
+deployment: 800 streams per client passes and 850 fails.
+
+    Measured: 8 clients, one thread, release build -- machine busy 26.7% at 16
+    and 26.2% at 64.
+
+    Measured: UdpRcvbufErrors at the passing rung, 6928 at 16 and none at 64; at
+    the failing rung, 1031772 and 481585.
+
+A rung is 400 sessions here, which cannot resolve the few percent
+[5.1](#51-what-drain_batch-is-worth) reports.
+
+### 5.4 poll_batch is unmeasured
+
+`udp_relay_mturn` gives each thread two sockets.
+
+    Measured: @epoll_events never exceeded 4.
+
+A socket-per-session sample is what would exercise it.
+
+## 6. Open
 
 1. `tc -s qdisc show dev <nic>` at the knee of the next ladder, per
    [qdisc and txqueuelen](tune_linux.md#92-qdisc-and-txqueuelen).

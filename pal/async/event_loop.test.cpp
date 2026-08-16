@@ -54,10 +54,51 @@ struct lazy_rearm
 	}
 };
 
+std::error_code make_invalid_loop (const event_loop_config &config)
+{
+	auto loop = make_loop(config);
+	REQUIRE_FALSE(loop);
+	return loop.error();
+}
+
 TEST_CASE("async/event_loop")
 {
 	auto loop = make_loop();
 	REQUIRE(loop);
+
+	SECTION("make_loop: poll_batch bounds")
+	{
+		event_loop_config config{};
+
+		config.poll_batch = 0;
+		CHECK(make_invalid_loop(config) == std::errc::invalid_argument);
+
+		config.poll_batch = event_loop_config::max_poll_batch + 1;
+		CHECK(make_invalid_loop(config) == std::errc::invalid_argument);
+
+		config.poll_batch = 1;
+		CHECK(make_loop(config));
+
+		config.poll_batch = event_loop_config::max_poll_batch;
+		CHECK(make_loop(config));
+	}
+
+	SECTION("make_loop: drain_batch bounds")
+	{
+		event_loop_config config{};
+
+		config.drain_batch = 0;
+		CHECK(make_invalid_loop(config) == std::errc::invalid_argument);
+
+		config.drain_batch = event_loop_config::max_drain_batch + 1;
+		CHECK(make_invalid_loop(config) == std::errc::invalid_argument);
+
+		config.drain_batch = 1;
+		CHECK(make_loop(config));
+
+		config.drain_batch = event_loop_config::max_drain_batch;
+		CHECK(make_loop(config));
+	}
 
 	SECTION("run: idle")
 	{

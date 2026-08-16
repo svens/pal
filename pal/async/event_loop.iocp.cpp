@@ -5,6 +5,7 @@
 #include <pal/async/event_loop.hpp>
 #include <pal/error.hpp>
 
+#include <array>
 #include <chrono>
 #include <new>
 #include <windows.h>
@@ -18,9 +19,12 @@ namespace __event_loop
 namespace
 {
 
+using poll_array = std::array<::OVERLAPPED_ENTRY, event_loop_config::max_poll_batch>;
+
 struct iocp_loop: impl_type
 {
 	::HANDLE port = nullptr;
+	poll_array events{};
 
 	~iocp_loop () noexcept
 	{
@@ -48,11 +52,23 @@ void iocp_poll (impl_type &base, impl_type::clock::duration timeout) noexcept
 		ms = to_milliseconds(timeout);
 	}
 
-	::OVERLAPPED_ENTRY entry{};
 	::ULONG count = 0;
-	if (::GetQueuedCompletionStatusEx(self.port, &entry, 1, &count, ms, FALSE) && count > 0)
+	const auto ok = ::GetQueuedCompletionStatusEx(
+		self.port,
+		self.events.data(),
+		static_cast<::ULONG>(self.config_.poll_batch),
+		&count,
+		ms,
+		FALSE
+	);
+	if (!ok)
 	{
-		if (entry.lpCompletionKey == wake_key)
+		return;
+	}
+
+	for (::ULONG i = 0; i < count; ++i)
+	{
+		if (self.events[i].lpCompletionKey == wake_key)
 		{
 			on_wake(self);
 		}
@@ -82,6 +98,11 @@ void iocp_destroy (impl_type *base) noexcept
 result<event_loop> make_loop (const event_loop_config &config) noexcept
 {
 	using namespace __event_loop;
+
+	if (!is_valid(config))
+	{
+		return make_unexpected(std::errc::invalid_argument);
+	}
 
 	::HANDLE port = ::CreateIoCompletionPort(INVALID_HANDLE_VALUE, nullptr, 0, 1);
 	if (port == nullptr)

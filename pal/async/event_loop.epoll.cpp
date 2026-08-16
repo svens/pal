@@ -24,14 +24,15 @@ namespace __event_loop
 namespace
 {
 
-constexpr unsigned drain_batch = 16;
-using mmsg_array = std::array<::mmsghdr, drain_batch>;
-using mmsg_buffers_array = std::array<::iovec, drain_batch>;
+using poll_array = std::array<::epoll_event, event_loop_config::max_poll_batch>;
+using mmsg_array = std::array<::mmsghdr, event_loop_config::max_drain_batch>;
+using mmsg_buffers_array = std::array<::iovec, event_loop_config::max_drain_batch>;
 
 struct epoll_loop: impl_type
 {
 	int epoll = -1;
 	int wake = -1;
+	poll_array events{};
 	mmsg_array messages{};
 	mmsg_buffers_array buffers{};
 
@@ -72,18 +73,21 @@ void epoll_poll (impl_type &base, impl_type::clock::duration timeout) noexcept
 		tsp = &ts;
 	}
 
-	constexpr size_t poll_batch = 64;
-	std::array<::epoll_event, poll_batch> events{};
-
 	int r = 0;
 	do
 	{
-		r = ::epoll_pwait2(self.epoll, events.data(), events.size(), tsp, nullptr);
+		r = ::epoll_pwait2(
+			self.epoll,
+			self.events.data(),
+			static_cast<int>(self.config_.poll_batch),
+			tsp,
+			nullptr
+		);
 	} while (r < 0 && errno == EINTR);
 
 	for (int i = 0; i < r; ++i)
 	{
-		const auto &event = events[i];
+		const auto &event = self.events[i];
 		if (event.data.ptr == nullptr)
 		{
 			drain_wake_channel(self);
@@ -117,7 +121,7 @@ size_t make_mmsg (epoll_loop &self, socket_state::direction &d, auto name_len) n
 	size_t count = 0;
 	for (auto &t: d.pending)
 	{
-		if (count == drain_batch)
+		if (count == self.config_.drain_batch)
 		{
 			break;
 		}
@@ -139,7 +143,7 @@ void epoll_drain_receive (epoll_loop &self, socket_state &state) noexcept
 	int r = 0;
 	do
 	{
-		r = ::recvmmsg(static_cast<int>(state.handle), messages.data(), count, 0, nullptr);
+		r = ::recvmmsg(static_cast<int>(state.handle), messages.data(), static_cast<unsigned>(count), 0, nullptr);
 	} while (r < 0 && errno == EINTR);
 
 	if (r < 0)
@@ -181,7 +185,7 @@ void epoll_drain_send (epoll_loop &self, socket_state &state) noexcept
 	int r = 0;
 	do
 	{
-		r = ::sendmmsg(static_cast<int>(state.handle), messages.data(), count, 0);
+		r = ::sendmmsg(static_cast<int>(state.handle), messages.data(), static_cast<unsigned>(count), 0);
 	} while (r < 0 && errno == EINTR);
 
 	if (r < 0)
@@ -245,6 +249,11 @@ result<event_loop> make_loop (const event_loop_config &config) noexcept
 {
 	using namespace __event_loop;
 
+	if (!is_valid(config))
+	{
+		return make_unexpected(std::errc::invalid_argument);
+	}
+
 	const int epoll = ::epoll_create1(EPOLL_CLOEXEC);
 	if (epoll == -1)
 	{
@@ -276,7 +285,7 @@ result<event_loop> make_loop (const event_loop_config &config) noexcept
 		return make_unexpected(std::errc::not_enough_memory);
 	}
 
-	for (size_t i = 0; i < drain_batch; ++i)
+	for (size_t i = 0; i < config.drain_batch; ++i)
 	{
 		self->messages[i].msg_hdr.msg_iov = &self->buffers[i];
 		self->messages[i].msg_hdr.msg_iovlen = 1;
