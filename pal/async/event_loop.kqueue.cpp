@@ -129,7 +129,7 @@ void kqueue_drain_receive (kqueue_loop &self, socket_state &state) noexcept
 				d.ready = false;
 				return;
 			}
-			op.ec.assign(errno, std::generic_category());
+			op.native_error = errno;
 		}
 		else
 		{
@@ -169,7 +169,7 @@ void kqueue_drain_send (kqueue_loop &self, socket_state &state) noexcept
 				d.ready = false;
 				return;
 			}
-			op.ec.assign(errno, std::generic_category());
+			op.native_error = errno;
 		}
 		else
 		{

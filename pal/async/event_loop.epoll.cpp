@@ -152,7 +152,7 @@ void epoll_drain_receive (epoll_loop &self, socket_state &state) noexcept
 		{
 			// batch error attribution: -1 belongs to the head-of-FIFO op
 			task *t = d.pending.pop();
-			io(*t).ec.assign(errno, std::generic_category());
+			io(*t).native_error = errno;
 			self.ready_.push(*t);
 		}
 		return;
@@ -193,7 +193,7 @@ void epoll_drain_send (epoll_loop &self, socket_state &state) noexcept
 		else
 		{
 			task *t = d.pending.pop();
-			io(*t).ec.assign(errno, std::generic_category());
+			io(*t).native_error = errno;
 			self.ready_.push(*t);
 		}
 		return;

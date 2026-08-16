@@ -70,7 +70,7 @@ struct io_state
 	alignas(std::max_align_t) std::array<std::byte, endpoint_capacity> endpoint;
 	uint32_t endpoint_size;
 
-	std::error_code ec;
+	int native_error;
 	size_t bytes;
 	bool truncated;
 	socket_state *owner;

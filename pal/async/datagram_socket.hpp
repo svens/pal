@@ -14,6 +14,7 @@
 #include <cstring>
 #include <memory>
 #include <new>
+#include <system_error>
 #include <utility>
 
 namespace pal::async
@@ -53,9 +54,9 @@ struct op_receive_from
 	{
 		auto &op = __event_loop::io(t);
 		task_ptr p{&t};
-		if (op.ec)
+		if (op.native_error)
 		{
-			f(std::move(p), unexpected{op.ec});
+			f(std::move(p), unexpected{std::error_code{op.native_error, std::system_category()}});
 			return;
 		}
 		t.span(t.span().first(op.bytes));
@@ -87,9 +88,9 @@ struct op_send_to
 	{
 		auto &op = __event_loop::io(t);
 		task_ptr p{&t};
-		if (op.ec)
+		if (op.native_error)
 		{
-			f(std::move(p), unexpected{op.ec});
+			f(std::move(p), unexpected{std::error_code{op.native_error, std::system_category()}});
 		}
 		else
 		{
@@ -132,7 +133,7 @@ public:
 		requires __async::handler<H, void(task_ptr &&, result<receive_from_result> &&) noexcept>
 	{
 		pal_require(!t->span().empty(), "start_receive_from without task payload storage");
-		__event_loop::io(*t).ec = {};
+		__event_loop::io(*t).native_error = 0;
 		t->bind<__datagram_socket::op_receive_from<Protocol>>(std::move(handler));
 		__event_loop::start_socket_op(std::move(t), *state_, state_->receive);
 	}
@@ -148,8 +149,8 @@ public:
 		requires __async::handler<H, void(task_ptr &&, result<send_to_result> &&) noexcept>
 	{
 		auto &op = __event_loop::io(*t);
-		op.ec = {};
-		std::memcpy(op.endpoint.data(), recipient.data(), recipient.size());
+		op.native_error = 0;
+		std::memcpy(op.endpoint.data(), recipient.data(), sizeof(endpoint_type));
 		op.endpoint_size = static_cast<uint32_t>(recipient.size());
 		t->bind<__datagram_socket::op_send_to<Protocol>>(std::move(handler));
 		__event_loop::start_socket_op(std::move(t), *state_, state_->send);
@@ -165,7 +166,7 @@ public:
 	{
 		auto &op = __event_loop::io(*t);
 		pal_require(op.endpoint_size != 0, "start_reply without a completed receive");
-		op.ec = {};
+		op.native_error = 0;
 		t->bind<__datagram_socket::op_send_to<Protocol>>(std::move(handler));
 		__event_loop::start_socket_op(std::move(t), *state_, state_->send);
 	}

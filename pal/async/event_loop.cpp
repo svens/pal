@@ -1,5 +1,6 @@
 #include <pal/async/event_loop.hpp>
 #include <algorithm>
+#include <cerrno>
 #include <utility>
 
 namespace pal::async
@@ -221,7 +222,8 @@ void socket_state_deleter::operator() (socket_state *s) const noexcept
 	{
 		if (io(t).owner == s)
 		{
-			io(t).ec = std::make_error_code(std::errc::operation_canceled);
+			// TODO(svens): IOCP needs ERROR_OPERATION_ABORTED here, native_error is a system category value
+			io(t).native_error = ECANCELED;
 		}
 	}
 
