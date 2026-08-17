@@ -298,7 +298,9 @@ result<event_loop> make_loop (const event_loop_config &config) noexcept
 	self->now_fn = &epoll_now;
 	self->destroy_fn = &epoll_destroy;
 	self->register_socket_fn = &epoll_register_socket;
+	self->submit_socket_op_fn = &submit_socket_op;
 	self->drain_fn = &epoll_drain;
+	self->close_socket_fn = &close_socket;
 	self->config_ = config;
 	self->now_ = epoll_now(*self);
 

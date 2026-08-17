@@ -8,6 +8,7 @@
 #include <pal/async/task.hpp>
 #include <pal/intrusive_queue.hpp>
 #include <pal/result.hpp>
+#include <pal/version.hpp>
 #include <array>
 #include <atomic>
 #include <chrono>
@@ -54,10 +55,10 @@ struct event_loop_stats
 	uint64_t offload_in_flight = 0;
 
 	/// Poller-plane I/O operations (handle-based, e.g. start_receive_from) started on this loop and not
-	/// yet dispatched: parked in a resource's pending queues awaiting readiness, or awaiting dispatch
-	/// from the ready queue. A completing op is excluded before its handler runs, so a handler observing zero is
-	/// the operation that drained the loop. Before teardown, quiesce like \ref offload_in_flight: destroy the
-	/// handles (cancelling their undispatched ops), then run the loop until this reaches zero.
+	/// yet dispatched: outstanding with the backend (parked awaiting readiness, or held by the kernel), or
+	/// awaiting dispatch from the ready queue. A completing op is excluded before its handler runs, so a handler
+	/// observing zero is the operation that drained the loop. Before teardown, quiesce like \ref offload_in_flight:
+	/// destroy the handles (cancelling their undispatched ops), then run the loop until this reaches zero.
 	uint64_t io_in_flight = 0;
 };
 
@@ -87,6 +88,12 @@ struct io_state
 	size_t bytes;
 	bool truncated;
 	socket_state *owner;
+
+	#if __pal_os_windows
+		/// Completion-plane per-op block (OVERLAPPED, WSABUF, ...), typed in event_loop.iocp.cpp
+		static constexpr size_t native_capacity = 72;
+		alignas(std::max_align_t) std::array<std::byte, native_capacity> native;
+	#endif
 };
 
 [[nodiscard]] inline io_state &io (task &t) noexcept
@@ -113,6 +120,10 @@ struct socket_state
 	bool queued = false;
 	intrusive_queue_hook<socket_state> hook{};
 
+	#if __pal_os_windows
+		size_t native_in_flight = 0;
+	#endif
+
 	[[nodiscard]] bool actionable () const noexcept
 	{
 		return receive.actionable() || send.actionable();
@@ -136,8 +147,11 @@ struct impl_type
 	void (*wake_fn)(impl_type &) noexcept = nullptr;
 	clock::time_point (*now_fn)(impl_type &) noexcept = nullptr;
 	void (*destroy_fn)(impl_type *) noexcept = nullptr;
+
 	std::error_code (*register_socket_fn)(impl_type &, socket_state &) noexcept = nullptr;
+	void (*submit_socket_op_fn)(impl_type &, task &, socket_state &, socket_state::direction &) noexcept = nullptr;
 	void (*drain_fn)(impl_type &, socket_state &) noexcept = nullptr;
+	void (*close_socket_fn)(impl_type &, socket_state &) noexcept = nullptr;
 
 	clock::time_point now_{};
 	std::atomic<bool> signaled_ = false;
@@ -189,9 +203,18 @@ struct op_post
 
 void post (impl_type &l, task_ptr &&t) noexcept;
 void start_timer (impl_type &l, task_ptr &&t, impl_type::clock::time_point deadline) noexcept;
-void start_socket_op (task_ptr &&t, socket_state &s, socket_state::direction &d) noexcept;
+void submit_socket_op (impl_type &l, task &t, socket_state &s, socket_state::direction &d) noexcept;
+void close_socket (impl_type &l, socket_state &s) noexcept;
 void on_socket_event (socket_state &s, socket_state::direction &d) noexcept;
+void cancel_undispatched (impl_type &l, socket_state &s, int native_error) noexcept;
 void on_wake (impl_type &l) noexcept;
+
+inline void start_socket_op (task_ptr &&t, socket_state &s, socket_state::direction &d) noexcept
+{
+	++s.loop->stats_.io_in_flight;
+	io(*t).owner = &s;
+	s.loop->submit_socket_op_fn(*s.loop, *t.release(), s, d);
+}
 
 } // namespace __event_loop
 
@@ -273,8 +296,7 @@ public:
 	///
 	/// Overload for poller-plane resources (e.g. datagram socket) that route no work through a
 	/// thread_pool. Setup is the backend registration moment: sockets are switched to non-blocking and
-	/// registered with the poller, either of which can fail; platforms whose backend has no socket
-	/// machinery yet report \c operation_not_supported.
+	/// registered with the poller, either of which can fail.
 	template <typename T>
 	[[nodiscard]] result<handle<T>> make_handle (T resource) noexcept;
 

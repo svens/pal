@@ -67,14 +67,6 @@ TEMPLATE_TEST_CASE("async/datagram_socket", "", udp_v4, udp_v6)
 	auto loop = make_loop();
 	REQUIRE(loop);
 
-	if constexpr (pal::os == pal::os_type::windows)
-	{
-		auto h = make_async_socket<TestType>(*loop);
-		REQUIRE_FALSE(h);
-		CHECK(h.error() == std::errc::operation_not_supported);
-		return;
-	}
-
 	auto socket = make_async_socket<TestType>(*loop);
 	REQUIRE(socket);
 	auto socket_endpoint = socket->local_endpoint();
@@ -725,7 +717,7 @@ TEMPLATE_TEST_CASE("async/datagram_socket", "", udp_v4, udp_v6)
 
 TEST_CASE("async/datagram_socket destructor contract")
 {
-	if constexpr (pal::build == pal::build_type::debug && pal::os != pal::os_type::windows)
+	if constexpr (pal::build == pal::build_type::debug)
 	{
 		// Loop destroyed before the cancel completions were dispatched -> REQUIRE crash.
 		static std::array<std::byte, 64> storage{};

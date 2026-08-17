@@ -258,7 +258,9 @@ result<event_loop> make_loop (const event_loop_config &config) noexcept
 	self->now_fn = &kqueue_now;
 	self->destroy_fn = &kqueue_destroy;
 	self->register_socket_fn = &kqueue_register_socket;
+	self->submit_socket_op_fn = &submit_socket_op;
 	self->drain_fn = &kqueue_drain;
+	self->close_socket_fn = &close_socket;
 	self->config_ = config;
 	self->now_ = kqueue_now(*self);
 

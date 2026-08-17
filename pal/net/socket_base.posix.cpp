@@ -18,11 +18,30 @@ const result<void> &init () noexcept
 	return no_error;
 }
 
+namespace
+{
+
+#ifndef SO_NOSIGPIPE
+	constexpr int SO_NOSIGPIPE = -1;
+#endif
+
+__socket::handle_type init (__socket::handle_type h) noexcept
+{
+	if constexpr (SO_NOSIGPIPE != -1)
+	{
+		int optval = 1;
+		::setsockopt(to_sys(h), SOL_SOCKET, SO_NOSIGPIPE, &optval, sizeof(optval));
+	}
+	return h;
+}
+
+} // namespace
+
 result<native_socket> open (int family, int type, int protocol) noexcept
 {
 	if (auto h = from_sys(::socket(family, type, protocol)); h != __socket::handle_type::invalid)
 	{
-		return native_socket{h, family};
+		return native_socket{init(h), family};
 	}
 
 	// Library public API deals with Protocol types/instances, translate
@@ -75,20 +94,6 @@ result<void> native_socket::listen (int backlog) const noexcept
 
 namespace
 {
-
-#ifndef SO_NOSIGPIPE
-	constexpr int SO_NOSIGPIPE = -1;
-#endif
-
-__socket::handle_type init (__socket::handle_type h) noexcept
-{
-	if constexpr (SO_NOSIGPIPE != -1)
-	{
-		int optval = 1;
-		::setsockopt(to_sys(h), SOL_SOCKET, SO_NOSIGPIPE, &optval, sizeof(optval));
-	}
-	return h;
-}
 
 constexpr bool is_blocking_error (int error) noexcept
 {

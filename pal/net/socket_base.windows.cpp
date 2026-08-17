@@ -94,13 +94,40 @@ namespace
 
 const auto &lib_init = init();
 
+__socket::handle_type init (__socket::handle_type h, int type) noexcept
+{
+	::SetFileCompletionNotificationModes(
+		reinterpret_cast<::HANDLE>(to_sys(h)),
+		FILE_SKIP_COMPLETION_PORT_ON_SUCCESS | FILE_SKIP_SET_EVENT_ON_HANDLE
+	);
+
+	if (type == SOCK_DGRAM)
+	{
+		bool new_behaviour = false;
+		DWORD ignored;
+		::WSAIoctl(
+			to_sys(h),
+			SIO_UDP_CONNRESET,
+			&new_behaviour,
+			sizeof(new_behaviour),
+			nullptr,
+			0,
+			&ignored,
+			nullptr,
+			nullptr
+		);
+	}
+
+	return h;
+}
+
 } // namespace
 
 result<native_socket> open (int family, int type, int protocol) noexcept
 {
 	if (auto h = from_sys(::socket(family, type, protocol)); h != __socket::handle_type::invalid)
 	{
-		return native_socket{h, family};
+		return native_socket{init(h, type), family};
 	}
 
 	// Library public API deals with Protocol types/instances, translate
@@ -152,33 +179,6 @@ bool make_any (int family, void *endpoint, int *endpoint_size) noexcept
 	}
 
 	return false;
-}
-
-__socket::handle_type init (__socket::handle_type h, int type) noexcept
-{
-	::SetFileCompletionNotificationModes(
-		reinterpret_cast<::HANDLE>(to_sys(h)),
-		FILE_SKIP_COMPLETION_PORT_ON_SUCCESS | FILE_SKIP_SET_EVENT_ON_HANDLE
-	);
-
-	if (type == SOCK_DGRAM)
-	{
-		bool new_behaviour = false;
-		DWORD ignored;
-		::WSAIoctl(
-			to_sys(h),
-			SIO_UDP_CONNRESET,
-			&new_behaviour,
-			sizeof(new_behaviour),
-			nullptr,
-			0,
-			&ignored,
-			nullptr,
-			nullptr
-		);
-	}
-
-	return h;
 }
 
 } // namespace

@@ -191,15 +191,13 @@ void start_timer (impl_type &l, task_ptr &&t, impl_type::clock::time_point deadl
 	l.timer_root_ = (l.timer_root_ != nullptr) ? meld(l.timer_root_, raw) : raw;
 }
 
-void start_socket_op (task_ptr &&t, socket_state &s, socket_state::direction &d) noexcept
+void submit_socket_op (impl_type &l, task &t, socket_state &s, socket_state::direction &d) noexcept
 {
-	++s.loop->stats_.io_in_flight;
-	io(*t).owner = &s;
-	d.pending.push(*t.release());
+	d.pending.push(t);
 	if (d.ready && !s.queued)
 	{
 		s.queued = true;
-		s.loop->actionable_.push(s);
+		l.actionable_.push(s);
 	}
 }
 
@@ -213,26 +211,35 @@ void on_socket_event (socket_state &s, socket_state::direction &d) noexcept
 	}
 }
 
-void socket_state_deleter::operator() (socket_state *s) const noexcept
+void cancel_undispatched (impl_type &l, socket_state &s, int native_error) noexcept
 {
-	s->loop->ready_.splice(std::move(s->receive.pending));
-	s->loop->ready_.splice(std::move(s->send.pending));
+	l.ready_.splice(std::move(s.receive.pending));
+	l.ready_.splice(std::move(s.send.pending));
 
-	for (auto &t: s->loop->ready_)
+	for (auto &t: l.ready_)
 	{
-		if (io(t).owner == s)
+		if (io(t).owner == &s)
 		{
-			// TODO(svens): IOCP needs ERROR_OPERATION_ABORTED here, native_error is a system category value
-			io(t).native_error = ECANCELED;
+			io(t).native_error = native_error;
 		}
 	}
+}
 
-	if (s->queued)
+void close_socket (impl_type &l, socket_state &s) noexcept
+{
+	cancel_undispatched(l, s, ECANCELED);
+
+	if (s.queued)
 	{
-		s->loop->actionable_.remove(*s);
+		l.actionable_.remove(s);
 	}
 
-	delete s;
+	delete &s;
+}
+
+void socket_state_deleter::operator() (socket_state *s) const noexcept
+{
+	s->loop->close_socket_fn(*s->loop, *s);
 }
 
 } // namespace __event_loop

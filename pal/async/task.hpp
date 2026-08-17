@@ -69,7 +69,7 @@ class task
 public:
 
 	/// Minimum op scratch; the actual budget rounds up to fill the task's last cache line.
-	static constexpr size_t min_scratch_capacity = 64;
+	static constexpr size_t min_scratch_capacity = 128;
 
 	/// Op-specific scratch storage (msghdr/iovec/sockaddr_storage, ...): at least \ref min_scratch_capacity bytes,
 	/// grown to round a whole task up to a cache-line multiple so the remainder is usable scratch rather than

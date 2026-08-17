@@ -103,7 +103,7 @@ struct op_send_to
 
 /// Asynchronous datagram socket: completing on the owning loop's thread, plus a curated subset of the synchronous
 /// socket's own API. The socket arrives at \ref event_loop::make_handle already opened (and typically bound) via the
-/// pal/net API; make_handle switches it to non-blocking and registers it with the loop's poller.
+/// pal/net API; make_handle switches it to non-blocking and registers it with the loop's backend.
 ///
 /// Contracts: \c start_* and destruction are loop-thread-only (violations are undefined behavior, not checked).
 /// Destruction cancels every op of this socket not yet dispatched as \c operation_canceled completions, delivered from
@@ -214,11 +214,6 @@ private:
 	static result<handle>
 	make (net::basic_datagram_socket<Protocol> &&socket, __event_loop::impl_type &loop) noexcept
 	{
-		if (loop.register_socket_fn == nullptr)
-		{
-			return make_unexpected(std::errc::operation_not_supported);
-		}
-
 		if (auto r = socket.set_option(net::non_blocking_io{true}); !r)
 		{
 			return unexpected{r.error()};
