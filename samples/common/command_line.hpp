@@ -39,10 +39,10 @@ template <typename Int>
 Int parse (std::string_view option, std::string_view argument)
 {
 	uint64_t value = 0;
-	const auto *const first = argument.data();
-	const auto *const last = first + argument.size();
-	const auto [end, ec] = std::from_chars(first, last, value);
-	if (ec != std::errc{} || end != last)
+	const auto *const begin = argument.data();
+	const auto *const end = begin + argument.size();
+	const auto [p, ec] = std::from_chars(begin, end, value);
+	if (ec != std::errc{} || p != end)
 	{
 		throw std::runtime_error(std::format("{}: not valid integer '{}'", option, argument));
 	}

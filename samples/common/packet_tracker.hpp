@@ -5,7 +5,7 @@
 #include <mutex>
 #include <optional>
 
-using namespace std::chrono;
+using std::chrono::steady_clock;
 
 template <size_t WindowSize>
 class packet_tracker

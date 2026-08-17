@@ -23,6 +23,7 @@
 #include <print>
 #include <ranges>
 #include <span>
+#include <system_error>
 #include <thread>
 #include <tuple>
 #include <unordered_map>
@@ -62,7 +63,6 @@ struct config
 	static constexpr size_t client_buffer_size = 16;
 	static constexpr size_t peer_task_count = 2'000;
 
-	static inline const pal::net::reuse_port reuse_port{pal::os != pal::os_type::windows};
 	static inline const pal::net::send_buffer_size send_buffer_size{2 * 1024 * 1024};
 	static inline const pal::net::receive_buffer_size receive_buffer_size{2 * 1024 * 1024};
 
@@ -201,8 +201,8 @@ public:
 	explicit listener (const ::config &config)
 		: config_{config}
 		, loop_{make_event_loop(config.loop)}
-		, client_{loop_.make_handle(make_socket(config.client.port)).value()}
-		, peer_{loop_.make_handle(make_socket(config.peer.port)).value()}
+		, client_{loop_.make_handle(make_socket(config.client.port, thread_id_)).value()}
+		, peer_{loop_.make_handle(make_socket(config.peer.port, thread_id_)).value()}
 	{
 		attach_load_balancer(client_.value().native_socket(), config.threads);
 		attach_load_balancer(peer_.value().native_socket(), config.threads);
@@ -405,18 +405,22 @@ private:
 		throw std::runtime_error(std::format("event_loop: {}", loop.error().message()));
 	}
 
-	static sync_socket make_socket (pal::net::ip::port_type port)
+	static sync_socket make_socket (pal::net::ip::port_type port, size_t thread_index)
 	{
 		auto socket = pal::net::make_datagram_socket(protocol::v4).value();
 		socket.set_option(config::send_buffer_size).value();
 		socket.set_option(config::receive_buffer_size).value();
-		if (config::reuse_port.value())
+
+		auto r = socket.set_option(pal::net::receive_cpu{static_cast<uint16_t>(thread_index)});
+		if (!r && thread_index > 0)
 		{
-			socket.set_option(config::reuse_port).value();
+			throw std::system_error(r.error(), "receive_cpu");
 		}
+
 		socket.bind({pal::net::ip::address_v4::any, port}).value();
 		return socket;
 	}
+
 
 	static void attach_load_balancer (const pal::net::native_socket &socket, size_t thread_count)
 	{
@@ -526,7 +530,7 @@ void run (const ::config &config)
 
 int main (int argc, const char *argv[])
 {
-	std::setvbuf(stdout, nullptr, _IOLBF, 0);
+	std::setvbuf(stdout, nullptr, _IONBF, 0);
 	try
 	{
 		run(config{std::span{argv, static_cast<size_t>(argc)}});

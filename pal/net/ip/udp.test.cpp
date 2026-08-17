@@ -207,6 +207,39 @@ TEMPLATE_TEST_CASE("net/ip/udp", "", udp_v4, udp_v6)
 		CHECK(s.native_socket().handle() == handle);
 		CHECK(s.protocol() == TestType::protocol_v);
 	}
+
+	SECTION("receive_cpu")
+	{
+		auto socket = pal::net::make_datagram_socket(TestType::protocol_v).value();
+
+		SECTION("set")
+		{
+			REQUIRE_NOTHROW(socket.set_option(pal::net::receive_cpu{0}).value());
+
+			pal::net::receive_cpu opt{0};
+			auto r = socket.get_option(opt);
+			if constexpr (pal::os == pal::os_type::linux)
+			{
+				REQUIRE(r);
+				CHECK(opt.value() == 0);
+			}
+			else
+			{
+				// no primitive reports the value back
+				REQUIRE_FALSE(r);
+				CHECK(r.error() == std::errc::operation_not_supported);
+			}
+		}
+
+		SECTION("bad file descriptor")
+		{
+			close_native_handle(socket);
+
+			auto r = socket.set_option(pal::net::receive_cpu{0});
+			REQUIRE_FALSE(r);
+			CHECK(r.error() == std::errc::bad_file_descriptor);
+		}
+	}
 }
 
 TEMPLATE_TEST_CASE("net/ip/udp", "", invalid_protocol)

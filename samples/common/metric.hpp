@@ -1,11 +1,12 @@
 #pragma once
 
+#include <array>
 #include <chrono>
 #include <format>
 #include <span>
 #include <string_view>
 
-using namespace std::chrono;
+using std::chrono::milliseconds;
 
 struct traffic_metric
 {

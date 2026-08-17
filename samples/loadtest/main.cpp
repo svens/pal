@@ -311,7 +311,7 @@ void run_load (const ::config &config, std::deque<stream> &streams, statistics &
 	const auto start = steady_clock::now();
 	auto now = start;
 	const auto measure_from = start + config.warmup;
-	const auto stop_time = config.runtime != 0s ? measure_from + config.runtime : steady_clock::time_point::max();
+	const auto stop_time = config.runtime != 0s ? measure_from + config.runtime : (steady_clock::time_point::max)();
 	auto next_report = start + config::report_interval;
 
 	if (config.warmup != 0s)
@@ -389,7 +389,7 @@ int run (const ::config &config)
 // NOLINTNEXTLINE(bugprone-exception-escape): OOM, terminating is fine
 int main (int argc, const char *argv[])
 {
-	std::setvbuf(stdout, nullptr, _IOLBF, 0);
+	std::setvbuf(stdout, nullptr, _IONBF, 0);
 	try
 	{
 		return run(config{std::span{argv, static_cast<size_t>(argc)}});

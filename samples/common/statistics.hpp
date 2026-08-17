@@ -10,7 +10,10 @@
 #include <print>
 #include <string>
 
-using namespace std::chrono;
+using std::chrono::duration_cast;
+using std::chrono::microseconds;
+using std::chrono::milliseconds;
+using std::chrono::steady_clock;
 
 inline std::string format_duration (microseconds us)
 {

@@ -248,6 +248,55 @@ result<void> set_native_non_blocking (__socket::handle_type handle, int mode) no
 	return __socket::sys_error();
 }
 
+result<void> get_receive_cpu ([[maybe_unused]] __socket::handle_type handle, uint16_t &cpu) noexcept
+{
+	#ifdef SO_INCOMING_CPU
+	{
+		int value = 0;
+		::socklen_t size = sizeof(value);
+		if (::getsockopt(to_sys(handle), SOL_SOCKET, SO_INCOMING_CPU, &value, &size) == -1)
+		{
+			return __socket::sys_error();
+		}
+		cpu = static_cast<uint16_t>(value);
+		return {};
+	}
+	#else
+	{
+		std::ignore = cpu;
+		return __socket::sys_error(EOPNOTSUPP);
+	}
+	#endif
+}
+
+result<void> set_receive_cpu (__socket::handle_type handle, [[maybe_unused]] uint16_t cpu) noexcept
+{
+	if constexpr (__socket::reuse_port == -1)
+	{
+		return __socket::sys_error(ENOPROTOOPT);
+	}
+	else
+	{
+		const int enable = 1;
+		if (::setsockopt(to_sys(handle), SOL_SOCKET, __socket::reuse_port, &enable, sizeof(enable)) == -1)
+		{
+			return __socket::sys_error();
+		}
+	}
+
+	#ifdef SO_INCOMING_CPU
+	{
+		const int value = cpu;
+		if (::setsockopt(to_sys(handle), SOL_SOCKET, SO_INCOMING_CPU, &value, sizeof(value)) == -1)
+		{
+			return __socket::sys_error();
+		}
+	}
+	#endif
+
+	return {};
+}
+
 } // namespace
 
 result<void> native_socket::get_option (int level, int name, void *data, size_t &data_size) const noexcept
@@ -258,6 +307,8 @@ result<void> native_socket::get_option (int level, int name, void *data, size_t 
 		{
 			case __socket::option_name::non_blocking_io:
 				return get_native_non_blocking(handle_, *static_cast<int *>(data));
+			case __socket::option_name::receive_cpu:
+				return get_receive_cpu(handle_, *static_cast<uint16_t *>(data));
 			default:
 				break;
 		}
@@ -280,6 +331,8 @@ result<void> native_socket::set_option (int level, int name, const void *data, s
 		{
 			case __socket::option_name::non_blocking_io:
 				return set_native_non_blocking(handle_, *static_cast<const int *>(data));
+			case __socket::option_name::receive_cpu:
+				return set_receive_cpu(handle_, *static_cast<const uint16_t *>(data));
 			default:
 				break;
 		}

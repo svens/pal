@@ -416,6 +416,37 @@ result<void> get_native_non_blocking (__socket::handle_type, int &) noexcept
 	return __socket::sys_error(WSAEOPNOTSUPP);
 }
 
+result<void> get_receive_cpu (__socket::handle_type, uint16_t &) noexcept
+{
+	return __socket::sys_error(WSAEOPNOTSUPP);
+}
+
+result<void> set_receive_cpu (__socket::handle_type handle, uint16_t cpu) noexcept
+{
+	#if !defined(SIO_CPU_AFFINITY)
+		constexpr auto SIO_CPU_AFFINITY = _WSAIOW(IOC_VENDOR, 21);
+	#endif
+
+	::DWORD bytes = 0;
+	auto value = cpu;
+	const auto r = ::WSAIoctl(
+		to_sys(handle),
+		SIO_CPU_AFFINITY,
+		&value,
+		sizeof(value),
+		nullptr,
+		0,
+		&bytes,
+		nullptr,
+		nullptr
+	);
+	if (r == 0)
+	{
+		return {};
+	}
+	return __socket::sys_error();
+}
+
 result<void> set_native_non_blocking (__socket::handle_type handle, bool mode) noexcept
 {
 	unsigned long arg = mode ? 1 : 0;
@@ -440,6 +471,8 @@ result<void> native_socket::get_option (int level, int name, void *data, size_t 
 		{
 			case __socket::option_name::non_blocking_io:
 				return get_native_non_blocking(handle_, *static_cast<int *>(data));
+			case __socket::option_name::receive_cpu:
+				return get_receive_cpu(handle_, *static_cast<uint16_t *>(data));
 			default:
 				break;
 		}
@@ -468,6 +501,8 @@ result<void> native_socket::set_option (int level, int name, const void *data, s
 		{
 			case __socket::option_name::non_blocking_io:
 				return set_native_non_blocking(handle_, *static_cast<const int *>(data));
+			case __socket::option_name::receive_cpu:
+				return set_receive_cpu(handle_, *static_cast<const uint16_t *>(data));
 			default:
 				break;
 		}

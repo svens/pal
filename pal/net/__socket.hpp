@@ -195,6 +195,7 @@ enum option_level: int
 enum option_name: int
 {
 	non_blocking_io,
+	receive_cpu,
 };
 
 } // namespace pal::net::__socket
