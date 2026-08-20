@@ -13,10 +13,7 @@
 #include <winsock2.h>
 #include <windows.h>
 
-namespace pal::async
-{
-
-namespace __event_loop
+namespace pal::async::__event_loop
 {
 
 namespace
@@ -277,8 +274,7 @@ void iocp_close_socket (impl_type &base, socket_state &state) noexcept
 		}
 	}
 
-	cancel_undispatched(base, state, ERROR_OPERATION_ABORTED);
-	delete &state;
+	close_socket(base, state);
 }
 
 impl_type::clock::time_point iocp_now (impl_type &) noexcept
@@ -299,17 +295,8 @@ void iocp_destroy (impl_type *base) noexcept
 
 } // namespace
 
-} // namespace __event_loop
-
-result<event_loop> make_loop (const event_loop_config &config) noexcept
+result<impl_ptr> make_iocp_loop (const event_loop_config &config) noexcept
 {
-	using namespace __event_loop;
-
-	if (!is_valid(config))
-	{
-		return make_unexpected(std::errc::invalid_argument);
-	}
-
 	::HANDLE port = ::CreateIoCompletionPort(INVALID_HANDLE_VALUE, nullptr, 0, 1);
 	if (port == nullptr)
 	{
@@ -334,9 +321,9 @@ result<event_loop> make_loop (const event_loop_config &config) noexcept
 	self->config_ = config;
 	self->now_ = iocp_now(*self);
 
-	return event_loop{impl_ptr{self}};
+	return impl_ptr{self};
 }
 
-} // namespace pal::async
+} // namespace pal::async::__event_loop
 
 #endif // __pal_os_windows

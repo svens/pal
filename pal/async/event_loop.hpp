@@ -8,7 +8,6 @@
 #include <pal/async/task.hpp>
 #include <pal/intrusive_queue.hpp>
 #include <pal/result.hpp>
-#include <pal/version.hpp>
 #include <array>
 #include <atomic>
 #include <chrono>
@@ -17,6 +16,7 @@
 namespace pal::async
 {
 
+class event_loop;
 class thread_pool;
 
 template <typename T>
@@ -27,10 +27,19 @@ struct event_loop_config
 {
 	size_t buffer_count = 8192;
 	uint16_t buffer_size = 2000;
-	size_t submission_depth = 0;
-	size_t completion_depth = 0;
 
-	/// Maximum readiness events harvested per backend poll. Must be in [1, \ref max_poll_batch].
+	/// Operations a backend accepts before one must complete.
+	/// Must be in [1, \ref max_submission_depth].
+	static constexpr size_t max_submission_depth = 32768;
+	size_t submission_depth = 256;
+
+	/// Completions a backend holds before it stalls.
+	/// Must be in [\ref submission_depth, \ref max_completion_depth].
+	static constexpr size_t max_completion_depth = 65536;
+	size_t completion_depth = 512;
+
+	/// Maximum readiness events harvested per backend poll.
+	/// Must be in [1, \ref max_poll_batch].
 	static constexpr size_t max_poll_batch = 1024;
 	size_t poll_batch = 64;
 
@@ -71,6 +80,10 @@ namespace __event_loop
 		&& config.poll_batch <= event_loop_config::max_poll_batch
 		&& config.drain_batch >= 1
 		&& config.drain_batch <= event_loop_config::max_drain_batch
+		&& config.submission_depth >= 1
+		&& config.submission_depth <= event_loop_config::max_submission_depth
+		&& config.completion_depth >= config.submission_depth
+		&& config.completion_depth <= event_loop_config::max_completion_depth
 	;
 }
 
@@ -89,11 +102,12 @@ struct io_state
 	bool truncated;
 	socket_state *owner;
 
-	#if __pal_os_windows
-		/// Completion-plane per-op block (OVERLAPPED, WSABUF, ...), typed in event_loop.iocp.cpp
-		static constexpr size_t native_capacity = 72;
-		alignas(std::max_align_t) std::array<std::byte, native_capacity> native;
-	#endif
+	// Completion-plane per-op block, typed by the backend that uses it:
+	// - OVERLAPPED and WSABUF in event_loop.iocp.cpp
+	// - msghdr and iovec in event_loop.io_uring.cpp
+	// - unused by reactor backends
+	static constexpr size_t native_capacity = 72;
+	alignas(std::max_align_t) std::array<std::byte, native_capacity> native;
 };
 
 [[nodiscard]] inline io_state &io (task &t) noexcept
@@ -108,6 +122,10 @@ struct socket_state
 		__task::attorney::task_queue pending{};
 		bool ready = false;
 
+		// Completion backends that arm each op with the kernel individually: how many are armed now, so a
+		// backend whose per-op cost grows with the count can bound it and leave the surplus in pending.
+		size_t armed = 0;
+
 		[[nodiscard]] bool actionable () const noexcept
 		{
 			return ready && !pending.empty();
@@ -118,11 +136,8 @@ struct socket_state
 	const std::intptr_t handle;
 	direction receive{}, send{};
 	bool queued = false;
+	size_t native_in_flight = 0;
 	intrusive_queue_hook<socket_state> hook{};
-
-	#if __pal_os_windows
-		size_t native_in_flight = 0;
-	#endif
 
 	[[nodiscard]] bool actionable () const noexcept
 	{
@@ -206,7 +221,6 @@ void start_timer (impl_type &l, task_ptr &&t, impl_type::clock::time_point deadl
 void submit_socket_op (impl_type &l, task &t, socket_state &s, socket_state::direction &d) noexcept;
 void close_socket (impl_type &l, socket_state &s) noexcept;
 void on_socket_event (socket_state &s, socket_state::direction &d) noexcept;
-void cancel_undispatched (impl_type &l, socket_state &s, int native_error) noexcept;
 void on_wake (impl_type &l) noexcept;
 
 inline void start_socket_op (task_ptr &&t, socket_state &s, socket_state::direction &d) noexcept
@@ -216,11 +230,24 @@ inline void start_socket_op (task_ptr &&t, socket_state &s, socket_state::direct
 	s.loop->submit_socket_op_fn(*s.loop, *t.release(), s, d);
 }
 
+event_loop wrap (impl_ptr impl) noexcept;
+result<impl_ptr> make_epoll_loop (const event_loop_config &config) noexcept;
+result<impl_ptr> make_io_uring_loop (const event_loop_config &config) noexcept;
+result<impl_ptr> make_kqueue_loop (const event_loop_config &config) noexcept;
+result<impl_ptr> make_iocp_loop (const event_loop_config &config) noexcept;
+
+// make_loop's body, with the io_uring probe replaceable by a compile-time failure so the fallback to
+// epoll is a tested path on machines where io_uring works.
+template <bool inject_probe_failure>
+result<event_loop> make_loop_impl (const event_loop_config &config) noexcept;
+
+extern template result<event_loop> make_loop_impl<false> (const event_loop_config &) noexcept;
+extern template result<event_loop> make_loop_impl<true> (const event_loop_config &) noexcept;
+
 } // namespace __event_loop
 
-/// Per-thread completion loop. Not thread-safe and unchecked: drive it (\ref run / \ref run_once /
-/// \ref run_for, \ref now, \ref stats) from a single thread at a time -- pin it to one thread or serialize
-/// externally. \ref post is the sole thread-safe member.
+/// Per-thread completion loop. Not thread-safe and unchecked: it is bound to the thread that called
+/// \ref make_loop, and every member other than \ref post must be called on that thread.
 class event_loop
 {
 public:
@@ -307,7 +334,7 @@ private:
 	{
 	}
 
-	friend result<event_loop> make_loop (const event_loop_config &) noexcept;
+	friend event_loop __event_loop::wrap (__event_loop::impl_ptr) noexcept;
 	friend class thread_pool;
 
 	__event_loop::impl_ptr impl_;
@@ -316,6 +343,11 @@ private:
 /// Create an event loop with the default backend for this platform, or an error if the platform has no
 /// backend or a resource limit is hit. Returns std::errc::invalid_argument when \a config carries an
 /// out-of-range batch bound.
+///
+/// The calling thread becomes the loop's thread. \ref event_loop::make_handle, \ref event_loop::post_after,
+/// every start_* on a handle, handle destruction and driving the loop must run on it; \ref event_loop::post
+/// is the sole exception. Violations are undefined behavior and unchecked. The loop object itself may be
+/// moved and destroyed elsewhere.
 result<event_loop> make_loop (const event_loop_config &config = {}) noexcept;
 
 } // namespace pal::async

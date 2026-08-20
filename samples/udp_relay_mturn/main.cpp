@@ -19,7 +19,6 @@
 #include <deque>
 #include <format>
 #include <mutex>
-#include <optional>
 #include <print>
 #include <ranges>
 #include <span>
@@ -44,7 +43,6 @@ using receive_result = pal::result<async_socket::receive_from_result>;
 using send_result = pal::result<async_socket::send_to_result>;
 
 // NOLINTBEGIN(bugprone-exception-escape): OOM, terminating is fine
-// NOLINTBEGIN(bugprone-unchecked-optional-access): canceled-before-dispatch keeps empty access unreachable
 
 namespace
 {
@@ -200,12 +198,11 @@ public:
 
 	explicit listener (const ::config &config)
 		: config_{config}
-		, loop_{make_event_loop(config.loop)}
-		, client_{loop_.make_handle(make_socket(config.client.port, thread_id_)).value()}
-		, peer_{loop_.make_handle(make_socket(config.peer.port, thread_id_)).value()}
+		, client_socket_{make_socket(config.client.port, thread_id_)}
+		, peer_socket_{make_socket(config.peer.port, thread_id_)}
 	{
-		attach_load_balancer(client_.value().native_socket(), config.threads);
-		attach_load_balancer(peer_.value().native_socket(), config.threads);
+		attach_load_balancer(client_socket_.native_socket(), config.threads);
+		attach_load_balancer(peer_socket_.native_socket(), config.threads);
 	}
 
 	~listener ()
@@ -243,8 +240,7 @@ private:
 	const size_t thread_id_{thread_id++};
 	std::thread thread_{};
 
-	pal::async::event_loop loop_;
-	std::optional<async_socket> client_, peer_;
+	sync_socket client_socket_, peer_socket_;
 	pal::async::task_pool<config::client_task_count, config::client_buffer_size> client_tasks_{};
 	pal::async::task_pool<config::peer_task_count, relay::max_datagram_size> peer_tasks_{};
 
@@ -253,60 +249,57 @@ private:
 
 	void run ()
 	{
-		while (auto t = peer_tasks_.try_acquire())
+		auto loop = make_event_loop(config_.loop);
 		{
-			start_peer_receive(std::move(t));
-		}
-		while (auto t = client_tasks_.try_acquire())
-		{
-			start_client_receive(std::move(t));
+			auto client = loop.make_handle(std::move(client_socket_)).value();
+			auto peer = loop.make_handle(std::move(peer_socket_)).value();
+
+			while (auto t = peer_tasks_.try_acquire())
+			{
+				start_peer_receive(peer, client, std::move(t));
+			}
+			while (auto t = client_tasks_.try_acquire())
+			{
+				start_client_receive(client, std::move(t));
+			}
+
+			while (!stopped)
+			{
+				std::ignore = loop.run_for(config::stop_check_interval).value();
+			}
 		}
 
-		while (!stopped)
+		while (loop.stats().io_in_flight != 0)
 		{
-			std::ignore = loop_.run_for(config::stop_check_interval).value();
-		}
-
-		client_.reset();
-		peer_.reset();
-
-		while (loop_.stats().io_in_flight != 0)
-		{
-			std::ignore = loop_.run_once().value();
+			std::ignore = loop.run_once().value();
 		}
 	}
 
-	void rearm_client (pal::async::task_ptr &&p) noexcept
+	auto on_allocation_sent (async_socket &client) noexcept
 	{
-		client_tasks_.reset_span(*p);
-		start_client_receive(std::move(p));
-	}
-
-	auto on_allocation_sent () noexcept
-	{
-		return [this](pal::async::task_ptr &&p, send_result &&r) noexcept
+		return [this, &client](pal::async::task_ptr &&p, send_result &&r) noexcept
 		{
 			if (r)
 			{
 				metrics_.out.inc(p->span().size());
-				rearm_client(std::move(p));
+				start_client_receive(client, std::move(p));
 			}
 			else if (r.error() != std::errc::operation_canceled)
 			{
-				rearm_client(std::move(p));
+				start_client_receive(client, std::move(p));
 			}
 		};
 	}
 
-	auto on_client_receive () noexcept
+	auto on_client_receive (async_socket &client) noexcept
 	{
-		return [this](pal::async::task_ptr &&p, receive_result &&r) noexcept
+		return [this, &client](pal::async::task_ptr &&p, receive_result &&r) noexcept
 		{
 			if (!r)
 			{
 				if (r.error() != std::errc::operation_canceled)
 				{
-					rearm_client(std::move(p));
+					start_client_receive(client, std::move(p));
 				}
 				return;
 			}
@@ -326,50 +319,45 @@ private:
 				std::memcpy(p->span().data(), &response, sizeof(response));
 				p->span(p->span().first(sizeof(response)));
 
-				client_->start_reply(std::move(p), on_allocation_sent());
+				client.start_reply(std::move(p), on_allocation_sent(client));
 				return;
 			}
 
-			rearm_client(std::move(p));
+			start_client_receive(client, std::move(p));
 		};
 	}
 
-	void start_client_receive (pal::async::task_ptr &&t) noexcept
+	void start_client_receive (async_socket &client, pal::async::task_ptr &&t) noexcept
 	{
-		client_->start_receive_from(std::move(t), on_client_receive());
+		client_tasks_.reset_span(*t);
+		client.start_receive_from(std::move(t), on_client_receive(client));
 	}
 
-	void rearm_peer (pal::async::task_ptr &&p) noexcept
+	auto on_forward_sent (async_socket &peer, async_socket &client) noexcept
 	{
-		peer_tasks_.reset_span(*p);
-		start_peer_receive(std::move(p));
-	}
-
-	auto on_forward_sent () noexcept
-	{
-		return [this](pal::async::task_ptr &&p, send_result &&r) noexcept
+		return [this, &peer, &client](pal::async::task_ptr &&p, send_result &&r) noexcept
 		{
 			if (r)
 			{
 				metrics_.out.inc(p->span().size());
-				rearm_peer(std::move(p));
+				start_peer_receive(peer, client, std::move(p));
 			}
 			else if (r.error() != std::errc::operation_canceled)
 			{
-				rearm_peer(std::move(p));
+				start_peer_receive(peer, client, std::move(p));
 			}
 		};
 	}
 
-	auto on_peer_receive () noexcept
+	auto on_peer_receive (async_socket &peer, async_socket &client) noexcept
 	{
-		return [this](pal::async::task_ptr &&p, receive_result &&r) noexcept
+		return [this, &peer, &client](pal::async::task_ptr &&p, receive_result &&r) noexcept
 		{
 			if (!r)
 			{
 				if (r.error() != std::errc::operation_canceled)
 				{
-					rearm_peer(std::move(p));
+					start_peer_receive(peer, client, std::move(p));
 				}
 				return;
 			}
@@ -379,20 +367,21 @@ private:
 
 			if (p->span().size() >= sizeof(relay::header))
 			{
-				if (const auto *client = clients_.load(relay::session(p->span())))
+				if (const auto *endpoint = clients_.load(relay::session(p->span())))
 				{
-					client_->start_send_to(std::move(p), *client, on_forward_sent());
+					client.start_send_to(std::move(p), *endpoint, on_forward_sent(peer, client));
 					return;
 				}
 			}
 
-			rearm_peer(std::move(p));
+			start_peer_receive(peer, client, std::move(p));
 		};
 	}
 
-	void start_peer_receive (pal::async::task_ptr &&t) noexcept
+	void start_peer_receive (async_socket &peer, async_socket &client, pal::async::task_ptr &&t) noexcept
 	{
-		peer_->start_receive_from(std::move(t), on_peer_receive());
+		peer_tasks_.reset_span(*t);
+		peer.start_receive_from(std::move(t), on_peer_receive(peer, client));
 	}
 
 	static pal::async::event_loop make_event_loop (const pal::async::event_loop_config &config)
@@ -543,5 +532,4 @@ int main (int argc, const char *argv[])
 	}
 }
 
-// NOLINTEND(bugprone-unchecked-optional-access)
 // NOLINTEND(bugprone-exception-escape)

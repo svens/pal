@@ -1,6 +1,7 @@
 #include <pal/async/event_loop.hpp>
 #include <pal/version.hpp>
 #include <pal/async/task.hpp>
+#include <pal/async/test.hpp>
 #include <pal/test.hpp>
 #include <catch2/catch_test_macros.hpp>
 #include <array>
@@ -63,7 +64,7 @@ std::error_code make_invalid_loop (const event_loop_config &config)
 
 TEST_CASE("async/event_loop")
 {
-	auto loop = make_loop();
+	auto loop = pal_test::make_test_loop(pal_test::test_backend());
 	REQUIRE(loop);
 
 	SECTION("make_loop: poll_batch bounds")
@@ -97,6 +98,43 @@ TEST_CASE("async/event_loop")
 		CHECK(make_loop(config));
 
 		config.drain_batch = event_loop_config::max_drain_batch;
+		CHECK(make_loop(config));
+	}
+
+	SECTION("make_loop: submission_depth bounds")
+	{
+		event_loop_config config{};
+
+		config.submission_depth = 0;
+		CHECK(make_invalid_loop(config) == std::errc::invalid_argument);
+
+		config.submission_depth = event_loop_config::max_submission_depth + 1;
+		config.completion_depth = event_loop_config::max_completion_depth;
+		CHECK(make_invalid_loop(config) == std::errc::invalid_argument);
+
+		config.submission_depth = 1;
+		config.completion_depth = 1;
+		CHECK(make_loop(config));
+
+		config.submission_depth = event_loop_config::max_submission_depth;
+		config.completion_depth = event_loop_config::max_completion_depth;
+		CHECK(make_loop(config));
+	}
+
+	SECTION("make_loop: completion_depth bounds")
+	{
+		event_loop_config config{};
+
+		config.completion_depth = config.submission_depth - 1;
+		CHECK(make_invalid_loop(config) == std::errc::invalid_argument);
+
+		config.completion_depth = event_loop_config::max_completion_depth + 1;
+		CHECK(make_invalid_loop(config) == std::errc::invalid_argument);
+
+		config.completion_depth = config.submission_depth;
+		CHECK(make_loop(config));
+
+		config.completion_depth = event_loop_config::max_completion_depth;
 		CHECK(make_loop(config));
 	}
 
@@ -374,6 +412,27 @@ TEST_CASE("async/event_loop")
 		CHECK(fired == 0);
 	}
 }
+
+#if __pal_os_linux
+
+TEST_CASE("async/event_loop: epoll fallback")
+{
+	// Compile-time probe failure: the loop make_loop() would have built on io_uring is built on epoll
+	// instead, with no error reaching the caller.
+	auto loop = __event_loop::make_loop_impl<true>({});
+	REQUIRE(loop);
+
+	task t;
+	int posted = 0;
+	loop->post(t.borrow(), [&posted](task_ptr &&) noexcept { ++posted; });
+
+	auto n = loop->run();
+	REQUIRE(n);
+	CHECK(*n == 1);
+	CHECK(posted == 1);
+}
+
+#endif
 
 TEST_CASE("async/event_loop destructor contract")
 {

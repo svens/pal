@@ -15,10 +15,7 @@
 #include <sys/socket.h>
 #include <unistd.h>
 
-namespace pal::async
-{
-
-namespace __event_loop
+namespace pal::async::__event_loop
 {
 
 namespace
@@ -243,17 +240,8 @@ void epoll_destroy (impl_type *base) noexcept
 
 } // namespace
 
-} // namespace __event_loop
-
-result<event_loop> make_loop (const event_loop_config &config) noexcept
+result<impl_ptr> make_epoll_loop (const event_loop_config &config) noexcept
 {
-	using namespace __event_loop;
-
-	if (!is_valid(config))
-	{
-		return make_unexpected(std::errc::invalid_argument);
-	}
-
 	const int epoll = ::epoll_create1(EPOLL_CLOEXEC);
 	if (epoll == -1)
 	{
@@ -304,9 +292,9 @@ result<event_loop> make_loop (const event_loop_config &config) noexcept
 	self->config_ = config;
 	self->now_ = epoll_now(*self);
 
-	return event_loop{impl_ptr{self}};
+	return impl_ptr{self};
 }
 
-} // namespace pal::async
+} // namespace pal::async::__event_loop
 
 #endif // __pal_os_linux

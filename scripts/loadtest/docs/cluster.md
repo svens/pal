@@ -23,7 +23,7 @@ assumes an Azure subscription you control.
 ## 2. Cluster shape
 
 1. `cluster.conf` holds the cluster shape and the run defaults, and
-   [README.md](../README.md) has the two invocation forms. (XXX: no outdateable 'two')
+   [README.md](../README.md) has the invocation forms.
 2. `relay-linux` is the relay under test and `loadtest-1..N` the load generators.
    Their private addresses are fixed, so `--server` values and shell history
    survive a stop/start cycle; `azure/template/cluster.bicep` assigns them.

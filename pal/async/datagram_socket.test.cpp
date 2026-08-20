@@ -1,5 +1,6 @@
 #include <pal/async/datagram_socket.hpp>
 #include <pal/async/task_pool.hpp>
+#include <pal/async/test.hpp>
 #include <pal/net/test.hpp>
 #include <pal/test.hpp>
 #include <pal/version.hpp>
@@ -64,7 +65,9 @@ std::span<std::byte> as_span (auto &storage)
 
 TEMPLATE_TEST_CASE("async/datagram_socket", "", udp_v4, udp_v6)
 {
-	auto loop = make_loop();
+	const auto backend = test_backend();
+
+	auto loop = make_test_loop(backend);
 	REQUIRE(loop);
 
 	auto socket = make_async_socket<TestType>(*loop);
@@ -240,7 +243,7 @@ TEMPLATE_TEST_CASE("async/datagram_socket", "", udp_v4, udp_v6)
 		config.poll_batch = 1;
 		config.drain_batch = drain_batch;
 
-		auto tuned = make_loop(config);
+		auto tuned = make_test_loop(backend, config);
 		REQUIRE(tuned);
 
 		auto tuned_socket = make_async_socket<TestType>(*tuned);

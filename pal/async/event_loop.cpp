@@ -1,7 +1,14 @@
 #include <pal/async/event_loop.hpp>
+#include <pal/version.hpp>
 #include <algorithm>
-#include <cerrno>
+#include <system_error>
 #include <utility>
+
+#if __pal_os_linux || __pal_os_macos
+	#include <cerrno>
+#elif __pal_os_windows
+	#include <winerror.h>
+#endif
 
 namespace pal::async
 {
@@ -111,7 +118,7 @@ void impl_type::drain_actionable () noexcept
 	{
 		s->queued = false;
 		drain_fn(*this, *s);
-		if (s->actionable())
+		if (!s->queued && s->actionable())
 		{
 			// one fairness quantum consumed; round-robin to the tail
 			s->queued = true;
@@ -143,7 +150,7 @@ size_t impl_type::iterate (clock::duration timeout) noexcept
 	{
 		now_ = now_fn(*this);
 		const auto &deadline = timer(*timer_root_).deadline;
-		timeout = std::min(timeout, deadline > now_ ? deadline - now_ : clock::duration::zero());
+		timeout = (std::min)(timeout, deadline > now_ ? deadline - now_ : clock::duration::zero());
 	}
 
 	poll_fn(*this, timeout);
@@ -211,8 +218,14 @@ void on_socket_event (socket_state &s, socket_state::direction &d) noexcept
 	}
 }
 
-void cancel_undispatched (impl_type &l, socket_state &s, int native_error) noexcept
+void close_socket (impl_type &l, socket_state &s) noexcept
 {
+	#if __pal_os_windows
+		constexpr auto cancel_error = ERROR_OPERATION_ABORTED;
+	#else
+		constexpr auto cancel_error = ECANCELED;
+	#endif
+
 	l.ready_.splice(std::move(s.receive.pending));
 	l.ready_.splice(std::move(s.send.pending));
 
@@ -220,14 +233,9 @@ void cancel_undispatched (impl_type &l, socket_state &s, int native_error) noexc
 	{
 		if (io(t).owner == &s)
 		{
-			io(t).native_error = native_error;
+			io(t).native_error = cancel_error;
 		}
 	}
-}
-
-void close_socket (impl_type &l, socket_state &s) noexcept
-{
-	cancel_undispatched(l, s, ECANCELED);
 
 	if (s.queued)
 	{
@@ -242,14 +250,61 @@ void socket_state_deleter::operator() (socket_state *s) const noexcept
 	s->loop->close_socket_fn(*s->loop, *s);
 }
 
+event_loop wrap (impl_ptr impl) noexcept
+{
+	return event_loop{std::move(impl)};
+}
+
+template <bool inject_probe_failure>
+result<event_loop> make_loop_impl (const event_loop_config &config) noexcept
+{
+	if (!is_valid(config))
+	{
+		return make_unexpected(std::errc::invalid_argument);
+	}
+
+	result<impl_ptr> impl = make_unexpected(std::errc::not_supported);
+
+	if constexpr (os == os_type::linux)
+	{
+		if constexpr (!inject_probe_failure)
+		{
+			impl = make_io_uring_loop(config);
+		}
+
+		if (!impl)
+		{
+			impl = make_epoll_loop(config);
+		}
+	}
+	else if constexpr (os == os_type::macos)
+	{
+		impl = make_kqueue_loop(config);
+	}
+	else if constexpr (os == os_type::windows)
+	{
+		impl = make_iocp_loop(config);
+	}
+
+	return std::move(impl).transform(wrap);
+}
+
+template result<event_loop> make_loop_impl<false> (const event_loop_config &) noexcept;
+template result<event_loop> make_loop_impl<true> (const event_loop_config &) noexcept;
+
 } // namespace __event_loop
+
+result<event_loop> make_loop (const event_loop_config &config) noexcept
+{
+	return __event_loop::make_loop_impl<false>(config);
+}
 
 result<size_t> event_loop::run () noexcept
 {
 	size_t total = 0;
 	while (impl_->has_work())
 	{
-		total += impl_->iterate(clock::duration::max());
+		total += impl_->iterate((clock::duration::max)());
 	}
 	return total;
 }
