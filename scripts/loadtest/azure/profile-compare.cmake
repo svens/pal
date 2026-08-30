@@ -19,6 +19,7 @@ if(NOT results)
 	message(FATAL_ERROR "${profile_state} holds no baseline capture: drop it with 'ninja profile-clear'")
 endif()
 set(state_deployment "${deployment}")
+set(state_mode "${mode}")
 set(state_threads "${threads}")
 set(state_sessions "${sessions}")
 set(state_conntrack "${conntrack}")
@@ -26,7 +27,7 @@ set(state_results "${results}")
 
 profile_preflight()
 
-foreach(key deployment threads sessions conntrack)
+foreach(key deployment mode threads sessions conntrack)
 	if(NOT "${${key}}" STREQUAL "${state_${key}}")
 		message(FATAL_ERROR
 			"${key} is '${${key}}' and the baseline was taken at '${state_${key}}', "

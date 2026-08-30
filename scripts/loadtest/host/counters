@@ -37,12 +37,12 @@
 #   relay.cpu          relay process CPU time, which excludes softirq -- always
 #                      lower than machine.cpu, and the gap is the point
 #
-# The relay is found by name, so this reports on udp_relay_mturn specifically.
+# The relay is found by name, so this reports on udp_relay specifically.
 
 . "$(dirname "$0")/_common.sh"
 require_verb show snapshot delta
 
-relay_process=udp_relay_mturn
+relay_process=udp_relay
 
 emit()
 {

@@ -99,7 +99,7 @@ thread at 4600 sessions on `Standard_F4s_v2`. The capture and the stage patterns
 `event_loop_config` bounds one drain visit with `drain_batch` and one poll
 harvest with `poll_batch`. Everything below is
 [the standard point](profile.md#2-the-standard-point) with a synthetic per-packet
-handler cost, `udp_relay_mturn --handler_spin_ns`.
+handler cost, `udp_relay --handler_spin_ns`.
 
 ### 5.1 What drain_batch is worth
 
@@ -162,7 +162,7 @@ A rung is 400 sessions here, which cannot resolve the few percent
 
 ### 5.4 poll_batch is unmeasured
 
-`udp_relay_mturn` gives each thread two sockets.
+`udp_relay --mode=mturn` gives each thread two sockets.
 
     Measured: @epoll_events never exceeded 4.
 

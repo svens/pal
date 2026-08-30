@@ -46,8 +46,8 @@ if(PROJECT_IS_TOP_LEVEL)
 	if(PAL_SAMPLES)
 		include(samples/list.cmake)
 
-		add_executable(udp_relay_mturn ${samples_common_sources} ${udp_relay_mturn_sources})
-		target_link_libraries(udp_relay_mturn PRIVATE cxx_warnings pal::pal)
+		add_executable(udp_relay ${samples_common_sources} ${udp_relay_sources})
+		target_link_libraries(udp_relay PRIVATE cxx_warnings pal::pal)
 
 		add_executable(loadtest ${samples_common_sources} ${loadtest_sources})
 		target_link_libraries(loadtest PRIVATE cxx_warnings pal::pal)

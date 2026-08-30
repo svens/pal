@@ -1,6 +1,6 @@
 # Starting, finding and stopping the relay under test. Included by common.cmake.
 
-set(relay_process udp_relay_mturn)
+set(relay_process udp_relay)
 set(relay_host relay-linux)
 
 function(remote_wait out host script seconds) #{{{1

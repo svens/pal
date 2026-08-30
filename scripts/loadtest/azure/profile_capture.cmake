@@ -81,6 +81,11 @@ macro(profile_preflight) #{{{1
 	else()
 		set(threads "default")
 	endif()
+	if(relay_arg_text MATCHES "--mode=([a-z]+)")
+		set(mode "${CMAKE_MATCH_1}")
+	else()
+		set(mode "default")
+	endif()
 
 	remote_try(status deployment ${relay_host}
 		"curl -s -H Metadata:true \"http://169.254.169.254/metadata/instance/compute/vmId?api-version=2021-02-01&format=text\""
@@ -96,7 +101,7 @@ macro(profile_preflight) #{{{1
 
 	string(TIMESTAMP captured_at "%Y%m%dT%H%M%S" UTC)
 
-	set(stamp "${commit}-threads_${threads}-sessions_${sessions}-exe_${binary_hash}-${captured_at}")
+	set(stamp "${commit}-${mode}-threads_${threads}-sessions_${sessions}-exe_${binary_hash}-${captured_at}")
 	file(MAKE_DIRECTORY "${profile_dir}")
 endmacro()
 

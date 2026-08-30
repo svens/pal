@@ -6,6 +6,7 @@ Checks: >
   -bugprone-derived-method-shadowing-base-method,
   -bugprone-invalid-enum-default-initialization,
   -bugprone-reserved-identifier,
+  -bugprone-signed-bitwise,
   -performance-enum-size,
 
 WarningsAsErrors: '*'

@@ -44,12 +44,12 @@ tracepoint:syscalls:sys_exit_sendmmsg /args.ret < 0/
  * inlined at its only call site, so a uprobe attaches and counts nothing. The two
  * below are called through the backend's function-pointer table.
  */
-uprobe:./udp_relay_mturn:*epoll_drain_receive*
+uprobe:./udp_relay:*epoll_drain_receive*
 {
 	@drain_receive_calls = count();
 }
 
-uprobe:./udp_relay_mturn:*epoll_drain_send*
+uprobe:./udp_relay:*epoll_drain_send*
 {
 	@drain_send_calls = count();
 }

@@ -104,17 +104,17 @@ carries its own usage. Both run on the relay.
 
 ## 4. Comparing captures
 
-`profile-baseline` writes `.profile/state.cmake`: the deployment, thread count, session
-count and conntrack state the reference was taken at, and the ordered stamps of every
-capture since. `profile-compare` refuses when any of them disagree.
+`profile-baseline` writes `.profile/state.cmake`: the deployment, relay mode, thread
+count, session count and conntrack state the reference was taken at, and the ordered
+stamps of every capture since. `profile-compare` refuses when any of them disagree.
 
 1. The deployment is the VM's `vmId`, read from IMDS. A redeploy is a different machine,
    and [the standard point](#2-the-standard-point) is what that costs.
-2. A stamp is `<commit>-threads_<n>-sessions_<n>-exe_<hash>-<utc>`. The hash is a prefix
-   of the shipped binary's SHA-256, which a compare run reads back to report when its
-   binary is the one the previous run measured. The UTC field keeps two measurements of
-   one binary at one load apart. The deployment and the conntrack state live in the state
-   file.
+2. A stamp is `<commit>-<mode>-threads_<n>-sessions_<n>-exe_<hash>-<utc>`. The hash is a
+   prefix of the shipped binary's SHA-256, which a compare run reads back to report when
+   its binary is the one the previous run measured. The UTC field keeps two measurements
+   of one binary at one load apart. The deployment and the conntrack state live in the
+   state file.
 3. Every comparison is against the first stamp.
 4. Per stage, the difference is between the baseline's first pass and this run's. The
    pair floor beside it is the larger of the two sides' own pairs, and bounds what one

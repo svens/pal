@@ -7,8 +7,8 @@ list(APPEND samples_common_sources
 	samples/common/thread.hpp
 )
 
-list(APPEND udp_relay_mturn_sources
-	samples/udp_relay_mturn/main.cpp
+list(APPEND udp_relay_sources
+	samples/udp_relay/main.cpp
 )
 
 list(APPEND loadtest_sources
@@ -17,6 +17,6 @@ list(APPEND loadtest_sources
 
 list(APPEND samples_sources
 	${samples_common_sources}
-	${udp_relay_mturn_sources}
+	${udp_relay_sources}
 	${loadtest_sources}
 )

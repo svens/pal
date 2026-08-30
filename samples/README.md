@@ -18,7 +18,8 @@ loadtester-side processes share one machine, servers may be remote):
 
 ## Binaries
 
-- `udp_relay_mturn`: MTURN-like relay -- all sessions share one client-side and one
+- `udp_relay`: the relay under test, its shape selected by `--mode`.
+- `--mode=mturn`: MTURN-like relay -- all sessions share one client-side and one
   peer-side port. Thread-per-loop with `SO_REUSEPORT` sharding; on Linux, incoming
   load is steered with `SO_ATTACH_REUSEPORT_CBPF` (CPU id modulo thread count, which
   assumes NIC RSS queue-to-CPU mapping and pinned threads). Session lookup is a
@@ -41,7 +42,7 @@ loadtester-side processes share one machine, servers may be remote):
 
 ## Running
 
-    udp_relay_mturn --threads=4
+    udp_relay --mode=mturn --threads=4
     loadtest --server=127.0.0.1 --streams=100 --runtime=60
 
 Platform notes:

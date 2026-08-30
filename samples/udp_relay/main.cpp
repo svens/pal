@@ -54,6 +54,29 @@ void on_signal (int)
 	stopped = true;
 }
 
+enum class relay_mode
+{
+	mturn,
+};
+
+constexpr std::string_view to_string_view (relay_mode mode) noexcept
+{
+	switch (mode)
+	{
+		case relay_mode::mturn: return "mturn";
+	}
+	return {};
+}
+
+relay_mode parse_mode (std::string_view option, std::string_view argument)
+{
+	if (argument == to_string_view(relay_mode::mturn))
+	{
+		return relay_mode::mturn;
+	}
+	throw std::runtime_error(std::format("{}: invalid mode '{}'", option, argument));
+}
+
 struct config
 {
 	static constexpr auto stop_check_interval = 1s;
@@ -63,6 +86,8 @@ struct config
 
 	static inline const pal::net::send_buffer_size send_buffer_size{2 * 1024 * 1024};
 	static inline const pal::net::receive_buffer_size receive_buffer_size{2 * 1024 * 1024};
+
+	relay_mode mode = relay_mode::mturn;
 
 	size_t threads = std::thread::hardware_concurrency();
 
@@ -84,7 +109,11 @@ struct config
 	{
 		parse_command_line(args, [this](std::string_view option, std::string_view argument)
 		{
-			if (option == "client.port")
+			if (option == "mode")
+			{
+				mode = parse_mode(option, argument);
+			}
+			else if (option == "client.port")
 			{
 				client.port = parse<pal::net::ip::port_type>(option, argument);
 			}
@@ -123,6 +152,7 @@ struct config
 	void print () const
 	{
 		std::println("config:");
+		std::println(" > mode={}", to_string_view(mode));
 		std::println(" > client.port={}", client.port);
 		std::println(" > peer.port={}", peer.port);
 		std::println(" > threads={}", threads);

@@ -16,6 +16,7 @@ profile_capture(2)
 file(WRITE "${profile_state}"
 	"# written by 'ninja profile-baseline' -- drop it with 'ninja profile-clear'\n"
 	"set(deployment \"${deployment}\")\n"
+	"set(mode \"${mode}\")\n"
 	"set(threads \"${threads}\")\n"
 	"set(sessions \"${sessions}\")\n"
 	"set(conntrack \"${conntrack}\")\n"
