@@ -16,8 +16,9 @@ what could move it; the rest account for the time.
 | softirq receive | ring sizes, coalescing, RSS -- [tune_linux](tune_linux.md) |
 | netfilter and conntrack | absent by provisioning, costed in [results](results.md#32-what-netfilter-costs) |
 | syscall entry and exit | pal: larger batches, or a different backend |
-| kernel recvmmsg body | pal, socket options, receive buffer size |
-| kernel sendmmsg body | pal, socket options |
+| io_uring machinery | pal: operations per datagram, registered files and ring fd |
+| kernel receive path | pal, socket options, receive buffer size |
+| kernel send path | pal, socket options |
 | pal event loop | pal |
 | relay application | the sample |
 

@@ -28,31 +28,35 @@ BEGIN {
 	match_re[1] = "nf_hook|nf_conntrack|nft_|ipt_do_table|iptable_|nf_nat|__nf_ct"
 	scope[1] = "context"
 
-	stages[2] = "kernel sendmmsg body"
-	match_re[2] = "sendmmsg|sendmsg|udp_send|ip_send|ip_output|ip_finish_output|ip_route_output|dev_queue_xmit|dev_hard_start_xmit|__qdisc|sch_direct|mlx5e_xmit|mlx5e_sq"
+	stages[2] = "io_uring machinery"
+	match_re[2] = "io_uring|io_issue_sqe|io_submit_sqes|io_cqring|io_recv|io_send|__io_"
 	scope[2] = "in_scope"
 
-	stages[3] = "kernel recvmmsg body"
-	match_re[3] = "recvmmsg|recvmsg|udp_recvmsg|skb_recv_udp|skb_consume_udp|__skb_try_recv"
+	stages[3] = "kernel send path"
+	match_re[3] = "sendmmsg|sendmsg|udp_send|ip_send|ip_output|ip_finish_output|ip_route_output|dev_queue_xmit|dev_hard_start_xmit|__qdisc|sch_direct|mlx5e_xmit|mlx5e_sq"
 	scope[3] = "in_scope"
 
-	stages[4] = "softirq receive"
-	match_re[4] = "net_rx_action|napi|netif_receive|ip_rcv|ip_local_deliver|udp4_lib_rcv|udp_queue_rcv|gro_|mlx5|__do_softirq|irq_exit"
-	scope[4] = "context"
+	stages[4] = "kernel receive path"
+	match_re[4] = "recvmmsg|recvmsg|udp_recvmsg|skb_recv_udp|skb_consume_udp|__skb_try_recv"
+	scope[4] = "in_scope"
 
-	stages[5] = "syscall entry and exit"
-	match_re[5] = "entry_SYSCALL|do_syscall_64|syscall_exit|syscall_return|exit_to_user|__x64_sys|entry_SYSRETQ"
-	scope[5] = "in_scope"
+	stages[5] = "softirq receive"
+	match_re[5] = "net_rx_action|napi|netif_receive|ip_rcv|ip_local_deliver|udp4_lib_rcv|udp_queue_rcv|gro_|mlx5|__do_softirq|irq_exit"
+	scope[5] = "context"
 
-	stages[6] = "relay application"
-	match_re[6] = "udp_relay|client_map|listener|relay::|on_client_receive|on_peer_receive|rearm_"
+	stages[6] = "syscall entry and exit"
+	match_re[6] = "entry_SYSCALL|do_syscall_64|syscall_exit|syscall_return|exit_to_user|__x64_sys|entry_SYSRETQ"
 	scope[6] = "in_scope"
 
-	stages[7] = "pal event loop"
-	match_re[7] = "pal::"
+	stages[7] = "relay application"
+	match_re[7] = "udp_relay|client_map|listener|relay::|on_client_receive|on_peer_receive|rearm_"
 	scope[7] = "in_scope"
 
-	count = 7
+	stages[8] = "pal event loop"
+	match_re[8] = "pal::"
+	scope[8] = "in_scope"
+
+	count = 8
 	idle_re = "native_safe_halt|mwait_idle|acpi_idle|poll_idle|cpuidle_enter|do_idle"
 
 	if (format == "") {

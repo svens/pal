@@ -21,8 +21,9 @@ static_assert(sizeof(header) == 12);
 struct registration
 {
 	uint64_t session;
+	uint16_t client_port;
 };
-static_assert(sizeof(registration) == 8);
+static_assert(sizeof(registration) == 10);
 
 struct allocation
 {

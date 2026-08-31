@@ -163,6 +163,7 @@ public:
 	{
 		socket_.set_option(config::receive_buffer_size).value();
 		socket_.connect({config.server, config.port}).value();
+		client_port_ = socket_.local_endpoint().value().port();
 	}
 
 	~receiver ()
@@ -175,7 +176,7 @@ public:
 
 	void setup (std::deque<stream> &streams, std::mt19937_64 &rng)
 	{
-		socket_.set_option(pal::net::receive_timeout{config::handshake_timeout}).value();
+		socket_.set_option(pal::net::receive_timeout{config::receive_poll_timeout}).value();
 
 		for (auto count = config_.streams; count > 0; --count)
 		{
@@ -183,8 +184,6 @@ public:
 			auto &s = streams.emplace_back(id, allocate(id));
 			index_.emplace(s.id, &s);
 		}
-
-		socket_.set_option(pal::net::receive_timeout{config::receive_poll_timeout}).value();
 	}
 
 	void start ()
@@ -208,16 +207,24 @@ private:
 	const ::config &config_;
 	statistics::receive_stats &stats_;
 	sync_socket socket_;
+	pal::net::ip::port_type client_port_{};
 	std::unordered_map<uint64_t, stream *> index_{};
 	std::thread thread_{};
 
 	sync_socket allocate (uint64_t id)
 	{
-		const relay::registration registration{.session = id};
+		const relay::registration registration{
+			.session = id,
+			.client_port = static_cast<uint16_t>(client_port_),
+		};
+		const endpoint_type relay{config_.server, config_.port};
+
+		auto socket = pal::net::make_datagram_socket(config_.proto()).value();
+		socket.set_option(pal::net::receive_timeout{config::handshake_timeout}).value();
 
 		for (auto attempt = config::handshake_attempts; attempt > 0; --attempt)
 		{
-			if (!socket_.send(as_span(registration)))
+			if (!socket.send_to(relay, as_span(registration)))
 			{
 				std::this_thread::sleep_for(config::handshake_retry_delay);
 				continue;
@@ -226,7 +233,7 @@ private:
 			while (true)
 			{
 				std::array<std::byte, relay::max_datagram_size> buffer{};
-				const auto received = socket_.receive(std::span{buffer});
+				const auto received = socket.receive(std::span{buffer});
 				if (!received)
 				{
 					if (recoverable(received.error()))
@@ -246,7 +253,6 @@ private:
 					continue;
 				}
 
-				auto socket = pal::net::make_datagram_socket(config_.proto()).value();
 				socket.connect({config_.server, pal::net::ip::port_type{allocation.port}}).value();
 				return socket;
 			}

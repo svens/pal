@@ -7,7 +7,7 @@
 
 $Rules = @(
 	@{ Name = 'pal_relay_client'; Protocol = 'UDP'; LocalPort = '3478-3479'; LocalOnlyMapping = $True }
-	@{ Name = 'pal_relay_peer'; Protocol = 'UDP'; LocalPort = '50000-60000'; LocalOnlyMapping = $True }
+	@{ Name = 'pal_relay_peer'; Protocol = 'UDP'; LocalPort = '40000-65535'; LocalOnlyMapping = $True }
 )
 
 foreach ($Rule in $Rules)
