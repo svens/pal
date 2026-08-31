@@ -111,6 +111,8 @@ struct mapping
 struct io_uring_loop: impl_type
 {
 	int ring = -1;
+	int enter_ring = -1;
+	unsigned enter_flags = 0;
 	int wake = -1;
 	bool wake_armed = false;
 	submission_ring sq{};
@@ -119,6 +121,17 @@ struct io_uring_loop: impl_type
 
 	~io_uring_loop () noexcept
 	{
+		if (enter_flags != 0)
+		{
+			::io_uring_rsrc_update update
+			{
+				.offset = static_cast<uint32_t>(enter_ring),
+				.resv = 0,
+				.data = 0,
+			};
+			std::ignore = sys_register(ring, IORING_UNREGISTER_RING_FDS, &update, 1);
+		}
+
 		::close(wake);
 		::close(ring);
 	}
@@ -167,7 +180,14 @@ int enter (io_uring_loop &self, unsigned min_complete, const void *arg, size_t a
 	int r = 0;
 	do
 	{
-		r = sys_enter(self.ring, to_submit(self), min_complete, IORING_ENTER_GETEVENTS | flags, arg, argsz);
+		r = sys_enter(
+			self.enter_ring,
+			to_submit(self),
+			min_complete,
+			IORING_ENTER_GETEVENTS | self.enter_flags | flags,
+			arg,
+			argsz
+		);
 	} while (r < 0 && errno == EINTR);
 	return r;
 }
@@ -485,6 +505,23 @@ bool has_required_opcodes (int ring) noexcept
 	;
 }
 
+int register_ring_fd (int ring) noexcept
+{
+	::io_uring_rsrc_update update
+	{
+		.offset = static_cast<uint32_t>(-1),
+		.resv = 0,
+		.data = static_cast<uint64_t>(ring),
+	};
+
+	if (sys_register(ring, IORING_REGISTER_RING_FDS, &update, 1) != 1)
+	{
+		return -1;
+	}
+
+	return static_cast<int>(update.offset);
+}
+
 mapping map_ring (int ring, size_t size, uint64_t offset) noexcept
 {
 	auto *address = ::mmap(
@@ -534,6 +571,13 @@ result<impl_ptr> make_io_uring_loop (const event_loop_config &config) noexcept
 	if (!has_required_features(params) || !has_required_opcodes(self->ring))
 	{
 		return make_unexpected(std::errc::not_supported);
+	}
+
+	self->enter_ring = self->ring;
+	if (auto index = register_ring_fd(self->ring); index >= 0)
+	{
+		self->enter_ring = index;
+		self->enter_flags = IORING_ENTER_REGISTERED_RING;
 	}
 
 	const auto ring_size = std::max(

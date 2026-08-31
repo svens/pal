@@ -345,9 +345,9 @@ private:
 /// out-of-range batch bound.
 ///
 /// The calling thread becomes the loop's thread. \ref event_loop::make_handle, \ref event_loop::post_after,
-/// every start_* on a handle, handle destruction and driving the loop must run on it; \ref event_loop::post
-/// is the sole exception. Violations are undefined behavior and unchecked. The loop object itself may be
-/// moved and destroyed elsewhere.
+/// every start_* on a handle, handle destruction and driving the loop must run on it, as must moving and
+/// destroying the loop object itself; \ref event_loop::post is the sole exception. Violations are undefined
+/// behavior and unchecked.
 result<event_loop> make_loop (const event_loop_config &config = {}) noexcept;
 
 } // namespace pal::async
