@@ -298,11 +298,6 @@ class basic_listener
 {
 public:
 
-	~basic_listener ()
-	{
-		join();
-	}
-
 	basic_listener (const basic_listener &) = delete;
 	basic_listener &operator= (const basic_listener &) = delete;
 
@@ -452,6 +447,11 @@ public:
 		, peer_socket_{make_socket(config.peer.first, thread_id_)}
 	{
 		attach_load_balancer(peer_socket_.native_socket(), config.threads);
+	}
+
+	~mturn_listener ()
+	{
+		join();
 	}
 
 private:
@@ -614,6 +614,11 @@ public:
 			: next_port_ + block_size(config) - 1
 		}
 	{
+	}
+
+	~turn_listener ()
+	{
+		join();
 	}
 
 private:
