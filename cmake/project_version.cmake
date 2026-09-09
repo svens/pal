@@ -4,6 +4,7 @@ if(GIT_FOUND)
 		COMMAND ${GIT_EXECUTABLE} describe --match "v[0-9]*.[0-9]*.[0-9]*" --always --tags --dirty
 		WORKING_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR}
 		OUTPUT_VARIABLE PROJECT_VERSION
+		ERROR_QUIET
 	)
 endif()
 

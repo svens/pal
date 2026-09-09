@@ -209,7 +209,7 @@ using session_state_ptr = std::unique_ptr<session_state>;
 int session_state::verify_callback (int preverify_ok, ::X509_STORE_CTX *store_ctx) noexcept
 {
 	static const auto ssl_index = ::SSL_get_ex_data_X509_STORE_CTX_idx();
-	auto *ssl = static_cast<::SSL *>(::X509_STORE_CTX_get_ex_data(store_ctx, ssl_index));
+	const auto *ssl = static_cast<const ::SSL *>(::X509_STORE_CTX_get_ex_data(store_ctx, ssl_index));
 	auto *state = static_cast<session_state *>(::SSL_get_ex_data(ssl, session_index()));
 
 	if (preverify_ok == 1)
@@ -583,7 +583,7 @@ bool compute_cookie (const session_state &state, unsigned char *out, unsigned in
 	const auto &cookie_secret = state.cookie_secret;
 	const auto peer_token = state.peer_token.bytes();
 
-	auto *result = ::HMAC(::EVP_sha256(),
+	const auto *result = ::HMAC(::EVP_sha256(),
 		cookie_secret.data(),
 		cookie_secret.size(),
 		reinterpret_cast<const unsigned char *>(peer_token.data()),
@@ -642,7 +642,7 @@ result<session_state_ptr> make_session (const context_ptr &ctx) noexcept //{{{1
 		::SSL_set_connect_state(ssl.get());
 	}
 
-	auto *bio_methods = bio_method::get();
+	const auto *bio_methods = bio_method::get();
 	if (bio_methods == nullptr)
 	{
 		return make_unexpected(std::errc::not_enough_memory);

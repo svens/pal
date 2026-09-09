@@ -93,7 +93,7 @@ void kqueue_poll (impl_type &base, impl_type::clock::duration timeout) noexcept
 
 std::error_code kqueue_register_socket (impl_type &base, socket_state &state) noexcept
 {
-	auto &self = static_cast<kqueue_loop &>(base);
+	const auto &self = static_cast<const kqueue_loop &>(base);
 	std::array<struct ::kevent, 2> reg{};
 	EV_SET(reg.data(), static_cast<uintptr_t>(state.handle), EVFILT_READ, EV_ADD | EV_CLEAR, 0, 0, &state);
 	EV_SET(&reg[1], static_cast<uintptr_t>(state.handle), EVFILT_WRITE, EV_ADD | EV_CLEAR, 0, 0, &state);
@@ -202,7 +202,7 @@ impl_type::clock::time_point kqueue_now (impl_type &) noexcept
 
 void kqueue_wake (impl_type &base) noexcept
 {
-	auto &self = static_cast<kqueue_loop &>(base);
+	const auto &self = static_cast<const kqueue_loop &>(base);
 	struct ::kevent trigger{};
 	EV_SET(&trigger, wake_ident, EVFILT_USER, 0, NOTE_TRIGGER, 0, nullptr);
 	std::ignore = ::kevent(self.kq, &trigger, 1, nullptr, 0, nullptr);

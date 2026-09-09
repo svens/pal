@@ -86,7 +86,7 @@ struct op_send_to
 	template <typename F>
 	static void dispatch (task &t, F &f) noexcept
 	{
-		auto &op = __event_loop::io(t);
+		const auto &op = __event_loop::io(t);
 		task_ptr p{&t};
 		if (op.native_error)
 		{

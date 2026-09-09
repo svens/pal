@@ -15,7 +15,7 @@ bool distinguished_name::impl_type::load_at (int index, oid_buffer &oid, value_b
 		return false;
 	}
 
-	auto *p = ::X509_NAME_get_entry(name, index);
+	const auto *p = ::X509_NAME_get_entry(name, index);
 
 	const auto *o = ::X509_NAME_ENTRY_get_object(p);
 	auto len = ::OBJ_obj2txt(oid.data(), static_cast<int>(oid.size()), o, 1);

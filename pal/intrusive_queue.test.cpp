@@ -209,7 +209,7 @@ TEST_CASE("intrusive_queue")
 	{
 		CHECK(queue.begin() == queue.end());
 		size_t count = 0;
-		for (auto &node: queue)
+		for (const auto &node: queue)
 		{
 			std::ignore = node;
 			count++;

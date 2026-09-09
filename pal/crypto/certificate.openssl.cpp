@@ -86,10 +86,10 @@ std::span<const uint8_t> certificate::impl_type::init_serial_number () const noe
 
 std::string_view certificate::impl_type::init_common_name () const noexcept
 {
-	auto *subject = ::X509_get_subject_name(x509.get());
+	const auto *subject = ::X509_get_subject_name(x509.get());
 	for (int i = 0; i < ::X509_NAME_entry_count(subject); ++i)
 	{
-		auto *entry = ::X509_NAME_get_entry(subject, i);
+		const auto *entry = ::X509_NAME_get_entry(subject, i);
 		if (::OBJ_obj2nid(::X509_NAME_ENTRY_get_object(entry)) == NID_commonName)
 		{
 			return reinterpret_cast<const char *>(

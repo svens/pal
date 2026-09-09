@@ -340,7 +340,7 @@ public:
 		auto remaining_size = static_cast<ptrdiff_t>(ingress_distribution.size());
 		auto *ptr = ingress_distribution.data();
 		const auto total_bytes = static_cast<double>(total.in.bytes);
-		for (auto &metric: listener_metrics)
+		for (const auto &metric: listener_metrics)
 		{
 			const auto share = total_bytes != 0 ? static_cast<double>(metric.in.bytes) * 100.0 / total_bytes : 0.0;
 			const auto [out, size] = std::format_to_n(ptr, remaining_size, "{:.0f}%|", share);
