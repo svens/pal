@@ -107,7 +107,7 @@ struct op_send_to
 ///
 /// Contracts: \c start_* and destruction are loop-thread-only (violations are undefined behavior, not checked).
 /// Destruction cancels every op of this socket not yet dispatched as \c operation_canceled completions, delivered from
-/// a subsequent run(); run the loop until they have been dispatched before destroying it. A completion other than \c
+/// a subsequent run(); \ref event_loop::settle dispatches them before the loop is destroyed. A completion other than \c
 /// operation_canceled proves the socket was alive at dispatch, so handlers start ops on it without a liveness check.
 template <typename Protocol>
 class handle<net::basic_datagram_socket<Protocol>>
@@ -135,7 +135,7 @@ public:
 		pal_require(!t->span().empty(), "start_receive_from without task payload storage");
 		__event_loop::io(*t).native_error = 0;
 		t->bind<__datagram_socket::op_receive_from<Protocol>>(std::move(handler));
-		__event_loop::start_socket_op(std::move(t), *state_, state_->receive);
+		state_->start_op(std::move(t), state_->receive);
 	}
 
 	/// Completion payload of \ref start_send_to
@@ -153,7 +153,7 @@ public:
 		std::memcpy(op.endpoint.data(), recipient.data(), sizeof(endpoint_type));
 		op.endpoint_size = static_cast<uint32_t>(recipient.size());
 		t->bind<__datagram_socket::op_send_to<Protocol>>(std::move(handler));
-		__event_loop::start_socket_op(std::move(t), *state_, state_->send);
+		state_->start_op(std::move(t), state_->send);
 	}
 
 	/// Queue an asynchronous send_to of \a t's payload window (\ref task::span) back to the source of \a t's
@@ -168,7 +168,7 @@ public:
 		pal_require(op.endpoint_size != 0, "start_reply without a completed receive");
 		op.native_error = 0;
 		t->bind<__datagram_socket::op_send_to<Protocol>>(std::move(handler));
-		__event_loop::start_socket_op(std::move(t), *state_, state_->send);
+		state_->start_op(std::move(t), state_->send);
 	}
 
 	/// \copydoc net::basic_socket::local_endpoint
@@ -228,7 +228,7 @@ private:
 			return make_unexpected(std::errc::not_enough_memory);
 		}
 
-		if (auto error = loop.register_socket_fn(loop, *state))
+		if (auto error = loop.register_socket(*state))
 		{
 			return unexpected{error};
 		}

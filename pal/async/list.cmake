@@ -1,5 +1,6 @@
 list(APPEND pal_sources
 	pal/async/__async.hpp
+	pal/async/__event_loop.hpp
 	pal/async/datagram_socket.hpp
 	pal/async/event_loop.hpp
 	pal/async/event_loop.cpp

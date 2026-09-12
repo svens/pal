@@ -25,21 +25,6 @@ using resolve_result = pal::result<pal::async::resolve_result<udp>>;
 
 constexpr auto numeric = resolver_base::numeric_host | resolver_base::numeric_service;
 
-// run_for() until every counted offload has completed back, bounded by an overall deadline: run_for()
-// may return 0 spuriously (a wake whose work was already drained), so only total elapsed time
-// distinguishes still-in-flight from hung.
-void run_until_idle (event_loop &loop)
-{
-	const auto deadline = event_loop::clock::now() + 5s;
-	while (loop.stats().offload_in_flight > 0)
-	{
-		const auto now = event_loop::clock::now();
-		REQUIRE(now < deadline);
-		auto r = loop.run_for(deadline - now);
-		REQUIRE(r);
-	}
-}
-
 TEST_CASE("async/resolver")
 {
 	auto loop = make_loop();
@@ -78,7 +63,7 @@ TEST_CASE("async/resolver")
 		});
 
 		CHECK(loop->stats().offload_in_flight == 1);
-		run_until_idle(*loop);
+		REQUIRE(loop->settle());
 
 		CHECK(handler_thread == std::this_thread::get_id());
 		CHECK(got == &t);
@@ -110,7 +95,7 @@ TEST_CASE("async/resolver")
 			}
 		});
 
-		run_until_idle(*loop);
+		REQUIRE(loop->settle());
 		REQUIRE(count == 1);
 		CHECK(first.address().is_v6());
 		CHECK(first.address().is_loopback());
@@ -134,7 +119,7 @@ TEST_CASE("async/resolver")
 			}
 		});
 
-		run_until_idle(*loop);
+		REQUIRE(loop->settle());
 		REQUIRE(count >= 1);
 		CHECK(loopback);
 	}
@@ -155,7 +140,7 @@ TEST_CASE("async/resolver")
 			}
 		});
 
-		run_until_idle(*loop);
+		REQUIRE(loop->settle());
 		CHECK(had_value);
 		CHECK(count == 0);
 	}
@@ -174,7 +159,7 @@ TEST_CASE("async/resolver")
 			}
 		});
 
-		run_until_idle(*loop);
+		REQUIRE(loop->settle());
 		CHECK_FALSE(had_value);
 		CHECK(ec == pal::net::ip::resolver_errc::host_not_found);
 	}
@@ -191,7 +176,7 @@ TEST_CASE("async/resolver")
 			}
 		});
 
-		run_until_idle(*loop);
+		REQUIRE(loop->settle());
 
 		h->start_resolve(t.borrow(), "127.0.0.1", "9", numeric, [&](task_ptr &&, resolve_result &&r) noexcept
 		{
@@ -201,7 +186,7 @@ TEST_CASE("async/resolver")
 			}
 		});
 
-		run_until_idle(*loop);
+		REQUIRE(loop->settle());
 
 		CHECK(seen[0] == port_type{7});
 		CHECK(seen[1] == port_type{9});
@@ -233,7 +218,7 @@ TEST_CASE("async/resolver")
 		CHECK(loop->stats().offload_in_flight == 1);
 
 		release = true;
-		run_until_idle(*loop);
+		REQUIRE(loop->settle());
 		CHECK(called == 1);
 		CHECK(loop->stats().offload_in_flight == 0);
 	}
@@ -264,7 +249,7 @@ TEST_CASE("async/resolver")
 		// app "recycles" the session while the op is in flight; the closure's generation goes stale
 		++s.generation;
 
-		run_until_idle(*loop);
+		REQUIRE(loop->settle());
 		CHECK(discarded == 1);
 		CHECK(delivered == 0);
 		CHECK(loop->stats().offload_in_flight == 0);
@@ -282,7 +267,7 @@ TEST_CASE("async/resolver")
 			count = r ? r->endpoints.size() : 0;
 		});
 
-		run_until_idle(moved_loop);
+		REQUIRE(moved_loop.settle());
 		CHECK(count == 1);
 	}
 }
@@ -336,46 +321,6 @@ TEST_CASE("async/resolver start_resolve contracts")
 
 			CHECK(msg.contains("canonical_name"));
 		}
-	}
-}
-
-TEST_CASE("async/resolver loop destructor contract")
-{
-	if constexpr (pal::build == pal::build_type::debug)
-	{
-		const auto handler = [](task_ptr &&, resolve_result &&) noexcept {};
-
-		// A loop destroyed with a counted offload in flight -> REQUIRE crash. The single worker is held
-		// on `blocker` (posting back to the leaked `keeper`), so the resolve is still queued and the
-		// dying loop's inbox is deterministically empty.
-		static task blocker, pending;
-		alignas(endpoint) static std::array<std::byte, sizeof(endpoint)> storage{};
-		static std::atomic<bool> release = false;
-
-		auto msg = pal_test::require_terminate([&]
-		{
-			auto keeper = make_loop().value();
-			auto pool = make_thread_pool(1).value();
-			pool.post(keeper, blocker.borrow(),
-				[](task &) noexcept
-				{
-					while (!release)
-					{
-						std::this_thread::yield();
-					}
-				},
-				[](task_ptr &&) noexcept {}
-			);
-
-			auto loop = make_loop().value();
-			auto h = loop.make_handle(resolver(), pool).value();
-			pending.span(storage);
-			h.start_resolve(pending.borrow(), "127.0.0.1", "7", numeric, handler);
-		});
-
-		// unblock the leaked worker (the trapped terminate leaked the pool without joining it)
-		release = true;
-		CHECK(msg.contains("offload"));
 	}
 }
 

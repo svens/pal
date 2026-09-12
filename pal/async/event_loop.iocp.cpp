@@ -2,14 +2,16 @@
 
 #if __pal_os_windows
 
-#include <pal/async/event_loop.hpp>
+#include <pal/async/__event_loop.hpp>
 #include <pal/error.hpp>
 
 #include <array>
 #include <chrono>
 #include <cstddef>
 #include <new>
+#include <span>
 #include <tuple>
+#include <utility>
 #include <winsock2.h>
 #include <windows.h>
 
@@ -21,19 +23,30 @@ namespace
 
 using poll_array = std::array<::OVERLAPPED_ENTRY, event_loop_config::max_poll_batch>;
 
-struct iocp_loop: impl_type
-{
-	::HANDLE port = nullptr;
-	poll_array events{};
-
-	~iocp_loop () noexcept
-	{
-		::CloseHandle(port);
-	}
-};
+using unique_port = unique_handle<::HANDLE, ::CloseHandle, nullptr>;
 
 // Every other completion key is the socket_state the packet belongs to
 constexpr ::ULONG_PTR wake_key = 1;
+
+struct iocp_loop: impl_type
+{
+	unique_port port{};
+	poll_array events{};
+
+	void do_post (task &t) noexcept override
+	{
+		while (::PostQueuedCompletionStatus(port, 0, wake_key, reinterpret_cast<::LPOVERLAPPED>(&t)) == 0)
+		{
+		}
+	}
+
+	std::error_code register_socket (socket_state &state) noexcept override;
+	void close_socket (socket_state &state) noexcept override;
+
+	size_t harvest (const ::OVERLAPPED_ENTRY &entry) noexcept;
+	size_t harvest_batch (::DWORD timeout) noexcept;
+	void arm_socket_op (task &t, socket_state &state, socket_state::direction &d) noexcept;
+};
 
 struct native_op: ::OVERLAPPED
 {
@@ -108,12 +121,12 @@ void on_failure (io_state &op, native_op &n, const socket_state &state) noexcept
 	op.native_error = error;
 }
 
-void harvest (iocp_loop &self, const ::OVERLAPPED_ENTRY &entry) noexcept
+size_t iocp_loop::harvest (const ::OVERLAPPED_ENTRY &entry) noexcept
 {
 	if (entry.lpCompletionKey == wake_key)
 	{
-		on_wake(self);
-		return;
+		posted_.push(*reinterpret_cast<task *>(entry.lpOverlapped));
+		return 1;
 	}
 
 	auto &state = *reinterpret_cast<socket_state *>(entry.lpCompletionKey);
@@ -121,7 +134,7 @@ void harvest (iocp_loop &self, const ::OVERLAPPED_ENTRY &entry) noexcept
 	auto &t = *n.self;
 	auto &op = io(t);
 
-	--state.native_in_flight;
+	--(n.send ? state.send : state.receive).armed;
 
 	if (entry.lpOverlapped->Internal == 0)
 	{
@@ -132,7 +145,28 @@ void harvest (iocp_loop &self, const ::OVERLAPPED_ENTRY &entry) noexcept
 		on_failure(op, n, state);
 	}
 
-	self.ready_.push(t);
+	ready_.push(t);
+	return 0;
+}
+
+size_t iocp_loop::harvest_batch (::DWORD timeout) noexcept
+{
+	::ULONG count = 0;
+	std::ignore = ::GetQueuedCompletionStatusEx(
+		port,
+		events.data(),
+		static_cast<::ULONG>(config_.poll_batch),
+		&count,
+		timeout,
+		FALSE
+	);
+
+	size_t posts = 0;
+	for (const auto &event: std::span{events}.first(count))
+	{
+		posts += harvest(event);
+	}
+	return posts;
 }
 
 void iocp_poll (impl_type &base, impl_type::clock::duration timeout) noexcept
@@ -145,38 +179,27 @@ void iocp_poll (impl_type &base, impl_type::clock::duration timeout) noexcept
 		ms = to_milliseconds(timeout);
 	}
 
-	::ULONG count = 0;
-	std::ignore = ::GetQueuedCompletionStatusEx(
-		self.port,
-		self.events.data(),
-		static_cast<::ULONG>(self.config_.poll_batch),
-		&count,
-		ms,
-		FALSE
-	);
-
-	for (::ULONG i = 0; i < count; ++i)
+	if (const auto posts = self.harvest_batch(ms))
 	{
-		harvest(self, self.events[i]);
+		self.posts_in_flight_.fetch_sub(posts, std::memory_order_relaxed);
 	}
 }
 
-std::error_code iocp_register_socket (impl_type &base, socket_state &state) noexcept
+std::error_code iocp_loop::register_socket (socket_state &state) noexcept
 {
-	auto &self = static_cast<iocp_loop &>(base);
-
 	const auto key = reinterpret_cast<::ULONG_PTR>(&state);
-	if (::CreateIoCompletionPort(to_handle(state), self.port, key, 0) == nullptr)
+	if (::CreateIoCompletionPort(to_handle(state), port, key, 0) == nullptr)
 	{
 		return pal::this_thread::last_system_error();
 	}
 
+	state.receive.ready = true;
+	state.send.ready = true;
 	return {};
 }
 
-void iocp_submit_socket_op (impl_type &base, task &t, socket_state &state, socket_state::direction &d) noexcept
+void iocp_loop::arm_socket_op (task &t, socket_state &state, socket_state::direction &d) noexcept
 {
-	auto &self = static_cast<iocp_loop &>(base);
 	auto &op = io(t);
 	const auto payload = t.span();
 	const bool send = &d == &state.send;
@@ -222,14 +245,14 @@ void iocp_submit_socket_op (impl_type &base, task &t, socket_state &state, socke
 	{
 		// immediate completion
 		on_success(op, n, n.bytes);
-		self.ready_.push(t);
+		ready_.push(t);
 		return;
 	}
 
 	const auto error = ::WSAGetLastError();
 	if (error == WSA_IO_PENDING)
 	{
-		++state.native_in_flight;
+		++d.armed;
 		return;
 	}
 
@@ -241,64 +264,46 @@ void iocp_submit_socket_op (impl_type &base, task &t, socket_state &state, socke
 	{
 		op.native_error = error;
 	}
-	self.ready_.push(t);
+	ready_.push(t);
+}
+
+void iocp_drain_socket (impl_type &base, socket_state &state, socket_state::direction &d) noexcept
+{
+	auto &self = static_cast<iocp_loop &>(base);
+	while (auto *t = d.pending.try_pop())
+	{
+		self.arm_socket_op(*t, state, d);
+	}
 }
 
 // Drains synchronously so every op of a destroyed socket is queued before the destructor returns, which a
 // readiness backend gets for free by unqueueing them.
-void iocp_close_socket (impl_type &base, socket_state &state) noexcept
+void iocp_loop::close_socket (socket_state &state) noexcept
 {
-	auto &self = static_cast<iocp_loop &>(base);
-
-	if (state.native_in_flight > 0)
+	if (state.armed() > 0)
 	{
 		std::ignore = ::CancelIoEx(to_handle(state), nullptr);
 
-		std::array<::OVERLAPPED_ENTRY, 64> events{};
-		while (state.native_in_flight > 0)
+		size_t posts = 0;
+		while (state.armed() > 0)
 		{
-			::ULONG count = 0;
-			std::ignore = ::GetQueuedCompletionStatusEx(
-				self.port,
-				events.data(),
-				static_cast<::ULONG>(events.size()),
-				&count,
-				INFINITE,
-				FALSE
-			);
-
-			for (::ULONG i = 0; i < count; ++i)
-			{
-				harvest(self, events[i]);
-			}
+			posts += harvest_batch(INFINITE);
+		}
+		if (posts > 0)
+		{
+			posts_in_flight_.fetch_sub(posts, std::memory_order_relaxed);
 		}
 	}
 
-	close_socket(base, state);
-}
-
-impl_type::clock::time_point iocp_now (impl_type &) noexcept
-{
-	return impl_type::clock::now();
-}
-
-void iocp_wake (impl_type &base) noexcept
-{
-	auto &self = static_cast<iocp_loop &>(base);
-	std::ignore = ::PostQueuedCompletionStatus(self.port, 0, wake_key, nullptr);
-}
-
-void iocp_destroy (impl_type *base) noexcept
-{
-	delete static_cast<iocp_loop *>(base);
+	impl_type::close_socket(state);
 }
 
 } // namespace
 
 result<impl_ptr> make_iocp_loop (const event_loop_config &config) noexcept
 {
-	::HANDLE port = ::CreateIoCompletionPort(INVALID_HANDLE_VALUE, nullptr, 0, 1);
-	if (port == nullptr)
+	unique_port port{::CreateIoCompletionPort(INVALID_HANDLE_VALUE, nullptr, 0, 1)};
+	if (!port)
 	{
 		return unexpected{pal::this_thread::last_system_error()};
 	}
@@ -306,20 +311,13 @@ result<impl_ptr> make_iocp_loop (const event_loop_config &config) noexcept
 	auto *self = new (std::nothrow) iocp_loop{};
 	if (self == nullptr)
 	{
-		::CloseHandle(port);
 		return make_unexpected(std::errc::not_enough_memory);
 	}
 
-	self->port = port;
+	self->port = std::move(port);
 	self->poll_fn = &iocp_poll;
-	self->wake_fn = &iocp_wake;
-	self->now_fn = &iocp_now;
-	self->destroy_fn = &iocp_destroy;
-	self->register_socket_fn = &iocp_register_socket;
-	self->submit_socket_op_fn = &iocp_submit_socket_op;
-	self->close_socket_fn = &iocp_close_socket;
+	self->drain_fn = &iocp_drain_socket;
 	self->config_ = config;
-	self->now_ = iocp_now(*self);
 
 	return impl_ptr{self};
 }

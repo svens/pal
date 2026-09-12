@@ -3,7 +3,6 @@
 #include <pal/async/test.hpp>
 #include <pal/net/test.hpp>
 #include <pal/test.hpp>
-#include <pal/version.hpp>
 #include <catch2/catch_test_macros.hpp>
 #include <catch2/catch_template_test_macros.hpp>
 #include <array>
@@ -569,7 +568,7 @@ TEMPLATE_TEST_CASE("async/datagram_socket", "", udp_v4, udp_v6)
 
 		CHECK(canceled == 0);
 		CHECK(loop->stats().io_in_flight == 1);
-		auto n = loop->run_once();
+		auto n = loop->settle();
 		REQUIRE(n);
 		CHECK(*n == 1);
 		CHECK(canceled == 1);
@@ -715,26 +714,6 @@ TEMPLATE_TEST_CASE("async/datagram_socket", "", udp_v4, udp_v6)
 		REQUIRE(again);
 		CHECK(again.get() == acquired);
 		CHECK(again->span().size() == full_span_size);
-	}
-}
-
-TEST_CASE("async/datagram_socket destructor contract")
-{
-	if constexpr (pal::build == pal::build_type::debug)
-	{
-		// Loop destroyed before the cancel completions were dispatched -> REQUIRE crash.
-		static std::array<std::byte, 64> storage{};
-		static task t{storage};
-
-		auto msg = pal_test::require_terminate([]
-		{
-			auto loop = make_loop().value();
-			auto socket = make_sync_socket<udp_v4>().value();
-			auto h = loop.make_handle(std::move(socket)).value();
-			h.start_receive_from(t.borrow(), [](task_ptr &&, receive_result &&) noexcept {});
-		});
-
-		CHECK(msg.contains("I/O ops"));
 	}
 }
 

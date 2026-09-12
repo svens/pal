@@ -2,20 +2,18 @@
 
 #if __pal_os_linux
 
-#include <pal/async/event_loop.hpp>
+#include <pal/async/__event_loop.hpp>
 #include <pal/error.hpp>
 
 #include <algorithm>
 #include <atomic>
 #include <bit>
 #include <cerrno>
-#include <chrono>
 #include <cstdint>
 #include <endian.h>
 #include <linux/io_uring.h>
 #include <new>
 #include <poll.h>
-#include <sys/eventfd.h>
 #include <sys/mman.h>
 #include <sys/socket.h>
 #include <sys/syscall.h>
@@ -108,20 +106,18 @@ struct mapping
 	}
 };
 
-struct io_uring_loop: impl_type
+struct io_uring_loop: posix_loop
 {
-	int ring = -1;
+	unique_fd ring{};
 	int enter_ring = -1;
-	unsigned enter_flags = 0;
-	int wake = -1;
 	bool wake_armed = false;
 	submission_ring sq{};
 	completion_ring cq{};
 	mapping ring_map{}, sqe_map{};
 
-	~io_uring_loop () noexcept
+	~io_uring_loop () noexcept override
 	{
-		if (enter_flags != 0)
+		if (enter_ring != -1)
 		{
 			::io_uring_rsrc_update update
 			{
@@ -131,10 +127,32 @@ struct io_uring_loop: impl_type
 			};
 			std::ignore = sys_register(ring, IORING_UNREGISTER_RING_FDS, &update, 1);
 		}
-
-		::close(wake);
-		::close(ring);
 	}
+
+	std::error_code register_socket (socket_state &state) noexcept override
+	{
+		// Every SQE names its own fd, so there is nothing to register up front. Both directions start with
+		// room to arm, which is what 'ready' means to this backend.
+		state.receive.ready = true;
+		state.send.ready = true;
+		return {};
+	}
+
+	void close_socket (socket_state &state) noexcept override;
+
+	unsigned to_submit () const noexcept
+	{
+		// Without SQPOLL, only io_uring_enter consumes SQEs.
+		// Tail minus head counts pending submissions.
+		return sq.local_tail - load_acquire(*sq.head);
+	}
+
+	int enter (unsigned min_complete, const void *arg, size_t argsz, unsigned flags) const noexcept;
+	void complete_cqe (const ::io_uring_cqe &cqe) noexcept;
+	size_t harvest (size_t limit) noexcept;
+	::io_uring_sqe *acquire_sqe () noexcept;
+	void arm_wake () noexcept;
+	void arm_socket_op (task &t, socket_state &state, socket_state::direction &d) noexcept;
 };
 
 // Receive-side per-op block. A send carries its destination in the SQE, so only a receive needs one.
@@ -160,31 +178,22 @@ static_assert(alignof(task) > send_tag);
 
 constexpr ::__kernel_timespec to_kernel_timespec (impl_type::clock::duration d) noexcept
 {
-	const auto wait = (d < impl_type::clock::duration::zero()) ? impl_type::clock::duration::zero() : d;
-	const auto secs = std::chrono::duration_cast<std::chrono::seconds>(wait);
-	const auto nsecs = std::chrono::duration_cast<std::chrono::nanoseconds>(wait - secs);
-	return {.tv_sec = secs.count(), .tv_nsec = nsecs.count()};
+	const auto ts = to_timespec(d);
+	return {.tv_sec = ts.tv_sec, .tv_nsec = ts.tv_nsec};
 }
 
-// Without SQPOLL the kernel consumes SQEs only inside io_uring_enter, so the gap between our tail and the
-// kernel's head is exactly what is owed to it -- no separate counter that could drift.
-unsigned to_submit (io_uring_loop &self) noexcept
+int io_uring_loop::enter (unsigned min_complete, const void *arg, size_t argsz, unsigned flags) const noexcept
 {
-	return self.sq.local_tail - load_acquire(*self.sq.head);
-}
-
-int enter (io_uring_loop &self, unsigned min_complete, const void *arg, size_t argsz, unsigned flags) noexcept
-{
-	store_release(*self.sq.tail, self.sq.local_tail);
+	store_release(*sq.tail, sq.local_tail);
 
 	int r = 0;
 	do
 	{
 		r = sys_enter(
-			self.enter_ring,
-			to_submit(self),
+			enter_ring,
+			to_submit(),
 			min_complete,
-			IORING_ENTER_GETEVENTS | self.enter_flags | flags,
+			IORING_ENTER_GETEVENTS | IORING_ENTER_REGISTERED_RING | flags,
 			arg,
 			argsz
 		);
@@ -192,77 +201,73 @@ int enter (io_uring_loop &self, unsigned min_complete, const void *arg, size_t a
 	return r;
 }
 
-void complete_cqe (io_uring_loop &self, const ::io_uring_cqe &cqe) noexcept;
-
-size_t harvest (io_uring_loop &self, size_t limit) noexcept
+size_t io_uring_loop::harvest (size_t limit) noexcept
 {
-	auto head = *self.cq.head;
-	const auto tail = load_acquire(*self.cq.tail);
+	auto head = *cq.head;
+	const auto tail = load_acquire(*cq.tail);
 
 	size_t n = 0;
 	for (; head != tail && n < limit; ++head, ++n)
 	{
-		complete_cqe(self, self.cq.cqes[head & *self.cq.mask]);
+		complete_cqe(cq.cqes[head & *cq.mask]);
 	}
 
-	store_release(*self.cq.head, head);
+	store_release(*cq.head, head);
 	return n;
 }
 
-::io_uring_sqe *acquire_sqe (io_uring_loop &self) noexcept
+::io_uring_sqe *io_uring_loop::acquire_sqe () noexcept
 {
-	if (to_submit(self) == *self.sq.entries)
+	if (to_submit() == *sq.entries)
 	{
 		// EBUSY is the completion ring backing up rather than the submission ring: reap first, retry.
-		if (enter(self, 0, nullptr, 0, 0) < 0 && errno == EBUSY)
+		if (enter(0, nullptr, 0, 0) < 0 && errno == EBUSY)
 		{
-			harvest(self, static_cast<size_t>(-1));
-			std::ignore = enter(self, 0, nullptr, 0, 0);
+			harvest(static_cast<size_t>(-1));
+			std::ignore = enter(0, nullptr, 0, 0);
 		}
 
-		if (to_submit(self) == *self.sq.entries)
+		if (to_submit() == *sq.entries)
 		{
 			return nullptr;
 		}
 	}
 
-	auto &sqe = self.sq.sqes[self.sq.local_tail & *self.sq.mask];
+	auto &sqe = sq.sqes[sq.local_tail & *sq.mask];
 	sqe = {};
-	++self.sq.local_tail;
+	++sq.local_tail;
 	return &sqe;
 }
 
-void arm_wake (io_uring_loop &self) noexcept
+void io_uring_loop::arm_wake () noexcept
 {
-	if (self.wake_armed)
+	if (wake_armed)
 	{
 		return;
 	}
 
-	auto *sqe = acquire_sqe(self);
+	auto *sqe = acquire_sqe();
 	if (sqe == nullptr)
 	{
 		return;
 	}
 
 	sqe->opcode = IORING_OP_POLL_ADD;
-	sqe->fd = self.wake;
+	sqe->fd = wake.read;
 	sqe->len = IORING_POLL_ADD_MULTI;
 	sqe->poll32_events = ::htole32(POLLIN);
 	sqe->user_data = wake_user_data;
-	self.wake_armed = true;
+	wake_armed = true;
 }
 
-void complete_cqe (io_uring_loop &self, const ::io_uring_cqe &cqe) noexcept
+void io_uring_loop::complete_cqe (const ::io_uring_cqe &cqe) noexcept
 {
 	if (cqe.user_data == wake_user_data)
 	{
-		uint64_t counter{};
-		std::ignore = ::read(self.wake, &counter, sizeof(counter));
-		on_wake(self);
+		wake.drain(*this);
 		if ((cqe.flags & IORING_CQE_F_MORE) == 0)
 		{
-			self.wake_armed = false;
+			wake_armed = false;
 		}
 		return;
 	}
@@ -279,7 +284,6 @@ void complete_cqe (io_uring_loop &self, const ::io_uring_cqe &cqe) noexcept
 	auto &state = *op.owner;
 	auto &d = send ? state.send : state.receive;
 
-	--state.native_in_flight;
 	--d.armed;
 	on_socket_event(state, d);
 
@@ -304,13 +308,13 @@ void complete_cqe (io_uring_loop &self, const ::io_uring_cqe &cqe) noexcept
 		op.endpoint_size = n.message.msg_namelen;
 	}
 
-	self.ready_.push(t);
+	ready_.push(t);
 }
 
 void io_uring_poll (impl_type &base, impl_type::clock::duration timeout) noexcept
 {
 	auto &self = static_cast<io_uring_loop &>(base);
-	arm_wake(self);
+	self.arm_wake();
 
 	unsigned min_complete = 1;
 	unsigned flags = 0;
@@ -321,9 +325,8 @@ void io_uring_poll (impl_type &base, impl_type::clock::duration timeout) noexcep
 
 	if (timeout == impl_type::clock::duration::zero() || !self.wake_armed)
 	{
-		// An unarmed wake leaves nothing watching the eventfd, so a post() from another thread could not
-		// break a blocking wait. Return instead, letting the next iteration retry arming and drain the
-		// inbox meanwhile.
+		// Without an armed wake, posts cannot interrupt a blocking wait.
+		// Poll without blocking so the next iteration retries arming.
 		min_complete = 0;
 	}
 	else if (timeout != impl_type::clock::duration::max())
@@ -335,30 +338,21 @@ void io_uring_poll (impl_type &base, impl_type::clock::duration timeout) noexcep
 		flags = IORING_ENTER_EXT_ARG;
 	}
 
-	std::ignore = enter(self, min_complete, argp, argsz, flags);
-	harvest(self, self.config_.poll_batch);
+	std::ignore = self.enter(min_complete, argp, argsz, flags);
+	self.harvest(self.config_.poll_batch);
 }
 
-std::error_code io_uring_register_socket (impl_type &, socket_state &state) noexcept
-{
-	// Every SQE names its own fd, so there is nothing to register up front. Both directions start with room
-	// to arm, which is what 'ready' means to this backend.
-	state.receive.ready = true;
-	state.send.ready = true;
-	return {};
-}
-
-void arm_socket_op (io_uring_loop &self, task &t, socket_state &state, socket_state::direction &d) noexcept
+void io_uring_loop::arm_socket_op (task &t, socket_state &state, socket_state::direction &d) noexcept
 {
 	auto &op = io(t);
 	const auto payload = t.span();
 	const bool send = &d == &state.send;
 
-	auto *sqe = acquire_sqe(self);
+	auto *sqe = acquire_sqe();
 	if (sqe == nullptr)
 	{
 		op.native_error = ENOBUFS;
-		self.ready_.push(t);
+		ready_.push(t);
 		return;
 	}
 
@@ -389,51 +383,33 @@ void arm_socket_op (io_uring_loop &self, task &t, socket_state &state, socket_st
 		sqe->msg_flags = MSG_TRUNC;
 	}
 
-	++state.native_in_flight;
 	++d.armed;
+}
+
+void io_uring_drain_socket (impl_type &base, socket_state &state, socket_state::direction &d) noexcept
+{
+	auto &self = static_cast<io_uring_loop &>(base);
+	while (d.armed < max_armed)
+	{
+		auto *t = d.pending.try_pop();
+		if (t == nullptr)
+		{
+			break;
+		}
+		self.arm_socket_op(*t, state, d);
+	}
 	d.ready = d.armed < max_armed;
 }
 
-void io_uring_submit_socket_op (impl_type &base, task &t, socket_state &state, socket_state::direction &d) noexcept
+void io_uring_loop::close_socket (socket_state &state) noexcept
 {
-	auto &self = static_cast<io_uring_loop &>(base);
-	if (d.armed >= max_armed || !d.pending.empty())
-	{
-		d.pending.push(t);
-		return;
-	}
-	arm_socket_op(self, t, state, d);
-}
-
-void io_uring_drain_socket (impl_type &base, socket_state &state) noexcept
-{
-	auto &self = static_cast<io_uring_loop &>(base);
-	for (auto *d: {&state.receive, &state.send})
-	{
-		while (d->armed < max_armed)
-		{
-			auto *t = d->pending.try_pop();
-			if (t == nullptr)
-			{
-				d->ready = true;
-				break;
-			}
-			arm_socket_op(self, *t, state, *d);
-		}
-	}
-}
-
-void io_uring_close_socket (impl_type &base, socket_state &state) noexcept
-{
-	auto &self = static_cast<io_uring_loop &>(base);
-
 	bool cancel_pending = true;
-	while (state.native_in_flight > 0)
+	while (state.armed() > 0)
 	{
 		if (cancel_pending)
 		{
 			// handle<> closes the socket only after socket_state teardown, so the fd is still live.
-			if (auto *sqe = acquire_sqe(self); sqe != nullptr)
+			if (auto *sqe = acquire_sqe(); sqe != nullptr)
 			{
 				sqe->opcode = IORING_OP_ASYNC_CANCEL;
 				sqe->fd = static_cast<int32_t>(state.handle);
@@ -443,28 +419,11 @@ void io_uring_close_socket (impl_type &base, socket_state &state) noexcept
 			}
 		}
 
-		std::ignore = enter(self, 1, nullptr, 0, 0);
-		harvest(self, static_cast<size_t>(-1));
+		std::ignore = enter(1, nullptr, 0, 0);
+		harvest(static_cast<size_t>(-1));
 	}
 
-	close_socket(base, state);
-}
-
-impl_type::clock::time_point io_uring_now (impl_type &) noexcept
-{
-	return impl_type::clock::now();
-}
-
-void io_uring_wake (impl_type &base) noexcept
-{
-	auto &self = static_cast<io_uring_loop &>(base);
-	const uint64_t one = 1;
-	std::ignore = ::write(self.wake, &one, sizeof(one));
-}
-
-void io_uring_destroy (impl_type *base) noexcept
-{
-	delete static_cast<io_uring_loop *>(base);
+	impl_type::close_socket(state);
 }
 
 bool has_required_features (const ::io_uring_params &params) noexcept
@@ -551,7 +510,6 @@ result<impl_ptr> make_io_uring_loop (const event_loop_config &config) noexcept
 		return make_unexpected(std::errc::not_enough_memory);
 	}
 
-	self->destroy_fn = &io_uring_destroy;
 	impl_ptr owner{self};
 
 	::io_uring_params params{};
@@ -562,8 +520,8 @@ result<impl_ptr> make_io_uring_loop (const event_loop_config &config) noexcept
 	;
 	params.cq_entries = static_cast<unsigned>(config.completion_depth);
 
-	self->ring = sys_setup(static_cast<unsigned>(config.submission_depth), params);
-	if (self->ring < 0)
+	self->ring = unique_fd{sys_setup(static_cast<unsigned>(config.submission_depth), params)};
+	if (!self->ring)
 	{
 		return unexpected{pal::this_thread::last_system_error()};
 	}
@@ -573,11 +531,10 @@ result<impl_ptr> make_io_uring_loop (const event_loop_config &config) noexcept
 		return make_unexpected(std::errc::not_supported);
 	}
 
-	self->enter_ring = self->ring;
-	if (auto index = register_ring_fd(self->ring); index >= 0)
+	self->enter_ring = register_ring_fd(self->ring);
+	if (self->enter_ring < 0)
 	{
-		self->enter_ring = index;
-		self->enter_flags = IORING_ENTER_REGISTERED_RING;
+		return unexpected{pal::this_thread::last_system_error()};
 	}
 
 	const auto ring_size = std::max(
@@ -617,23 +574,18 @@ result<impl_ptr> make_io_uring_loop (const event_loop_config &config) noexcept
 		sq_array[i] = i;
 	}
 
-	self->wake = ::eventfd(0, EFD_NONBLOCK | EFD_CLOEXEC);
-	if (self->wake < 0)
+	auto wake = wake_channel::make();
+	if (!wake)
 	{
-		return unexpected{pal::this_thread::last_system_error()};
+		return unexpected{wake.error()};
 	}
+	self->wake = std::move(*wake);
 
 	self->poll_fn = &io_uring_poll;
-	self->wake_fn = &io_uring_wake;
-	self->now_fn = &io_uring_now;
-	self->register_socket_fn = &io_uring_register_socket;
-	self->submit_socket_op_fn = &io_uring_submit_socket_op;
 	self->drain_fn = &io_uring_drain_socket;
-	self->close_socket_fn = &io_uring_close_socket;
 	self->config_ = config;
-	self->now_ = io_uring_now(*self);
 
-	arm_wake(*self);
+	self->arm_wake();
 
 	return owner;
 }

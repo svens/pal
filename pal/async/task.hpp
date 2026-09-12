@@ -6,7 +6,6 @@
  */
 
 #include <pal/async/__async.hpp>
-#include <pal/intrusive_mpsc_queue.hpp>
 #include <pal/intrusive_queue.hpp>
 #include <pal/intrusive_stack.hpp>
 #include <pal/require.hpp>
@@ -46,7 +45,6 @@ struct layout
 	__async::completion<task> completion;
 	union
 	{
-		intrusive_mpsc_queue_hook<task> mpsc_hook;
 		intrusive_queue_hook<task> hook;
 		intrusive_stack_hook<task> stack_hook;
 	};
@@ -179,8 +177,7 @@ private:
 	// which member is active is library-internal knowledge, held per owning queue
 	union
 	{
-		intrusive_mpsc_queue_hook<task> mpsc_hook_{};
-		intrusive_queue_hook<task> hook_;
+		intrusive_queue_hook<task> hook_{};
 		intrusive_stack_hook<task> stack_hook_;
 	};
 
@@ -221,7 +218,6 @@ struct attorney
 
 	// Kept internal: the hooks stay single-owner for the library.
 	// Apps queue their own idle tasks via task::scratch_as() instead.
-	using task_mpsc_queue = pal::intrusive_mpsc_queue<&task::mpsc_hook_>;
 	using task_queue = pal::intrusive_queue<&task::hook_>;
 	using task_stack = pal::intrusive_stack<&task::stack_hook_>;
 };

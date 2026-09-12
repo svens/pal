@@ -102,7 +102,6 @@ TEST_CASE("async/thread_pool offload")
 		CHECK(work_thread != std::this_thread::get_id());
 		CHECK(handler_thread == std::this_thread::get_id());
 		CHECK(got == &t);
-		CHECK(loop->stats().completions == 1);
 	}
 
 	SECTION("post: result through scratch")
@@ -176,7 +175,6 @@ TEST_CASE("async/thread_pool offload")
 		CHECK(*n == 1);
 		CHECK(ran == 1);
 		CHECK(event_loop::clock::now() - before < 5s);
-		CHECK(loop->stats().wakeups >= 1);
 	}
 
 	SECTION("post: multiple tasks")

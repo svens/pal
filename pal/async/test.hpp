@@ -5,7 +5,7 @@
  * Test helpers for pal/async
  */
 
-#include <pal/async/event_loop.hpp>
+#include <pal/async/__event_loop.hpp>
 #include <pal/version.hpp>
 #include <catch2/catch_message.hpp>
 #include <catch2/catch_test_macros.hpp>
@@ -45,7 +45,7 @@ inline pal::result<pal::async::event_loop> make_test_loop (
 			SKIP("backend unavailable: " << impl.error().message());
 			return pal::unexpected{impl.error()};
 		}
-		return wrap(std::move(*impl));
+		return pal::async::event_loop{std::move(*impl)};
 	}
 	else
 	{

@@ -103,6 +103,8 @@ public:
 	/// scratch for \a handler to read. \a handler receives ownership. Both closures share the task's one
 	/// inline closure budget. \a loop must outlive the operation: it is destroyable only once \a handler has
 	/// run (see class contract).
+	///
+	/// Worker completion delivery follows \ref event_loop::post backpressure rules.
 	template <typename Work, typename Handler>
 	void post (event_loop &loop, task_ptr &&t, Work work, Handler handler) noexcept
 		requires __async::handler<Work, void(task &) noexcept>

@@ -1,4 +1,4 @@
-#include <pal/async/event_loop.hpp>
+#include <pal/async/__event_loop.hpp>
 #include <pal/version.hpp>
 #include <algorithm>
 #include <system_error>
@@ -20,6 +20,19 @@ namespace
 {
 
 constexpr size_t max_rounds_per_poll = 4;
+
+[[nodiscard]] constexpr bool is_valid (const event_loop_config &config) noexcept
+{
+	return config.poll_batch >= 1
+		&& config.poll_batch <= event_loop_config::max_poll_batch
+		&& config.drain_batch >= 1
+		&& config.drain_batch <= event_loop_config::max_drain_batch
+		&& config.submission_depth >= 1
+		&& config.submission_depth <= event_loop_config::max_submission_depth
+		&& config.completion_depth >= config.submission_depth
+		&& config.completion_depth <= event_loop_config::max_completion_depth
+	;
+}
 
 // Armed timer's op state: https://en.wikipedia.org/wiki/Pairing_heap node. No decrease-key/removal: there
 // is no cancellation, deadline moves use the lazy re-arm idiom.
@@ -79,17 +92,10 @@ task *merge_pairs (task *first) noexcept
 
 } // namespace
 
-impl_type::~impl_type () noexcept
-{
-	pal_require(inbox_.head() == nullptr, "event_loop destroyed with a pending inbox");
-	pal_require(stats_.offload_in_flight == 0, "event_loop destroyed with offloaded ops in flight");
-	pal_require(stats_.io_in_flight == 0, "event_loop destroyed with I/O ops in flight");
-}
-
-size_t impl_type::drain_inbox () noexcept
+size_t impl_type::drain_posted () noexcept
 {
 	size_t n = 0;
-	while (auto *t = inbox_.try_pop())
+	while (auto *t = posted_.try_pop())
 	{
 		t->complete();
 		++n;
@@ -117,7 +123,13 @@ void impl_type::drain_actionable () noexcept
 	while (auto *s = actionable_.try_pop())
 	{
 		s->queued = false;
-		drain_fn(*this, *s);
+		for (auto *d: {&s->receive, &s->send})
+		{
+			if (d->actionable())
+			{
+				drain_fn(*this, *s, *d);
+			}
+		}
 		if (!s->queued && s->actionable())
 		{
 			// one fairness quantum consumed; round-robin to the tail
@@ -141,23 +153,22 @@ size_t impl_type::dispatch_ready () noexcept
 
 size_t impl_type::iterate (clock::duration timeout) noexcept
 {
-	auto n = drain_inbox();
-	if (n > 0 || !ready_.empty() || !actionable_.empty())
+	if (!posted_.empty() || !ready_.empty() || !actionable_.empty())
 	{
 		timeout = clock::duration::zero();
 	}
 	else if (timer_root_ != nullptr)
 	{
-		now_ = now_fn(*this);
+		now_ = now();
 		const auto &deadline = timer(*timer_root_).deadline;
 		timeout = (std::min)(timeout, deadline > now_ ? deadline - now_ : clock::duration::zero());
 	}
 
 	poll_fn(*this, timeout);
 
-	now_ = now_fn(*this);
+	now_ = now();
 
-	n += drain_inbox();
+	auto n = drain_posted();
 	n += expire_timers();
 
 	for (auto round = max_rounds_per_poll; round != 0; --round)
@@ -171,41 +182,26 @@ size_t impl_type::iterate (clock::duration timeout) noexcept
 		n += dispatched;
 	}
 
-	stats_.completions += n;
 	return n;
 }
 
-void post (impl_type &l, task_ptr &&t) noexcept
+void impl_type::post (task_ptr &&t) noexcept
 {
 	auto *raw = t.release();
-	l.inbox_.push(*raw);
-	if (!l.signaled_.exchange(true, std::memory_order_acq_rel))
+	if (std::this_thread::get_id() == loop_thread_)
 	{
-		l.wake_fn(l);
+		posted_.push(*raw);
+		return;
 	}
+	posts_in_flight_.fetch_add(1, std::memory_order_relaxed);
+	do_post(*raw);
 }
 
-void on_wake (impl_type &l) noexcept
-{
-	l.signaled_.store(false, std::memory_order_release);
-	l.stats_.wakeups++;
-}
-
-void start_timer (impl_type &l, task_ptr &&t, impl_type::clock::time_point deadline) noexcept
+void impl_type::start_timer (task_ptr &&t, clock::time_point deadline) noexcept
 {
 	auto *raw = t.release();
 	timer(*raw) = {.deadline = deadline, .child = nullptr, .sibling = nullptr};
-	l.timer_root_ = (l.timer_root_ != nullptr) ? meld(l.timer_root_, raw) : raw;
-}
-
-void submit_socket_op (impl_type &l, task &t, socket_state &s, socket_state::direction &d) noexcept
-{
-	d.pending.push(t);
-	if (d.ready && !s.queued)
-	{
-		s.queued = true;
-		l.actionable_.push(s);
-	}
+	timer_root_ = (timer_root_ != nullptr) ? meld(timer_root_, raw) : raw;
 }
 
 void on_socket_event (socket_state &s, socket_state::direction &d) noexcept
@@ -218,7 +214,7 @@ void on_socket_event (socket_state &s, socket_state::direction &d) noexcept
 	}
 }
 
-void close_socket (impl_type &l, socket_state &s) noexcept
+void impl_type::close_socket (socket_state &s) noexcept
 {
 	#if __pal_os_windows
 		constexpr auto cancel_error = ERROR_OPERATION_ABORTED;
@@ -226,10 +222,10 @@ void close_socket (impl_type &l, socket_state &s) noexcept
 		constexpr auto cancel_error = ECANCELED;
 	#endif
 
-	l.ready_.splice(std::move(s.receive.pending));
-	l.ready_.splice(std::move(s.send.pending));
+	ready_.splice(std::move(s.receive.pending));
+	ready_.splice(std::move(s.send.pending));
 
-	for (auto &t: l.ready_)
+	for (auto &t: ready_)
 	{
 		if (io(t).owner == &s)
 		{
@@ -239,7 +235,7 @@ void close_socket (impl_type &l, socket_state &s) noexcept
 
 	if (s.queued)
 	{
-		l.actionable_.remove(s);
+		actionable_.remove(s);
 	}
 
 	delete &s;
@@ -247,12 +243,7 @@ void close_socket (impl_type &l, socket_state &s) noexcept
 
 void socket_state_deleter::operator() (socket_state *s) const noexcept
 {
-	s->loop->close_socket_fn(*s->loop, *s);
-}
-
-event_loop wrap (impl_ptr impl) noexcept
-{
-	return event_loop{std::move(impl)};
+	s->loop->close_socket(*s);
 }
 
 template <bool inject_probe_failure>
@@ -286,7 +277,10 @@ result<event_loop> make_loop_impl (const event_loop_config &config) noexcept
 		impl = make_iocp_loop(config);
 	}
 
-	return std::move(impl).transform(wrap);
+	return std::move(impl).transform([](impl_ptr impl) noexcept
+	{
+		return event_loop{std::move(impl)};
+	});
 }
 
 template result<event_loop> make_loop_impl<false> (const event_loop_config &) noexcept;
@@ -317,6 +311,16 @@ result<size_t> event_loop::run_once () noexcept
 result<size_t> event_loop::run_for (clock::duration timeout) noexcept
 {
 	return impl_->iterate(timeout);
+}
+
+result<size_t> event_loop::settle () noexcept
+{
+	size_t total = 0;
+	while (impl_->has_counted_work())
+	{
+		total += impl_->iterate((clock::duration::max)());
+	}
+	return total;
 }
 
 } // namespace pal::async

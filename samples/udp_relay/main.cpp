@@ -485,10 +485,7 @@ private:
 			}
 		}
 
-		while (loop.stats().io_in_flight != 0)
-		{
-			std::ignore = loop.run_once().value();
-		}
+		std::ignore = loop.settle().value();
 	}
 
 	auto on_allocation_sent (async_socket &client) noexcept
@@ -668,10 +665,7 @@ private:
 			}
 		}
 
-		while (loop.stats().io_in_flight != 0)
-		{
-			std::ignore = loop.run_once().value();
-		}
+		std::ignore = loop.settle().value();
 
 		sessions_.clear();
 	}

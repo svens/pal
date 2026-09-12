@@ -1,4 +1,4 @@
-#include <pal/async/event_loop.hpp>
+#include <pal/async/__event_loop.hpp>
 #include <pal/version.hpp>
 #include <pal/async/task.hpp>
 #include <pal/async/test.hpp>
@@ -140,9 +140,6 @@ TEST_CASE("async/event_loop")
 
 	SECTION("run: idle")
 	{
-		CHECK(loop->stats().completions == 0);
-		CHECK(loop->stats().wakeups == 0);
-
 		// Idle run() has nothing to do and returns immediately.
 		auto n = loop->run();
 		REQUIRE(n);
@@ -161,6 +158,69 @@ TEST_CASE("async/event_loop")
 		auto n = loop->run_once();
 		REQUIRE(n);
 		CHECK(*n == 0);
+	}
+
+	SECTION("settle: idle")
+	{
+		auto n = loop->settle();
+		REQUIRE(n);
+		CHECK(*n == 0);
+	}
+
+	SECTION("settle: drains pending posts")
+	{
+		task t;
+		int ran = 0;
+		loop->post(t.borrow(), [&ran](task_ptr &&) noexcept { ++ran; });
+
+		auto n = loop->settle();
+		REQUIRE(n);
+		CHECK(*n == 1);
+		CHECK(ran == 1);
+	}
+
+	SECTION("settle: drains cross-thread posts")
+	{
+		task t;
+		int ran = 0;
+		task *got = nullptr;
+		std::thread::id handler_thread{};
+
+		std::thread producer{[&]
+		{
+			loop->post(t.borrow(), [&](task_ptr &&p) noexcept
+			{
+				++ran;
+				got = p.get();
+				handler_thread = std::this_thread::get_id();
+			});
+		}};
+		producer.join();
+
+		CHECK(ran == 0);
+		auto n = loop->settle();
+		REQUIRE(n);
+		CHECK(*n == 1);
+		CHECK(ran == 1);
+		CHECK(got == &t);
+		CHECK(handler_thread == std::this_thread::get_id());
+
+		n = loop->settle();
+		REQUIRE(n);
+		CHECK(*n == 0);
+		CHECK(ran == 1);
+	}
+
+	SECTION("settle: excludes armed timer")
+	{
+		task t;
+		int fired = 0;
+		loop->post_after(t.borrow(), 1h, [&fired](task_ptr &&) noexcept { ++fired; });
+
+		auto n = loop->settle();
+		REQUIRE(n);
+		CHECK(*n == 0);
+		CHECK(fired == 0);
 	}
 
 	SECTION("now")
@@ -187,7 +247,6 @@ TEST_CASE("async/event_loop")
 		CHECK(*n == 1);
 		CHECK(ran == 1);
 		CHECK(got == &t);
-		CHECK(loop->stats().completions == 1);
 	}
 
 	SECTION("post: multiple")
@@ -229,7 +288,6 @@ TEST_CASE("async/event_loop")
 		REQUIRE(n);
 		CHECK(*n == 1);
 		CHECK(ran.load() == 1);
-		CHECK(loop->stats().wakeups >= 1);
 	}
 
 	SECTION("post_after: immediate")
@@ -248,7 +306,6 @@ TEST_CASE("async/event_loop")
 		CHECK(*n == 1);
 		CHECK(fired == 1);
 		CHECK(got == &t);
-		CHECK(loop->stats().completions == 1);
 	}
 
 	SECTION("post_after: expiry ordering")
@@ -327,7 +384,6 @@ TEST_CASE("async/event_loop")
 		REQUIRE(n);
 		CHECK(*n == 1);
 		CHECK(ran.load() == 1);
-		CHECK(loop->stats().wakeups >= 1);
 	}
 
 	SECTION("post_after: caps run_for poll timeout")
@@ -433,22 +489,5 @@ TEST_CASE("async/event_loop: epoll fallback")
 }
 
 #endif
-
-TEST_CASE("async/event_loop destructor contract")
-{
-	if constexpr (pal::build == pal::build_type::debug)
-	{
-		// A loop destroyed with an undrained inbox means a task is still live -> REQUIRE crash.
-		static task t;
-
-		auto msg = pal_test::require_terminate([]
-		{
-			auto loop = make_loop().value();
-			loop.post(t.borrow(), [](task_ptr &&) noexcept {});
-		});
-
-		CHECK(msg.contains("inbox"));
-	}
-}
 
 } // namespace
