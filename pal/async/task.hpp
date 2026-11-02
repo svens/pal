@@ -203,6 +203,17 @@ static_assert(std::is_standard_layout_v<task>);
 namespace __task
 {
 
+struct op_plain
+{
+	using signature = void(task &) noexcept;
+
+	template <typename F>
+	static void dispatch (task &t, F &f) noexcept
+	{
+		f(t);
+	}
+};
+
 /// Grants the loop internals access to task internals kept off its public API.
 struct attorney
 {

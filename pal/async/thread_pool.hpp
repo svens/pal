@@ -40,18 +40,6 @@ struct record
 	__event_loop::impl_type *origin;
 };
 
-/// Internal op for \ref thread_pool::post: invoke the composite work + post-back closure on a worker thread.
-struct op_execute
-{
-	using signature = void(task &) noexcept;
-
-	template <typename F>
-	static void dispatch (task &t, F &f) noexcept
-	{
-		f(t);
-	}
-};
-
 /// Single-shot composite bound at post time: run the blocking work, then rebind the task with the loop-side
 /// handler, so the worker hands an already-bound task to the origin loop's inbox.
 template <typename Work, typename Handler>
@@ -116,7 +104,7 @@ public:
 			"combined work and handler closures exceed the closure budget"
 		);
 		t->scratch_as<__thread_pool::record>() = {.origin = loop.impl_.get()};
-		t->bind<__thread_pool::op_execute>(closure_type{std::move(work), std::move(handler)});
+		t->bind<__task::op_plain>(closure_type{std::move(work), std::move(handler)});
 		__thread_pool::submit(*impl_, *t.release());
 	}
 

@@ -125,7 +125,7 @@ public:
 		);
 
 		++loop_->stats_.offload_in_flight;
-		t->bind<__thread_pool::op_execute>(closure_type{std::move(resolve), std::move(ready)});
+		t->bind<__task::op_plain>(closure_type{std::move(resolve), std::move(ready)});
 		__thread_pool::submit(*pool_, *t.release());
 	}
 

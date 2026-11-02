@@ -9,6 +9,7 @@ list(APPEND pal_sources
 	pal/async/event_loop.io_uring.cpp
 	pal/async/event_loop.kqueue.cpp
 	pal/async/handle.hpp
+	pal/async/multishot.hpp
 	pal/async/resolver.hpp
 	pal/async/task.hpp
 	pal/async/task_pool.hpp

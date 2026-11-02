@@ -23,12 +23,12 @@ class thread_pool;
 template <typename T>
 class handle;
 
+template <typename Resource, typename Handler = void>
+struct multishot;
+
 /// Backend tuning knobs. Nothing here selects which resource runs next.
 struct event_loop_config
 {
-	size_t buffer_count = 8192;
-	uint16_t buffer_size = 2000;
-
 	/// Operations a backend accepts before one must complete.
 	/// Must be in [1, \ref max_submission_depth].
 	static constexpr size_t max_submission_depth = 32768;
@@ -64,6 +64,10 @@ struct event_loop_stats
 	/// observing zero is the operation that drained the loop. Before teardown, quiesce like \ref offload_in_flight:
 	/// destroy the handles (cancelling their undispatched ops), then \ref event_loop::settle.
 	uint64_t io_in_flight = 0;
+
+	/// Times a multishot handle delivered the last free task of its pool, leaving its socket unable to
+	/// receive until the application drops one of the tasks it holds.
+	uint64_t multishot_pool_exhaustions = 0;
 };
 
 namespace __event_loop
@@ -71,6 +75,14 @@ namespace __event_loop
 
 struct impl_type;
 struct socket_state;
+struct multishot_pool;
+
+struct multishot_pool_deleter
+{
+	void operator() (multishot_pool *pool) const noexcept;
+};
+
+using multishot_pool_ptr = std::unique_ptr<multishot_pool, multishot_pool_deleter>;
 
 struct io_state
 {
@@ -82,6 +94,7 @@ struct io_state
 	int native_error;
 	size_t bytes;
 	bool truncated;
+	bool multishot;
 	socket_state *owner;
 
 	// Completion-plane per-op block, typed by the backend that uses it:
@@ -119,8 +132,9 @@ struct socket_state
 	direction receive{}, send{};
 	bool queued = false;
 	intrusive_queue_hook<socket_state> hook{};
+	multishot_pool_ptr pool{};
 
-	void start_op (task_ptr &&t, direction &d) noexcept;
+	void start_op (task_ptr &&t, direction &d, bool multishot) noexcept;
 
 	[[nodiscard]] bool actionable () const noexcept
 	{
@@ -206,9 +220,12 @@ struct op_post
 	}
 };
 
-inline void socket_state::start_op (task_ptr &&t, direction &d) noexcept
+inline void socket_state::start_op (task_ptr &&t, direction &d, bool multishot) noexcept
 {
-	io(*t).owner = this;
+	auto &op = io(*t);
+	op.owner = this;
+	op.native_error = 0;
+	op.multishot = multishot;
 	d.pending.push(*t.release());
 	if (d.ready && !queued)
 	{
@@ -315,6 +332,13 @@ public:
 	/// registered with the poller, either of which can fail.
 	template <typename T>
 	[[nodiscard]] result<handle<T>> make_handle (T resource) noexcept;
+
+	/// \copydoc make_handle(T)
+	///
+	/// Overload for \ref multishot resources: yields <tt>handle<multishot<T>></tt>, independent of the
+	/// handler type.
+	template <typename T, typename H>
+	[[nodiscard]] result<handle<multishot<T>>> make_handle (multishot<T, H> resource) noexcept;
 
 private:
 

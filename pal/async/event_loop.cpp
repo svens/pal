@@ -1,7 +1,10 @@
 #include <pal/async/__event_loop.hpp>
+#include <pal/async/multishot.hpp>
 #include <pal/version.hpp>
 #include <algorithm>
+#include <new>
 #include <system_error>
+#include <type_traits>
 #include <utility>
 
 #if __pal_os_linux || __pal_os_macos
@@ -90,7 +93,116 @@ task *merge_pairs (task *first) noexcept
 	return root;
 }
 
+[[nodiscard]] constexpr bool is_valid (const multishot_config &config) noexcept
+{
+	return config.task_count >= 1
+		&& config.task_count <= multishot_config::max_task_count
+		&& config.buffer_size >= 1
+		&& config.buffer_size <= multishot_config::max_buffer_size
+	;
+}
+
+constexpr size_t pool_header_size = __task::round_up(sizeof(multishot_pool), cache_line_size);
+
+static_assert(std::is_trivially_destructible_v<task>);
+static_assert(std::is_trivially_destructible_v<multishot_pool>);
+
+void destroy (multishot_pool &pool) noexcept
+{
+	::operator delete(static_cast<void *>(&pool), std::align_val_t{cache_line_size});
+}
+
+void feed (multishot_pool &pool, task &t) noexcept;
+
+void deliver (multishot_pool &pool, task &t) noexcept
+{
+	if (io(t).native_error != 0)
+	{
+		feed(pool, t);
+		return;
+	}
+
+	if (++pool.borrowed == pool.task_count)
+	{
+		++pool.owner->loop->stats_.multishot_pool_exhaustions;
+	}
+	pool.handler.complete(t);
+}
+
+void feed (multishot_pool &pool, task &t) noexcept
+{
+	t.span(pool.buffer(t));
+	t.bind<__task::op_plain>([&pool](task &delivered) noexcept
+	{
+		deliver(pool, delivered);
+	});
+	pool.owner->start_op(task_ptr{&t}, pool.owner->receive, true);
+}
+
+void recycle (__task::recycler &recycler, task &t) noexcept
+{
+	auto &pool = static_cast<multishot_pool &>(recycler);
+	--pool.borrowed;
+	if (pool.owner != nullptr)
+	{
+		feed(pool, t);
+	}
+	else if (pool.borrowed == 0)
+	{
+		destroy(pool);
+	}
+}
+
 } // namespace
+
+void multishot_pool::detach () noexcept
+{
+	--owner->loop->stats_.io_in_flight;
+	owner = nullptr;
+	if (borrowed == 0)
+	{
+		destroy(*this);
+	}
+}
+
+void multishot_pool_deleter::operator() (multishot_pool *pool) const noexcept
+{
+	pool->detach();
+}
+
+result<multishot_pool_ptr> make_multishot_pool (socket_state &owner, const multishot_config &config) noexcept
+{
+	if (!is_valid(config))
+	{
+		return make_unexpected(std::errc::invalid_argument);
+	}
+
+	const auto slot_size = __task::round_up(sizeof(task) + config.buffer_size, cache_line_size);
+	auto *storage = static_cast<std::byte *>(::operator new(
+		pool_header_size + config.task_count * slot_size,
+		std::align_val_t{cache_line_size},
+		std::nothrow
+	));
+	if (storage == nullptr)
+	{
+		return make_unexpected(std::errc::not_enough_memory);
+	}
+
+	multishot_pool_ptr pool{::new (storage) multishot_pool{
+		{&recycle},
+		&owner,
+		config.task_count,
+		config.buffer_size,
+	}};
+	++owner.loop->stats_.io_in_flight;
+	for (size_t i = 0; i < config.task_count; ++i)
+	{
+		feed(*pool, *::new (storage + pool_header_size + i * slot_size) task{
+			__task::attorney::make_pool_managed(*pool)
+		});
+	}
+	return pool;
+}
 
 size_t impl_type::drain_posted () noexcept
 {
@@ -225,13 +337,22 @@ void impl_type::close_socket (socket_state &s) noexcept
 	ready_.splice(std::move(s.receive.pending));
 	ready_.splice(std::move(s.send.pending));
 
-	for (auto &t: ready_)
+	__task::attorney::task_queue kept{};
+	while (auto *t = ready_.try_pop())
 	{
-		if (io(t).owner == &s)
+		auto &op = io(*t);
+		if (op.owner == &s)
 		{
-			io(t).native_error = cancel_error;
+			if (op.multishot)
+			{
+				--stats_.io_in_flight;
+				continue;
+			}
+			op.native_error = cancel_error;
 		}
+		kept.push(*t);
 	}
+	ready_.splice(std::move(kept));
 
 	if (s.queued)
 	{

@@ -38,4 +38,10 @@ result<handle<T>> event_loop::make_handle (T resource) noexcept
 	return handle<T>::make(std::move(resource), *impl_);
 }
 
+template <typename T, typename H>
+result<handle<multishot<T>>> event_loop::make_handle (multishot<T, H> resource) noexcept
+{
+	return handle<multishot<T>>::make(std::move(resource), *impl_);
+}
+
 } // namespace pal::async
