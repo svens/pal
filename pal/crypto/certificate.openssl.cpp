@@ -81,7 +81,7 @@ std::span<const std::byte> certificate::impl_type::init_bytes (std::span<const s
 std::span<const uint8_t> certificate::impl_type::init_serial_number () const noexcept
 {
 	const auto *sn = ::X509_get0_serialNumber(x509.get());
-	return {::ASN1_STRING_get0_data(sn), static_cast<size_t>(::ASN1_STRING_length(sn))};
+	return {::ASN1_STRING_get0_data(sn), asn1_string_length(sn)};
 }
 
 std::string_view certificate::impl_type::init_common_name () const noexcept
@@ -115,7 +115,7 @@ alternative_name_value certificate::impl_type::init_san_value () const noexcept
 		return
 		{
 			reinterpret_cast<const char *>(::ASN1_STRING_get0_data(s)),
-			static_cast<size_t>(::ASN1_STRING_length(s))
+			asn1_string_length(s)
 		};
 	};
 
@@ -123,7 +123,7 @@ alternative_name_value certificate::impl_type::init_san_value () const noexcept
 	const auto to_ip_view = [&buf](const ASN1_STRING *s) noexcept -> std::string_view
 	{
 		const auto *bytes = reinterpret_cast<const uint8_t *>(::ASN1_STRING_get0_data(s));
-		const auto size = static_cast<size_t>(::ASN1_STRING_length(s));
+		const auto size = asn1_string_length(s);
 		const char *end = nullptr;
 		if (size == sizeof(net::ip::address_v4::bytes_type))
 		{

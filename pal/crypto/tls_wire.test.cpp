@@ -1,7 +1,9 @@
 #include <pal/crypto/tls_wire.hpp>
 #include <pal/crypto/secure_channel.hpp>
 #include <catch2/catch_test_macros.hpp>
+#include <algorithm>
 #include <array>
+#include <initializer_list>
 #include <vector>
 
 namespace
@@ -180,6 +182,57 @@ TEST_CASE("crypto/tls_wire")
 		{
 			// claims 113, only 17 present
 			const auto bytes = make_record(100, 17);
+			CHECK(dtls_record_size(bytes) == bytes.size());
+		}
+
+		SECTION("empty_buffer")
+		{
+			CHECK(dtls_record_size(std::span<const std::byte>{}) == 0);
+		}
+	}
+
+	SECTION("dtls_record_size: DTLS 1.3 unified header")
+	{
+		const auto make_record = [](std::initializer_list<unsigned char> header)
+		{
+			std::vector<std::byte> bytes(30, std::byte{0});
+			std::ranges::transform(header, bytes.begin(), [](unsigned char b) { return std::byte{b}; });
+			return bytes;
+		};
+
+		SECTION("seq16_first_of_many")
+		{
+			const auto bytes = make_record({0x2c, 0x00, 0x01, 0x00, 0x04});
+			CHECK(dtls_record_size(bytes) == 9);
+		}
+
+		SECTION("seq8_first_of_many")
+		{
+			const auto bytes = make_record({0x24, 0x01, 0x00, 0x04});
+			CHECK(dtls_record_size(bytes) == 8);
+		}
+
+		SECTION("short_header")
+		{
+			const std::array bytes{std::byte{0x2c}, std::byte{0x00}, std::byte{0x01}};
+			CHECK(dtls_record_size(bytes) == bytes.size());
+		}
+
+		SECTION("length_overruns")
+		{
+			const auto bytes = make_record({0x2c, 0x00, 0x01, 0x00, 0x64});
+			CHECK(dtls_record_size(bytes) == bytes.size());
+		}
+
+		SECTION("no_length_field")
+		{
+			const auto bytes = make_record({0x28, 0x00, 0x01});
+			CHECK(dtls_record_size(bytes) == bytes.size());
+		}
+
+		SECTION("connection_id")
+		{
+			const auto bytes = make_record({0x3c, 0x00, 0x01, 0x00, 0x04});
 			CHECK(dtls_record_size(bytes) == bytes.size());
 		}
 	}

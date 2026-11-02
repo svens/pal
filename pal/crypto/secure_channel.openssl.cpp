@@ -268,6 +268,18 @@ std::error_code map_openssl_error (const session_state &state) noexcept //{{{1
 	return ec;
 }
 
+bool has_ssl_error_reason (int reason) noexcept
+{
+	while (const auto err = ::ERR_get_error())
+	{
+		if (ERR_GET_LIB(err) == ERR_LIB_SSL && ERR_GET_REASON(err) == reason)
+		{
+			return true;
+		}
+	}
+	return false;
+}
+
 // Map a post-handshake I/O failure to an errc and consume (clear) the OpenSSL error queue.
 std::error_code map_openssl_io_error (session_state &state, int ssl_error) noexcept //{{{1
 {
@@ -277,9 +289,9 @@ std::error_code map_openssl_io_error (session_state &state, int ssl_error) noexc
 		state.peer_closed = true;
 	}
 	// A tampered or corrupt inbound record fails authenticated decryption. On the stream path OpenSSL
-	// reports a record-layer failure wrapping SSL_R_DECRYPTION_FAILED_OR_BAD_RECORD_MAC, which is the
-	// root cause at the bottom of the error queue (peek_error, not peek_last).
-	else if (ERR_GET_REASON(::ERR_peek_error()) == SSL_R_DECRYPTION_FAILED_OR_BAD_RECORD_MAC)
+	// reports a record-layer failure wrapping SSL_R_DECRYPTION_FAILED_OR_BAD_RECORD_MAC; since 4.x a
+	// provider cipher error sits beneath it, so the queue is searched rather than peeked at one end.
+	else if (has_ssl_error_reason(SSL_R_DECRYPTION_FAILED_OR_BAD_RECORD_MAC))
 	{
 		ec = make_error_code(secure_channel_errc::decrypt_failed);
 	}
