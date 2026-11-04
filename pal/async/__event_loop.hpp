@@ -6,9 +6,13 @@
  */
 
 #include <pal/async/event_loop.hpp>
+#include <pal/async/multishot.hpp>
 #include <pal/error.hpp>
 #include <pal/version.hpp>
 
+#include <cstddef>
+#include <new>
+#include <span>
 #include <tuple>
 #include <utility>
 
@@ -27,6 +31,26 @@ namespace pal::async::__event_loop
 {
 
 void on_socket_event (socket_state &s, socket_state::direction &d) noexcept;
+
+inline constexpr size_t multishot_pool_header_size = __task::round_up(sizeof(multishot_pool), cache_line_size);
+
+inline std::byte *slot_address (multishot_pool &pool, size_t index) noexcept
+{
+	return reinterpret_cast<std::byte *>(&pool) + multishot_pool_header_size + index * pool.slot_size;
+}
+
+inline task &slot (multishot_pool &pool, size_t index) noexcept
+{
+	return *std::launder(reinterpret_cast<task *>(slot_address(pool, index)));
+}
+
+inline std::span<std::byte> headroom_and_buffer (const multishot_pool &pool, task &t) noexcept
+{
+	return {reinterpret_cast<std::byte *>(&t) + sizeof(task), pool.headroom + pool.buffer_size};
+}
+
+void prime_multishot (multishot_pool &pool, task &t) noexcept;
+void feed_multishot (multishot_pool &pool, task &t) noexcept;
 
 result<impl_ptr> make_epoll_loop (const event_loop_config &config) noexcept;
 result<impl_ptr> make_io_uring_loop (const event_loop_config &config) noexcept;

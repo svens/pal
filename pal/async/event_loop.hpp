@@ -76,6 +76,7 @@ namespace __event_loop
 struct impl_type;
 struct socket_state;
 struct multishot_pool;
+struct multishot_ring;
 
 struct multishot_pool_deleter
 {
@@ -170,13 +171,19 @@ struct impl_type
 	event_loop_stats stats_{};
 	event_loop_config config_{};
 
+	// Backend seams, split by call frequency:
+	// - per-iteration and per-task hooks: function pointers stored here, one load from an already-hot line
+	// - setup and teardown: virtuals, where the dependent vtable load on a cold line does not matter
 	void (*poll_fn)(impl_type &, clock::duration timeout) noexcept = nullptr;
 	void (*drain_fn)(impl_type &, socket_state &, socket_state::direction &) noexcept = nullptr;
+	void (*requeue_multishot_fn)(multishot_pool &, task &) noexcept = nullptr;
+	size_t multishot_headroom = 0;
 
 	virtual ~impl_type () noexcept = default;
 	virtual void do_post (task &t) noexcept = 0;
 	virtual std::error_code register_socket (socket_state &s) noexcept = 0;
 	virtual void close_socket (socket_state &s) noexcept;
+	virtual std::error_code start_multishot (multishot_pool &pool) noexcept;
 
 	size_t iterate (clock::duration timeout) noexcept;
 

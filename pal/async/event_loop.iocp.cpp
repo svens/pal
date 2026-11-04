@@ -317,6 +317,7 @@ result<impl_ptr> make_iocp_loop (const event_loop_config &config) noexcept
 	self->port = std::move(port);
 	self->poll_fn = &iocp_poll;
 	self->drain_fn = &iocp_drain_socket;
+	self->requeue_multishot_fn = &feed_multishot;
 	self->config_ = config;
 
 	return impl_ptr{self};

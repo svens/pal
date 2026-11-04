@@ -1,5 +1,4 @@
 #include <pal/async/__event_loop.hpp>
-#include <pal/async/multishot.hpp>
 #include <pal/version.hpp>
 #include <algorithm>
 #include <new>
@@ -102,8 +101,6 @@ task *merge_pairs (task *first) noexcept
 	;
 }
 
-constexpr size_t pool_header_size = __task::round_up(sizeof(multishot_pool), cache_line_size);
-
 static_assert(std::is_trivially_destructible_v<task>);
 static_assert(std::is_trivially_destructible_v<multishot_pool>);
 
@@ -112,42 +109,31 @@ void destroy (multishot_pool &pool) noexcept
 	::operator delete(static_cast<void *>(&pool), std::align_val_t{cache_line_size});
 }
 
-void feed (multishot_pool &pool, task &t) noexcept;
-
-void deliver (multishot_pool &pool, task &t) noexcept
+void deliver (task &t) noexcept
 {
+	auto &pool = static_cast<multishot_pool &>(*__task::attorney::recycler_of(t));
 	if (io(t).native_error != 0)
 	{
-		feed(pool, t);
+		pool.loop->requeue_multishot_fn(pool, t);
 		return;
 	}
 
-	if (++pool.borrowed == pool.task_count)
+	if (++pool.borrow_count == pool.task_count)
 	{
-		++pool.owner->loop->stats_.multishot_pool_exhaustions;
+		++pool.loop->stats_.multishot_pool_exhaustions;
 	}
 	pool.handler.complete(t);
-}
-
-void feed (multishot_pool &pool, task &t) noexcept
-{
-	t.span(pool.buffer(t));
-	t.bind<__task::op_plain>([&pool](task &delivered) noexcept
-	{
-		deliver(pool, delivered);
-	});
-	pool.owner->start_op(task_ptr{&t}, pool.owner->receive, true);
 }
 
 void recycle (__task::recycler &recycler, task &t) noexcept
 {
 	auto &pool = static_cast<multishot_pool &>(recycler);
-	--pool.borrowed;
+	--pool.borrow_count;
 	if (pool.owner != nullptr)
 	{
-		feed(pool, t);
+		pool.loop->requeue_multishot_fn(pool, t);
 	}
-	else if (pool.borrowed == 0)
+	else if (pool.borrow_count == 0)
 	{
 		destroy(pool);
 	}
@@ -155,11 +141,35 @@ void recycle (__task::recycler &recycler, task &t) noexcept
 
 } // namespace
 
+void prime_multishot (multishot_pool &pool, task &t) noexcept
+{
+	t.span(pool.buffer(t));
+	t.bind<__task::op_plain>([](task &delivered) noexcept
+	{
+		deliver(delivered);
+	});
+}
+
+void feed_multishot (multishot_pool &pool, task &t) noexcept
+{
+	prime_multishot(pool, t);
+	pool.owner->start_op(task_ptr{&t}, pool.owner->receive, true);
+}
+
+std::error_code impl_type::start_multishot (multishot_pool &pool) noexcept
+{
+	for (size_t i = 0; i < pool.task_count; ++i)
+	{
+		feed_multishot(pool, slot(pool, i));
+	}
+	return {};
+}
+
 void multishot_pool::detach () noexcept
 {
-	--owner->loop->stats_.io_in_flight;
+	--loop->stats_.io_in_flight;
 	owner = nullptr;
-	if (borrowed == 0)
+	if (borrow_count == 0)
 	{
 		destroy(*this);
 	}
@@ -177,9 +187,10 @@ result<multishot_pool_ptr> make_multishot_pool (socket_state &owner, const multi
 		return make_unexpected(std::errc::invalid_argument);
 	}
 
-	const auto slot_size = __task::round_up(sizeof(task) + config.buffer_size, cache_line_size);
+	const auto headroom = owner.loop->multishot_headroom;
+	const auto slot_size = __task::round_up(sizeof(task) + headroom + config.buffer_size, cache_line_size);
 	auto *storage = static_cast<std::byte *>(::operator new(
-		pool_header_size + config.task_count * slot_size,
+		multishot_pool_header_size + config.task_count * slot_size,
 		std::align_val_t{cache_line_size},
 		std::nothrow
 	));
@@ -188,20 +199,28 @@ result<multishot_pool_ptr> make_multishot_pool (socket_state &owner, const multi
 		return make_unexpected(std::errc::not_enough_memory);
 	}
 
-	multishot_pool_ptr pool{::new (storage) multishot_pool{
-		{&recycle},
+	auto *pool = ::new (storage) multishot_pool{
+		__task::recycler{.fn = &recycle},
 		&owner,
+		owner.loop,
 		config.task_count,
-		config.buffer_size,
-	}};
-	++owner.loop->stats_.io_in_flight;
+		slot_size - sizeof(task) - headroom,
+		headroom,
+		slot_size,
+	};
 	for (size_t i = 0; i < config.task_count; ++i)
 	{
-		feed(*pool, *::new (storage + pool_header_size + i * slot_size) task{
-			__task::attorney::make_pool_managed(*pool)
-		});
+		::new (slot_address(*pool, i)) task{__task::attorney::make_pool_managed(*pool)};
 	}
-	return pool;
+
+	if (auto error = pool->loop->start_multishot(*pool))
+	{
+		destroy(*pool);
+		return unexpected{error};
+	}
+
+	++pool->loop->stats_.io_in_flight;
+	return multishot_pool_ptr{pool};
 }
 
 size_t impl_type::drain_posted () noexcept

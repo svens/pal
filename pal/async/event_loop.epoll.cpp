@@ -197,6 +197,7 @@ result<impl_ptr> make_epoll_loop (const event_loop_config &config) noexcept
 	self->wake = std::move(*wake);
 	self->poll_fn = &epoll_poll;
 	self->drain_fn = &epoll_drain_socket;
+	self->requeue_multishot_fn = &feed_multishot;
 	self->config_ = config;
 
 	return impl_ptr{self};

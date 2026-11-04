@@ -738,6 +738,7 @@ TEMPLATE_TEST_CASE("async/datagram_socket: multishot", "", udp_v4, udp_v6)
 	REQUIRE(peer_endpoint);
 
 	const auto payload = case_name();
+	constexpr event_loop_config small_ring{.submission_depth = 2, .completion_depth = 2};
 
 	SECTION("make_handle: config bounds")
 	{
@@ -800,7 +801,7 @@ TEMPLATE_TEST_CASE("async/datagram_socket: multishot", "", udp_v4, udp_v6)
 
 	SECTION("receive: truncation")
 	{
-		std::array<char, 8> wire{};
+		std::array<char, 4096> wire{};
 		std::iota(wire.begin(), wire.end(), char{0});
 
 		int received = 0;
@@ -810,7 +811,9 @@ TEMPLATE_TEST_CASE("async/datagram_socket: multishot", "", udp_v4, udp_v6)
 			{
 				REQUIRE(r);
 				CHECK(r->truncated);
-				CHECK(std::ranges::equal(t->span(), std::as_bytes(std::span{wire}).first(4)));
+				CHECK(t->span().size() >= 4);
+				REQUIRE(t->span().size() < wire.size());
+				CHECK(std::ranges::equal(t->span(), std::as_bytes(std::span{wire}).first(t->span().size())));
 				++received;
 			}
 		);
@@ -856,16 +859,22 @@ TEMPLATE_TEST_CASE("async/datagram_socket: multishot", "", udp_v4, udp_v6)
 		static constexpr std::string_view request{"?"};
 		std::optional<multishot_socket> h;
 		int received = 0, replied = 0;
+		const task *first = nullptr;
 
-		h = make_multishot_socket<TestType>(*loop, {.task_count = 2, .buffer_size = 64},
+		h = make_multishot_socket<TestType>(*loop, {.task_count = 1, .buffer_size = 64},
 			[&](task_ptr &&t, receive_result &&r) noexcept
 			{
 				REQUIRE(r);
 				REQUIRE(t->span().size() == request.size());
+				if (first == nullptr)
+				{
+					first = t.get();
+				}
+				CHECK(t.get() == first);
 				++received;
 
 				h->reset_span(*t);
-				REQUIRE(t->span().size() == 64);
+				REQUIRE(t->span().size() >= 64);
 				std::memcpy(t->span().data(), payload.data(), payload.size());
 				t->span(t->span().first(payload.size()));
 
@@ -878,10 +887,12 @@ TEMPLATE_TEST_CASE("async/datagram_socket: multishot", "", udp_v4, udp_v6)
 		).value();
 
 		const auto h_endpoint = h->local_endpoint().value();
-		REQUIRE(peer->send_to(h_endpoint, request));
-		run_until(*loop, [&] { return received == 1 && replied == 1; });
-
-		CHECK(expect_datagram(*peer, payload) == h_endpoint);
+		for (auto round = 1; round <= 2; ++round)
+		{
+			REQUIRE(peer->send_to(h_endpoint, request));
+			run_until(*loop, [&] { return received == round && replied == round; });
+			CHECK(expect_datagram(*peer, payload) == h_endpoint);
+		}
 	}
 
 	SECTION("receive: exhausted pool parks the socket until a task returns")
@@ -911,6 +922,186 @@ TEMPLATE_TEST_CASE("async/datagram_socket: multishot", "", udp_v4, udp_v6)
 		CHECK(loop->stats().multishot_pool_exhaustions == 2);
 
 		held = {};
+	}
+
+	SECTION("receive: empty datagram, then a nonempty one")
+	{
+		std::array<size_t, 2> sizes{};
+		size_t received = 0;
+
+		auto h = make_multishot_socket<TestType>(*loop, {.task_count = 4, .buffer_size = 64},
+			[&](task_ptr &&t, receive_result &&r) noexcept
+			{
+				REQUIRE(r);
+				REQUIRE(received < sizes.size());
+				sizes[received++] = t->span().size();
+			}
+		);
+		REQUIRE(h);
+
+		const auto h_endpoint = h->local_endpoint().value();
+		REQUIRE(peer->send_to(h_endpoint, std::string_view{}));
+		REQUIRE(peer->send_to(h_endpoint, payload));
+		run_until(*loop, [&] { return received == sizes.size(); });
+
+		CHECK(sizes[0] == 0);
+		CHECK(sizes[1] == payload.size());
+	}
+
+	SECTION("receive: empty datagram handler destroys the socket")
+	{
+		std::optional<multishot_socket> h;
+		int received = 0;
+
+		h = make_multishot_socket<TestType>(*loop, {.task_count = 4, .buffer_size = 64},
+			[&](task_ptr &&t, receive_result &&r) noexcept
+			{
+				REQUIRE(r);
+				CHECK(t->span().empty());
+				h.reset();
+				++received;
+			}
+		).value();
+
+		REQUIRE(peer->send_to(h->local_endpoint().value(), std::string_view{}));
+		run_until(*loop, [&] { return received == 1; });
+
+		REQUIRE(loop->settle());
+		CHECK(loop->stats().io_in_flight == 0);
+	}
+
+	SECTION("receive: burst through a small completion ring")
+	{
+		static constexpr size_t count = 16;
+		auto small = make_test_loop(backend, small_ring);
+		REQUIRE(small);
+
+		int received = 0;
+		auto h = make_multishot_socket<TestType>(*small, {.task_count = count, .buffer_size = 64},
+			[&](task_ptr &&t, receive_result &&r) noexcept
+			{
+				REQUIRE(r);
+				CHECK(std::ranges::equal(t->span(), std::as_bytes(std::span{payload})));
+				++received;
+			}
+		);
+		REQUIRE(h);
+
+		send_datagrams(*peer, h->local_endpoint().value(), payload, count);
+		run_until(*small, [&] { return received == count; });
+
+		send_datagrams(*peer, h->local_endpoint().value(), payload, count);
+		run_until(*small, [&] { return received == 2 * count; });
+	}
+
+	SECTION("destruction: burst through a small completion ring, destroyed from the handler")
+	{
+		static constexpr size_t count = 16;
+		auto small = make_test_loop(backend, small_ring);
+		REQUIRE(small);
+
+		std::optional<multishot_socket> h;
+		int received = 0;
+
+		h = make_multishot_socket<TestType>(*small, {.task_count = count, .buffer_size = 64},
+			[&](task_ptr &&, receive_result &&r) noexcept
+			{
+				REQUIRE(r);
+				h.reset();
+				++received;
+			}
+		).value();
+
+		send_datagrams(*peer, h->local_endpoint().value(), payload, count);
+		run_until(*small, [&] { return received == 1; });
+
+		REQUIRE(small->settle());
+		CHECK(received == 1);
+		CHECK(small->stats().io_in_flight == 0);
+	}
+
+	SECTION("receive: concurrent sockets with odd pool sizes and out-of-order returns")
+	{
+		static constexpr std::string_view payload_a{"a"}, payload_b{"bb"};
+		std::array<task_ptr, 3> held_a{};
+		std::array<task_ptr, 5> held_b{};
+		size_t count_a = 0, count_b = 0;
+
+		auto a = make_multishot_socket<TestType>(*loop, {.task_count = held_a.size(), .buffer_size = 64},
+			[&](task_ptr &&t, receive_result &&r) noexcept
+			{
+				REQUIRE(r);
+				CHECK(std::ranges::equal(t->span(), std::as_bytes(std::span{payload_a})));
+				REQUIRE(count_a < held_a.size());
+				held_a[count_a++] = std::move(t);
+			}
+		);
+		REQUIRE(a);
+
+		auto b = make_multishot_socket<TestType>(*loop, {.task_count = held_b.size(), .buffer_size = 64},
+			[&](task_ptr &&t, receive_result &&r) noexcept
+			{
+				REQUIRE(r);
+				CHECK(std::ranges::equal(t->span(), std::as_bytes(std::span{payload_b})));
+				REQUIRE(count_b < held_b.size());
+				held_b[count_b++] = std::move(t);
+			}
+		);
+		REQUIRE(b);
+
+		const auto a_endpoint = a->local_endpoint().value();
+		const auto b_endpoint = b->local_endpoint().value();
+
+		for (auto round = 0; round < 2; ++round)
+		{
+			send_datagrams(*peer, a_endpoint, payload_a, held_a.size());
+			send_datagrams(*peer, b_endpoint, payload_b, held_b.size());
+			run_until(*loop, [&] { return count_a == held_a.size() && count_b == held_b.size(); });
+
+			for (const auto i: {1, 2, 0})
+			{
+				held_a[i].reset();
+			}
+			for (const auto i: {3, 0, 4, 1, 2})
+			{
+				held_b[i].reset();
+			}
+			count_a = count_b = 0;
+		}
+	}
+
+	SECTION("make_handle: replaced socket next to a live one")
+	{
+		int received_a = 0;
+		auto a = make_multishot_socket<TestType>(*loop, {.task_count = 2, .buffer_size = 64},
+			[&](task_ptr &&, receive_result &&r) noexcept
+			{
+				REQUIRE(r);
+				++received_a;
+			}
+		);
+		REQUIRE(a);
+
+		for (auto round = 0; round < 3; ++round)
+		{
+			int received_b = 0;
+			auto b = make_multishot_socket<TestType>(*loop, {.task_count = 2, .buffer_size = 64},
+				[&](task_ptr &&t, receive_result &&r) noexcept
+				{
+					REQUIRE(r);
+					CHECK(std::ranges::equal(t->span(), std::as_bytes(std::span{payload})));
+					++received_b;
+				}
+			);
+			REQUIRE(b);
+
+			REQUIRE(peer->send_to(b->local_endpoint().value(), payload));
+			run_until(*loop, [&] { return received_b == 1; });
+		}
+
+		REQUIRE(peer->send_to(a->local_endpoint().value(), payload));
+		run_until(*loop, [&] { return received_a == 1; });
+		CHECK(loop->stats().io_in_flight == 1 + 2);
 	}
 
 	SECTION("destruction: undispatched receives are dropped silently")

@@ -281,8 +281,9 @@ public:
 	using base::get_option;
 	using base::set_option;
 
-	/// Restore \a t's payload window to the full capacity of its pool slot (\ref multishot_config::buffer_size),
-	/// for replies larger than the received datagram. \a t must come from this handle's pool.
+	/// Restore \a t's payload window to the full capacity of its pool slot (at least
+	/// \ref multishot_config::buffer_size), for replies larger than the received datagram. \a t must come from
+	/// this handle's pool.
 	void reset_span (task &t) noexcept
 	{
 		auto *pool = this->state_->pool.get();

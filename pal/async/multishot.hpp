@@ -21,8 +21,8 @@ struct multishot_config
 	static constexpr size_t max_task_count = 32768;
 	size_t task_count = 0;
 
-	/// Payload capacity of each task. Larger datagrams are delivered truncated.
-	/// Must be in [1, \ref max_buffer_size].
+	/// Minimum payload capacity of each task; the pool may round it up. Datagrams larger than the actual
+	/// capacity are delivered truncated. Must be in [1, \ref max_buffer_size].
 	static constexpr size_t max_buffer_size = 65536;
 	size_t buffer_size = 0;
 };
@@ -33,7 +33,8 @@ struct multishot_config
 /// tasks from a pool the handle owns, sized by \ref config. Each completion lends its task to \ref handler:
 /// dropping the task returns it to the pool, starting an operation with it hands it back to the library.
 /// Outbound operations stay single-shot. The handle type is <tt>handle<multishot<Resource>></tt>,
-/// independent of \a Handler.
+/// independent of \a Handler. make_handle fails with std::errc::no_buffer_space when the loop cannot set
+/// up more multishot resources.
 template <typename Resource, typename Handler>
 struct multishot
 {
@@ -61,16 +62,20 @@ namespace __event_loop
 struct multishot_pool: __task::recycler
 {
 	socket_state *owner;
+	impl_type *const loop;
 	const size_t task_count;
 	const size_t buffer_size;
-	size_t borrowed = 0;
+	const size_t headroom;
+	const size_t slot_size;
+	size_t borrow_count = 0;
+	multishot_ring *ring = nullptr;
 	__async::completion<task> handler{};
 
 	void detach () noexcept;
 
 	[[nodiscard]] std::span<std::byte> buffer (task &t) const noexcept
 	{
-		return {reinterpret_cast<std::byte *>(&t) + sizeof(task), buffer_size};
+		return {reinterpret_cast<std::byte *>(&t) + sizeof(task) + headroom, buffer_size};
 	}
 };
 

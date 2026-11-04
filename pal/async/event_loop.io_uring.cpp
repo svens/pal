@@ -6,13 +6,18 @@
 #include <pal/error.hpp>
 
 #include <algorithm>
+#include <array>
 #include <atomic>
 #include <bit>
 #include <cerrno>
 #include <cstdint>
+#include <cstring>
 #include <endian.h>
+#include <limits>
 #include <linux/io_uring.h>
+#include <memory>
 #include <new>
+#include <optional>
 #include <poll.h>
 #include <sys/mman.h>
 #include <sys/socket.h>
@@ -42,14 +47,16 @@ int sys_register (int ring, unsigned opcode, void *arg, unsigned nr_args) noexce
 	return static_cast<int>(::syscall(__NR_io_uring_register, ring, opcode, arg, nr_args));
 }
 
-unsigned load_acquire (unsigned &value) noexcept
+template <typename T>
+T load_acquire (T &value) noexcept
 {
-	return std::atomic_ref<unsigned>{value}.load(std::memory_order_acquire);
+	return std::atomic_ref<T>{value}.load(std::memory_order_acquire);
 }
 
-void store_release (unsigned &target, unsigned value) noexcept
+template <typename T>
+void store_release (T &target, T value) noexcept
 {
-	std::atomic_ref<unsigned>{target}.store(value, std::memory_order_release);
+	std::atomic_ref<T>{target}.store(value, std::memory_order_release);
 }
 
 struct submission_ring
@@ -71,6 +78,8 @@ struct completion_ring
 	unsigned *mask = nullptr;
 	::io_uring_cqe *cqes = nullptr;
 };
+
+} // namespace
 
 struct mapping
 {
@@ -106,6 +115,45 @@ struct mapping
 	}
 };
 
+constexpr size_t buffer_headroom = cache_line_size;
+constexpr size_t buffer_kernel_offset = sizeof(uint64_t);
+
+static_assert(buffer_kernel_offset + sizeof(::io_uring_recvmsg_out) + io_state::endpoint_capacity <= buffer_headroom);
+
+constexpr ::msghdr multishot_message = []
+{
+	::msghdr m{};
+	m.msg_namelen = buffer_headroom - buffer_kernel_offset - sizeof(::io_uring_recvmsg_out);
+	return m;
+}();
+
+struct multishot_ring
+{
+	multishot_pool &pool;
+	mapping ring_map;
+	const unsigned mask;
+	const uint16_t group;
+	size_t on_ring = 0;
+	enum class arm_state: uint8_t { parked, armed, queued } state = arm_state::parked;
+	intrusive_queue_hook<multishot_ring> rearm_hook{};
+
+	[[nodiscard]] ::io_uring_buf *entries () const noexcept
+	{
+		return static_cast<::io_uring_buf *>(ring_map.address);
+	}
+
+	[[nodiscard]] uint16_t &tail () const noexcept
+	{
+		return static_cast<::io_uring_buf_ring *>(ring_map.address)->tail;
+	}
+};
+
+namespace
+{
+
+constexpr size_t group_count = size_t{std::numeric_limits<uint16_t>::max()} + 1;
+constexpr size_t group_word_bits = std::numeric_limits<uint64_t>::digits;
+
 struct io_uring_loop: posix_loop
 {
 	unique_fd ring{};
@@ -114,6 +162,8 @@ struct io_uring_loop: posix_loop
 	submission_ring sq{};
 	completion_ring cq{};
 	mapping ring_map{}, sqe_map{};
+	std::array<uint64_t, group_count / group_word_bits> groups_in_use{};
+	intrusive_queue<&multishot_ring::rearm_hook> rearm_queue{};
 
 	~io_uring_loop () noexcept override
 	{
@@ -139,6 +189,7 @@ struct io_uring_loop: posix_loop
 	}
 
 	void close_socket (socket_state &state) noexcept override;
+	std::error_code start_multishot (multishot_pool &pool) noexcept override;
 
 	unsigned to_submit () const noexcept
 	{
@@ -153,6 +204,14 @@ struct io_uring_loop: posix_loop
 	::io_uring_sqe *acquire_sqe () noexcept;
 	void arm_wake () noexcept;
 	void arm_socket_op (task &t, socket_state &state, socket_state::direction &d) noexcept;
+
+	std::optional<uint16_t> acquire_group () noexcept;
+	void release_group (uint16_t group) noexcept;
+	void provide (multishot_ring &ms, task &t) noexcept;
+	bool arm_multishot (multishot_ring &ms) noexcept;
+	void retry_rearms () noexcept;
+	void complete_multishot (multishot_ring &ms, const ::io_uring_cqe &cqe) noexcept;
+	void close_multishot (multishot_ring &ms) noexcept;
 };
 
 // Receive-side per-op block. A send carries its destination in the SQE, so only a receive needs one.
@@ -168,13 +227,15 @@ static_assert(alignof(native_op) <= alignof(std::max_align_t));
 // Operations armed with the kernel at once, per socket and direction.
 constexpr size_t max_armed = 8;
 
-// Tasks are max_align_t-aligned, so bit 0 of user_data is free to carry the direction and the small
-// integers below can never collide with a task address.
+// Tasks and multishot rings are aligned past bits 0 and 1, which carry the tags below. The small integers alias
+// those tags, so complete_cqe tests them by exact value before decoding any tag.
 constexpr uint64_t wake_user_data = 1;
 constexpr uint64_t cancel_user_data = 2;
 constexpr uint64_t send_tag = 1;
+constexpr uint64_t multishot_tag = 2;
 
-static_assert(alignof(task) > send_tag);
+static_assert(alignof(task) > (send_tag | multishot_tag));
+static_assert(alignof(multishot_ring) > (send_tag | multishot_tag));
 
 constexpr ::__kernel_timespec to_kernel_timespec (impl_type::clock::duration d) noexcept
 {
@@ -278,6 +339,12 @@ void io_uring_loop::complete_cqe (const ::io_uring_cqe &cqe) noexcept
 		return;
 	}
 
+	if ((cqe.user_data & multishot_tag) != 0)
+	{
+		complete_multishot(*std::bit_cast<multishot_ring *>(cqe.user_data & ~multishot_tag), cqe);
+		return;
+	}
+
 	const bool send = (cqe.user_data & send_tag) != 0;
 	auto &t = *std::bit_cast<task *>(cqe.user_data & ~send_tag);
 	auto &op = io(t);
@@ -315,6 +382,7 @@ void io_uring_poll (impl_type &base, impl_type::clock::duration timeout) noexcep
 {
 	auto &self = static_cast<io_uring_loop &>(base);
 	self.arm_wake();
+	self.retry_rearms();
 
 	unsigned min_complete = 1;
 	unsigned flags = 0;
@@ -323,10 +391,10 @@ void io_uring_poll (impl_type &base, impl_type::clock::duration timeout) noexcep
 	const void *argp = nullptr;
 	size_t argsz = 0;
 
-	if (timeout == impl_type::clock::duration::zero() || !self.wake_armed)
+	if (timeout == impl_type::clock::duration::zero() || !self.wake_armed || !self.rearm_queue.empty())
 	{
-		// Without an armed wake, posts cannot interrupt a blocking wait.
-		// Poll without blocking so the next iteration retries arming.
+		// Without an armed wake, posts cannot interrupt a blocking wait, and a queued multishot re-arm would
+		// wait for an unrelated completion. Poll without blocking so the next iteration retries arming.
 		min_complete = 0;
 	}
 	else if (timeout != impl_type::clock::duration::max())
@@ -401,8 +469,207 @@ void io_uring_drain_socket (impl_type &base, socket_state &state, socket_state::
 	d.ready = d.armed < max_armed;
 }
 
+std::optional<uint16_t> io_uring_loop::acquire_group () noexcept
+{
+	const auto word = std::ranges::find_if(groups_in_use, [](uint64_t bits) noexcept
+	{
+		return bits != ~uint64_t{0};
+	});
+	if (word == groups_in_use.end())
+	{
+		return std::nullopt;
+	}
+
+	const auto bit = static_cast<size_t>(std::countr_one(*word));
+	*word |= uint64_t{1} << bit;
+	return static_cast<uint16_t>(static_cast<size_t>(word - groups_in_use.begin()) * group_word_bits + bit);
+}
+
+void io_uring_loop::release_group (uint16_t group) noexcept
+{
+	groups_in_use[group / group_word_bits] &= ~(uint64_t{1} << (group % group_word_bits));
+}
+
+void io_uring_loop::provide (multishot_ring &ms, task &t) noexcept
+{
+	prime_multishot(ms.pool, t);
+	auto &op = io(t);
+	op.owner = ms.pool.owner;
+	op.native_error = 0;
+	op.multishot = true;
+
+	const auto region = headroom_and_buffer(ms.pool, t);
+	const auto tail = ms.tail();
+	auto &entry = ms.entries()[tail & ms.mask];
+	entry.addr = reinterpret_cast<uint64_t>(region.data() + buffer_kernel_offset);
+	entry.len = static_cast<uint32_t>(region.size() - buffer_kernel_offset);
+	std::memcpy(&entry.bid, region.data(), sizeof(entry.bid));
+	store_release(ms.tail(), static_cast<uint16_t>(tail + 1));
+
+	++ms.on_ring;
+	++stats_.io_in_flight;
+}
+
+bool io_uring_loop::arm_multishot (multishot_ring &ms) noexcept
+{
+	auto *sqe = acquire_sqe();
+	if (sqe == nullptr)
+	{
+		ms.state = multishot_ring::arm_state::queued;
+		rearm_queue.push(ms);
+		return false;
+	}
+
+	auto &state = *ms.pool.owner;
+	sqe->opcode = IORING_OP_RECVMSG;
+	sqe->fd = static_cast<int32_t>(state.handle);
+	sqe->addr = reinterpret_cast<uint64_t>(&multishot_message);
+	sqe->len = 1;
+	sqe->msg_flags = MSG_TRUNC;
+	sqe->ioprio = IORING_RECV_MULTISHOT;
+	sqe->flags = IOSQE_BUFFER_SELECT;
+	sqe->buf_group = ms.group;
+	sqe->user_data = std::bit_cast<uint64_t>(&ms) | multishot_tag;
+
+	ms.state = multishot_ring::arm_state::armed;
+	++state.receive.armed;
+	return true;
+}
+
+void io_uring_loop::retry_rearms () noexcept
+{
+	auto queued = std::move(rearm_queue);
+	while (auto *ms = queued.try_pop())
+	{
+		if (!arm_multishot(*ms))
+		{
+			rearm_queue.splice(std::move(queued));
+			return;
+		}
+	}
+}
+
+void io_uring_loop::complete_multishot (multishot_ring &ms, const ::io_uring_cqe &cqe) noexcept
+{
+	if ((cqe.flags & IORING_CQE_F_BUFFER) != 0)
+	{
+		auto &t = slot(ms.pool, cqe.flags >> IORING_CQE_BUFFER_SHIFT);
+		--ms.on_ring;
+
+		auto &op = io(t);
+		if (cqe.res < 0)
+		{
+			op.native_error = -cqe.res;
+		}
+		else
+		{
+			const auto *region = headroom_and_buffer(ms.pool, t).data() + buffer_kernel_offset;
+			::io_uring_recvmsg_out out;
+			std::memcpy(&out, region, sizeof(out));
+			std::memcpy(op.endpoint.data(), region + sizeof(out), io_state::endpoint_capacity);
+			op.endpoint_size = std::min<uint32_t>(out.namelen, io_state::endpoint_capacity);
+			op.bytes = std::min<size_t>(out.payloadlen, ms.pool.buffer_size);
+			op.truncated = out.payloadlen > ms.pool.buffer_size;
+		}
+		ready_.push(t);
+	}
+
+	if ((cqe.flags & IORING_CQE_F_MORE) == 0)
+	{
+		--ms.pool.owner->receive.armed;
+		if (ms.on_ring != 0 && ms.pool.ring == &ms)
+		{
+			ms.state = multishot_ring::arm_state::queued;
+			rearm_queue.push(ms);
+		}
+		else
+		{
+			ms.state = multishot_ring::arm_state::parked;
+		}
+	}
+}
+
+void io_uring_requeue_multishot (multishot_pool &pool, task &t) noexcept
+{
+	auto &self = static_cast<io_uring_loop &>(*pool.loop);
+	auto &ms = *pool.ring;
+	self.provide(ms, t);
+	if (ms.state == multishot_ring::arm_state::parked)
+	{
+		self.arm_multishot(ms);
+	}
+}
+
+std::error_code io_uring_loop::start_multishot (multishot_pool &pool) noexcept
+{
+	const auto acquired = acquire_group();
+	if (!acquired)
+	{
+		return std::make_error_code(std::errc::no_buffer_space);
+	}
+	const auto group = *acquired;
+
+	const auto entries = std::bit_ceil(pool.task_count);
+	std::unique_ptr<multishot_ring> ms{new (std::nothrow) multishot_ring{
+		.pool = pool,
+		.ring_map = {},
+		.mask = static_cast<unsigned>(entries - 1),
+		.group = group,
+	}};
+	if (ms == nullptr)
+	{
+		release_group(group);
+		return std::make_error_code(std::errc::not_enough_memory);
+	}
+
+	const auto size = entries * sizeof(::io_uring_buf);
+	ms->ring_map = mapping{::mmap(nullptr, size, PROT_READ | PROT_WRITE, MAP_PRIVATE | MAP_ANONYMOUS | MAP_POPULATE, -1, 0), size};
+
+	::io_uring_buf_reg reg{};
+	reg.ring_addr = reinterpret_cast<uint64_t>(ms->ring_map.address);
+	reg.ring_entries = static_cast<uint32_t>(entries);
+	reg.bgid = group;
+
+	if (!ms->ring_map || sys_register(ring, IORING_REGISTER_PBUF_RING, &reg, 1) < 0)
+	{
+		const auto error = pal::this_thread::last_system_error();
+		release_group(group);
+		return error;
+	}
+
+	pool.ring = ms.release();
+	for (size_t i = 0; i < pool.task_count; ++i)
+	{
+		auto &t = slot(pool, i);
+		const auto bid = static_cast<uint16_t>(i);
+		std::memcpy(headroom_and_buffer(pool, t).data(), &bid, sizeof(bid));
+		provide(*pool.ring, t);
+	}
+	arm_multishot(*pool.ring);
+
+	return {};
+}
+
+void io_uring_loop::close_multishot (multishot_ring &ms) noexcept
+{
+	if (ms.state == multishot_ring::arm_state::queued)
+	{
+		rearm_queue.remove(ms);
+	}
+
+	stats_.io_in_flight -= ms.on_ring;
+
+	::io_uring_buf_reg reg{};
+	reg.bgid = ms.group;
+	std::ignore = sys_register(ring, IORING_UNREGISTER_PBUF_RING, &reg, 1);
+
+	release_group(ms.group);
+}
+
 void io_uring_loop::close_socket (socket_state &state) noexcept
 {
+	std::unique_ptr<multishot_ring> ms{state.pool != nullptr ? std::exchange(state.pool->ring, nullptr) : nullptr};
+
 	bool cancel_pending = true;
 	while (state.armed() > 0)
 	{
@@ -421,6 +688,11 @@ void io_uring_loop::close_socket (socket_state &state) noexcept
 
 		std::ignore = enter(1, nullptr, 0, 0);
 		harvest(static_cast<size_t>(-1));
+	}
+
+	if (ms)
+	{
+		close_multishot(*ms);
 	}
 
 	impl_type::close_socket(state);
@@ -451,11 +723,12 @@ bool has_required_opcodes (int ring) noexcept
 		return op < probe.ops_len && (probe.ops[op].flags & IO_URING_OP_SUPPORTED) != 0;
 	};
 
-	// SENDMSG_ZC is never issued here: it first appears in 6.1, which two requirements need and neither can
-	// be probed for directly.
+	// SENDMSG_ZC is never issued here: it first appears in 6.1, which these requirements need and none can be
+	// probed for directly.
 	// - IORING_OP_SEND gained its destination-address fields in 6.1, without gaining an opcode of its own,
 	//   so a 6.0 kernel supports the opcode but rejects addr2 with EINVAL.
 	// - IORING_ASYNC_CANCEL_FD (5.19, used at teardown) is a cancel flag; REGISTER_PROBE reports opcodes.
+	// - IORING_REGISTER_PBUF_RING (5.19) is a register opcode, IORING_RECV_MULTISHOT (6.0) a RECVMSG flag.
 	return supported(IORING_OP_RECVMSG)
 		&& supported(IORING_OP_SEND)
 		&& supported(IORING_OP_SENDMSG_ZC)
@@ -583,6 +856,8 @@ result<impl_ptr> make_io_uring_loop (const event_loop_config &config) noexcept
 
 	self->poll_fn = &io_uring_poll;
 	self->drain_fn = &io_uring_drain_socket;
+	self->requeue_multishot_fn = &io_uring_requeue_multishot;
+	self->multishot_headroom = buffer_headroom;
 	self->config_ = config;
 
 	self->arm_wake();

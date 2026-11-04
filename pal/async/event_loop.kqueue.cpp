@@ -177,6 +177,7 @@ result<impl_ptr> make_kqueue_loop (const event_loop_config &config) noexcept
 	self->wake = std::move(*wake);
 	self->poll_fn = &kqueue_poll;
 	self->drain_fn = &kqueue_drain_socket;
+	self->requeue_multishot_fn = &feed_multishot;
 	self->config_ = config;
 
 	return impl_ptr{self};
