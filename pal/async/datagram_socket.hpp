@@ -214,7 +214,8 @@ protected:
 			return unexpected{r.error()};
 		}
 
-		__event_loop::socket_state_ptr state{new (std::nothrow) __event_loop::socket_state{
+		__event_loop::socket_state_ptr state{new (std::nothrow) __event_loop::socket_state
+		{
 			.loop = &loop,
 			.handle = static_cast<std::intptr_t>(net::__socket::to_sys(socket.native_socket().handle())),
 		}};

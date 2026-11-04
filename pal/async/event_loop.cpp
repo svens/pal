@@ -199,7 +199,8 @@ result<multishot_pool_ptr> make_multishot_pool (socket_state &owner, const multi
 		return make_unexpected(std::errc::not_enough_memory);
 	}
 
-	auto *pool = ::new (storage) multishot_pool{
+	auto *pool = ::new (storage) multishot_pool
+	{
 		__task::recycler{.fn = &recycle},
 		&owner,
 		owner.loop,

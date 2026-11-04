@@ -610,7 +610,8 @@ std::error_code io_uring_loop::start_multishot (multishot_pool &pool) noexcept
 	const auto group = *acquired;
 
 	const auto entries = std::bit_ceil(pool.task_count);
-	std::unique_ptr<multishot_ring> ms{new (std::nothrow) multishot_ring{
+	std::unique_ptr<multishot_ring> ms{new (std::nothrow) multishot_ring
+	{
 		.pool = pool,
 		.ring_map = {},
 		.mask = static_cast<unsigned>(entries - 1),

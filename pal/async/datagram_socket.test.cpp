@@ -765,7 +765,8 @@ TEMPLATE_TEST_CASE("async/datagram_socket: multishot", "", udp_v4, udp_v6)
 		REQUIRE(dead);
 		close_native_handle(*dead);
 
-		auto h = loop->make_handle(multishot{
+		auto h = loop->make_handle(multishot
+		{
 			std::move(*dead),
 			{.task_count = 1, .buffer_size = 64},
 			[](task_ptr &&, receive_result &&) noexcept { }
@@ -834,7 +835,8 @@ TEMPLATE_TEST_CASE("async/datagram_socket: multishot", "", udp_v4, udp_v6)
 
 		int received = 0;
 
-		auto h = loop->make_handle(multishot{
+		auto h = loop->make_handle(multishot
+		{
 			std::move(*connected),
 			{.task_count = 1, .buffer_size = 64},
 			[&](task_ptr &&t, receive_result &&r) noexcept

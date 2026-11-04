@@ -5,7 +5,7 @@
 
 #include <pal/async/datagram_socket.hpp>
 #include <pal/async/event_loop.hpp>
-#include <pal/async/task_pool.hpp>
+#include <pal/async/multishot.hpp>
 #include <pal/net/ip/udp.hpp>
 #include <pal/net/socket_option.hpp>
 #include <pal/version.hpp>
@@ -39,7 +39,7 @@ using namespace std::chrono_literals;
 using protocol = pal::net::ip::udp;
 using endpoint_type = protocol::endpoint;
 using sync_socket = protocol::socket;
-using async_socket = pal::async::handle<sync_socket>;
+using async_socket = pal::async::handle<pal::async::multishot<sync_socket>>;
 using receive_result = pal::result<async_socket::receive_from_result>;
 using send_result = pal::result<async_socket::send_to_result>;
 
@@ -87,10 +87,9 @@ relay_mode parse_mode (std::string_view option, std::string_view argument)
 struct config
 {
 	static constexpr auto stop_check_interval = 1s;
-	static constexpr size_t client_task_count = 256;
-	static constexpr size_t client_buffer_size = 16;
-	static constexpr size_t peer_task_count = 2'000;
-	static constexpr size_t session_task_count = 2;
+	static constexpr pal::async::multishot_config client_pool{.task_count = 256, .buffer_size = 16};
+	static constexpr pal::async::multishot_config peer_pool{.task_count = 2'000, .buffer_size = relay::max_datagram_size};
+	static constexpr pal::async::multishot_config session_pool{.task_count = 2, .buffer_size = relay::max_datagram_size};
 
 	static inline const pal::net::send_buffer_size send_buffer_size{2 * 1024 * 1024};
 	static inline const pal::net::receive_buffer_size receive_buffer_size{2 * 1024 * 1024};
@@ -368,7 +367,6 @@ protected:
 	std::thread thread_{};
 
 	sync_socket client_socket_;
-	pal::async::task_pool<config::client_task_count, config::client_buffer_size> client_tasks_{};
 
 	traffic_metric metrics_{};
 
@@ -380,6 +378,63 @@ protected:
 			return std::move(*loop);
 		}
 		throw std::runtime_error(std::format("event_loop: {}", loop.error().message()));
+	}
+
+	template <typename Handler>
+	static pal::result<async_socket> make_handle (
+		pal::async::event_loop &loop,
+		sync_socket &&socket,
+		const pal::async::multishot_config &pool,
+		Handler handler) noexcept
+	{
+		return loop.make_handle(pal::async::multishot{std::move(socket), pool, std::move(handler)});
+	}
+
+	auto on_sent () noexcept
+	{
+		return [this](pal::async::task_ptr &&p, send_result &&r) noexcept
+		{
+			if (r)
+			{
+				metrics_.out.inc(p->span().size());
+			}
+		};
+	}
+
+	auto on_client_receive (pal::async::event_loop &loop, std::optional<async_socket> &client) noexcept
+	{
+		return [this, &loop, &client](pal::async::task_ptr &&p, receive_result &&r) noexcept
+		{
+			spin(config_.handler_spin);
+			metrics_.in.inc(p->span().size());
+
+			if (p->span().size() != sizeof(relay::registration))
+			{
+				return;
+			}
+
+			const auto request = relay::read<relay::registration>(p->span());
+			const auto port = static_cast<Self *>(this)->allocate(
+				loop,
+				client,
+				request.session,
+				client_endpoint(r->endpoint, request)
+			);
+			if (!port)
+			{
+				return;
+			}
+
+			const relay::allocation response
+			{
+				.session = request.session,
+				.port = static_cast<uint16_t>(*port),
+			};
+			client->reset_span(*p);
+			std::memcpy(p->span().data(), &response, sizeof(response));
+			p->span(p->span().first(sizeof(response)));
+			client->start_reply(std::move(p), on_sent());
+		};
 	}
 
 	static sync_socket make_socket (pal::net::ip::port_type port, size_t thread_index)
@@ -459,25 +514,33 @@ private:
 	friend class basic_listener<mturn_listener>;
 
 	sync_socket peer_socket_;
-	pal::async::task_pool<config::peer_task_count, relay::max_datagram_size> peer_tasks_{};
 
 	client_map clients_{};
+
+	auto on_peer_receive (std::optional<async_socket> &client) noexcept
+	{
+		return [this, &client](pal::async::task_ptr &&p, receive_result &&) noexcept
+		{
+			spin(config_.handler_spin);
+			metrics_.in.inc(p->span().size());
+
+			if (p->span().size() >= sizeof(relay::header))
+			{
+				if (const auto *endpoint = clients_.load(relay::session(p->span())))
+				{
+					client->start_send_to(std::move(p), *endpoint, on_sent());
+				}
+			}
+		};
+	}
 
 	void run ()
 	{
 		auto loop = make_event_loop(config_.loop);
 		{
-			auto client = loop.make_handle(std::move(client_socket_)).value();
-			auto peer = loop.make_handle(std::move(peer_socket_)).value();
-
-			while (auto t = peer_tasks_.try_acquire())
-			{
-				start_peer_receive(peer, client, std::move(t));
-			}
-			while (auto t = client_tasks_.try_acquire())
-			{
-				start_client_receive(client, std::move(t));
-			}
+			std::optional<async_socket> client{}, peer{};
+			client = make_handle(loop, std::move(client_socket_), config::client_pool, on_client_receive(loop, client)).value();
+			peer = make_handle(loop, std::move(peer_socket_), config::peer_pool, on_peer_receive(client)).value();
 
 			while (!stopped)
 			{
@@ -488,114 +551,14 @@ private:
 		std::ignore = loop.settle().value();
 	}
 
-	auto on_allocation_sent (async_socket &client) noexcept
+	std::optional<pal::net::ip::port_type> allocate (
+		pal::async::event_loop &,
+		std::optional<async_socket> &,
+		uint64_t session,
+		const endpoint_type &client_endpoint) noexcept
 	{
-		return [this, &client](pal::async::task_ptr &&p, send_result &&r) noexcept
-		{
-			if (r)
-			{
-				metrics_.out.inc(p->span().size());
-				start_client_receive(client, std::move(p));
-			}
-			else if (r.error() != std::errc::operation_canceled)
-			{
-				start_client_receive(client, std::move(p));
-			}
-		};
-	}
-
-	auto on_client_receive (async_socket &client) noexcept
-	{
-		return [this, &client](pal::async::task_ptr &&p, receive_result &&r) noexcept
-		{
-			if (!r)
-			{
-				if (r.error() != std::errc::operation_canceled)
-				{
-					start_client_receive(client, std::move(p));
-				}
-				return;
-			}
-
-			spin(config_.handler_spin);
-			metrics_.in.inc(p->span().size());
-
-			if (p->span().size() == sizeof(relay::registration))
-			{
-				const auto request = relay::read<relay::registration>(p->span());
-				clients_.store(request.session, client_endpoint(r->endpoint, request));
-
-				const relay::allocation response{
-					.session = request.session,
-					.port = static_cast<uint16_t>(config_.peer.first),
-				};
-				client_tasks_.reset_span(*p);
-				std::memcpy(p->span().data(), &response, sizeof(response));
-				p->span(p->span().first(sizeof(response)));
-
-				client.start_reply(std::move(p), on_allocation_sent(client));
-				return;
-			}
-
-			start_client_receive(client, std::move(p));
-		};
-	}
-
-	void start_client_receive (async_socket &client, pal::async::task_ptr &&t) noexcept
-	{
-		client_tasks_.reset_span(*t);
-		client.start_receive_from(std::move(t), on_client_receive(client));
-	}
-
-	auto on_forward_sent (async_socket &peer, async_socket &client) noexcept
-	{
-		return [this, &peer, &client](pal::async::task_ptr &&p, send_result &&r) noexcept
-		{
-			if (r)
-			{
-				metrics_.out.inc(p->span().size());
-				start_peer_receive(peer, client, std::move(p));
-			}
-			else if (r.error() != std::errc::operation_canceled)
-			{
-				start_peer_receive(peer, client, std::move(p));
-			}
-		};
-	}
-
-	auto on_peer_receive (async_socket &peer, async_socket &client) noexcept
-	{
-		return [this, &peer, &client](pal::async::task_ptr &&p, receive_result &&r) noexcept
-		{
-			if (!r)
-			{
-				if (r.error() != std::errc::operation_canceled)
-				{
-					start_peer_receive(peer, client, std::move(p));
-				}
-				return;
-			}
-
-			spin(config_.handler_spin);
-			metrics_.in.inc(p->span().size());
-
-			if (p->span().size() >= sizeof(relay::header))
-			{
-				if (const auto *endpoint = clients_.load(relay::session(p->span())))
-				{
-					client.start_send_to(std::move(p), *endpoint, on_forward_sent(peer, client));
-					return;
-				}
-			}
-
-			start_peer_receive(peer, client, std::move(p));
-		};
-	}
-
-	void start_peer_receive (async_socket &peer, async_socket &client, pal::async::task_ptr &&t) noexcept
-	{
-		peer_tasks_.reset_span(*t);
-		peer.start_receive_from(std::move(t), on_peer_receive(peer, client));
+		clients_.store(session, client_endpoint);
+		return config_.peer.first;
 	}
 };
 
@@ -625,14 +588,7 @@ private:
 	struct session
 	{
 		endpoint_type client_endpoint;
-		std::optional<async_socket> socket;
-		pal::async::task_pool<config::session_task_count, relay::max_datagram_size> tasks{};
-
-		session (const endpoint_type &client_endpoint, async_socket &&socket) noexcept
-			: client_endpoint{client_endpoint}
-			, socket{std::move(socket)}
-		{
-		}
+		std::optional<async_socket> socket{};
 	};
 
 	size_t next_port_, last_port_;
@@ -647,12 +603,8 @@ private:
 	{
 		auto loop = make_event_loop(config_.loop);
 		{
-			auto client = loop.make_handle(std::move(client_socket_)).value();
-
-			while (auto t = client_tasks_.try_acquire())
-			{
-				start_client_receive(loop, client, std::move(t));
-			}
+			std::optional<async_socket> client{};
+			client = make_handle(loop, std::move(client_socket_), config::client_pool, on_client_receive(loop, client)).value();
 
 			while (!stopped)
 			{
@@ -670,69 +622,21 @@ private:
 		sessions_.clear();
 	}
 
-	auto on_allocation_sent (pal::async::event_loop &loop, async_socket &client) noexcept
+	auto on_session_receive (std::optional<async_socket> &client, session &session) noexcept
 	{
-		return [this, &loop, &client](pal::async::task_ptr &&p, send_result &&r) noexcept
+		return [this, &client, &session](pal::async::task_ptr &&p, receive_result &&) noexcept
 		{
-			if (r)
-			{
-				metrics_.out.inc(p->span().size());
-				start_client_receive(loop, client, std::move(p));
-			}
-			else if (r.error() != std::errc::operation_canceled)
-			{
-				start_client_receive(loop, client, std::move(p));
-			}
-		};
-	}
-
-	auto on_client_receive (pal::async::event_loop &loop, async_socket &client) noexcept
-	{
-		return [this, &loop, &client](pal::async::task_ptr &&p, receive_result &&r) noexcept
-		{
-			if (!r)
-			{
-				if (r.error() != std::errc::operation_canceled)
-				{
-					start_client_receive(loop, client, std::move(p));
-				}
-				return;
-			}
-
 			spin(config_.handler_spin);
 			metrics_.in.inc(p->span().size());
 
-			if (p->span().size() == sizeof(relay::registration))
-			{
-				const auto request = relay::read<relay::registration>(p->span());
-				if (const auto port = allocate(loop, client, client_endpoint(r->endpoint, request)))
-				{
-					const relay::allocation response{
-						.session = request.session,
-						.port = static_cast<uint16_t>(*port),
-					};
-					client_tasks_.reset_span(*p);
-					std::memcpy(p->span().data(), &response, sizeof(response));
-					p->span(p->span().first(sizeof(response)));
-
-					client.start_reply(std::move(p), on_allocation_sent(loop, client));
-					return;
-				}
-			}
-
-			start_client_receive(loop, client, std::move(p));
+			client->start_send_to(std::move(p), session.client_endpoint, on_sent());
 		};
-	}
-
-	void start_client_receive (pal::async::event_loop &loop, async_socket &client, pal::async::task_ptr &&t) noexcept
-	{
-		client_tasks_.reset_span(*t);
-		client.start_receive_from(std::move(t), on_client_receive(loop, client));
 	}
 
 	std::optional<pal::net::ip::port_type> allocate (
 		pal::async::event_loop &loop,
-		async_socket &client,
+		std::optional<async_socket> &client,
+		uint64_t,
 		const endpoint_type &client_endpoint) noexcept
 	{
 		while (next_port_ <= last_port_)
@@ -745,67 +649,19 @@ private:
 				continue;
 			}
 
-			auto handle = loop.make_handle(std::move(*socket));
+			auto &session = sessions_.emplace_back(client_endpoint);
+			auto handle = make_handle(loop, std::move(*socket), config::session_pool, on_session_receive(client, session));
 			if (!handle)
 			{
+				sessions_.pop_back();
 				return {};
 			}
 
-			auto &session = sessions_.emplace_back(client_endpoint, std::move(*handle));
-			while (auto t = session.tasks.try_acquire())
-			{
-				start_session_receive(client, session, std::move(t));
-			}
-
+			session.socket = std::move(*handle);
 			return port;
 		}
 
 		return {};
-	}
-
-	auto on_forward_sent (async_socket &client, session &session) noexcept
-	{
-		return [this, &client, &session](pal::async::task_ptr &&p, send_result &&r) noexcept
-		{
-			if (r)
-			{
-				metrics_.out.inc(p->span().size());
-				start_session_receive(client, session, std::move(p));
-			}
-			else if (r.error() != std::errc::operation_canceled)
-			{
-				start_session_receive(client, session, std::move(p));
-			}
-		};
-	}
-
-	auto on_session_receive (async_socket &client, session &session) noexcept
-	{
-		return [this, &client, &session](pal::async::task_ptr &&p, receive_result &&r) noexcept
-		{
-			if (!r)
-			{
-				if (r.error() != std::errc::operation_canceled)
-				{
-					start_session_receive(client, session, std::move(p));
-				}
-				return;
-			}
-
-			spin(config_.handler_spin);
-			metrics_.in.inc(p->span().size());
-
-			client.start_send_to(std::move(p), session.client_endpoint, on_forward_sent(client, session));
-		};
-	}
-
-	void start_session_receive (async_socket &client, session &session, pal::async::task_ptr &&t) noexcept
-	{
-		if (session.socket)
-		{
-			session.tasks.reset_span(*t);
-			session.socket->start_receive_from(std::move(t), on_session_receive(client, session));
-		}
 	}
 
 	static std::optional<sync_socket> make_session_socket (pal::net::ip::port_type port) noexcept
