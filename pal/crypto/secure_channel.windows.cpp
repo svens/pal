@@ -172,6 +172,8 @@ struct session_state //{{{1
 	// DTLS anti-amplification cookie binding (datagram acceptor only); empty falls back to a placeholder.
 	peer_token peer_token = peer_token::none;
 
+	bool verify_pending = false;
+
 	session_state (__secure_channel::context_ptr config, bool is_datagram, verify_relax relax) noexcept
 		: config{std::move(config)}
 		, relax{relax}
@@ -879,7 +881,31 @@ result<handshake_result> handshake_channel::step_impl ( //{{{1
 	auto &state = *impl_->state;
 	auto &shared = *state.config;
 
-	sec_buffer in_bufs[4] = {
+	const auto complete = [this](handshake_result r) noexcept -> result<handshake_result>
+	{
+		if (auto ec = impl_->state->verify_peer())
+		{
+			return pal::unexpected{ec};
+		}
+
+		auto conn = attorney::emit_connected_channel(std::move(impl_->state));
+		if (!conn)
+		{
+			return pal::unexpected{conn.error()};
+		}
+		impl_.reset();
+
+		r.connected.emplace(std::move(*conn));
+		return r;
+	};
+
+	if (state.verify_pending)
+	{
+		return complete({});
+	}
+
+	sec_buffer in_bufs[4] =
+	{
 		{SECBUFFER_TOKEN, in},
 		{SECBUFFER_EMPTY},
 	};
@@ -909,7 +935,8 @@ result<handshake_result> handshake_channel::step_impl ( //{{{1
 
 	sec_buffer_desc in_desc{in_bufs, in_count};
 
-	sec_buffer out_bufs[] = {
+	sec_buffer out_bufs[] =
+	{
 		{SECBUFFER_TOKEN, out},
 		{SECBUFFER_EMPTY},
 	};
@@ -954,26 +981,19 @@ result<handshake_result> handshake_channel::step_impl ( //{{{1
 			return r;
 
 		case SEC_E_OK:
+			if (r.produced > 0)
+			{
+				state.verify_pending = true;
+				r.want_output = true;
+				return r;
+			}
 			break;
 
 		default:
 			return pal::unexpected{map_handshake_error(ss)};
 	}
 
-	if (auto ec = state.verify_peer())
-	{
-		return pal::unexpected{ec};
-	}
-
-	auto conn = attorney::emit_connected_channel(std::move(impl_->state));
-	if (!conn)
-	{
-		return pal::unexpected{conn.error()};
-	}
-	impl_.reset();
-
-	r.connected.emplace(std::move(*conn));
-	return r;
+	return complete(std::move(r));
 }
 
 result<channel_result> connected_channel::encrypt_impl ( //{{{1
@@ -1011,7 +1031,8 @@ result<channel_result> connected_channel::encrypt_impl ( //{{{1
 	}
 
 	std::memcpy(out.data() + sizes.cbHeader, plain.data(), rec_size);
-	sec_buffer enc_bufs[] = {
+	sec_buffer enc_bufs[] =
+	{
 		{SECBUFFER_STREAM_HEADER, out.first(sizes.cbHeader)},
 		{SECBUFFER_DATA, out.subspan(sizes.cbHeader, rec_size)},
 		{SECBUFFER_STREAM_TRAILER, out.subspan(sizes.cbHeader + rec_size, sizes.cbTrailer)},
@@ -1085,7 +1106,8 @@ result<channel_result> connected_channel::decrypt_impl ( //{{{1
 
 	// One DATA buffer in; the three spare slots default to SECBUFFER_EMPTY for DecryptMessage to fill
 	// with the plaintext DATA and any trailing SECBUFFER_EXTRA (next record).
-	sec_buffer dec_bufs[4] = {
+	sec_buffer dec_bufs[4] =
+	{
 		{SECBUFFER_DATA, std::span{impl.cipher_buf}.first(total)},
 	};
 	sec_buffer_desc dec_desc{dec_bufs};
