@@ -1,30 +1,15 @@
 # MEASURE
 
-How to run a ladder and read what comes back. Host tuning is
-[tune_linux.md](tune_linux.md); getting machines is [cluster.md](cluster.md).
-
-The application under test is a UDP relay, driven by a load generator running on
-separate client VMs. Both sides are measured: the generator reports loss and
-latency as a receiver sees them, and the relay host reports what the kernel did
-underneath.
-
 ## 1. The oracle
 
-1. The exit code is the only contract the load generator offers. `--max-loss` and
-   `--max-rtt-ms` turn a threshold violation into a nonzero exit, and that is the
-   whole pass/fail rule. Nothing parses its output.
-2. A run is `warmup` seconds followed by `runtime` seconds of measurement, so it
-   takes the sum of the two. Thresholds apply only once the second phase starts.
-3. A violation latches for the whole process, so without the split the oracle
+1. A run is `warmup` seconds followed by `runtime` seconds of measurement.
+   Thresholds apply only once the second phase starts.
+2. A violation latches for the whole process, so without the split the oracle
    reports the point where startup crossed a threshold rather than the point where
    the service did.
 
        Measured: at 9000 sessions the first intervals reported tens of
        milliseconds of rtt where the settled run reported about one.
-
-4. The transient grows with session count, so `warmup` is a constant to re-check at
-   the top rung of a ladder rather than one that holds across VM sizes. The shipped
-   value is what the rungs measured so far needed.
 
 ## 2. Traffic profiles
 
@@ -38,8 +23,7 @@ underneath.
    | video | 1500 | 1200 | 156 | 720p 1:1, packets sized to the MTU |
    | bundled | 1550 | 940 | 206 | audio and video muxed onto one allocation |
 
-2. Audio is the default. It keeps the relay CPU-bound, which is what a
-   sessions-per-core figure measures.
+2. Audio is the default.
 3. The other two put several times the packet rate on each client, so one generator
    process sustains proportionally fewer streams.
 4. Reach a higher session count by adding client VMs rather than load per VM.
@@ -52,9 +36,8 @@ underneath.
 
 1. `run` starts the generator on every client VM at once, waits for them, and
    prints the relay-side counter deltas for the same window.
-2. It does not start the relay. The relay is the side being watched, so
-   `start-relay` puts it in a tmux session where a process monitor and a
-   counter watch can sit next to it.
+2. It does not start the relay; `start-relay` puts it in a tmux session beside a
+   process monitor and a counter watch.
 3. The relay-side counters bracket the measured window, shortened by the time it
    took to launch the clients. Each client keeps its own clock, so only between the
    last one leaving warm-up and the first one finishing is every client actually
@@ -64,48 +47,28 @@ underneath.
 
 ## 4. A ladder: sweep
 
-1. `sweep` ramps `streams` until a run fails and reports the last passing point. It
-   needs no output parsing, because [the oracle](#1-the-oracle) is the entire
-   contract.
+1. `sweep` ramps `streams` until a run fails and reports the last passing point.
 2. `sweep` owns the relay rather than watching one. It refuses to start while any
    relay is running, restarts it between steps, and stops it at the end, so each
    rung starts from an empty relay.
 3. There is no relay afterwards, and a following `run` will ask for one. An aborted
    sweep is the opposite case: its relay survives, and the next sweep refuses until
    `stop-relay` clears it.
-4. The restart exists because the relay's client map never evicts. With
-   `relay_restart` off, a twenty-step ladder reaches its last rung holding every
-   earlier rung's sessions in the same lookup, so the knee it reports depends on how
-   the ladder got there. Turning it off on purpose is how to measure what that
-   costs.
-5. Restarted steps run detached rather than under tmux, each writing
+4. Restarted steps run detached rather than under tmux, each writing
    `relay-<streams>.log` on the relay. That is where a step which killed the relay
    explains itself.
-6. Each rung costs `warmup` plus `runtime` plus roughly fifteen seconds of launch
+5. Each rung costs `warmup` plus `runtime` plus roughly fifteen seconds of launch
    and polling, and the ladder walks `sweep_start` to `sweep_max` in `sweep_step`
    increments. Deploy and provisioning are several minutes on top.
 
 ## 5. Relay-side counters
 
-`host/counters` is the relay-side half of the measurement. The generator sees loss
-and rtt from a receiver, which cannot separate "the relay was slow" from "the kernel
-dropped it first" from "we ran out of CPU". These can.
-
-`counters delta` owns every derived figure -- elapsed, receive rate, machine busy,
-the per-packet cost, and which movements count as faults. It writes one
-`<kind> <name> <value>` row per figure; `run` and `sweep` print those rows and read
-their numbers from the same text, so a figure has one derivation wherever it
-appears. A window it cannot derive them from is not a measurement, and it exits
-nonzero rather than reporting a figure it does not have.
+`host/counters` documents each counter; `run` and `sweep` print its `delta` rows.
 
 1. **The run did not measure the service.** `softnet.dropped`, the NIC-level discard
-   counters, and `cpu steal_pct` at one percent or more all mean the load never
+   counters, and `cpu steal_pct` all mean the load never
    reached the relay, or the hypervisor took the CPU needed to process it. `run` and
-   `sweep` warn when any of them moves, and `sweep` repeats the warning at the end
-   so it cannot be lost among twenty step reports. Neither aborts: a stray drop
-   during warm-up should not end a half-hour sweep, and a few stolen jiffies are
-   ordinary on a shared host. Sustained steal is
-   [the hypervisor's](tune_linux_azure.md#5-what-the-hypervisor-owns).
+   `sweep` warn on them, and `sweep` repeats the warning at the end. Neither aborts.
 2. **The service reached its limit.** `UdpRcvbufErrors` means the relay was not
    draining its socket fast enough. That is what the run is for, so it is not
    treated as a fault. The exception is a ceiling having clamped the request below
@@ -113,16 +76,8 @@ nonzero rather than reporting a figure it does not have.
    [socket buffer ceilings](tune_linux.md#62-socket-buffer-ceilings) prints both
    halves. Under `profile`, some of it is the capture starting, per
    [capture](profile.md#3-capture).
-3. **A tuning signal, not a verdict.** `softnet.squeezed` with `dropped` flat means a
-   softirq pass was cut short by its allowance rather than by load. Some of that is
-   normal at high packet rates; see
+3. **A tuning signal, not a verdict.** `softnet.squeezed`; see
    [backlog and budget](tune_linux.md#61-backlog-and-budget).
-
-The receive rate comes from the relay's own counters, so the Kpps and Mbps in a
-results row are measured rather than derived from what the clients were asked to
-send. Machine busy comes from the same pair of snapshots over the same window, and
-`sweep` keeps it for the last rung that passed -- without it, a knee at 60% and one
-at 90% print identically though only one has headroom.
 
 ## 6. CPU: process versus machine
 
@@ -134,13 +89,7 @@ at 90% print identically though only one has headroom.
    2. `cpu busy_pct` is the whole machine from `/proc/stat`, with the softirq share
       beside it as `cpu softirq_pct`.
 
-2. A high softirq share means the kernel's receive path dominates and application
-   work will not move the limit. High process time with low softirq means the
-   opposite.
-3. The `relay` rows are absent when the process did not survive the window as one
-   pid, since neither a relay that exited nor a restarted one has a figure to give.
-4. Size a fleet from `cpu busy_pct`, which is what a results row records. The process
-   figure alone understates the load, and worst where it matters most.
+2. Size a fleet from `cpu busy_pct`, which is what a results row records.
 
        Measured: 76% of four cores by the process figure against 89%
        machine busy at the same moment. The gap closes as load rises --
@@ -156,43 +105,27 @@ at 90% print identically though only one has headroom.
        about 12% -- 405 Kpps at 75% machine busy on one, 400 Kpps at 84%
        on the other.
 
-   Run the pair close together rather than separated by other experiments: the
-   spread between deployments is larger than most of the knobs worth measuring.
-2. Repeat each point and take the median. On a cloud VM the run-to-run spread is
-   large enough to invent differences that are not there, and boundary rungs are
-   where it matters most.
-3. Record machine busy rather than process CPU, per
-   [CPU: process versus machine](#6-cpu-process-versus-machine).
-4. Rows are of two kinds and comparing across them is meaningless.
+   Run the pair close together.
+2. Repeat each point and take the median.
+3. Rows are of two kinds and comparing across them is meaningless.
 
    1. **Ceiling.** Netfilter absent, which is how the VMs are provisioned. This
       bounds what the relay reaches with nothing else in the way, and is the
-      starting point for profiling the relay itself. It is a deployable figure only
-      where a node can give conntrack up.
+      starting point for profiling the relay itself.
    2. **As deployed.** Netfilter restored by hand before the sweep, as the
-      production nodes have it. This is the number that predicts capacity.
+      production nodes have it.
 
    Which kind a row is has to be read off the host rather than assumed, per
    [the guest agent's netfilter table](tune_linux_azure.md#4-the-guest-agents-netfilter-table).
-   Note which kind a row is when adding it.
-5. The headline figure is sessions per core at a fixed loss and rtt threshold. Raw
-   Mbps does not survive a change of VM size; sessions per core does.
+4. The headline figure is sessions per core at a fixed loss and rtt threshold.
 
-## 8. Profiling
-
-[profile.md](profile.md) owns the capture, the stage budget and the toolchain. A
-profile says what a packet cost; [relay-side counters](#5-relay-side-counters) say
-why one was dropped.
-
-## 9. Caveats
+## 8. Caveats
 
 1. `rtt` times one datagram over client VM to relay and back to the same VM. Both
    ends are in one process, so it is measured against a single clock.
 2. "Core" means vCPU. What that is worth in physical cores is
-   [a property of the VM size](tune_linux_azure.md#6-vm-sizes-and-what-changes-with-them).
-3. Mbps is IP level, which is what the kernel counts. At the audio profile it
-   carries no signal Kpps does not, since at a fixed profile it is Kpps times the
-   packet size.
+   [a property of the VM size](tune_linux_azure.md#5-vm-sizes-and-what-changes-with-them).
+3. Mbps is IP level, which is what the kernel counts.
 4. Bandwidth is not the constraint at the audio profile: 8000 sessions is around 400
    Kpps and 475 Mbps, a small fraction of the link each way, so the difference
    between IP, frame and wire accounting -- up to 25% -- is noise against that

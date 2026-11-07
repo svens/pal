@@ -225,7 +225,7 @@ static_assert(sizeof(native_op) <= io_state::native_capacity);
 static_assert(alignof(native_op) <= alignof(std::max_align_t));
 
 // Operations armed with the kernel at once, per socket and direction.
-constexpr size_t max_armed = 8;
+constexpr size_t max_armed = 64;
 
 // Tasks and multishot rings are aligned past bits 0 and 1, which carry the tags below. The small integers alias
 // those tags, so complete_cqe tests them by exact value before decoding any tag.

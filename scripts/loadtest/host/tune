@@ -1,6 +1,6 @@
 #!/bin/sh
 ## every tuning stage, in packet-path order
-## see docs/tune_linux.md, Ordering constraints
+## see docs/tune_linux.md, Using these scripts
 #
 # The order is a property of the stages, so it is listed here rather than globbed:
 # rings are sized before the coalescing window that depends on them, and both

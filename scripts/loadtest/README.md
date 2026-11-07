@@ -13,7 +13,7 @@ own kernel counters are read alongside what the generators report.
 | [profile](docs/profile.md) | where the time inside a packet goes |
 | [tune_linux](docs/tune_linux.md) | every host knob, what it does, and what it was worth |
 | [tune_linux_azure](docs/tune_linux_azure.md) | what an Azure guest changes about the above |
-| [results](docs/results.md) | measurements, and what no ladder has settled yet |
+| [results](docs/results.md) | measurements |
 
 ## 2. Quickstart
 
@@ -26,29 +26,16 @@ lists them all with the one-line description each script carries.
     ninja deploy
     cmake -Dclient_count=2 -P azure/deploy.cmake
 
-Both forms exist because ninja cannot forward variables: `ninja <action>` always
-uses what `cluster.conf` holds, and the `cmake -P` form is the one that takes
+`ninja <action>` uses what `cluster.conf` holds; the `cmake -P` form takes `-D`
 overrides.
-
-`destroy` is the normal end of a session rather than a rare event, per
-[cost and lifecycle](docs/cluster.md#6-cost-and-lifecycle).
 
 ## 3. Layout
 
 Three kinds of script, split by where they run.
 
-1. `azure/*.cmake` runs on your workstation and drives `az`. CMake rather than
-   shell because the workstation's OS varies.
-2. `host/*` and `perf/*` run on a VM, as root, against a Linux kernel. Shell,
-   because there is no cross-platform version of writing to `/sys`.
+1. `azure/*.cmake` runs on your workstation and drives `az`.
+2. `host/*` and `perf/*` run on a VM, as root, against a Linux kernel.
 3. `tools/*` runs on your workstation over what a VM sent back.
-
-The rest of the tree:
-
-    cluster.conf     cluster shape and run defaults, all overridable
-    build.ninja      convenience wrapper over the cmake actions
-    docs/            the documents above
-    .profile/        capture artifacts, gitignored
 
 ## 4. References
 

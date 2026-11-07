@@ -14,11 +14,13 @@ packages:
 - tmux
 
 write_files:
-# Set ulimit -n for loadtester (socket per session)
+# Per-session kernel resources: the image defaults would cap the session count before the load does
 - path: /etc/security/limits.d/90-loadtest.conf
   content: |
     * soft nofile 1048576
     * hard nofile 1048576
+    * soft memlock unlimited
+    * hard memlock unlimited
 
 # Prevent nf_conntrack installed by waagent (see also runcmd nft and modprobe)
 - path: /etc/modprobe.d/90-loadtest.conf
