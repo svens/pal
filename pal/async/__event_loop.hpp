@@ -6,64 +6,67 @@
  */
 
 #include <pal/async/event_loop.hpp>
-#include <pal/async/multishot.hpp>
-#include <pal/error.hpp>
+#include <pal/intrusive_queue.hpp>
 #include <pal/version.hpp>
-
+#include <array>
+#include <atomic>
 #include <cstddef>
-#include <new>
-#include <span>
+#include <cstdint>
+#include <system_error>
+#include <thread>
 #include <tuple>
 #include <utility>
 
 #if __pal_os_linux || __pal_os_macos
-	#include <array>
+	#include <pal/error.hpp>
 	#include <bit>
 	#include <cerrno>
 	#include <chrono>
-	#include <cstdint>
 	#include <fcntl.h>
 	#include <time.h>
 	#include <unistd.h>
 #endif
 
+#if __pal_os_linux
+	#include <sys/epoll.h>
+	#include <sys/socket.h>
+#elif __pal_os_macos
+	#include <sys/event.h>
+#elif __pal_os_windows
+	#include <winsock2.h>
+	#include <windows.h>
+#endif
+
 namespace pal::async::__event_loop
 {
 
-void on_socket_event (socket_state &s, socket_state::direction &d) noexcept;
-
-inline constexpr size_t multishot_pool_header_size = __task::round_up(sizeof(multishot_pool), cache_line_size);
-
-inline std::byte *slot_address (multishot_pool &pool, size_t index) noexcept
+struct socket_state
 {
-	return reinterpret_cast<std::byte *>(&pool) + multishot_pool_header_size + index * pool.slot_size;
-}
+	struct direction
+	{
+		__task::attorney::task_queue pending{};
+		bool ready = false;
 
-inline task &slot (multishot_pool &pool, size_t index) noexcept
-{
-	return *std::launder(reinterpret_cast<task *>(slot_address(pool, index)));
-}
+		[[nodiscard]] bool actionable () const noexcept
+		{
+			return ready && !pending.empty();
+		}
+	};
 
-inline std::span<std::byte> headroom_and_buffer (const multishot_pool &pool, task &t) noexcept
-{
-	return {reinterpret_cast<std::byte *>(&t) + sizeof(task), pool.headroom + pool.buffer_size};
-}
+	impl_type *const loop;
+	const std::intptr_t handle;
+	direction receive{}, send{};
+	bool queued = false;
+	size_t armed = 0;
+	intrusive_queue_hook<socket_state> hook{};
 
-void prime_multishot (multishot_pool &pool, task &t) noexcept;
-void feed_multishot (multishot_pool &pool, task &t) noexcept;
+	[[nodiscard]] bool actionable () const noexcept
+	{
+		return receive.actionable() || send.actionable();
+	}
+};
 
-result<impl_ptr> make_epoll_loop (const event_loop_config &config) noexcept;
-result<impl_ptr> make_io_uring_loop (const event_loop_config &config) noexcept;
-result<impl_ptr> make_kqueue_loop (const event_loop_config &config) noexcept;
-result<impl_ptr> make_iocp_loop (const event_loop_config &config) noexcept;
-
-// make_loop's body, with the io_uring probe replaceable by a compile-time failure so the fallback to
-// epoll is a tested path on machines where io_uring works.
-template <bool inject_probe_failure>
-result<event_loop> make_loop_impl (const event_loop_config &config) noexcept;
-
-extern template result<event_loop> make_loop_impl<false> (const event_loop_config &) noexcept;
-extern template result<event_loop> make_loop_impl<true> (const event_loop_config &) noexcept;
+using socket_queue = intrusive_queue<&socket_state::hook>;
 
 template <typename T, auto Close, T Invalid>
 class unique_handle
@@ -116,18 +119,6 @@ private:
 
 #if __pal_os_linux || __pal_os_macos
 
-constexpr ::timespec to_timespec (impl_type::clock::duration d) noexcept
-{
-	const auto wait = (d < impl_type::clock::duration::zero()) ? impl_type::clock::duration::zero() : d;
-	const auto secs = std::chrono::duration_cast<std::chrono::seconds>(wait);
-	const auto nsecs = std::chrono::duration_cast<std::chrono::nanoseconds>(wait - secs);
-	return
-	{
-		.tv_sec = static_cast<::time_t>(secs.count()),
-		.tv_nsec = static_cast<long>(nsecs.count()),
-	};
-}
-
 using unique_fd = unique_handle<int, ::close, -1>;
 
 struct wake_channel
@@ -174,42 +165,122 @@ struct wake_channel
 		} while (r < 0 && errno == EINTR);
 	}
 
-	void drain (impl_type &l) const noexcept
-	{
-		std::array<std::uintptr_t, 256> tasks;
-		size_t total = 0;
-		for (;;)
-		{
-			if (auto r = ::read(read, tasks.data(), sizeof(tasks)); r > 0)
-			{
-				r /= sizeof(std::uintptr_t);
-				for (ssize_t i = 0; i < r; ++i)
-				{
-					l.posted_.push(*std::bit_cast<task *>(tasks[i]));
-				}
-				total += static_cast<size_t>(r);
-			}
-			else if (r == 0 || errno != EINTR)
-			{
-				break;
-			}
-		}
-		if (total > 0)
-		{
-			l.posts_in_flight_.fetch_sub(total, std::memory_order_relaxed);
-		}
-	}
+	void drain (impl_type &loop) const noexcept;
 };
 
-struct posix_loop: impl_type
+#endif
+
+#if __pal_os_linux
+	using poll_array = std::array<::epoll_event, event_loop_config::max_poll_batch>;
+	using mmsg_array = std::array<::mmsghdr, event_loop_config::max_drain_batch>;
+	using mmsg_buffers_array = std::array<::iovec, event_loop_config::max_drain_batch>;
+#elif __pal_os_macos
+	using poll_array = std::array<struct ::kevent, event_loop_config::max_poll_batch>;
+#elif __pal_os_windows
+	using poll_array = std::array<::OVERLAPPED_ENTRY, event_loop_config::max_poll_batch>;
+	using unique_port = unique_handle<::HANDLE, ::CloseHandle, nullptr>;
+#endif
+
+struct impl_type
 {
-	wake_channel wake{};
+	clock::time_point now_ = clock::now();
+	const std::thread::id loop_thread_ = std::this_thread::get_id();
+	task *timer_root_ = nullptr;
+	std::atomic<size_t> posts_in_flight_ = 0;
+	__task::attorney::task_queue posted_{};
+	socket_queue actionable_{};
+	__task::attorney::task_queue ready_{};
+	event_loop_stats stats_{};
+	event_loop_config config_{};
 
-	void do_post (task &t) noexcept override
-	{
-		wake.post(t);
-	}
+	#if __pal_os_linux
+		unique_fd epoll{};
+		wake_channel wake{};
+		poll_array events{};
+		mmsg_array messages{};
+		mmsg_buffers_array buffers{};
+	#elif __pal_os_macos
+		unique_fd kq{};
+		wake_channel wake{};
+		poll_array events{};
+	#elif __pal_os_windows
+		unique_port port{};
+		poll_array events{};
+	#endif
+
+	void poll (clock::duration timeout) noexcept;
+	void post (task &t) const noexcept;
+
+	[[nodiscard]] std::error_code register_socket (socket_state &s) const noexcept;
+	void drain (socket_state &s, socket_state::direction &d) noexcept;
+	void quiesce (socket_state &s) noexcept;
 };
+
+result<impl_ptr> make_backend (const event_loop_config &config) noexcept;
+
+#if __pal_os_linux || __pal_os_macos
+
+inline void impl_type::post (task &t) const noexcept
+{
+	wake.post(t);
+}
+
+inline void impl_type::quiesce (socket_state &) noexcept
+{
+}
+
+inline void wake_channel::drain (impl_type &loop) const noexcept
+{
+	std::array<std::uintptr_t, 256> tasks;
+	size_t total = 0;
+	for (;;)
+	{
+		if (auto r = ::read(read, tasks.data(), sizeof(tasks)); r > 0)
+		{
+			r /= sizeof(std::uintptr_t);
+			for (ssize_t i = 0; i < r; ++i)
+			{
+				loop.posted_.push(*std::bit_cast<task *>(tasks[i]));
+			}
+			total += static_cast<size_t>(r);
+		}
+		else if (r == 0 || errno != EINTR)
+		{
+			break;
+		}
+	}
+	if (total > 0)
+	{
+		loop.posts_in_flight_.fetch_sub(total, std::memory_order_relaxed);
+	}
+}
+
+inline void on_socket_event (socket_state &s, socket_state::direction &d) noexcept
+{
+	d.ready = true;
+	if (!d.pending.empty() && !s.queued)
+	{
+		s.queued = true;
+		s.loop->actionable_.push(s);
+	}
+}
+
+inline const ::timespec *to_timespec (clock::duration d, ::timespec &storage) noexcept
+{
+	if (d == clock::duration::max())
+	{
+		return nullptr;
+	}
+	const auto wait = (d < clock::duration::zero()) ? clock::duration::zero() : d;
+	const auto secs = std::chrono::duration_cast<std::chrono::seconds>(wait);
+	const auto nsecs = std::chrono::duration_cast<std::chrono::nanoseconds>(wait - secs);
+	storage =
+	{
+		.tv_sec = static_cast<::time_t>(secs.count()),
+		.tv_nsec = static_cast<long>(nsecs.count()),
+	};
+	return &storage;
+}
 
 #endif
 

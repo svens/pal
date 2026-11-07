@@ -133,16 +133,6 @@ TEST_CASE("async/task_pool")
 		}
 	}
 
-	SECTION("borrow() on a pool task is a REQUIRE violation")
-	{
-		if constexpr (pal::build == pal::build_type::debug)
-		{
-			auto t = pool.try_acquire();
-			auto msg = pal_test::require_terminate([&] { std::ignore = t->borrow(); });
-			CHECK(msg.contains("pool-managed"));
-		}
-	}
-
 	SECTION("destroying the pool with tasks in flight is a REQUIRE violation")
 	{
 		if constexpr (pal::build == pal::build_type::debug)

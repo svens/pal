@@ -1,3 +1,4 @@
+#include <pal/async/__event_loop.hpp>
 #include <pal/async/thread_pool.hpp>
 #include <pal/require.hpp>
 #include <condition_variable>
@@ -49,12 +50,7 @@ void impl_type::run () noexcept
 		if (task *t = queue.try_pop())
 		{
 			lock.unlock();
-
-			// copy the post-back target out: the work closure may overwrite all of scratch
-			auto *origin = t->scratch_as<record>().origin;
 			t->complete();
-			origin->post(task_ptr{t});
-
 			lock.lock();
 		}
 		else if (stop)
@@ -68,13 +64,19 @@ void impl_type::run () noexcept
 	}
 }
 
-void submit (impl_type &pool, task &t) noexcept
+void enqueue (impl_type &pool, __event_loop::impl_type &origin, task &t) noexcept
 {
+	++origin.stats_.offload_in_flight;
 	{
 		const std::lock_guard lock{pool.mutex};
 		pool.queue.push(t);
 	}
 	pool.pending.notify_one();
+}
+
+void offload_done (__event_loop::impl_type &origin) noexcept
+{
+	--origin.stats_.offload_in_flight;
 }
 
 void deleter::operator() (impl_type *pool) const noexcept

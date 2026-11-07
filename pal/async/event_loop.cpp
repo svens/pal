@@ -1,9 +1,11 @@
 #include <pal/async/__event_loop.hpp>
 #include <pal/version.hpp>
 #include <algorithm>
+#include <atomic>
+#include <cstdint>
 #include <new>
 #include <system_error>
-#include <type_traits>
+#include <thread>
 #include <utility>
 
 #if __pal_os_linux || __pal_os_macos
@@ -29,10 +31,6 @@ constexpr size_t max_rounds_per_poll = 4;
 		&& config.poll_batch <= event_loop_config::max_poll_batch
 		&& config.drain_batch >= 1
 		&& config.drain_batch <= event_loop_config::max_drain_batch
-		&& config.submission_depth >= 1
-		&& config.submission_depth <= event_loop_config::max_submission_depth
-		&& config.completion_depth >= config.submission_depth
-		&& config.completion_depth <= event_loop_config::max_completion_depth
 	;
 }
 
@@ -40,7 +38,7 @@ constexpr size_t max_rounds_per_poll = 4;
 // is no cancellation, deadline moves use the lazy re-arm idiom.
 struct timer_state
 {
-	impl_type::clock::time_point deadline;
+	clock::time_point deadline;
 	task *child;
 	task *sibling;
 };
@@ -92,142 +90,21 @@ task *merge_pairs (task *first) noexcept
 	return root;
 }
 
-[[nodiscard]] constexpr bool is_valid (const multishot_config &config) noexcept
+void expire_timers (impl_type &loop) noexcept
 {
-	return config.task_count >= 1
-		&& config.task_count <= multishot_config::max_task_count
-		&& config.buffer_size >= 1
-		&& config.buffer_size <= multishot_config::max_buffer_size
-	;
-}
-
-static_assert(std::is_trivially_destructible_v<task>);
-static_assert(std::is_trivially_destructible_v<multishot_pool>);
-
-void destroy (multishot_pool &pool) noexcept
-{
-	::operator delete(static_cast<void *>(&pool), std::align_val_t{cache_line_size});
-}
-
-void deliver (task &t) noexcept
-{
-	auto &pool = static_cast<multishot_pool &>(*__task::attorney::recycler_of(t));
-	if (io(t).native_error != 0)
+	while (loop.timer_root_ != nullptr && timer(*loop.timer_root_).deadline <= loop.now_)
 	{
-		pool.loop->requeue_multishot_fn(pool, t);
-		return;
-	}
-
-	if (++pool.borrow_count == pool.task_count)
-	{
-		++pool.loop->stats_.multishot_pool_exhaustions;
-	}
-	pool.handler.complete(t);
-}
-
-void recycle (__task::recycler &recycler, task &t) noexcept
-{
-	auto &pool = static_cast<multishot_pool &>(recycler);
-	--pool.borrow_count;
-	if (pool.owner != nullptr)
-	{
-		pool.loop->requeue_multishot_fn(pool, t);
-	}
-	else if (pool.borrow_count == 0)
-	{
-		destroy(pool);
+		auto *t = loop.timer_root_;
+		loop.timer_root_ = merge_pairs(timer(*t).child);
+		loop.posted_.push(*t);
 	}
 }
 
-} // namespace
-
-void prime_multishot (multishot_pool &pool, task &t) noexcept
-{
-	t.span(pool.buffer(t));
-	t.bind<__task::op_plain>([](task &delivered) noexcept
-	{
-		deliver(delivered);
-	});
-}
-
-void feed_multishot (multishot_pool &pool, task &t) noexcept
-{
-	prime_multishot(pool, t);
-	pool.owner->start_op(task_ptr{&t}, pool.owner->receive, true);
-}
-
-std::error_code impl_type::start_multishot (multishot_pool &pool) noexcept
-{
-	for (size_t i = 0; i < pool.task_count; ++i)
-	{
-		feed_multishot(pool, slot(pool, i));
-	}
-	return {};
-}
-
-void multishot_pool::detach () noexcept
-{
-	--loop->stats_.io_in_flight;
-	owner = nullptr;
-	if (borrow_count == 0)
-	{
-		destroy(*this);
-	}
-}
-
-void multishot_pool_deleter::operator() (multishot_pool *pool) const noexcept
-{
-	pool->detach();
-}
-
-result<multishot_pool_ptr> make_multishot_pool (socket_state &owner, const multishot_config &config) noexcept
-{
-	if (!is_valid(config))
-	{
-		return make_unexpected(std::errc::invalid_argument);
-	}
-
-	const auto headroom = owner.loop->multishot_headroom;
-	const auto slot_size = __task::round_up(sizeof(task) + headroom + config.buffer_size, cache_line_size);
-	auto *storage = static_cast<std::byte *>(::operator new(
-		multishot_pool_header_size + config.task_count * slot_size,
-		std::align_val_t{cache_line_size},
-		std::nothrow
-	));
-	if (storage == nullptr)
-	{
-		return make_unexpected(std::errc::not_enough_memory);
-	}
-
-	auto *pool = ::new (storage) multishot_pool
-	{
-		__task::recycler{.fn = &recycle},
-		&owner,
-		owner.loop,
-		config.task_count,
-		slot_size - sizeof(task) - headroom,
-		headroom,
-		slot_size,
-	};
-	for (size_t i = 0; i < config.task_count; ++i)
-	{
-		::new (slot_address(*pool, i)) task{__task::attorney::make_pool_managed(*pool)};
-	}
-
-	if (auto error = pool->loop->start_multishot(*pool))
-	{
-		destroy(*pool);
-		return unexpected{error};
-	}
-
-	++pool->loop->stats_.io_in_flight;
-	return multishot_pool_ptr{pool};
-}
-
-size_t impl_type::drain_posted () noexcept
+size_t drain_posted (impl_type &loop) noexcept
 {
 	size_t n = 0;
-	while (auto *t = posted_.try_pop())
+	auto batch = std::move(loop.posted_);
+	while (auto *t = batch.try_pop())
 	{
 		t->complete();
 		++n;
@@ -235,78 +112,65 @@ size_t impl_type::drain_posted () noexcept
 	return n;
 }
 
-size_t impl_type::expire_timers () noexcept
+void drain_actionable (impl_type &loop) noexcept
 {
-	size_t n = 0;
-	while (timer_root_ != nullptr && timer(*timer_root_).deadline <= now_)
-	{
-		auto *t = timer_root_;
-		timer_root_ = merge_pairs(timer(*t).child);
-		t->complete();
-		++n;
-	}
-	return n;
-}
-
-void impl_type::drain_actionable () noexcept
-{
-	// Terminates: each drain_fn visit either completes at least one pending op (finite supply -- no
+	// Terminates: each drain visit either completes at least one pending op (finite supply -- no
 	// handlers run here to add more) or clears the readiness flag of every direction it visited.
-	while (auto *s = actionable_.try_pop())
+	while (auto *s = loop.actionable_.try_pop())
 	{
 		s->queued = false;
 		for (auto *d: {&s->receive, &s->send})
 		{
 			if (d->actionable())
 			{
-				drain_fn(*this, *s, *d);
+				loop.drain(*s, *d);
 			}
 		}
 		if (!s->queued && s->actionable())
 		{
 			// one fairness quantum consumed; round-robin to the tail
 			s->queued = true;
-			actionable_.push(*s);
+			loop.actionable_.push(*s);
 		}
 	}
 }
 
-size_t impl_type::dispatch_ready () noexcept
+size_t dispatch_ready (impl_type &loop) noexcept
 {
 	size_t n = 0;
-	while (auto *t = ready_.try_pop())
+	while (auto *t = loop.ready_.try_pop())
 	{
-		--stats_.io_in_flight;
+		--loop.stats_.io_in_flight;
 		t->complete();
 		++n;
 	}
 	return n;
 }
 
-size_t impl_type::iterate (clock::duration timeout) noexcept
+size_t iterate (impl_type &loop, clock::duration timeout) noexcept
 {
-	if (!posted_.empty() || !ready_.empty() || !actionable_.empty())
+	if (!loop.posted_.empty() || !loop.ready_.empty() || !loop.actionable_.empty())
 	{
 		timeout = clock::duration::zero();
 	}
-	else if (timer_root_ != nullptr)
+	else if (loop.timer_root_ != nullptr)
 	{
-		now_ = now();
-		const auto &deadline = timer(*timer_root_).deadline;
-		timeout = (std::min)(timeout, deadline > now_ ? deadline - now_ : clock::duration::zero());
+		loop.now_ = clock::now();
+		const auto &deadline = timer(*loop.timer_root_).deadline;
+		timeout = (std::min)(timeout, deadline > loop.now_ ? deadline - loop.now_ : clock::duration::zero());
 	}
 
-	poll_fn(*this, timeout);
+	loop.poll(timeout);
 
-	now_ = now();
+	loop.now_ = clock::now();
 
-	auto n = drain_posted();
-	n += expire_timers();
+	expire_timers(loop);
+	auto n = drain_posted(loop);
 
 	for (auto round = max_rounds_per_poll; round != 0; --round)
 	{
-		drain_actionable();
-		const auto dispatched = dispatch_ready();
+		drain_actionable(loop);
+		const auto dispatched = dispatch_ready(loop);
 		if (dispatched == 0)
 		{
 			break;
@@ -317,36 +181,63 @@ size_t impl_type::iterate (clock::duration timeout) noexcept
 	return n;
 }
 
-void impl_type::post (task_ptr &&t) noexcept
+[[nodiscard]] bool has_counted_work (const impl_type &loop) noexcept
+{
+	return loop.stats_.io_in_flight != 0
+		|| loop.stats_.offload_in_flight != 0
+		|| !loop.posted_.empty()
+		|| loop.posts_in_flight_.load(std::memory_order_relaxed) != 0
+	;
+}
+
+[[nodiscard]] bool has_work (const impl_type &loop) noexcept
+{
+	return loop.timer_root_ != nullptr || has_counted_work(loop);
+}
+
+} // namespace
+
+void post (impl_type &loop, task_ptr &&t) noexcept
 {
 	auto *raw = t.release();
-	if (std::this_thread::get_id() == loop_thread_)
+	if (std::this_thread::get_id() == loop.loop_thread_)
 	{
-		posted_.push(*raw);
+		loop.posted_.push(*raw);
 		return;
 	}
-	posts_in_flight_.fetch_add(1, std::memory_order_relaxed);
-	do_post(*raw);
+	loop.posts_in_flight_.fetch_add(1, std::memory_order_relaxed);
+	loop.post(*raw);
 }
 
-void impl_type::start_timer (task_ptr &&t, clock::time_point deadline) noexcept
+void post_after (impl_type &loop, task_ptr &&t, clock::duration delay) noexcept
 {
 	auto *raw = t.release();
-	timer(*raw) = {.deadline = deadline, .child = nullptr, .sibling = nullptr};
-	timer_root_ = (timer_root_ != nullptr) ? meld(timer_root_, raw) : raw;
+	timer(*raw) = {.deadline = loop.now_ + delay, .child = nullptr, .sibling = nullptr};
+	loop.timer_root_ = (loop.timer_root_ != nullptr) ? meld(loop.timer_root_, raw) : raw;
 }
 
-void on_socket_event (socket_state &s, socket_state::direction &d) noexcept
+void impl_deleter::operator() (impl_type *loop) const noexcept
 {
-	d.ready = true;
-	if (!d.pending.empty() && !s.queued)
-	{
-		s.queued = true;
-		s.loop->actionable_.push(s);
-	}
+	delete loop;
 }
 
-void impl_type::close_socket (socket_state &s) noexcept
+result<socket_state_ptr> make_socket_state (impl_type &loop, std::intptr_t handle) noexcept
+{
+	socket_state_ptr state{new (std::nothrow) socket_state{.loop = &loop, .handle = handle}};
+	if (state == nullptr)
+	{
+		return make_unexpected(std::errc::not_enough_memory);
+	}
+
+	if (auto error = loop.register_socket(*state))
+	{
+		return unexpected{error};
+	}
+
+	return state;
+}
+
+void socket_state_deleter::operator() (socket_state *s) const noexcept
 {
 	#if __pal_os_windows
 		constexpr auto cancel_error = ERROR_OPERATION_ABORTED;
@@ -354,112 +245,110 @@ void impl_type::close_socket (socket_state &s) noexcept
 		constexpr auto cancel_error = ECANCELED;
 	#endif
 
-	ready_.splice(std::move(s.receive.pending));
-	ready_.splice(std::move(s.send.pending));
+	auto &loop = *s->loop;
+	loop.quiesce(*s);
 
-	__task::attorney::task_queue kept{};
-	while (auto *t = ready_.try_pop())
+	loop.ready_.splice(std::move(s->receive.pending));
+	loop.ready_.splice(std::move(s->send.pending));
+
+	for (auto &t: loop.ready_)
 	{
-		auto &op = io(*t);
-		if (op.owner == &s)
+		if (io(t).owner == s)
 		{
-			if (op.multishot)
-			{
-				--stats_.io_in_flight;
-				continue;
-			}
-			op.native_error = cancel_error;
+			io(t).native_error = cancel_error;
 		}
-		kept.push(*t);
 	}
-	ready_.splice(std::move(kept));
 
-	if (s.queued)
+	if (s->queued)
 	{
-		actionable_.remove(s);
+		loop.actionable_.remove(*s);
 	}
 
-	delete &s;
+	delete s;
 }
 
-void socket_state_deleter::operator() (socket_state *s) const noexcept
+namespace
 {
-	s->loop->close_socket(*s);
-}
 
-template <bool inject_probe_failure>
-result<event_loop> make_loop_impl (const event_loop_config &config) noexcept
+void start_op (socket_state &s, task_ptr &&t, socket_state::direction &d) noexcept
 {
-	if (!is_valid(config))
+	auto &op = io(*t);
+	op.owner = &s;
+	op.native_error = 0;
+	d.pending.push(*t.release());
+	if (d.ready && !s.queued)
 	{
-		return make_unexpected(std::errc::invalid_argument);
+		s.queued = true;
+		s.loop->actionable_.push(s);
 	}
-
-	result<impl_ptr> impl = make_unexpected(std::errc::not_supported);
-
-	if constexpr (os == os_type::linux)
-	{
-		if constexpr (!inject_probe_failure)
-		{
-			impl = make_io_uring_loop(config);
-		}
-
-		if (!impl)
-		{
-			impl = make_epoll_loop(config);
-		}
-	}
-	else if constexpr (os == os_type::macos)
-	{
-		impl = make_kqueue_loop(config);
-	}
-	else if constexpr (os == os_type::windows)
-	{
-		impl = make_iocp_loop(config);
-	}
-
-	return std::move(impl).transform([](impl_ptr impl) noexcept
-	{
-		return event_loop{std::move(impl)};
-	});
+	++s.loop->stats_.io_in_flight;
 }
 
-template result<event_loop> make_loop_impl<false> (const event_loop_config &) noexcept;
-template result<event_loop> make_loop_impl<true> (const event_loop_config &) noexcept;
+} // namespace
+
+void start_receive (socket_state &s, task_ptr &&t) noexcept
+{
+	start_op(s, std::move(t), s.receive);
+}
+
+void start_send (socket_state &s, task_ptr &&t) noexcept
+{
+	start_op(s, std::move(t), s.send);
+}
 
 } // namespace __event_loop
 
 result<event_loop> make_loop (const event_loop_config &config) noexcept
 {
-	return __event_loop::make_loop_impl<false>(config);
+	using namespace __event_loop;
+
+	if (!is_valid(config))
+	{
+		return make_unexpected(std::errc::invalid_argument);
+	}
+
+	return make_backend(config).transform([](impl_ptr impl) noexcept
+	{
+		return event_loop{std::move(impl)};
+	});
+}
+
+const event_loop::clock::time_point &event_loop::now () const noexcept
+{
+	return impl_->now_;
+}
+
+const event_loop_stats &event_loop::stats () const noexcept
+{
+	return impl_->stats_;
 }
 
 result<size_t> event_loop::run () noexcept
 {
 	size_t total = 0;
-	while (impl_->has_work())
+	while (__event_loop::has_work(*impl_))
 	{
-		total += impl_->iterate((clock::duration::max)());
+		total += __event_loop::iterate(*impl_, (clock::duration::max)());
 	}
 	return total;
 }
 
 result<size_t> event_loop::run_once () noexcept
 {
-	return impl_->iterate(clock::duration::zero());
+	return __event_loop::iterate(*impl_, clock::duration::zero());
 }
 
 result<size_t> event_loop::run_for (clock::duration timeout) noexcept
 {
-	return impl_->iterate(timeout);
+	return __event_loop::iterate(*impl_, timeout);
 }
 
 result<size_t> event_loop::settle () noexcept
 {
 	size_t total = 0;
-	while (impl_->has_counted_work())
+	while (__event_loop::has_counted_work(*impl_))
 	{
-		total += impl_->iterate((clock::duration::max)());
+		total += __event_loop::iterate(*impl_, (clock::duration::max)());
 	}
 	return total;
 }

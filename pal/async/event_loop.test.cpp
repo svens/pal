@@ -1,7 +1,6 @@
-#include <pal/async/__event_loop.hpp>
-#include <pal/version.hpp>
+#include <pal/async/event_loop.hpp>
 #include <pal/async/task.hpp>
-#include <pal/async/test.hpp>
+#include <pal/async/task_pool.hpp>
 #include <pal/test.hpp>
 #include <catch2/catch_test_macros.hpp>
 #include <array>
@@ -64,7 +63,7 @@ std::error_code make_invalid_loop (const event_loop_config &config)
 
 TEST_CASE("async/event_loop")
 {
-	auto loop = pal_test::make_test_loop(pal_test::test_backend());
+	auto loop = make_loop();
 	REQUIRE(loop);
 
 	SECTION("make_loop: poll_batch bounds")
@@ -101,42 +100,6 @@ TEST_CASE("async/event_loop")
 		CHECK(make_loop(config));
 	}
 
-	SECTION("make_loop: submission_depth bounds")
-	{
-		event_loop_config config{};
-
-		config.submission_depth = 0;
-		CHECK(make_invalid_loop(config) == std::errc::invalid_argument);
-
-		config.submission_depth = event_loop_config::max_submission_depth + 1;
-		config.completion_depth = event_loop_config::max_completion_depth;
-		CHECK(make_invalid_loop(config) == std::errc::invalid_argument);
-
-		config.submission_depth = 1;
-		config.completion_depth = 1;
-		CHECK(make_loop(config));
-
-		config.submission_depth = event_loop_config::max_submission_depth;
-		config.completion_depth = event_loop_config::max_completion_depth;
-		CHECK(make_loop(config));
-	}
-
-	SECTION("make_loop: completion_depth bounds")
-	{
-		event_loop_config config{};
-
-		config.completion_depth = config.submission_depth - 1;
-		CHECK(make_invalid_loop(config) == std::errc::invalid_argument);
-
-		config.completion_depth = event_loop_config::max_completion_depth + 1;
-		CHECK(make_invalid_loop(config) == std::errc::invalid_argument);
-
-		config.completion_depth = config.submission_depth;
-		CHECK(make_loop(config));
-
-		config.completion_depth = event_loop_config::max_completion_depth;
-		CHECK(make_loop(config));
-	}
 
 	SECTION("run: idle")
 	{
@@ -247,6 +210,24 @@ TEST_CASE("async/event_loop")
 		CHECK(*n == 1);
 		CHECK(ran == 1);
 		CHECK(got == &t);
+	}
+
+	SECTION("post: pool-managed task returns to its pool")
+	{
+		task_pool<1, 16> pool;
+		auto t = pool.try_acquire();
+		REQUIRE(t);
+		const auto *acquired = t.get();
+
+		loop->post(std::move(t), [](task_ptr &&) noexcept { });
+		CHECK_FALSE(pool.try_acquire());
+
+		auto n = loop->run_once();
+		REQUIRE(n);
+		CHECK(*n == 1);
+
+		auto again = pool.try_acquire();
+		CHECK(again.get() == acquired);
 	}
 
 	SECTION("post: multiple")
@@ -412,6 +393,48 @@ TEST_CASE("async/event_loop")
 		CHECK(loop->now() > cached);
 	}
 
+	SECTION("post_after: zero-delay re-arm from its handler fires on the next iteration")
+	{
+		task t;
+		int fired = 0;
+		loop->post_after(t.borrow(), 0ms, [&](task_ptr &&p) noexcept
+		{
+			++fired;
+			loop->post_after(std::move(p), 0ms, [&fired](task_ptr &&) noexcept { ++fired; });
+		});
+
+		auto n = loop->run_once();
+		REQUIRE(n);
+		CHECK(*n == 1);
+		CHECK(fired == 1);
+
+		n = loop->run_once();
+		REQUIRE(n);
+		CHECK(*n == 1);
+		CHECK(fired == 2);
+	}
+
+	SECTION("post: re-post from its handler runs on the next iteration")
+	{
+		task t;
+		int ran = 0;
+		loop->post(t.borrow(), [&](task_ptr &&p) noexcept
+		{
+			++ran;
+			loop->post(std::move(p), [&ran](task_ptr &&) noexcept { ++ran; });
+		});
+
+		auto n = loop->run_once();
+		REQUIRE(n);
+		CHECK(*n == 1);
+		CHECK(ran == 1);
+
+		n = loop->run_once();
+		REQUIRE(n);
+		CHECK(*n == 1);
+		CHECK(ran == 2);
+	}
+
 	SECTION("post_after: rebind inside own callback")
 	{
 		task t;
@@ -468,26 +491,5 @@ TEST_CASE("async/event_loop")
 		CHECK(fired == 0);
 	}
 }
-
-#if __pal_os_linux
-
-TEST_CASE("async/event_loop: epoll fallback")
-{
-	// Compile-time probe failure: the loop make_loop() would have built on io_uring is built on epoll
-	// instead, with no error reaching the caller.
-	auto loop = __event_loop::make_loop_impl<true>({});
-	REQUIRE(loop);
-
-	task t;
-	int posted = 0;
-	loop->post(t.borrow(), [&posted](task_ptr &&) noexcept { ++posted; });
-
-	auto n = loop->run();
-	REQUIRE(n);
-	CHECK(*n == 1);
-	CHECK(posted == 1);
-}
-
-#endif
 
 } // namespace

@@ -6,15 +6,12 @@
  */
 
 #include <pal/async/handle.hpp>
-#include <pal/async/multishot.hpp>
 #include <pal/net/basic_datagram_socket.hpp>
 #include <pal/net/socket_option.hpp>
-#include <pal/require.hpp>
 #include <pal/result.hpp>
 #include <cstdint>
 #include <cstring>
 #include <memory>
-#include <new>
 #include <system_error>
 #include <utility>
 
@@ -120,22 +117,25 @@ public:
 
 	handle (handle &&) noexcept = default;
 	handle &operator= (handle &&) noexcept = default;
-	~handle () noexcept = default;
+
+	~handle () noexcept
+	{
+		state_.reset();
+	}
 
 	/// Completion payload of \ref start_receive_from
 	using receive_from_result = pal::async::receive_from_result<Protocol>;
 
-	/// Queue an asynchronous receive_from into \a t's payload window (\ref task::span, which must be
-	/// attached and non-empty). On completion the window is adjusted to the bytes retained; a datagram
+	/// Queue an asynchronous receive_from into \a t's payload window (\ref task::span). On completion the
+	/// window is adjusted to the bytes retained; a datagram
 	/// larger than the window is delivered with \c truncated set. The operation writes only within the
 	/// window, never beyond it. \a handler runs on the owning loop's thread, from a subsequent run().
 	template <typename H>
 	void start_receive_from (task_ptr &&t, H handler) noexcept
 		requires __async::handler<H, void(task_ptr &&, result<receive_from_result> &&) noexcept>
 	{
-		pal_require(!t->span().empty(), "start_receive_from without task payload storage");
 		t->bind<__datagram_socket::op_receive_from<Protocol>>(std::move(handler));
-		state_->start_op(std::move(t), state_->receive, false);
+		__event_loop::start_receive(*state_, std::move(t));
 	}
 
 	/// Completion payload of \ref start_send_to
@@ -152,7 +152,7 @@ public:
 		std::memcpy(op.endpoint.data(), recipient.data(), sizeof(endpoint_type));
 		op.endpoint_size = static_cast<uint32_t>(recipient.size());
 		t->bind<__datagram_socket::op_send_to<Protocol>>(std::move(handler));
-		state_->start_op(std::move(t), state_->send, false);
+		__event_loop::start_send(*state_, std::move(t));
 	}
 
 	/// Queue an asynchronous send_to of \a t's payload window (\ref task::span) back to the source of \a t's
@@ -163,9 +163,8 @@ public:
 	void start_reply (task_ptr &&t, H handler) noexcept
 		requires __async::handler<H, void(task_ptr &&, result<send_to_result> &&) noexcept>
 	{
-		pal_require(__event_loop::io(*t).endpoint_size != 0, "start_reply without a completed receive");
 		t->bind<__datagram_socket::op_send_to<Protocol>>(std::move(handler));
-		state_->start_op(std::move(t), state_->send, false);
+		__event_loop::start_send(*state_, std::move(t));
 	}
 
 	/// \copydoc net::basic_socket::local_endpoint
@@ -194,129 +193,38 @@ public:
 		return socket_.set_option(option);
 	}
 
-protected:
+private:
 
-	/// \cond
-	net::basic_datagram_socket<Protocol> socket_;
+	static_assert(std::is_trivially_copyable_v<endpoint_type>);
+	static_assert(sizeof(endpoint_type) <= __event_loop::io_state::endpoint_capacity);
+
 	__event_loop::socket_state_ptr state_;
+	net::basic_datagram_socket<Protocol> socket_;
 
 	handle (net::basic_datagram_socket<Protocol> &&socket, __event_loop::socket_state_ptr &&state) noexcept
-		: socket_{std::move(socket)}
-		, state_{std::move(state)}
+		: state_{std::move(state)}
+		, socket_{std::move(socket)}
 	{
 	}
 
-	static result<__event_loop::socket_state_ptr>
-	make_state (net::basic_datagram_socket<Protocol> &socket, __event_loop::impl_type &loop) noexcept
+	static result<handle>
+	make (net::basic_datagram_socket<Protocol> &&socket, __event_loop::impl_type &loop) noexcept
 	{
 		if (auto r = socket.set_option(net::non_blocking_io{true}); !r)
 		{
 			return unexpected{r.error()};
 		}
 
-		__event_loop::socket_state_ptr state{new (std::nothrow) __event_loop::socket_state
-		{
-			.loop = &loop,
-			.handle = static_cast<std::intptr_t>(net::__socket::to_sys(socket.native_socket().handle())),
-		}};
-		if (state == nullptr)
-		{
-			return make_unexpected(std::errc::not_enough_memory);
-		}
-
-		if (auto error = loop.register_socket(*state))
-		{
-			return unexpected{error};
-		}
-
-		return state;
-	}
-	/// \endcond
-
-private:
-
-	static_assert(std::is_trivially_copyable_v<endpoint_type>);
-	static_assert(sizeof(endpoint_type) <= __event_loop::io_state::endpoint_capacity);
-
-	static result<handle>
-	make (net::basic_datagram_socket<Protocol> &&socket, __event_loop::impl_type &loop) noexcept
-	{
-		return make_state(socket, loop).transform([&socket](__event_loop::socket_state_ptr &&state) noexcept
-		{
-			return handle{std::move(socket), std::move(state)};
-		});
-	}
-
-	friend class event_loop;
-};
-
-/// Asynchronous datagram socket in multishot receive mode (see \ref multishot): receives from \ref
-/// event_loop::make_handle until destruction into tasks from a pool this handle owns, and sends single-shot
-/// like \ref handle<net::basic_datagram_socket<Protocol>>, which documents the shared members.
-///
-/// Contracts, beyond those of the single-shot handle: the receive handler sees no errors, per-datagram errors
-/// are dropped. Destruction is silent for receives: completions not yet dispatched return to the pool and the
-/// handler does not run for them. Tasks the application holds stay valid after destruction and may be
-/// dropped on the loop thread at any time before the loop is destroyed.
-template <typename Protocol>
-class handle<multishot<net::basic_datagram_socket<Protocol>>>
-	: private handle<net::basic_datagram_socket<Protocol>>
-{
-	using base = handle<net::basic_datagram_socket<Protocol>>;
-
-public:
-
-	using typename base::protocol_type;
-	using typename base::endpoint_type;
-	using typename base::receive_from_result;
-	using typename base::send_to_result;
-
-	handle (handle &&) noexcept = default;
-	handle &operator= (handle &&) noexcept = default;
-	~handle () noexcept = default;
-
-	using base::start_send_to;
-	using base::start_reply;
-	using base::local_endpoint;
-	using base::native_socket;
-	using base::get_option;
-	using base::set_option;
-
-	/// Restore \a t's payload window to the full capacity of its pool slot (at least
-	/// \ref multishot_config::buffer_size), for replies larger than the received datagram. \a t must come from
-	/// this handle's pool.
-	void reset_span (task &t) noexcept
-	{
-		auto *pool = this->state_->pool.get();
-		pal_require(__task::attorney::recycler_of(t) == pool, "reset_span() on task from another pool");
-		t.span(pool->buffer(t));
-	}
-
-private:
-
-	using base::base;
-
-	template <typename H>
-	static result<handle>
-	make (multishot<net::basic_datagram_socket<Protocol>, H> &&resource, __event_loop::impl_type &loop) noexcept
-		requires __async::handler<H, void(task_ptr &&, result<receive_from_result> &&) noexcept>
-	{
-		auto state = base::make_state(resource.resource, loop);
+		auto state = __event_loop::make_socket_state(
+			loop,
+			static_cast<std::intptr_t>(net::__socket::to_sys(socket.native_socket().handle()))
+		);
 		if (!state)
 		{
 			return unexpected{state.error()};
 		}
 
-		auto pool = __event_loop::make_multishot_pool(**state, resource.config);
-		if (!pool)
-		{
-			return unexpected{pool.error()};
-		}
-
-		(*pool)->handler.template arm<__datagram_socket::op_receive_from<Protocol>>(std::move(resource.handler));
-		(*state)->pool = std::move(*pool);
-
-		return handle{std::move(resource.resource), std::move(*state)};
+		return handle{std::move(socket), std::move(*state)};
 	}
 
 	friend class event_loop;

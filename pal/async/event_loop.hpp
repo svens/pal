@@ -6,45 +6,31 @@
  */
 
 #include <pal/async/task.hpp>
-#include <pal/intrusive_queue.hpp>
 #include <pal/result.hpp>
 #include <array>
-#include <atomic>
 #include <chrono>
+#include <cstdint>
 #include <memory>
-#include <thread>
+#include <utility>
 
 namespace pal::async
 {
 
-class event_loop;
 class thread_pool;
 
 template <typename T>
 class handle;
 
-template <typename Resource, typename Handler = void>
-struct multishot;
-
 /// Backend tuning knobs. Nothing here selects which resource runs next.
 struct event_loop_config
 {
-	/// Operations a backend accepts before one must complete.
-	/// Must be in [1, \ref max_submission_depth].
-	static constexpr size_t max_submission_depth = 32768;
-	size_t submission_depth = 256;
-
-	/// Completions a backend holds before it stalls.
-	/// Must be in [\ref submission_depth, \ref max_completion_depth].
-	static constexpr size_t max_completion_depth = 65536;
-	size_t completion_depth = 512;
-
 	/// Maximum readiness events harvested per backend poll.
 	/// Must be in [1, \ref max_poll_batch].
 	static constexpr size_t max_poll_batch = 1024;
 	size_t poll_batch = 64;
 
-	/// Maximum operations completed per socket direction per drain visit: the loop's fairness quantum.
+	/// Maximum operations completed per socket direction per drain visit: the loop's fairness quantum on
+	/// readiness backends (epoll, kqueue). IOCP arms every pending operation per visit.
 	/// Must be in [1, \ref max_drain_batch].
 	static constexpr size_t max_drain_batch = 256;
 	size_t drain_batch = 64;
@@ -53,9 +39,9 @@ struct event_loop_config
 /// Per-loop observability counters. Only the loop thread mutates them.
 struct event_loop_stats
 {
-	/// Counted offloaded operations (handle-based, e.g. start_resolve) started on this loop and not yet
-	/// completed back on it. Before teardown, quiesce with \ref event_loop::settle.
-	/// Plain \ref thread_pool::post offloads are not counted.
+	/// Offloaded operations (\ref thread_pool::post, or handle-based, e.g. start_resolve) started on this
+	/// loop and not yet completed back on it. A completing offload is excluded before its handler runs.
+	/// Before teardown, quiesce with \ref event_loop::settle.
 	uint64_t offload_in_flight = 0;
 
 	/// Poller-plane I/O operations (handle-based, e.g. start_receive_from) started on this loop and not
@@ -64,26 +50,30 @@ struct event_loop_stats
 	/// observing zero is the operation that drained the loop. Before teardown, quiesce like \ref offload_in_flight:
 	/// destroy the handles (cancelling their undispatched ops), then \ref event_loop::settle.
 	uint64_t io_in_flight = 0;
-
-	/// Times a multishot handle delivered the last free task of its pool, leaving its socket unable to
-	/// receive until the application drops one of the tasks it holds.
-	uint64_t multishot_pool_exhaustions = 0;
 };
 
 namespace __event_loop
 {
 
-struct impl_type;
-struct socket_state;
-struct multishot_pool;
-struct multishot_ring;
+using clock = std::chrono::steady_clock;
 
-struct multishot_pool_deleter
+struct impl_type;
+
+struct impl_deleter
 {
-	void operator() (multishot_pool *pool) const noexcept;
+	void operator() (impl_type *loop) const noexcept;
 };
 
-using multishot_pool_ptr = std::unique_ptr<multishot_pool, multishot_pool_deleter>;
+using impl_ptr = std::unique_ptr<impl_type, impl_deleter>;
+
+struct socket_state;
+
+struct socket_state_deleter
+{
+	void operator() (socket_state *s) const noexcept;
+};
+
+using socket_state_ptr = std::unique_ptr<socket_state, socket_state_deleter>;
 
 struct io_state
 {
@@ -95,12 +85,10 @@ struct io_state
 	int native_error;
 	size_t bytes;
 	bool truncated;
-	bool multishot;
 	socket_state *owner;
 
 	// Completion-plane per-op block, typed by the backend that uses it:
 	// - OVERLAPPED and WSABUF in event_loop.iocp.cpp
-	// - msghdr and iovec in event_loop.io_uring.cpp
 	// - unused by reactor backends
 	static constexpr size_t native_capacity = 72;
 	alignas(std::max_align_t) std::array<std::byte, native_capacity> native;
@@ -111,110 +99,11 @@ struct io_state
 	return t.scratch_as<io_state>();
 }
 
-struct socket_state
-{
-	struct direction
-	{
-		__task::attorney::task_queue pending{};
-		bool ready = false;
-
-		// Completion backends: ops armed with the kernel in this direction and not yet completed.
-		// Bounds per-op arming (surplus stays in pending)
-		size_t armed = 0;
-
-		[[nodiscard]] bool actionable () const noexcept
-		{
-			return ready && !pending.empty();
-		}
-	};
-
-	impl_type *const loop;
-	const std::intptr_t handle;
-	direction receive{}, send{};
-	bool queued = false;
-	intrusive_queue_hook<socket_state> hook{};
-	multishot_pool_ptr pool{};
-
-	void start_op (task_ptr &&t, direction &d, bool multishot) noexcept;
-
-	[[nodiscard]] bool actionable () const noexcept
-	{
-		return receive.actionable() || send.actionable();
-	}
-
-	[[nodiscard]] size_t armed () const noexcept
-	{
-		return receive.armed + send.armed;
-	}
-};
-
-using socket_queue = intrusive_queue<&socket_state::hook>;
-
-struct socket_state_deleter
-{
-	void operator() (socket_state *s) const noexcept;
-};
-
-using socket_state_ptr = std::unique_ptr<socket_state, socket_state_deleter>;
-
-struct impl_type
-{
-	using clock = std::chrono::steady_clock;
-
-	clock::time_point now_ = now();
-	const std::thread::id loop_thread_ = std::this_thread::get_id();
-	task *timer_root_ = nullptr;
-	std::atomic<size_t> posts_in_flight_ = 0;
-	__task::attorney::task_queue posted_{};
-	socket_queue actionable_{};
-	__task::attorney::task_queue ready_{};
-	event_loop_stats stats_{};
-	event_loop_config config_{};
-
-	// Backend seams, split by call frequency:
-	// - per-iteration and per-task hooks: function pointers stored here, one load from an already-hot line
-	// - setup and teardown: virtuals, where the dependent vtable load on a cold line does not matter
-	void (*poll_fn)(impl_type &, clock::duration timeout) noexcept = nullptr;
-	void (*drain_fn)(impl_type &, socket_state &, socket_state::direction &) noexcept = nullptr;
-	void (*requeue_multishot_fn)(multishot_pool &, task &) noexcept = nullptr;
-	size_t multishot_headroom = 0;
-
-	virtual ~impl_type () noexcept = default;
-	virtual void do_post (task &t) noexcept = 0;
-	virtual std::error_code register_socket (socket_state &s) noexcept = 0;
-	virtual void close_socket (socket_state &s) noexcept;
-	virtual std::error_code start_multishot (multishot_pool &pool) noexcept;
-
-	size_t iterate (clock::duration timeout) noexcept;
-
-	void post (task_ptr &&t) noexcept;
-	size_t drain_posted () noexcept;
-	void start_timer (task_ptr &&t, clock::time_point deadline) noexcept;
-	size_t expire_timers () noexcept;
-	void drain_actionable () noexcept;
-	size_t dispatch_ready () noexcept;
-
-	[[nodiscard]] static clock::time_point now () noexcept
-	{
-		return clock::now();
-	}
-
-	[[nodiscard]] bool has_counted_work () const noexcept
-	{
-		return stats_.io_in_flight != 0
-			|| stats_.offload_in_flight != 0
-			|| !posted_.empty()
-			|| posts_in_flight_.load(std::memory_order_relaxed) != 0
-		;
-	}
-
-	[[nodiscard]] bool has_work () const noexcept
-	{
-		return timer_root_ != nullptr || has_counted_work();
-	}
-};
-
-using impl_ptr = std::unique_ptr<impl_type>;
+[[nodiscard]] result<socket_state_ptr> make_socket_state (impl_type &loop, std::intptr_t handle) noexcept;
+void start_receive (socket_state &s, task_ptr &&t) noexcept;
+void start_send (socket_state &s, task_ptr &&t) noexcept;
+void post (impl_type &loop, task_ptr &&t) noexcept;
+void post_after (impl_type &loop, task_ptr &&t, clock::duration delay) noexcept;
 
 struct op_post
 {
@@ -223,26 +112,22 @@ struct op_post
 	template <typename F>
 	static void dispatch (task &t, F &f) noexcept
 	{
-		f(t.borrow());
+		f(task_ptr{&t});
 	}
 };
 
-inline void socket_state::start_op (task_ptr &&t, direction &d, bool multishot) noexcept
-{
-	auto &op = io(*t);
-	op.owner = this;
-	op.native_error = 0;
-	op.multishot = multishot;
-	d.pending.push(*t.release());
-	if (d.ready && !queued)
-	{
-		queued = true;
-		loop->actionable_.push(*this);
-	}
-	++loop->stats_.io_in_flight;
-}
-
 } // namespace __event_loop
+
+class event_loop;
+
+/// Create an event loop with the default backend for this platform.
+/// Errors: invalid \a config, no backend for the platform, or resource exhaustion.
+///
+/// The calling thread becomes the loop's thread. \ref event_loop::make_handle, \ref event_loop::post_after,
+/// every start_* on a handle, handle destruction and driving the loop must run on it, as must moving and
+/// destroying the loop object itself; \ref event_loop::post is the sole exception. Violations are undefined
+/// behavior and unchecked.
+result<event_loop> make_loop (const event_loop_config &config = {}) noexcept;
 
 /// Per-thread completion loop. Not thread-safe and unchecked: it is bound to the thread that called
 /// \ref make_loop, and every member other than \ref post must be called on that thread.
@@ -250,12 +135,7 @@ class event_loop
 {
 public:
 
-	using clock = std::chrono::steady_clock;
-
-	explicit event_loop (__event_loop::impl_ptr impl) noexcept
-		: impl_{std::move(impl)}
-	{
-	}
+	using clock = __event_loop::clock;
 
 	event_loop (event_loop &&) noexcept = default;
 	event_loop &operator= (event_loop &&) noexcept = default;
@@ -263,16 +143,10 @@ public:
 
 	/// Monotonic time cached per run() iteration, updated after each poll, so per-operation reads avoid a
 	/// clock syscall. The cached value is monotonic and has no wall-clock correspondence.
-	[[nodiscard]] const clock::time_point &now () const noexcept
-	{
-		return impl_->now_;
-	}
+	[[nodiscard]] const clock::time_point &now () const noexcept;
 
 	/// Per-loop observability counters.
-	[[nodiscard]] const event_loop_stats &stats () const noexcept
-	{
-		return impl_->stats_;
-	}
+	[[nodiscard]] const event_loop_stats &stats () const noexcept;
 
 	/// Run iterations until no work remains (immediate and delayed posts); returns the number of completions
 	/// dispatched.
@@ -286,7 +160,7 @@ public:
 	/// was dispatched this iteration, not that the full \a timeout was consumed.
 	result<size_t> run_for (clock::duration timeout) noexcept;
 
-	/// Run iterations until counted work drains -- posts in flight, poller-plane I/O and counted offloads;
+	/// Run iterations until counted work drains -- posts in flight, poller-plane I/O and offloads;
 	/// returns the number of completions dispatched. Armed timers neither count as work nor keep settle()
 	/// alive; one expiring while settling is dispatched normally. The teardown quiesce step: destroy
 	/// handles, settle(), destroy the loop, then the thread pool. Blocks as long as the slowest in-flight
@@ -305,7 +179,7 @@ public:
 		requires __async::handler<H, void(task_ptr &&) noexcept>
 	{
 		t->bind<__event_loop::op_post>(std::move(handler));
-		impl_->post(std::move(t));
+		__event_loop::post(*impl_, std::move(t));
 	}
 
 	/// Run the completion \a handler for \a t on this loop's thread once \a delay has elapsed, measured from
@@ -321,7 +195,7 @@ public:
 		requires __async::handler<H, void(task_ptr &&) noexcept>
 	{
 		t->bind<__event_loop::op_post>(std::move(handler));
-		impl_->start_timer(std::move(t), impl_->now_ + delay);
+		__event_loop::post_after(*impl_, std::move(t), delay);
 	}
 
 	/// Consume the configured synchronous \a resource, returning its async \ref handle bound to this
@@ -340,28 +214,17 @@ public:
 	template <typename T>
 	[[nodiscard]] result<handle<T>> make_handle (T resource) noexcept;
 
-	/// \copydoc make_handle(T)
-	///
-	/// Overload for \ref multishot resources: yields <tt>handle<multishot<T>></tt>, independent of the
-	/// handler type.
-	template <typename T, typename H>
-	[[nodiscard]] result<handle<multishot<T>>> make_handle (multishot<T, H> resource) noexcept;
-
 private:
 
-	friend class thread_pool;
-
 	__event_loop::impl_ptr impl_;
-};
 
-/// Create an event loop with the default backend for this platform, or an error if the platform has no
-/// backend or a resource limit is hit. Returns std::errc::invalid_argument when \a config carries an
-/// out-of-range batch bound.
-///
-/// The calling thread becomes the loop's thread. \ref event_loop::make_handle, \ref event_loop::post_after,
-/// every start_* on a handle, handle destruction and driving the loop must run on it, as must moving and
-/// destroying the loop object itself; \ref event_loop::post is the sole exception. Violations are undefined
-/// behavior and unchecked.
-result<event_loop> make_loop (const event_loop_config &config = {}) noexcept;
+	explicit event_loop (__event_loop::impl_ptr impl) noexcept
+		: impl_{std::move(impl)}
+	{
+	}
+
+	friend result<event_loop> make_loop (const event_loop_config &) noexcept;
+	friend class thread_pool;
+};
 
 } // namespace pal::async

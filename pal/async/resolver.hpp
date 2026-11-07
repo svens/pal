@@ -13,6 +13,7 @@
 #include <cstring>
 #include <span>
 #include <string_view>
+#include <type_traits>
 #include <utility>
 
 namespace pal::async
@@ -30,13 +31,9 @@ struct resolve_result
 namespace __resolver
 {
 
-/// start_resolve's op scratch state. The leading \ref __thread_pool::record is written by the pool at post
-/// time and preserved by the work closure: the post-back wrapper reads the origin loop from it (see the
-/// record contract in pal/async/thread_pool.hpp).
 template <typename Protocol>
 struct op_state
 {
-	__thread_pool::record record;
 	[[no_unique_address]] net::ip::basic_resolver<Protocol> resolver;
 	std::string_view name;
 	std::string_view service;
@@ -85,28 +82,21 @@ public:
 	/// results are silently dropped, as with the synchronous resolver's max_size().
 	///
 	/// Contracts: loop-thread-only, like \ref event_loop::post_after. \a name and \a service must
-	/// outlive the operation -- the worker reads them when it runs. Task payload storage must be attached,
-	/// non-empty and aligned for \a endpoint_type. \ref net::ip::resolver_base::canonical_name is not
-	/// supported (the completion carries no channel for a name); requesting it is a contract violation.
+	/// outlive the operation -- the worker reads them when it runs. Task payload storage must be aligned for
+	/// \a endpoint_type. \ref net::ip::resolver_base::canonical_name has no effect: the completion carries no
+	/// channel for a name.
 	template <typename H>
 	void start_resolve (task_ptr &&t, std::string_view name, std::string_view service, flags f, H handler) noexcept
 		requires __async::handler<H, void(task_ptr &&, result<resolve_result> &&) noexcept>
 	{
 		static_assert(std::is_trivially_copyable_v<endpoint_type>);
 
-		const auto payload = t->span();
-		pal_require(!payload.empty(), "start_resolve without task payload storage");
 		pal_require(
-			reinterpret_cast<uintptr_t>(payload.data()) % alignof(endpoint_type) == 0,
+			reinterpret_cast<uintptr_t>(t->span().data()) % alignof(endpoint_type) == 0,
 			"start_resolve payload misaligned for endpoint storage"
-		);
-		pal_require(
-			(f & net::ip::resolver_base::canonical_name) == 0,
-			"start_resolve with canonical_name: completion carries no channel for it"
 		);
 
 		t->scratch_as<op_state>() = {
-			.record = {.origin = loop_},
 			.resolver = resolver_,
 			.name = name,
 			.service = service,
@@ -115,24 +105,12 @@ public:
 			.count = 0,
 		};
 
-		auto resolve = do_resolve();
-		auto ready = on_ready(std::move(handler));
-
-		using closure_type = __thread_pool::closure<decltype(resolve), decltype(ready)>;
-		static_assert(
-			sizeof(closure_type) <= __async::closure_capacity,
-			"resolve wrapper and handler closures exceed the closure budget"
-		);
-
-		++loop_->stats_.offload_in_flight;
-		t->bind<__task::op_plain>(closure_type{std::move(resolve), std::move(ready)});
-		__thread_pool::submit(*pool_, *t.release());
+		__thread_pool::submit(*pool_, *loop_, std::move(t), do_resolve(), on_ready(std::move(handler)));
 	}
 
 private:
 
 	using op_state = __resolver::op_state<Protocol>;
-	static_assert(std::is_standard_layout_v<op_state>); // record at offset 0, per its contract
 
 	[[no_unique_address]] net::ip::basic_resolver<Protocol> resolver_;
 	__event_loop::impl_type *loop_;
@@ -190,7 +168,6 @@ private:
 		return [h = std::move(handler)](task_ptr &&p) mutable noexcept
 		{
 			const auto &op = p->scratch_as<op_state>();
-			--op.record.origin->stats_.offload_in_flight;
 			if (const auto ec = op.ec; ec)
 			{
 				h(std::move(p), unexpected{ec});

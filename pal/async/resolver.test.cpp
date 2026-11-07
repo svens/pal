@@ -5,16 +5,13 @@
 #include <catch2/catch_test_macros.hpp>
 #include <array>
 #include <atomic>
-#include <chrono>
 #include <span>
 #include <thread>
-#include <tuple>
 
 namespace
 {
 
 using namespace pal::async;
-using namespace std::chrono_literals;
 
 using udp = pal::net::ip::udp;
 using resolver = udp::resolver;
@@ -192,7 +189,7 @@ TEST_CASE("async/resolver")
 		CHECK(seen[1] == port_type{9});
 	}
 
-	SECTION("offload_in_flight: counted for start_resolve, not for plain post")
+	SECTION("offload_in_flight: counted for start_resolve and plain post")
 	{
 		std::atomic<bool> release = false;
 		task blocker;
@@ -209,13 +206,13 @@ TEST_CASE("async/resolver")
 			[](task_ptr &&) noexcept {}
 		);
 
-		CHECK(loop->stats().offload_in_flight == 0);
+		CHECK(loop->stats().offload_in_flight == 1);
 
 		int called = 0;
 		h->start_resolve(t.borrow(), "127.0.0.1", "7",
 			[&called](task_ptr &&, resolve_result &&) noexcept { ++called; }
 		);
-		CHECK(loop->stats().offload_in_flight == 1);
+		CHECK(loop->stats().offload_in_flight == 2);
 
 		release = true;
 		REQUIRE(loop->settle());
@@ -278,20 +275,6 @@ TEST_CASE("async/resolver start_resolve contracts")
 	{
 		const auto handler = [](task_ptr &&, resolve_result &&) noexcept {};
 
-		SECTION("payload storage required")
-		{
-			auto msg = pal_test::require_terminate([&]
-			{
-				auto loop = make_loop().value();
-				auto pool = make_thread_pool(1).value();
-				auto h = loop.make_handle(resolver(), pool).value();
-				task t;
-				h.start_resolve(t.borrow(), "127.0.0.1", "7", numeric, handler);
-			});
-
-			CHECK(msg.contains("payload"));
-		}
-
 		SECTION("payload alignment required")
 		{
 			auto msg = pal_test::require_terminate([&]
@@ -305,21 +288,6 @@ TEST_CASE("async/resolver start_resolve contracts")
 			});
 
 			CHECK(msg.contains("misaligned"));
-		}
-
-		SECTION("canonical_name is not supported")
-		{
-			auto msg = pal_test::require_terminate([&]
-			{
-				auto loop = make_loop().value();
-				auto pool = make_thread_pool(1).value();
-				auto h = loop.make_handle(resolver(), pool).value();
-				alignas(endpoint) std::array<std::byte, sizeof(endpoint)> storage{};
-				task t{storage};
-				h.start_resolve(t.borrow(), "127.0.0.1", "7", resolver_base::canonical_name, handler);
-			});
-
-			CHECK(msg.contains("canonical_name"));
 		}
 	}
 }

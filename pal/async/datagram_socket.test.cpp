@@ -1,6 +1,5 @@
 #include <pal/async/datagram_socket.hpp>
 #include <pal/async/task_pool.hpp>
-#include <pal/async/test.hpp>
 #include <pal/net/test.hpp>
 #include <pal/test.hpp>
 #include <catch2/catch_test_macros.hpp>
@@ -29,7 +28,6 @@ using sync_socket = pal::net::basic_datagram_socket<udp>;
 using async_socket = pal::async::handle<sync_socket>;
 using receive_result = pal::result<async_socket::receive_from_result>;
 using send_result = pal::result<async_socket::send_to_result>;
-using multishot_socket = pal::async::handle<multishot<sync_socket>>;
 
 using pal::net::ip::port_type;
 
@@ -45,22 +43,6 @@ pal::result<async_socket> make_async_socket (event_loop &loop)
 	auto socket = make_sync_socket<Fixture>();
 	REQUIRE(socket);
 	return loop.make_handle(std::move(*socket));
-}
-
-template <typename Fixture, typename H>
-pal::result<multishot_socket> make_multishot_socket (event_loop &loop, const multishot_config &config, H handler)
-{
-	auto socket = make_sync_socket<Fixture>();
-	REQUIRE(socket);
-	return loop.make_handle(multishot{std::move(*socket), config, std::move(handler)});
-}
-
-void send_datagrams (sync_socket &peer, const endpoint &recipient, std::string_view payload, size_t count)
-{
-	for (size_t i = 0; i < count; ++i)
-	{
-		REQUIRE(peer.send_to(recipient, payload));
-	}
 }
 
 endpoint expect_datagram (sync_socket &peer, std::string_view payload)
@@ -93,9 +75,7 @@ std::span<std::byte> as_span (auto &storage)
 
 TEMPLATE_TEST_CASE("async/datagram_socket", "", udp_v4, udp_v6)
 {
-	const auto backend = test_backend();
-
-	auto loop = make_test_loop(backend);
+	auto loop = make_loop();
 	REQUIRE(loop);
 
 	auto socket = make_async_socket<TestType>(*loop);
@@ -225,6 +205,29 @@ TEMPLATE_TEST_CASE("async/datagram_socket", "", udp_v4, udp_v6)
 		CHECK(loop->stats().io_in_flight == 0);
 	}
 
+	SECTION("receive: move-assign cancels the replaced socket's armed receive")
+	{
+		std::array<std::byte, 64> storage{};
+		task t{storage};
+		int canceled = 0;
+
+		auto target = make_async_socket<TestType>(*loop);
+		REQUIRE(target);
+		target->start_receive_from(t.borrow(), [&](task_ptr &&, receive_result &&r) noexcept
+		{
+			REQUIRE_FALSE(r);
+			CHECK(r.error() == std::errc::operation_canceled);
+			++canceled;
+		});
+
+		auto source = make_async_socket<TestType>(*loop);
+		REQUIRE(source);
+		*target = std::move(*source);
+
+		run_until(*loop, [&] { return canceled == 1; });
+		CHECK(loop->stats().io_in_flight == 0);
+	}
+
 	SECTION("receive: batched: more datagrams than one drain quantum")
 	{
 		static constexpr size_t count = 2 * event_loop_config{}.drain_batch;
@@ -269,7 +272,7 @@ TEMPLATE_TEST_CASE("async/datagram_socket", "", udp_v4, udp_v6)
 		config.poll_batch = 1;
 		config.drain_batch = drain_batch;
 
-		auto tuned = make_test_loop(backend, config);
+		auto tuned = make_loop(config);
 		REQUIRE(tuned);
 
 		auto tuned_socket = make_async_socket<TestType>(*tuned);
@@ -722,444 +725,6 @@ TEMPLATE_TEST_CASE("async/datagram_socket", "", udp_v4, udp_v6)
 		REQUIRE(again);
 		CHECK(again.get() == acquired);
 		CHECK(again->span().size() == full_span_size);
-	}
-}
-
-TEMPLATE_TEST_CASE("async/datagram_socket: multishot", "", udp_v4, udp_v6)
-{
-	const auto backend = test_backend();
-
-	auto loop = make_test_loop(backend);
-	REQUIRE(loop);
-
-	auto peer = make_sync_socket<TestType>();
-	REQUIRE(peer);
-	auto peer_endpoint = peer->local_endpoint();
-	REQUIRE(peer_endpoint);
-
-	const auto payload = case_name();
-	constexpr event_loop_config small_ring{.submission_depth = 2, .completion_depth = 2};
-
-	SECTION("make_handle: config bounds")
-	{
-		const multishot_config invalid[] =
-		{
-			{.task_count = 0, .buffer_size = 64},
-			{.task_count = multishot_config::max_task_count + 1, .buffer_size = 64},
-			{.task_count = 1, .buffer_size = 0},
-			{.task_count = 1, .buffer_size = multishot_config::max_buffer_size + 1},
-		};
-
-		for (const auto &config: invalid)
-		{
-			auto h = make_multishot_socket<TestType>(*loop, config, [](task_ptr &&, receive_result &&) noexcept { });
-			REQUIRE_FALSE(h);
-			CHECK(h.error() == std::errc::invalid_argument);
-		}
-		CHECK(loop->stats().io_in_flight == 0);
-	}
-
-	SECTION("make_handle: dead socket")
-	{
-		auto dead = make_sync_socket<TestType>();
-		REQUIRE(dead);
-		close_native_handle(*dead);
-
-		auto h = loop->make_handle(multishot
-		{
-			std::move(*dead),
-			{.task_count = 1, .buffer_size = 64},
-			[](task_ptr &&, receive_result &&) noexcept { }
-		});
-		REQUIRE_FALSE(h);
-		CHECK(h.error() == std::errc::bad_file_descriptor);
-	}
-
-	SECTION("receive: datagrams keep flowing through a smaller pool")
-	{
-		static constexpr size_t count = 16;
-		int received = 0;
-
-		auto h = make_multishot_socket<TestType>(*loop, {.task_count = 4, .buffer_size = 64},
-			[&](task_ptr &&t, receive_result &&r) noexcept
-			{
-				REQUIRE(r);
-				CHECK(r->endpoint == *peer_endpoint);
-				CHECK_FALSE(r->truncated);
-				CHECK(std::ranges::equal(t->span(), std::as_bytes(std::span{payload})));
-				++received;
-			}
-		);
-		REQUIRE(h);
-		CHECK(loop->stats().io_in_flight == 1 + 4);
-
-		send_datagrams(*peer, h->local_endpoint().value(), payload, count);
-		run_until(*loop, [&] { return received == count; });
-
-		CHECK(loop->stats().multishot_pool_exhaustions == 0);
-		CHECK(loop->stats().io_in_flight == 1 + 4);
-	}
-
-	SECTION("receive: truncation")
-	{
-		std::array<char, 4096> wire{};
-		std::iota(wire.begin(), wire.end(), char{0});
-
-		int received = 0;
-
-		auto h = make_multishot_socket<TestType>(*loop, {.task_count = 1, .buffer_size = 4},
-			[&](task_ptr &&t, receive_result &&r) noexcept
-			{
-				REQUIRE(r);
-				CHECK(r->truncated);
-				CHECK(t->span().size() >= 4);
-				REQUIRE(t->span().size() < wire.size());
-				CHECK(std::ranges::equal(t->span(), std::as_bytes(std::span{wire}).first(t->span().size())));
-				++received;
-			}
-		);
-		REQUIRE(h);
-
-		REQUIRE(peer->send_to(h->local_endpoint().value(), wire));
-		run_until(*loop, [&] { return received == 1; });
-	}
-
-	SECTION("receive: error returns its task to the pool")
-	{
-		const auto source_endpoint = make_sync_socket<TestType>().value().local_endpoint().value();
-
-		auto connected = make_sync_socket<TestType>();
-		REQUIRE(connected);
-		REQUIRE(connected->connect(source_endpoint));
-		REQUIRE(connected->send(std::string_view{"x"}));
-
-		int received = 0;
-
-		auto h = loop->make_handle(multishot
-		{
-			std::move(*connected),
-			{.task_count = 1, .buffer_size = 64},
-			[&](task_ptr &&t, receive_result &&r) noexcept
-			{
-				REQUIRE(r);
-				CHECK(std::ranges::equal(t->span(), std::as_bytes(std::span{payload})));
-				++received;
-			}
-		});
-		REQUIRE(h);
-
-		auto source = pal::net::make_datagram_socket(TestType::protocol_v, source_endpoint);
-		REQUIRE(source);
-		REQUIRE(source->send_to(h->local_endpoint().value(), payload));
-		run_until(*loop, [&] { return received == 1; });
-
-		CHECK(loop->stats().io_in_flight == 1 + 1);
-	}
-
-	SECTION("send: reply larger than the request through reset_span")
-	{
-		static constexpr std::string_view request{"?"};
-		std::optional<multishot_socket> h;
-		int received = 0, replied = 0;
-		const task *first = nullptr;
-
-		h = make_multishot_socket<TestType>(*loop, {.task_count = 1, .buffer_size = 64},
-			[&](task_ptr &&t, receive_result &&r) noexcept
-			{
-				REQUIRE(r);
-				REQUIRE(t->span().size() == request.size());
-				if (first == nullptr)
-				{
-					first = t.get();
-				}
-				CHECK(t.get() == first);
-				++received;
-
-				h->reset_span(*t);
-				REQUIRE(t->span().size() >= 64);
-				std::memcpy(t->span().data(), payload.data(), payload.size());
-				t->span(t->span().first(payload.size()));
-
-				h->start_reply(std::move(t), [&](task_ptr &&, send_result &&s) noexcept
-				{
-					REQUIRE(s);
-					++replied;
-				});
-			}
-		).value();
-
-		const auto h_endpoint = h->local_endpoint().value();
-		for (auto round = 1; round <= 2; ++round)
-		{
-			REQUIRE(peer->send_to(h_endpoint, request));
-			run_until(*loop, [&] { return received == round && replied == round; });
-			CHECK(expect_datagram(*peer, payload) == h_endpoint);
-		}
-	}
-
-	SECTION("receive: exhausted pool parks the socket until a task returns")
-	{
-		std::array<task_ptr, 3> held{};
-		size_t held_count = 0;
-
-		auto h = make_multishot_socket<TestType>(*loop, {.task_count = 2, .buffer_size = 64},
-			[&](task_ptr &&t, receive_result &&r) noexcept
-			{
-				REQUIRE(r);
-				REQUIRE(held_count < held.size());
-				held[held_count++] = std::move(t);
-			}
-		);
-		REQUIRE(h);
-
-		send_datagrams(*peer, h->local_endpoint().value(), payload, 3);
-		run_until(*loop, [&] { return held_count == 2; });
-		REQUIRE(loop->run_once());
-		CHECK(held_count == 2);
-		CHECK(loop->stats().multishot_pool_exhaustions == 1);
-		CHECK(loop->stats().io_in_flight == 1);
-
-		held[0].reset();
-		run_until(*loop, [&] { return held_count == 3; });
-		CHECK(loop->stats().multishot_pool_exhaustions == 2);
-
-		held = {};
-	}
-
-	SECTION("receive: empty datagram, then a nonempty one")
-	{
-		std::array<size_t, 2> sizes{};
-		size_t received = 0;
-
-		auto h = make_multishot_socket<TestType>(*loop, {.task_count = 4, .buffer_size = 64},
-			[&](task_ptr &&t, receive_result &&r) noexcept
-			{
-				REQUIRE(r);
-				REQUIRE(received < sizes.size());
-				sizes[received++] = t->span().size();
-			}
-		);
-		REQUIRE(h);
-
-		const auto h_endpoint = h->local_endpoint().value();
-		REQUIRE(peer->send_to(h_endpoint, std::string_view{}));
-		REQUIRE(peer->send_to(h_endpoint, payload));
-		run_until(*loop, [&] { return received == sizes.size(); });
-
-		CHECK(sizes[0] == 0);
-		CHECK(sizes[1] == payload.size());
-	}
-
-	SECTION("receive: empty datagram handler destroys the socket")
-	{
-		std::optional<multishot_socket> h;
-		int received = 0;
-
-		h = make_multishot_socket<TestType>(*loop, {.task_count = 4, .buffer_size = 64},
-			[&](task_ptr &&t, receive_result &&r) noexcept
-			{
-				REQUIRE(r);
-				CHECK(t->span().empty());
-				h.reset();
-				++received;
-			}
-		).value();
-
-		REQUIRE(peer->send_to(h->local_endpoint().value(), std::string_view{}));
-		run_until(*loop, [&] { return received == 1; });
-
-		REQUIRE(loop->settle());
-		CHECK(loop->stats().io_in_flight == 0);
-	}
-
-	SECTION("receive: burst through a small completion ring")
-	{
-		static constexpr size_t count = 16;
-		auto small = make_test_loop(backend, small_ring);
-		REQUIRE(small);
-
-		int received = 0;
-		auto h = make_multishot_socket<TestType>(*small, {.task_count = count, .buffer_size = 64},
-			[&](task_ptr &&t, receive_result &&r) noexcept
-			{
-				REQUIRE(r);
-				CHECK(std::ranges::equal(t->span(), std::as_bytes(std::span{payload})));
-				++received;
-			}
-		);
-		REQUIRE(h);
-
-		send_datagrams(*peer, h->local_endpoint().value(), payload, count);
-		run_until(*small, [&] { return received == count; });
-
-		send_datagrams(*peer, h->local_endpoint().value(), payload, count);
-		run_until(*small, [&] { return received == 2 * count; });
-	}
-
-	SECTION("destruction: burst through a small completion ring, destroyed from the handler")
-	{
-		static constexpr size_t count = 16;
-		auto small = make_test_loop(backend, small_ring);
-		REQUIRE(small);
-
-		std::optional<multishot_socket> h;
-		int received = 0;
-
-		h = make_multishot_socket<TestType>(*small, {.task_count = count, .buffer_size = 64},
-			[&](task_ptr &&, receive_result &&r) noexcept
-			{
-				REQUIRE(r);
-				h.reset();
-				++received;
-			}
-		).value();
-
-		send_datagrams(*peer, h->local_endpoint().value(), payload, count);
-		run_until(*small, [&] { return received == 1; });
-
-		REQUIRE(small->settle());
-		CHECK(received == 1);
-		CHECK(small->stats().io_in_flight == 0);
-	}
-
-	SECTION("receive: concurrent sockets with odd pool sizes and out-of-order returns")
-	{
-		static constexpr std::string_view payload_a{"a"}, payload_b{"bb"};
-		std::array<task_ptr, 3> held_a{};
-		std::array<task_ptr, 5> held_b{};
-		size_t count_a = 0, count_b = 0;
-
-		auto a = make_multishot_socket<TestType>(*loop, {.task_count = held_a.size(), .buffer_size = 64},
-			[&](task_ptr &&t, receive_result &&r) noexcept
-			{
-				REQUIRE(r);
-				CHECK(std::ranges::equal(t->span(), std::as_bytes(std::span{payload_a})));
-				REQUIRE(count_a < held_a.size());
-				held_a[count_a++] = std::move(t);
-			}
-		);
-		REQUIRE(a);
-
-		auto b = make_multishot_socket<TestType>(*loop, {.task_count = held_b.size(), .buffer_size = 64},
-			[&](task_ptr &&t, receive_result &&r) noexcept
-			{
-				REQUIRE(r);
-				CHECK(std::ranges::equal(t->span(), std::as_bytes(std::span{payload_b})));
-				REQUIRE(count_b < held_b.size());
-				held_b[count_b++] = std::move(t);
-			}
-		);
-		REQUIRE(b);
-
-		const auto a_endpoint = a->local_endpoint().value();
-		const auto b_endpoint = b->local_endpoint().value();
-
-		for (auto round = 0; round < 2; ++round)
-		{
-			send_datagrams(*peer, a_endpoint, payload_a, held_a.size());
-			send_datagrams(*peer, b_endpoint, payload_b, held_b.size());
-			run_until(*loop, [&] { return count_a == held_a.size() && count_b == held_b.size(); });
-
-			for (const auto i: {1, 2, 0})
-			{
-				held_a[i].reset();
-			}
-			for (const auto i: {3, 0, 4, 1, 2})
-			{
-				held_b[i].reset();
-			}
-			count_a = count_b = 0;
-		}
-	}
-
-	SECTION("make_handle: replaced socket next to a live one")
-	{
-		int received_a = 0;
-		auto a = make_multishot_socket<TestType>(*loop, {.task_count = 2, .buffer_size = 64},
-			[&](task_ptr &&, receive_result &&r) noexcept
-			{
-				REQUIRE(r);
-				++received_a;
-			}
-		);
-		REQUIRE(a);
-
-		for (auto round = 0; round < 3; ++round)
-		{
-			int received_b = 0;
-			auto b = make_multishot_socket<TestType>(*loop, {.task_count = 2, .buffer_size = 64},
-				[&](task_ptr &&t, receive_result &&r) noexcept
-				{
-					REQUIRE(r);
-					CHECK(std::ranges::equal(t->span(), std::as_bytes(std::span{payload})));
-					++received_b;
-				}
-			);
-			REQUIRE(b);
-
-			REQUIRE(peer->send_to(b->local_endpoint().value(), payload));
-			run_until(*loop, [&] { return received_b == 1; });
-		}
-
-		REQUIRE(peer->send_to(a->local_endpoint().value(), payload));
-		run_until(*loop, [&] { return received_a == 1; });
-		CHECK(loop->stats().io_in_flight == 1 + 2);
-	}
-
-	SECTION("destruction: undispatched receives are dropped silently")
-	{
-		std::optional<multishot_socket> h;
-		int received = 0;
-
-		h = make_multishot_socket<TestType>(*loop, {.task_count = 4, .buffer_size = 64},
-			[&](task_ptr &&, receive_result &&r) noexcept
-			{
-				REQUIRE(r);
-				h.reset();
-				++received;
-			}
-		).value();
-
-		send_datagrams(*peer, h->local_endpoint().value(), payload, 3);
-		run_until(*loop, [&] { return received == 1; });
-
-		REQUIRE(loop->settle());
-		CHECK(received == 1);
-		CHECK(loop->stats().io_in_flight == 0);
-	}
-
-	SECTION("destruction: borrowed task outlives its handle")
-	{
-		auto relay = make_async_socket<TestType>(*loop);
-		REQUIRE(relay);
-
-		std::optional<multishot_socket> h;
-		task_ptr borrowed;
-
-		h = make_multishot_socket<TestType>(*loop, {.task_count = 2, .buffer_size = 64},
-			[&](task_ptr &&t, receive_result &&r) noexcept
-			{
-				REQUIRE(r);
-				borrowed = std::move(t);
-			}
-		).value();
-
-		REQUIRE(peer->send_to(h->local_endpoint().value(), payload));
-		run_until(*loop, [&] { return borrowed != nullptr; });
-
-		h.reset();
-		CHECK(loop->stats().io_in_flight == 0);
-
-		int sent = 0;
-		relay->start_send_to(std::move(borrowed), *peer_endpoint, [&](task_ptr &&, send_result &&s) noexcept
-		{
-			REQUIRE(s);
-			++sent;
-		});
-		run_until(*loop, [&] { return sent == 1; });
-		CHECK(loop->stats().io_in_flight == 0);
-
-		CHECK(expect_datagram(*peer, payload) == relay->local_endpoint().value());
 	}
 }
 

@@ -12,8 +12,7 @@ the same load.
 |---|---|
 | softirq receive | ring sizes, coalescing, RSS -- [tune_linux](tune_linux.md) |
 | netfilter and conntrack | absent by provisioning |
-| syscall entry and exit | pal: larger batches, or a different backend |
-| io_uring machinery | pal: operations per datagram, registered files and ring fd |
+| syscall entry and exit | pal: larger batches |
 | kernel receive path | pal, socket options, receive buffer size |
 | kernel send path | pal, socket options |
 | pal event loop | pal |

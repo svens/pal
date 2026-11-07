@@ -7,6 +7,7 @@
 
 #include <array>
 #include <cerrno>
+#include <cstddef>
 #include <cstdint>
 #include <fcntl.h>
 #include <new>
@@ -18,52 +19,20 @@
 namespace pal::async::__event_loop
 {
 
-namespace
+void impl_type::poll (clock::duration timeout) noexcept
 {
-
-using poll_array = std::array<struct ::kevent, event_loop_config::max_poll_batch>;
-
-struct kqueue_loop: posix_loop
-{
-	unique_fd kq{};
-	poll_array events{};
-
-	std::error_code register_socket (socket_state &state) noexcept override
-	{
-		std::array<struct ::kevent, 2> reg{};
-		EV_SET(&reg[0], static_cast<uintptr_t>(state.handle), EVFILT_READ, EV_ADD | EV_CLEAR, 0, 0, &state);
-		EV_SET(&reg[1], static_cast<uintptr_t>(state.handle), EVFILT_WRITE, EV_ADD | EV_CLEAR, 0, 0, &state);
-		if (::kevent(kq, reg.data(), static_cast<int>(reg.size()), nullptr, 0, nullptr) == -1)
-		{
-			return {errno, std::generic_category()};
-		}
-		return {};
-	}
-
-	void try_socket_op (socket_state &state, socket_state::direction &d) noexcept;
-};
-
-void kqueue_poll (impl_type &base, impl_type::clock::duration timeout) noexcept
-{
-	auto &self = static_cast<kqueue_loop &>(base);
-
 	::timespec ts{};
-	const ::timespec *tsp = nullptr;
-	if (timeout != impl_type::clock::duration::max())
-	{
-		ts = to_timespec(timeout);
-		tsp = &ts;
-	}
+	const auto *tsp = to_timespec(timeout, ts);
 
 	int r = 0;
 	do
 	{
 		r = ::kevent(
-			self.kq,
+			kq,
 			nullptr,
 			0,
-			self.events.data(),
-			static_cast<int>(self.config_.poll_batch),
+			events.data(),
+			static_cast<int>(config_.poll_batch),
 			tsp
 		);
 	} while (r < 0 && errno == EINTR);
@@ -73,11 +42,11 @@ void kqueue_poll (impl_type &base, impl_type::clock::duration timeout) noexcept
 		return;
 	}
 
-	for (const auto &event: std::span{self.events}.first(static_cast<size_t>(r)))
+	for (const auto &event: std::span{events}.first(static_cast<size_t>(r)))
 	{
 		if (event.udata == nullptr)
 		{
-			self.wake.drain(self);
+			wake.drain(*this);
 		}
 		else if (event.filter == EVFILT_READ)
 		{
@@ -92,60 +61,64 @@ void kqueue_poll (impl_type &base, impl_type::clock::duration timeout) noexcept
 	}
 }
 
-void kqueue_loop::try_socket_op (socket_state &state, socket_state::direction &d) noexcept
+std::error_code impl_type::register_socket (socket_state &s) const noexcept
 {
-	const bool send = &d == &state.send;
-	auto &t = *d.pending.head();
-	auto &op = io(t);
-
-	::iovec buffer{.iov_base = t.span().data(), .iov_len = t.span().size()};
-	::msghdr message{};
-	message.msg_name = op.endpoint.data();
-	message.msg_namelen = send ? op.endpoint_size : io_state::endpoint_capacity;
-	message.msg_iov = &buffer;
-	message.msg_iovlen = 1;
-
-	ssize_t r = 0;
-	do
+	std::array<struct ::kevent, 2> reg{};
+	EV_SET(&reg[0], static_cast<uintptr_t>(s.handle), EVFILT_READ, EV_ADD | EV_CLEAR, 0, 0, &s);
+	EV_SET(&reg[1], static_cast<uintptr_t>(s.handle), EVFILT_WRITE, EV_ADD | EV_CLEAR, 0, 0, &s);
+	if (::kevent(kq, reg.data(), static_cast<int>(reg.size()), nullptr, 0, nullptr) == -1)
 	{
-		r = send
-			? ::sendmsg(static_cast<int>(state.handle), &message, 0)
-			: ::recvmsg(static_cast<int>(state.handle), &message, 0);
-	} while (r < 0 && errno == EINTR);
-
-	if (r < 0)
-	{
-		if (errno == EAGAIN || errno == EWOULDBLOCK)
-		{
-			d.ready = false;
-			return;
-		}
-		op.native_error = errno;
+		return pal::this_thread::last_system_error();
 	}
-	else
-	{
-		op.bytes = static_cast<size_t>(r);
-		if (!send)
-		{
-			op.endpoint_size = message.msg_namelen;
-			op.truncated = (message.msg_flags & MSG_TRUNC) != 0;
-		}
-	}
-	ready_.push(*d.pending.pop());
+	return {};
 }
 
-void kqueue_drain_socket (impl_type &base, socket_state &state, socket_state::direction &d) noexcept
+void impl_type::drain (socket_state &s, socket_state::direction &d) noexcept
 {
-	auto &self = static_cast<kqueue_loop &>(base);
-	for (size_t i = 0; i < self.config_.drain_batch && d.actionable(); ++i)
+	const bool send = &d == &s.send;
+	for (size_t i = 0; i < config_.drain_batch && d.actionable(); ++i)
 	{
-		self.try_socket_op(state, d);
+		auto &t = *d.pending.head();
+		auto &op = io(t);
+
+		::iovec buffer{.iov_base = t.span().data(), .iov_len = t.span().size()};
+		::msghdr message{};
+		message.msg_name = op.endpoint.data();
+		message.msg_namelen = send ? op.endpoint_size : io_state::endpoint_capacity;
+		message.msg_iov = &buffer;
+		message.msg_iovlen = 1;
+
+		ssize_t r = 0;
+		do
+		{
+			r = send
+				? ::sendmsg(static_cast<int>(s.handle), &message, 0)
+				: ::recvmsg(static_cast<int>(s.handle), &message, 0);
+		} while (r < 0 && errno == EINTR);
+
+		if (r < 0)
+		{
+			if (errno == EAGAIN || errno == EWOULDBLOCK)
+			{
+				d.ready = false;
+				return;
+			}
+			op.native_error = errno;
+		}
+		else
+		{
+			op.bytes = static_cast<size_t>(r);
+			if (!send)
+			{
+				op.endpoint_size = message.msg_namelen;
+				op.truncated = (message.msg_flags & MSG_TRUNC) != 0;
+			}
+		}
+		ready_.push(*d.pending.pop());
 	}
 }
 
-} // namespace
-
-result<impl_ptr> make_kqueue_loop (const event_loop_config &config) noexcept
+result<impl_ptr> make_backend (const event_loop_config &config) noexcept
 {
 	unique_fd kq{::kqueue()};
 	if (!kq)
@@ -167,7 +140,7 @@ result<impl_ptr> make_kqueue_loop (const event_loop_config &config) noexcept
 		return unexpected{pal::this_thread::last_system_error()};
 	}
 
-	auto *self = new (std::nothrow) kqueue_loop{};
+	impl_ptr self{new (std::nothrow) impl_type{}};
 	if (self == nullptr)
 	{
 		return make_unexpected(std::errc::not_enough_memory);
@@ -175,12 +148,9 @@ result<impl_ptr> make_kqueue_loop (const event_loop_config &config) noexcept
 
 	self->kq = std::move(kq);
 	self->wake = std::move(*wake);
-	self->poll_fn = &kqueue_poll;
-	self->drain_fn = &kqueue_drain_socket;
-	self->requeue_multishot_fn = &feed_multishot;
 	self->config_ = config;
 
-	return impl_ptr{self};
+	return self;
 }
 
 } // namespace pal::async::__event_loop
