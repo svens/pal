@@ -1,13 +1,19 @@
 #!/bin/sh
-## kernel networking stack -- queue and buffer sizes
+## kernel networking stack -- queue and buffer sizes, reverse path filter
 ## see docs/tune_linux.md, Kernel queues and buffers
 
 . "$(dirname "$0")/_common.sh"
 require_verb show apply
 
+nic=$(get_nic)
+
 # What apply writes, and what show compares against, so the two cannot describe
 # different tunings. A knob absent here is reported and never written.
 targets="
+net.ipv4.conf.all.rp_filter=0
+net.ipv4.conf.default.rp_filter=0
+net.ipv4.conf.eth0.rp_filter=0
+net.ipv4.conf.${nic}.rp_filter=0
 net.core.netdev_max_backlog=30000
 net.core.netdev_budget=600
 net.core.netdev_budget_usecs=8000
@@ -19,6 +25,10 @@ net.ipv4.udp_rmem_min=$((256 * 1024))
 "
 
 names="
+net.ipv4.conf.all.rp_filter
+net.ipv4.conf.default.rp_filter
+net.ipv4.conf.eth0.rp_filter
+net.ipv4.conf.${nic}.rp_filter
 net.core.netdev_max_backlog
 net.core.netdev_budget
 net.core.netdev_budget_usecs

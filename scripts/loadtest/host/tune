@@ -15,7 +15,7 @@ require_verb show apply
 here=$(dirname "$0")
 failed=""
 
-for stage in 00_boot 01_cpu 02_ethtool_hash 02_ethtool_ring 02_ethtool_coalesce 03_irq 05_sysctl 06_xps; do
+for stage in 00_boot 01_cpu 02_ethtool_hash 02_ethtool_ring 02_ethtool_coalesce 03_irq 05_sysctl 06_xps 07_qdisc; do
 	echo
 	echo "== $stage $verb"
 	"$here/$stage" "$verb" || failed="${failed} $stage"

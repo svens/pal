@@ -193,6 +193,16 @@ guest that is often not the interface the application binds to, which
        50 doubled relay process CPU, 94% of a core to 195%, for the same
        throughput.
 
+### 6.5 Reverse path filter
+
+1. `rp_filter=0` on `all`, `default`, `eth0` and the VF. The value in effect is the
+   larger of `all` and the receiving interface's own, so every one of them is written.
+2. Any non-zero mode validates each received packet's source with a second FIB
+   lookup, `__fib_validate_source`.
+
+       Measured: profile at the standard point, mturn. __fib_validate_source
+       112 ns/packet to 0, fib_table_lookup 111 to 60.
+
 ## 7. Transmit queue mapping (06_xps)
 
 1. Pin one transmit queue per CPU. Without XPS any CPU may pick any queue, so two can
@@ -207,9 +217,23 @@ guest that is often not the interface the application binds to, which
    and `apply` writes nothing to it. The read is refused for a device that is not
    multiqueue.
 
-## 8. Not covered, and why
+## 8. Root qdisc (07_qdisc)
 
-### 8.1 UDP GRO and GSO
+1. `noqueue` at the root of `eth0` and the VF, replacing `mq` with `fq_codel` per
+   hardware queue.
+2. With accelerated networking a send passes both devices' root qdiscs: `eth0`, then
+   the VF behind `netvsc_start_xmit`. Each queue stays empty and is bypassed, but its
+   root lock is still taken per packet.
+3. Without a queue, a send the driver cannot take is dropped rather than held.
+
+       Measured: profile at the standard point, mturn, eth0 only.
+       __dev_xmit_skb 542 ns/packet to 357, __dev_queue_xmit 672 to 602.
+       Both devices: no send-side loss at the knee, where UdpInErrors still
+       equalled UdpRcvbufErrors.
+
+## 9. Not covered, and why
+
+### 9.1 UDP GRO and GSO
 
 1. Not host knobs at all. `02_ethtool_coalesce` reports the offload flags and never
    writes them, because none of them coalesce anything for this relay.
@@ -226,12 +250,3 @@ guest that is often not the interface the application binds to, which
    thousands of peers, so batching would mean holding packets back. The batching that
    fits this traffic is across flows, which the epoll backend already does with
    `recvmmsg` and `sendmmsg`.
-
-### 8.2 Qdisc and txqueuelen
-
-1. Untouched by any stage. A stock image runs `mq` at the root with `fq_codel` per
-   hardware queue.
-2. At this profile neither can bind: CoDel drops only once packets sit in the queue,
-   which happens only when the driver cannot drain the ring. The measured failure was
-   on receive, where `UdpInErrors` equalled `UdpRcvbufErrors`.
-3. `fq_codel` carries its own per-queue limit, so `txqueuelen` bounds nothing.

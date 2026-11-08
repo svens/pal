@@ -1,0 +1,37 @@
+#!/bin/sh
+## root qdisc -- noqueue on the synthetic NIC and the VF
+## see docs/tune_linux.md, Root qdisc
+
+. "$(dirname "$0")/_common.sh"
+require_verb show apply
+
+devices=$(printf '%s\n' eth0 "$(get_nic)" | sort -u)
+
+root_qdisc()
+{
+	tc qdisc show dev "$1" root 2>/dev/null | awk 'NR == 1 { print $2 }'
+}
+
+for device in $devices; do
+	current=$(root_qdisc "$device")
+	if [ "$current" = noqueue ]; then
+		report "$device root" "$current (what apply would set)"
+	else
+		report "$device root" "${current:-<unavailable>} -> noqueue"
+	fi
+done
+
+if [ "$verb" = apply ]; then
+	require_root
+	echo
+	for device in $devices; do
+		tc qdisc replace dev "$device" root noqueue || \
+			echo "warning: $device rejected noqueue" >&2
+	done
+
+	echo
+	for device in $devices; do
+		verify "$device root" noqueue "$(root_qdisc "$device")"
+	done
+	verify_exit
+fi
