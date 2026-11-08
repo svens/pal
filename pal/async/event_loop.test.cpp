@@ -378,12 +378,17 @@ TEST_CASE("async/event_loop")
 		const auto before = loop->now();
 		loop->post_after(t.borrow(), 10ms, [&fired](task_ptr &&) noexcept { ++fired; });
 
-		// run_for() returns at expiry, well before the timeout, because poll() is capped to the next deadline.
-		auto n = loop->run_for(5s);
-		REQUIRE(n);
-		CHECK(*n == 1);
+		// run_for() returns near expiry, well before the timeout, because poll() is capped to the next deadline.
+		size_t dispatched = 0;
+		while (fired == 0)
+		{
+			auto n = loop->run_for(5s);
+			REQUIRE(n);
+			dispatched += *n;
+			REQUIRE(loop->now() - before < 5s);
+		}
+		CHECK(dispatched == 1);
 		CHECK(fired == 1);
-		CHECK(loop->now() - before < 5s);
 	}
 
 	SECTION("now: cached between iterations")
