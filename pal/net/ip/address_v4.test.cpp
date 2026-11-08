@@ -110,7 +110,6 @@ TEST_CASE("net/ip/address_v4")
 		bool is_private = false;
 	};
 
-	// clang-format off
 	auto [view, bytes, is_unspecified, is_loopback, is_private] = GENERATE(values<case_t>({
 		{.view = "0.0.0.0", .bytes = B{0, 0, 0, 0}, .is_unspecified = true},
 		{.view = "0.1.0.0", .bytes = B{0, 1, 0, 0}},
@@ -128,7 +127,6 @@ TEST_CASE("net/ip/address_v4")
 		{.view = "192.168.1.2", .bytes = B{192, 168, 1, 2}, .is_private = true},
 		{.view = "192.169.0.1", .bytes = B{192, 169, 0, 1}},
 	}));
-	// clang-format on
 
 	CAPTURE(view);
 
@@ -204,7 +202,7 @@ TEST_CASE("net/ip/address_v4")
 
 	SECTION("from_chars invalid address")
 	{
-		// valid chars consumed but inet_pton rejects — ptr advances past them
+		// valid chars consumed but inet_pton rejects -- ptr advances past them
 		const std::string bad = "999.0.0.0";
 		A b;
 		const auto r = b.from_chars(bad.data(), bad.data() + bad.size());

@@ -16,15 +16,11 @@
 namespace pal::net::ip
 {
 
-// clang-format off
-
 /// Determines whether a socket created for an IPv6 protocol is restricted
 /// to IPv6 communication only. Initial value depends on the operating system.
 using v6_only = socket_option<bool,
 	socket_option_level{IPPROTO_IPV6},
 	socket_option_name{IPV6_V6ONLY}
 >;
-
-// clang-format on
 
 } // namespace pal::net::ip

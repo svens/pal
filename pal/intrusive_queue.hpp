@@ -138,7 +138,7 @@ public:
 			return *node_;
 		}
 
-		[[nodiscard]] value_type *operator->() const noexcept
+		[[nodiscard]] value_type *operator-> () const noexcept
 		{
 			return node_;
 		}
@@ -194,6 +194,24 @@ public:
 			tail_ = std::exchange(that.tail_, &that.head_);
 			that.head_ = nullptr;
 		}
+	}
+
+	/// Remove \a node from the queue. Returns true if \a node was found and removed. O(n).
+	bool remove (value_type &node) noexcept
+	{
+		for (value_type **it = &head_; *it; it = &((*it)->*Next))
+		{
+			if (*it == &node)
+			{
+				*it = node.*Next;
+				if (*it == nullptr)
+				{
+					tail_ = it;
+				}
+				return true;
+			}
+		}
+		return false;
 	}
 
 	/// Insert \a node before the first existing element for which \a cmp(node, element)

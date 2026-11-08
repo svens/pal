@@ -17,7 +17,7 @@ bool alternative_name::impl_type::load_at (int index, entry_buffer &buf, alterna
 	{
 		case GEN_DNS:
 		{
-			auto len = std::min<size_t>(::ASN1_STRING_length(gen->d.dNSName), buf.size());
+			auto len = std::min(asn1_string_length(gen->d.dNSName), buf.size());
 			std::copy_n(::ASN1_STRING_get0_data(gen->d.dNSName), len, buf.data());
 			entry.emplace<alt_name::dns>(buf.data(), len);
 			return true;
@@ -25,7 +25,7 @@ bool alternative_name::impl_type::load_at (int index, entry_buffer &buf, alterna
 
 		case GEN_EMAIL:
 		{
-			auto len = std::min<size_t>(::ASN1_STRING_length(gen->d.rfc822Name), buf.size());
+			auto len = std::min(asn1_string_length(gen->d.rfc822Name), buf.size());
 			std::copy_n(::ASN1_STRING_get0_data(gen->d.rfc822Name), len, buf.data());
 			entry.emplace<alt_name::email>(buf.data(), len);
 			return true;
@@ -33,7 +33,7 @@ bool alternative_name::impl_type::load_at (int index, entry_buffer &buf, alterna
 
 		case GEN_URI:
 		{
-			auto len = std::min<size_t>(::ASN1_STRING_length(gen->d.uniformResourceIdentifier), buf.size());
+			auto len = std::min(asn1_string_length(gen->d.uniformResourceIdentifier), buf.size());
 			std::copy_n(::ASN1_STRING_get0_data(gen->d.uniformResourceIdentifier), len, buf.data());
 			entry.emplace<alt_name::uri>(buf.data(), len);
 			return true;
@@ -42,7 +42,7 @@ bool alternative_name::impl_type::load_at (int index, entry_buffer &buf, alterna
 		case GEN_IPADD:
 		{
 			const auto *bytes = ::ASN1_STRING_get0_data(gen->d.iPAddress);
-			const auto byte_count = ::ASN1_STRING_length(gen->d.iPAddress);
+			const auto byte_count = asn1_string_length(gen->d.iPAddress);
 			char *end = nullptr;
 			if (byte_count == sizeof(net::ip::address_v4::bytes_type))
 			{

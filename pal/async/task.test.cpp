@@ -2,7 +2,8 @@
 #include <pal/test.hpp>
 #include <catch2/catch_test_macros.hpp>
 #include <array>
-#include <system_error>
+#include <cstddef>
+#include <string>
 
 namespace
 {
@@ -24,14 +25,19 @@ struct counting_recycler: __task::recycler
 	}
 };
 
+struct op_state
+{
+	int value;
+};
+
 struct op_test
 {
-	using signature = void(int, std::error_code) noexcept;
+	using signature = void(int) noexcept;
 
 	template <typename F>
-	static void dispatch (task &, F &f, std::error_code ec, size_t n) noexcept
+	static void dispatch (task &t, F &f) noexcept
 	{
-		f(static_cast<int>(n), ec);
+		f(t.scratch_as<op_state>().value);
 	}
 };
 
@@ -40,12 +46,12 @@ struct op_test
 // call without ever living inside the (trivially copyable only) closure storage.
 struct op_move_only
 {
-	using signature = void(task_ptr &&, std::error_code) noexcept;
+	using signature = void(task_ptr &&) noexcept;
 
 	template <typename F>
-	static void dispatch (task &t, F &f, std::error_code ec, size_t) noexcept
+	static void dispatch (task &t, F &f) noexcept
 	{
-		f(t.borrow(), ec);
+		f(t.borrow());
 	}
 };
 
@@ -86,17 +92,6 @@ TEST_CASE("async/task")
 		// recycler was a no-op; the task is unaffected and can be borrowed again
 		const task_ptr p2 = t.borrow();
 		CHECK(p2.get() == &t);
-	}
-
-	SECTION("borrow() on a pool-managed task is a REQUIRE violation")
-	{
-		if constexpr (pal::build == pal::build_type::debug)
-		{
-			counting_recycler r;
-			task t = __task::attorney::make_pool_managed(r);
-			auto msg = pal_test::require_terminate([&] { std::ignore = t.borrow(); });
-			CHECK(msg.contains("pool-managed"));
-		}
 	}
 
 	SECTION("span() is empty unless payload storage is attached")
@@ -146,28 +141,143 @@ TEST_CASE("async/task")
 	{
 		task t;
 		int calls = 0;
-		std::error_code seen_ec = std::make_error_code(std::errc::io_error);
-		// clang-format off
-		t.bind<op_test>([&](int v, std::error_code ec) noexcept
+		t.bind<op_test>([&](int v) noexcept
 		{
 			++calls;
-			seen_ec = ec;
 			CHECK(v == 7);
 		});
-		// clang-format on
-		t.complete({}, 7);
+		t.scratch_as<op_state>() = {.value = 7};
+		t.complete();
 		CHECK(calls == 1);
-		CHECK_FALSE(seen_ec);
 	}
 
 	SECTION("move-only task_ptr threads through the erased call")
 	{
 		task t;
 		task_ptr received;
-		t.bind<op_move_only>([&received] (task_ptr &&p, std::error_code) noexcept { received = std::move(p); });
-		t.complete({}, 0);
+		t.bind<op_move_only>([&received](task_ptr &&p) noexcept { received = std::move(p); });
+		t.complete();
 		CHECK(received.get() == &t);
 	}
 }
+
+struct carrier
+{
+	__async::completion<carrier> completion;
+	int value = 0;
+};
+
+struct carrier_op
+{
+	using signature = void(int) noexcept;
+
+	template <typename F>
+	static void dispatch (carrier &c, F &f) noexcept
+	{
+		f(c.value);
+	}
+};
+
+TEST_CASE("async/task: completion")
+{
+	carrier c;
+
+	SECTION("bind and complete invokes the closure once")
+	{
+		int calls = 0, seen_value = -1;
+		c.completion.bind<carrier_op>([&](int v) noexcept
+		{
+			++calls;
+			seen_value = v;
+		});
+		c.value = 5;
+		c.completion.complete(c);
+		CHECK(calls == 1);
+		CHECK(seen_value == 5);
+	}
+
+	SECTION("rebind inside own callback is reused on the next complete")
+	{
+		int first_calls = 0, second_calls = 0;
+
+		c.completion.bind<carrier_op>([&](int) noexcept
+		{
+			++first_calls;
+			c.completion.bind<carrier_op>([&second_calls](int) noexcept
+			{
+				++second_calls;
+			});
+		});
+
+		c.completion.complete(c);
+		CHECK(first_calls == 1);
+		CHECK(second_calls == 0);
+
+		c.completion.complete(c);
+		CHECK(second_calls == 1);
+	}
+}
+
+static_assert(__async::handler<decltype([](int) noexcept {}), carrier_op::signature>);
+
+[[maybe_unused]] void capturing_lambda_is_a_handler (int &state)
+{
+	static_assert(__async::handler<decltype([&state](int) noexcept { ++state; }), carrier_op::signature>);
+	static_assert(__async::handler<decltype([p = &state](int) noexcept { ++*p; }), carrier_op::signature>);
+}
+
+struct no_default_ctor
+{
+	explicit no_default_ctor (int) noexcept
+	{
+	}
+	void operator() (int) const noexcept
+	{
+	}
+};
+static_assert(__async::handler<no_default_ctor, carrier_op::signature>);
+
+struct not_trivially_copyable
+{
+	std::string s;
+	void operator() (int) const noexcept
+	{
+	}
+};
+static_assert(!__async::handler<not_trivially_copyable, carrier_op::signature>);
+
+struct too_big
+{
+	std::byte padding[__async::closure_capacity + 1];
+	void operator() (int) const noexcept
+	{
+	}
+};
+static_assert(!__async::handler<too_big, carrier_op::signature>);
+
+struct over_aligned
+{
+	alignas(__async::closure_alignment * 2) std::byte b;
+	void operator() (int) const noexcept
+	{
+	}
+};
+static_assert(!__async::handler<over_aligned, carrier_op::signature>);
+
+struct wrong_signature
+{
+	void operator() () const noexcept
+	{
+	}
+};
+static_assert(!__async::handler<wrong_signature, carrier_op::signature>);
+
+struct throwing_call
+{
+	void operator() (int) const
+	{
+	}
+};
+static_assert(!__async::handler<throwing_call, carrier_op::signature>);
 
 } // namespace

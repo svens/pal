@@ -35,7 +35,7 @@ TEMPLATE_TEST_CASE("pal/buffer", "", char, int, packed_struct, std::string_view,
 		}
 		else if constexpr (std::is_same_v<TestType, std::string>)
 		{
-			// caller pre-sizes, buffer() just converts — lifecycle is caller's responsibility
+			// caller pre-sizes, buffer() just converts -- lifecycle is caller's responsibility
 			std::string s(5, '\0');
 			auto b = pal::buffer(s);
 			static_assert(pal::mutable_buffer_sequence<decltype(b)>);
@@ -45,7 +45,7 @@ TEMPLATE_TEST_CASE("pal/buffer", "", char, int, packed_struct, std::string_view,
 		}
 		else
 		{
-			// string_view: mutable overload unreachable — elements are const char
+			// string_view: mutable overload unreachable -- elements are const char
 			static_assert(std::is_same_v<TestType, std::string_view>);
 		}
 	}

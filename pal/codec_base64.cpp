@@ -46,15 +46,12 @@ constexpr auto make_decode_map () noexcept
 convert_result<std::byte *>
 base64_encoder::convert (const std::byte *first, const std::byte *last, std::byte *out, std::byte *out_last) noexcept
 {
-	// clang-format off
 
 	static constexpr uint8_t mask = 0b00111111;
 	static constexpr std::string_view map =
 		"ABCDEFGHIJKLMNOPQRSTUVWXYZ"
 		"abcdefghijklmnopqrstuvwxyz"
 		"0123456789+/";
-
-	// clang-format on
 
 	auto n = static_cast<size_t>(last - first);
 	if (static_cast<size_t>(out_last - out) < max_size(n))

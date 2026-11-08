@@ -4,7 +4,7 @@
  * \file pal/crypto/signature.hpp
  * Digital signature provider and verifier
  *
- * Both provider and verifier operate on pre-computed message digests —
+ * Both provider and verifier operate on pre-computed message digests --
  * computing the digest is the caller's responsibility.
  */
 
@@ -24,21 +24,21 @@ namespace pal::crypto
 namespace scheme
 {
 
-/// RSA PKCS#1 v1.5 — RSA keys only, deterministic
+/// RSA PKCS#1 v1.5 -- RSA keys only, deterministic
 struct pkcs1
 {
 	static constexpr std::string_view id = "pkcs1";
 	static constexpr bool is_deterministic = true;
 };
 
-/// RSA PSS — RSA keys only, non-deterministic (random salt)
+/// RSA PSS -- RSA keys only, non-deterministic (random salt)
 struct pss
 {
 	static constexpr std::string_view id = "pss";
 	static constexpr bool is_deterministic = false;
 };
 
-/// ECDSA — EC keys only, non-deterministic (random nonce)
+/// ECDSA -- EC keys only, non-deterministic (random nonce)
 struct ecdsa
 {
 	static constexpr std::string_view id = "ecdsa";
@@ -49,8 +49,6 @@ struct ecdsa
 
 namespace __signature
 {
-
-// clang-format off
 
 struct context;
 struct context_deleter { void operator() (context *) const noexcept; };
@@ -80,8 +78,6 @@ bool is_valid (
 	std::span<const std::byte> signature
 ) noexcept;
 
-// clang-format on
-
 } // namespace __signature
 
 /// Digital signature operations using \a Scheme and \a Digest.
@@ -95,7 +91,7 @@ public:
 	/// Signature scheme type
 	using scheme_type = Scheme;
 
-	/// Pre-computed digest type — matches basic_hash<Digest>::digest_type
+	/// Pre-computed digest type -- matches basic_hash<Digest>::digest_type
 	using digest_type = std::array<std::byte, Digest::digest_size>;
 
 	/// Signs pre-computed digests using a private key.
@@ -129,7 +125,7 @@ public:
 	static result<provider> make (const key &key) noexcept
 	{
 		return __signature::make_sign_context(key, Scheme::id, Digest::id)
-			.transform([&key] (auto ctx) { return provider{std::move(ctx), key.max_block_size()}; });
+			.transform([&key](auto ctx) { return provider{std::move(ctx), key.max_block_size()}; });
 	}
 
 private:
@@ -167,7 +163,7 @@ public:
 	static result<verifier> make (const key &key) noexcept
 	{
 		return __signature::make_verify_context(key, Scheme::id, Digest::id)
-			.transform([&key] (auto ctx) { return verifier{std::move(ctx), key.max_block_size()}; });
+			.transform([&key](auto ctx) { return verifier{std::move(ctx), key.max_block_size()}; });
 	}
 
 private:

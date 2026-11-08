@@ -42,7 +42,7 @@ constexpr build_type build =
 #elif __pal_build_release
 	build_type::release
 #endif
-	;
+;
 
 //
 // compiler
@@ -80,7 +80,7 @@ constexpr compiler_type compiler =
 #elif __pal_compiler_msvc
 	compiler_type::msvc
 #endif
-	;
+;
 
 //
 // build OS
@@ -118,7 +118,7 @@ constexpr os_type os =
 #elif __pal_os_windows
 	os_type::windows
 #endif
-	;
+;
 
 //
 // hardware
@@ -156,7 +156,7 @@ constexpr arch_type arch =
 #elif __pal_arch_arm64
 	arch_type::arm64
 #endif
-	;
+;
 
 // std::hardware_destructive_interference_size reflects the build host, not
 // the target, so it cannot be used in portable code

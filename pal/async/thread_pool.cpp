@@ -1,3 +1,4 @@
+#include <pal/async/__event_loop.hpp>
 #include <pal/async/thread_pool.hpp>
 #include <pal/require.hpp>
 #include <condition_variable>
@@ -29,7 +30,7 @@ struct impl_type
 impl_type::~impl_type () noexcept
 {
 	{
-		const std::scoped_lock lock{mutex};
+		const std::lock_guard lock{mutex};
 		pal_require(queue.empty(), "thread_pool destroyed with a pending queue");
 		stop = true;
 	}
@@ -49,12 +50,7 @@ void impl_type::run () noexcept
 		if (task *t = queue.try_pop())
 		{
 			lock.unlock();
-
-			// copy the post-back target out: the work closure may overwrite all of scratch
-			auto *origin = t->scratch_as<record>().origin;
-			t->complete({}, 0);
-			__event_loop::post(*origin, task_ptr{t});
-
+			t->complete();
 			lock.lock();
 		}
 		else if (stop)
@@ -68,13 +64,19 @@ void impl_type::run () noexcept
 	}
 }
 
-void submit (impl_type &pool, task &t) noexcept
+void enqueue (impl_type &pool, __event_loop::impl_type &origin, task &t) noexcept
 {
+	++origin.stats_.offload_in_flight;
 	{
-		const std::scoped_lock lock{pool.mutex};
+		const std::lock_guard lock{pool.mutex};
 		pool.queue.push(t);
 	}
 	pool.pending.notify_one();
+}
+
+void offload_done (__event_loop::impl_type &origin) noexcept
+{
+	--origin.stats_.offload_in_flight;
 }
 
 void deleter::operator() (impl_type *pool) const noexcept
@@ -88,7 +90,10 @@ result<thread_pool> make_thread_pool (size_t threads) noexcept
 {
 	using namespace __thread_pool;
 
-	pal_require(threads > 0, "thread_pool with no worker threads");
+	if (threads == 0)
+	{
+		return make_unexpected(std::errc::invalid_argument);
+	}
 
 	auto *self = new (std::nothrow) impl_type{};
 	if (self == nullptr)

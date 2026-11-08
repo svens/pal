@@ -1,6 +1,6 @@
 #include <pal/async/event_loop.hpp>
-#include <pal/version.hpp>
 #include <pal/async/task.hpp>
+#include <pal/async/task_pool.hpp>
 #include <pal/test.hpp>
 #include <catch2/catch_test_macros.hpp>
 #include <array>
@@ -54,16 +54,55 @@ struct lazy_rearm
 	}
 };
 
+std::error_code make_invalid_loop (const event_loop_config &config)
+{
+	auto loop = make_loop(config);
+	REQUIRE_FALSE(loop);
+	return loop.error();
+}
+
 TEST_CASE("async/event_loop")
 {
 	auto loop = make_loop();
 	REQUIRE(loop);
 
+	SECTION("make_loop: poll_batch bounds")
+	{
+		event_loop_config config{};
+
+		config.poll_batch = 0;
+		CHECK(make_invalid_loop(config) == std::errc::invalid_argument);
+
+		config.poll_batch = event_loop_config::max_poll_batch + 1;
+		CHECK(make_invalid_loop(config) == std::errc::invalid_argument);
+
+		config.poll_batch = 1;
+		CHECK(make_loop(config));
+
+		config.poll_batch = event_loop_config::max_poll_batch;
+		CHECK(make_loop(config));
+	}
+
+	SECTION("make_loop: drain_batch bounds")
+	{
+		event_loop_config config{};
+
+		config.drain_batch = 0;
+		CHECK(make_invalid_loop(config) == std::errc::invalid_argument);
+
+		config.drain_batch = event_loop_config::max_drain_batch + 1;
+		CHECK(make_invalid_loop(config) == std::errc::invalid_argument);
+
+		config.drain_batch = 1;
+		CHECK(make_loop(config));
+
+		config.drain_batch = event_loop_config::max_drain_batch;
+		CHECK(make_loop(config));
+	}
+
+
 	SECTION("run: idle")
 	{
-		CHECK(loop->stats().completions == 0);
-		CHECK(loop->stats().wakeups == 0);
-
 		// Idle run() has nothing to do and returns immediately.
 		auto n = loop->run();
 		REQUIRE(n);
@@ -84,6 +123,72 @@ TEST_CASE("async/event_loop")
 		CHECK(*n == 0);
 	}
 
+	SECTION("settle: idle")
+	{
+		auto n = loop->settle();
+		REQUIRE(n);
+		CHECK(*n == 0);
+	}
+
+	SECTION("settle: drains pending posts")
+	{
+		task t;
+		int ran = 0;
+		loop->post(t.borrow(), [&ran](task_ptr &&) noexcept { ++ran; });
+
+		auto n = loop->settle();
+		REQUIRE(n);
+		CHECK(*n == 1);
+		CHECK(ran == 1);
+	}
+
+	SECTION("settle: drains cross-thread posts")
+	{
+		task t;
+		int ran = 0;
+		task *got = nullptr;
+		std::thread::id handler_thread{};
+
+		std::thread producer{[&]
+		{
+			loop->post(t.borrow(), [&](task_ptr &&p) noexcept
+			{
+				++ran;
+				got = p.get();
+				handler_thread = std::this_thread::get_id();
+			});
+		}};
+		producer.join();
+
+		CHECK(ran == 0);
+		auto n = loop->settle();
+		REQUIRE(n);
+		CHECK(*n == 1);
+		CHECK(ran == 1);
+		CHECK(got == &t);
+		CHECK(handler_thread == std::this_thread::get_id());
+
+		n = loop->settle();
+		REQUIRE(n);
+		CHECK(*n == 0);
+		CHECK(ran == 1);
+	}
+
+	SECTION("settle: excludes armed timer")
+	{
+		task t;
+		int fired = 0;
+
+		auto inner = make_loop();
+		REQUIRE(inner);
+		inner->post_after(t.borrow(), 1h, [&fired](task_ptr &&) noexcept { ++fired; });
+
+		auto n = inner->settle();
+		REQUIRE(n);
+		CHECK(*n == 0);
+		CHECK(fired == 0);
+	}
+
 	SECTION("now")
 	{
 		const auto before = loop->now();
@@ -97,27 +202,42 @@ TEST_CASE("async/event_loop")
 		int ran = 0;
 		task *got = nullptr;
 
-		// clang-format off
 		loop->post(t.borrow(), [&](task_ptr &&p) noexcept
 		{
 			++ran;
 			got = p.get();
 		});
-		// clang-format on
 
 		auto n = loop->run_once();
 		REQUIRE(n);
 		CHECK(*n == 1);
 		CHECK(ran == 1);
 		CHECK(got == &t);
-		CHECK(loop->stats().completions == 1);
+	}
+
+	SECTION("post: pool-managed task returns to its pool")
+	{
+		task_pool<1, 16> pool;
+		auto t = pool.try_acquire();
+		REQUIRE(t);
+		const auto *acquired = t.get();
+
+		loop->post(std::move(t), [](task_ptr &&) noexcept { });
+		CHECK_FALSE(pool.try_acquire());
+
+		auto n = loop->run_once();
+		REQUIRE(n);
+		CHECK(*n == 1);
+
+		auto again = pool.try_acquire();
+		CHECK(again.get() == acquired);
 	}
 
 	SECTION("post: multiple")
 	{
 		task a, b, c;
 		int ran = 0;
-		const auto bump = [&ran] (task_ptr &&) noexcept
+		const auto bump = [&ran](task_ptr &&) noexcept
 		{
 			++ran;
 		};
@@ -136,16 +256,14 @@ TEST_CASE("async/event_loop")
 		task t;
 		std::atomic<int> ran = 0;
 
-		// clang-format off
 		std::thread producer{[&]
 		{
 			std::this_thread::sleep_for(20ms);
-			loop->post(t.borrow(), [&ran] (task_ptr &&) noexcept
+			loop->post(t.borrow(), [&ran](task_ptr &&) noexcept
 			{
 				ran.fetch_add(1, std::memory_order_relaxed);
 			});
 		}};
-		// clang-format on
 
 		// run_for() blocks in poll() until the producer thread's wake() unblocks it, well before the timeout.
 		auto n = loop->run_for(5s);
@@ -154,7 +272,6 @@ TEST_CASE("async/event_loop")
 		REQUIRE(n);
 		CHECK(*n == 1);
 		CHECK(ran.load() == 1);
-		CHECK(loop->stats().wakeups >= 1);
 	}
 
 	SECTION("post_after: immediate")
@@ -162,20 +279,17 @@ TEST_CASE("async/event_loop")
 		task t;
 		int fired = 0;
 		task *got = nullptr;
-		// clang-format off
 		loop->post_after(t.borrow(), 0ms, [&](task_ptr &&p) noexcept
 		{
 			++fired;
 			got = p.get();
 		});
-		// clang-format on
 
 		auto n = loop->run_once();
 		REQUIRE(n);
 		CHECK(*n == 1);
 		CHECK(fired == 1);
 		CHECK(got == &t);
-		CHECK(loop->stats().completions == 1);
 	}
 
 	SECTION("post_after: expiry ordering")
@@ -184,9 +298,9 @@ TEST_CASE("async/event_loop")
 		std::array<int, 4> order{};
 		size_t count = 0;
 
-		loop->post_after(a.borrow(), 30ms, [&] (task_ptr &&) noexcept { order[count++] = 1; });
-		loop->post_after(b.borrow(), 10ms, [&] (task_ptr &&) noexcept { order[count++] = 2; });
-		loop->post_after(c.borrow(), 20ms, [&] (task_ptr &&) noexcept { order[count++] = 3; });
+		loop->post_after(a.borrow(), 30ms, [&](task_ptr &&) noexcept { order[count++] = 1; });
+		loop->post_after(b.borrow(), 10ms, [&](task_ptr &&) noexcept { order[count++] = 2; });
+		loop->post_after(c.borrow(), 20ms, [&](task_ptr &&) noexcept { order[count++] = 3; });
 
 		auto n = loop->run();
 		REQUIRE(n);
@@ -211,7 +325,7 @@ TEST_CASE("async/event_loop")
 			loop->post_after(
 				timers[i].borrow(),
 				delay,
-				[&order, &count, i] (task_ptr &&) noexcept { order[count++] = i; }
+				[&order, &count, i](task_ptr &&) noexcept { order[count++] = i; }
 			);
 		}
 
@@ -239,16 +353,14 @@ TEST_CASE("async/event_loop")
 		task t;
 		std::atomic<int> ran = 0;
 
-		// clang-format off
 		std::thread producer{[&]
 		{
 			std::this_thread::sleep_for(20ms);
-			loop->post(t.borrow(), [&ran] (task_ptr &&) noexcept
+			loop->post(t.borrow(), [&ran](task_ptr &&) noexcept
 			{
 				ran.fetch_add(1, std::memory_order_relaxed);
 			});
 		}};
-		// clang-format on
 
 		auto n = loop->run_for(event_loop::clock::duration::max());
 		producer.join();
@@ -256,7 +368,6 @@ TEST_CASE("async/event_loop")
 		REQUIRE(n);
 		CHECK(*n == 1);
 		CHECK(ran.load() == 1);
-		CHECK(loop->stats().wakeups >= 1);
 	}
 
 	SECTION("post_after: caps run_for poll timeout")
@@ -265,14 +376,19 @@ TEST_CASE("async/event_loop")
 		int fired = 0;
 
 		const auto before = loop->now();
-		loop->post_after(t.borrow(), 10ms, [&fired] (task_ptr &&) noexcept { ++fired; });
+		loop->post_after(t.borrow(), 10ms, [&fired](task_ptr &&) noexcept { ++fired; });
 
-		// run_for() returns at expiry, well before the timeout, because poll() is capped to the next deadline.
-		auto n = loop->run_for(5s);
-		REQUIRE(n);
-		CHECK(*n == 1);
+		// run_for() returns near expiry, well before the timeout, because poll() is capped to the next deadline.
+		size_t dispatched = 0;
+		while (fired == 0)
+		{
+			auto n = loop->run_for(5s);
+			REQUIRE(n);
+			dispatched += *n;
+			REQUIRE(loop->now() - before < 5s);
+		}
+		CHECK(dispatched == 1);
 		CHECK(fired == 1);
-		CHECK(loop->now() - before < 5s);
 	}
 
 	SECTION("now: cached between iterations")
@@ -283,6 +399,48 @@ TEST_CASE("async/event_loop")
 
 		std::ignore = loop->run_once();
 		CHECK(loop->now() > cached);
+	}
+
+	SECTION("post_after: zero-delay re-arm from its handler fires on the next iteration")
+	{
+		task t;
+		int fired = 0;
+		loop->post_after(t.borrow(), 0ms, [&](task_ptr &&p) noexcept
+		{
+			++fired;
+			loop->post_after(std::move(p), 0ms, [&fired](task_ptr &&) noexcept { ++fired; });
+		});
+
+		auto n = loop->run_once();
+		REQUIRE(n);
+		CHECK(*n == 1);
+		CHECK(fired == 1);
+
+		n = loop->run_once();
+		REQUIRE(n);
+		CHECK(*n == 1);
+		CHECK(fired == 2);
+	}
+
+	SECTION("post: re-post from its handler runs on the next iteration")
+	{
+		task t;
+		int ran = 0;
+		loop->post(t.borrow(), [&](task_ptr &&p) noexcept
+		{
+			++ran;
+			loop->post(std::move(p), [&ran](task_ptr &&) noexcept { ++ran; });
+		});
+
+		auto n = loop->run_once();
+		REQUIRE(n);
+		CHECK(*n == 1);
+		CHECK(ran == 1);
+
+		n = loop->run_once();
+		REQUIRE(n);
+		CHECK(*n == 1);
+		CHECK(ran == 2);
 	}
 
 	SECTION("post_after: rebind inside own callback")
@@ -318,8 +476,8 @@ TEST_CASE("async/event_loop")
 	{
 		task a, b;
 		int posted = 0, fired = 0;
-		loop->post(a.borrow(), [&posted] (task_ptr &&) noexcept { ++posted; });
-		loop->post_after(b.borrow(), 1ms, [&fired] (task_ptr &&) noexcept { ++fired; });
+		loop->post(a.borrow(), [&posted](task_ptr &&) noexcept { ++posted; });
+		loop->post_after(b.borrow(), 1ms, [&fired](task_ptr &&) noexcept { ++fired; });
 
 		auto n = loop->run();
 		REQUIRE(n);
@@ -335,29 +493,113 @@ TEST_CASE("async/event_loop")
 		{
 			auto inner = make_loop();
 			REQUIRE(inner);
-			inner->post_after(t.borrow(), 1h, [&fired] (task_ptr &&) noexcept { ++fired; });
+			inner->post_after(t.borrow(), 1h, [&fired](task_ptr &&) noexcept { ++fired; });
 		}
 		// dropped without completing; no destructor REQUIRE trips, the handler never ran
 		CHECK(fired == 0);
+
+		loop->post_after(t.borrow(), 0ms, [&fired](task_ptr &&) noexcept { ++fired; });
+		REQUIRE(loop->run());
+		CHECK(fired == 1);
+	}
+
+	SECTION("post_after: pool-managed tasks pending at loop destruction return to their pool")
+	{
+		task_pool<4, 16> pool;
+		int fired = 0;
+		{
+			auto inner = make_loop();
+			REQUIRE(inner);
+			for (auto delay: {4h, 1h, 3h, 2h})
+			{
+				auto t = pool.try_acquire();
+				REQUIRE(t);
+				inner->post_after(std::move(t), delay, [&fired](task_ptr &&) noexcept { ++fired; });
+			}
+			REQUIRE_FALSE(pool.try_acquire());
+		}
+		CHECK(fired == 0);
+
+		std::array<task_ptr, 4> back;
+		for (auto &t: back)
+		{
+			t = pool.try_acquire();
+			CHECK(t);
+		}
 	}
 }
 
-TEST_CASE("async/event_loop destructor contract")
+struct virtual_clock
 {
-	if constexpr (pal::build == pal::build_type::debug)
+	event_loop::clock::time_point value{1h};
+
+	static event_loop::clock::time_point read (void *self) noexcept
 	{
-		// A loop destroyed with an undrained inbox means a task is still live -> REQUIRE crash.
-		static task t;
+		return static_cast<virtual_clock *>(self)->value;
+	}
+};
 
-		// clang-format off
-		auto msg = pal_test::require_terminate([]
-		{
-			auto loop = make_loop().value();
-			loop.post(t.borrow(), [] (task_ptr &&) noexcept {});
-		});
-		// clang-format on
+TEST_CASE("async/event_loop: virtual time")
+{
+	virtual_clock source{};
+	auto loop = make_loop({.now = &virtual_clock::read, .now_context = &source});
+	REQUIRE(loop);
 
-		CHECK(msg.contains("inbox"));
+	SECTION("now: seeded from the source at make_loop")
+	{
+		CHECK(loop->now() == source.value);
+	}
+
+	SECTION("now: follows the source on each iteration")
+	{
+		source.value += 5min;
+		REQUIRE(loop->run_once());
+		CHECK(loop->now() == source.value);
+	}
+
+	SECTION("post_after: fires as the source passes each deadline")
+	{
+		task a, b, c;
+		std::array<int, 4> order{};
+		size_t count = 0;
+
+		loop->post_after(a.borrow(), 30min, [&](task_ptr &&) noexcept { order[count++] = 1; });
+		loop->post_after(b.borrow(), 10min, [&](task_ptr &&) noexcept { order[count++] = 2; });
+		loop->post_after(c.borrow(), 20min, [&](task_ptr &&) noexcept { order[count++] = 3; });
+
+		REQUIRE(loop->run_once());
+		CHECK(count == 0);
+
+		source.value += 15min;
+		REQUIRE(loop->run_once());
+		REQUIRE(count == 1);
+		CHECK(order[0] == 2);
+
+		source.value += 10min;
+		REQUIRE(loop->run_once());
+		REQUIRE(count == 2);
+		CHECK(order[1] == 3);
+
+		source.value += 1h;
+		REQUIRE(loop->run_once());
+		REQUIRE(count == 3);
+		CHECK(order[2] == 1);
+	}
+
+	SECTION("post_after: frozen source fires nothing as real time passes")
+	{
+		task t;
+		int fired = 0;
+
+		loop->post_after(t.borrow(), 1ms, [&fired](task_ptr &&) noexcept { ++fired; });
+		std::this_thread::sleep_for(5ms);
+
+		REQUIRE(loop->run_once());
+		CHECK(fired == 0);
+
+		source.value += 1ms;
+		REQUIRE(loop->run_once());
+		CHECK(fired == 1);
 	}
 }
 

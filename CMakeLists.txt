@@ -4,6 +4,7 @@ project(pal LANGUAGES CXX)
 include(cmake/project_version.cmake)
 message(STATUS "${PROJECT_NAME} ${PROJECT_VERSION}")
 
+option(PAL_SAMPLES "Build samples" OFF)
 option(PAL_FUZZ "Build fuzz targets" OFF)
 
 include(cmake/cxx.cmake)
@@ -41,6 +42,16 @@ if(PROJECT_IS_TOP_LEVEL)
 	add_executable(pal_test ${pal_test_sources})
 	target_link_libraries(pal_test PRIVATE cxx_test pal::pal)
 	add_test(NAME pal_test COMMAND pal_test --skip-benchmarks)
+
+	if(PAL_SAMPLES)
+		include(samples/list.cmake)
+
+		add_executable(udp_relay ${samples_common_sources} ${udp_relay_sources})
+		target_link_libraries(udp_relay PRIVATE cxx_warnings pal::pal)
+
+		add_executable(loadtest ${samples_common_sources} ${loadtest_sources})
+		target_link_libraries(loadtest PRIVATE cxx_warnings pal::pal)
+	endif()
 
 	if(PAL_FUZZ)
 		foreach(source IN LISTS pal_fuzz_sources)

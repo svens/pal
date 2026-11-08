@@ -209,7 +209,7 @@ TEST_CASE("net/ip/address_v6")
 
 		SECTION("from_chars failures")
 		{
-			auto check_fail = [] (std::string_view s)
+			auto check_fail = [](std::string_view s)
 			{
 				A a;
 				const auto r = a.from_chars(s.data(), s.data() + s.size());
@@ -233,7 +233,6 @@ TEST_CASE("net/ip/address_v6")
 		bool is_multicast = false;
 	};
 
-	// clang-format off
 	auto [view, bytes, is_unspecified, is_loopback, is_v4_mapped, is_link_local, is_site_local, is_multicast] = GENERATE(values<case_t>({
 		{
 			.view = "::",
@@ -311,7 +310,7 @@ TEST_CASE("net/ip/address_v6")
 			.bytes = B{0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0xff, 0xfe, 0, 0, 0, 0}
 		},
 
-		// multicast (ff00::/8) — scope nibble in bytes[1] & 0x0f
+		// multicast (ff00::/8) -- scope nibble in bytes[1] & 0x0f
 		{
 			.view = "ff00::1",
 			.bytes = B{0xff, 0x00, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0x01},
@@ -348,7 +347,6 @@ TEST_CASE("net/ip/address_v6")
 			.is_multicast = true
 		},
 	}));
-	// clang-format on
 
 	CAPTURE(view);
 
@@ -453,7 +451,7 @@ TEST_CASE("net/ip/address_v6")
 
 	SECTION("from_chars invalid address")
 	{
-		// valid chars consumed but inet_pton rejects — ptr advances past them
+		// valid chars consumed but inet_pton rejects -- ptr advances past them
 		const std::string bad = ":::";
 		A b;
 		const auto r = b.from_chars(bad.data(), bad.data() + bad.size());

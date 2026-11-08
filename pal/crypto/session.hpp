@@ -16,8 +16,6 @@
 namespace pal::crypto
 {
 
-// clang-format off
-
 /// Satisfied when \a T can send a \a ConstBuffer and receive into a \a MutableBuffer,
 /// both noexcept, both returning the byte count, and declares its transport type.
 template <typename T, typename ConstBuffer, typename MutableBuffer>
@@ -64,8 +62,6 @@ struct adapter: device
 };
 
 } // namespace __session
-
-// clang-format on
 
 /// Established TLS session providing buffered record-layer I/O over any \c transport.
 ///

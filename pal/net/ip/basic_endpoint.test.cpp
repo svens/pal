@@ -132,7 +132,6 @@ TEMPLATE_TEST_CASE("net/ip/basic_endpoint", "", tcp, udp)
 		CHECK(e1 >= e3);
 	}
 
-	// clang-format off
 	auto [view, protocol, addr] = GENERATE(table<std::string, TestType, A>({
 		{"0.0.0.0:60000", TestType::v4, A4::any},
 		{"127.0.0.1:60000", TestType::v4, A4::loopback},
@@ -140,7 +139,6 @@ TEMPLATE_TEST_CASE("net/ip/basic_endpoint", "", tcp, udp)
 		{"[::1]:60000", TestType::v6, A6::loopback},
 		{"[ffff:ffff:ffff:ffff:ffff:ffff:ffff:ffff]:60000", TestType::v6, A6{A6::bytes_type{255,255,255,255,255,255,255,255,255,255,255,255,255,255,255,255}}},
 	}));
-	// clang-format on
 
 	CAPTURE(view);
 
@@ -278,7 +276,7 @@ TEMPLATE_TEST_CASE("net/ip/basic_endpoint", "", tcp, udp)
 	{
 		std::array<std::byte, 64> buf{};
 
-		auto token = [&] (const E &e)
+		auto token = [&](const E &e)
 		{
 			std::array<std::byte, 64> out{};
 			const auto n = to_peer_token(e, out);

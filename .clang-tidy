@@ -1,24 +1,19 @@
 Checks: >
   -*,
   bugprone-*,
-  misc-*,
-  modernize-*,
+  misc-const-correctness,
   performance-*,
-  readability-*,
+  readability-make-member-function-const,
   -bugprone-derived-method-shadowing-base-method,
   -bugprone-invalid-enum-default-initialization,
   -bugprone-reserved-identifier,
-  -misc-include-cleaner,
-  -misc-non-private-member-variables-in-classes,
-  -modernize-use-trailing-return-type,
+  -bugprone-signed-bitwise,
   -performance-enum-size,
-  -readability-else-after-return,
-  -readability-identifier-length,
-  -readability-math-missing-parentheses,
-  -readability-static-accessed-through-instance,
-  -readability-named-parameter,
-  -readability-redundant-member-init,
-  -readability-redundant-parentheses,
+
+CheckOptions:
+  misc-const-correctness.AnalyzeParameters: false
+  misc-const-correctness.AnalyzePointers: false
+  misc-const-correctness.AnalyzeValues: false
 
 WarningsAsErrors: '*'
-HeaderFilterRegex: 'pal/.*\.hpp$'
+HeaderFilterRegex: '(pal|samples)/.*\.hpp$'

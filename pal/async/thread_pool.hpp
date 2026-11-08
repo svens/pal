@@ -15,8 +15,8 @@ namespace pal::async
 
 class thread_pool;
 
-/// Create a pool of \a threads worker threads (at least one; zero is a precondition violation).
-/// Errors: thread or memory resource exhaustion.
+/// Create a pool of \a threads worker threads.
+/// Errors: zero \a threads, or thread or memory resource exhaustion.
 result<thread_pool> make_thread_pool (size_t threads) noexcept;
 
 namespace __thread_pool
@@ -31,45 +31,48 @@ struct deleter
 
 using impl_ptr = std::unique_ptr<impl_type, deleter>;
 
-/// Post-back target, written into task scratch by \ref thread_pool::post. The worker copies it out before
-/// invoking the work closure, which is then free to overwrite the entire scratch. A client layering its own
-/// op state into scratch embeds this as its first member (offset 0 -- \ref thread_pool::post overwrites it
-/// at post time) and, if its post-back needs the origin, has its work closure preserve the field.
-struct record
+void enqueue (impl_type &pool, __event_loop::impl_type &origin, task &t) noexcept;
+void offload_done (__event_loop::impl_type &origin) noexcept;
+
+template <typename Handler>
+struct post_back
 {
 	__event_loop::impl_type *origin;
-};
+	[[no_unique_address]] Handler handler;
 
-/// Internal op for \ref thread_pool::post: invoke the composite work + post-back closure on a worker thread.
-struct op_execute
-{
-	using signature = void(task &) noexcept;
-
-	template <typename F>
-	static void dispatch (task &t, F &f, std::error_code, size_t) noexcept
+	void operator() (task_ptr &&t) noexcept
 	{
-		f(t);
+		offload_done(*origin);
+		handler(std::move(t));
 	}
 };
 
-/// Single-shot composite bound at post time: run the blocking work, then rebind the task with the loop-side
-/// handler, so the worker hands an already-bound task to the origin loop's inbox.
 template <typename Work, typename Handler>
 struct closure
 {
-	// no_unique_address: a stateless work or handler must not pad the other out of the closure budget
+	__event_loop::impl_type *origin;
 	[[no_unique_address]] Work work;
 	[[no_unique_address]] Handler handler;
 
 	void operator() (task &t) noexcept
 	{
 		work(t);
-		t.bind<__event_loop::op_post>(std::move(handler));
+		t.bind<__event_loop::op_post>(post_back<Handler>{origin, std::move(handler)});
+		__event_loop::post(*origin, task_ptr{&t});
 	}
 };
 
-/// Enqueue an already-bound task for worker execution. Thread-safe.
-void submit (impl_type &pool, task &t) noexcept;
+template <typename Work, typename Handler>
+void submit (impl_type &pool, __event_loop::impl_type &origin, task_ptr &&t, Work work, Handler handler) noexcept
+{
+	using closure_type = closure<Work, Handler>;
+	static_assert(
+		sizeof(closure_type) <= __async::closure_capacity,
+		"combined work and handler closures exceed the closure budget"
+	);
+	t->bind<__task::op_plain>(closure_type{&origin, std::move(work), std::move(handler)});
+	enqueue(pool, origin, *t.release());
+}
 
 } // namespace __thread_pool
 
@@ -94,28 +97,22 @@ public:
 	~thread_pool () noexcept = default;
 
 	/// Run \a work on one of this pool's worker threads, then \a handler on \a loop's thread (from a
-	/// subsequent run(), like \ref event_loop::post). Thread-safe.
+	/// subsequent run(), like \ref event_loop::post). Loop-thread-only, like \ref event_loop::post_after;
+	/// counted in \ref event_loop_stats::offload_in_flight.
 	///
-	/// \a work borrows the task (the pool retains ownership) and may use its entire scratch: the leading
-	/// \ref __thread_pool::record written here at post time is copied out by the worker before \a work
-	/// runs (clients layering their own scratch state see the record contract); offloaded work
+	/// \a work borrows the task (the pool retains ownership) and may use its entire scratch; offloaded work
 	/// cannot be cancelled or interrupted, and there is no error_code path -- work records its own status in
 	/// scratch for \a handler to read. \a handler receives ownership. Both closures share the task's one
-	/// inline closure budget. \a loop must outlive the operation: it is destroyable only once \a handler has
-	/// run (see class contract).
+	/// inline closure budget, less one pointer. \a loop must outlive the operation: it is destroyable only
+	/// once \a handler has run (see class contract).
+	///
+	/// Worker completion delivery follows \ref event_loop::post backpressure rules.
 	template <typename Work, typename Handler>
-	void post (event_loop &loop, task_ptr &&t, Work work, Handler handler) noexcept
+	void post (task_ptr &&t, event_loop &loop, Work work, Handler handler) noexcept
 		requires __async::handler<Work, void(task &) noexcept>
 		&& __async::handler<Handler, void(task_ptr &&) noexcept>
 	{
-		using closure_type = __thread_pool::closure<Work, Handler>;
-		static_assert(
-			sizeof(closure_type) <= __async::closure_capacity,
-			"combined work and handler closures exceed the closure budget"
-		);
-		t->scratch_as<__thread_pool::record>() = {.origin = loop.impl_.get()};
-		t->bind<__thread_pool::op_execute>(closure_type{std::move(work), std::move(handler)});
-		__thread_pool::submit(*impl_, *t.release());
+		__thread_pool::submit(*impl_, *loop.impl_, std::move(t), std::move(work), std::move(handler));
 	}
 
 private:

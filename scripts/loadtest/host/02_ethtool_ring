@@ -1,0 +1,78 @@
+#!/bin/sh
+## NIC ring sizes, and the discard counters that judge them
+## see docs/tune_linux.md, Ring sizes
+
+. "$(dirname "$0")/_common.sh"
+require_verb show apply
+
+nic=$(get_nic)
+report "nic" "$nic"
+
+# What apply asks for. The target is the smaller of this and the hardware
+# maximum, so a NIC that caps lower is tuned at its cap rather than reported as
+# permanently short of a number it can never reach.
+request=8192
+
+# ethtool -g prints the maximums and the current settings under two headings,
+# with the same field names under each.
+ring_field()
+{
+	ethtool -g "$nic" 2>/dev/null | awk -v heading="$1" -v field="$2" '
+		$0 ~ heading { inside = 1; next }
+		/^[A-Z][a-z]+ [a-z]/ { if (inside) { exit } }
+		inside && $1 == field { print $2; exit }
+	'
+}
+
+target()
+{
+	if [ -z "$1" ]; then
+		echo ""
+	elif [ "$request" -le "$1" ]; then
+		echo "$request"
+	else
+		echo "$1"
+	fi
+}
+
+echo "-- rings"
+ethtool --show-ring "$nic" 2>/dev/null || echo "  <unsupported>"
+
+rx_target=$(target "$(ring_field 'Pre-set maximums:' 'RX:')")
+tx_target=$(target "$(ring_field 'Pre-set maximums:' 'TX:')")
+
+if [ -z "$rx_target" ]; then
+	report "verdict" "unavailable: this driver reports no ring sizes"
+else
+	report "target" "rx $rx_target tx $tx_target"
+fi
+
+echo
+echo "-- packets the NIC threw away, counted since boot"
+echo "(a ring too small, or a queue whose CPU fell behind; for one run's"
+echo "worth of these, use 'counters delta' instead)"
+discards=$(nic_discards)
+if [ -z "$discards" ]; then
+	echo "this driver reports no such counter, so this machine cannot answer"
+else
+	nonzero=$(echo "$discards" | awk '$2 + 0 > 0 { print $0 }')
+	if [ -n "$nonzero" ]; then
+		echo "$nonzero"
+	else
+		echo "none, across all $(echo "$discards" | wc -l | tr -d ' ') counters that could have said otherwise"
+	fi
+fi
+
+if [ "$verb" = apply ]; then
+	require_root
+	echo
+	if [ -z "$rx_target" ]; then
+		verify "ring rx" "$request" ""
+	else
+		ethtool --set-ring "$nic" rx "$rx_target" tx "$tx_target" || \
+			echo "warning: ring size rejected on $nic" >&2
+		verify "ring rx" "$rx_target" "$(ring_field 'Current hardware settings:' 'RX:')"
+		verify "ring tx" "$tx_target" "$(ring_field 'Current hardware settings:' 'TX:')"
+	fi
+	verify_exit
+fi

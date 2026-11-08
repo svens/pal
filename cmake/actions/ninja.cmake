@@ -12,7 +12,12 @@ string(APPEND content "  pool = console\n")
 
 foreach(action_file IN LISTS action_files)
     get_filename_component(name "${action_file}" NAME_WE)
-    string(APPEND content "\nbuild ${name}: action\n")
+    file(READ "${action_file}" action_content)
+    if(action_content MATCHES "\n## depends: ([^\n]+)")
+        string(APPEND content "\nbuild ${name}: action || ${CMAKE_MATCH_1}\n")
+    else()
+        string(APPEND content "\nbuild ${name}: action\n")
+    endif()
     string(APPEND content "  name = ${name}\n")
 endforeach()
 

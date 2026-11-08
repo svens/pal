@@ -51,7 +51,7 @@ TEST_CASE("require")
 	SECTION("expression is always evaluated")
 	{
 		int calls = 0;
-		auto side_effect = [&calls] ()
+		auto side_effect = [&calls]()
 		{
 			++calls;
 			return true;

@@ -1,7 +1,6 @@
 #include <pal/async/task_pool.hpp>
 #include <pal/test.hpp>
 #include <catch2/catch_test_macros.hpp>
-#include <system_error>
 #include <tuple>
 #include <utility>
 
@@ -18,7 +17,7 @@ struct op_recycle
 	using signature = void(task_ptr &&) noexcept;
 
 	template <typename F>
-	static void dispatch (task &t, F &f, std::error_code, size_t) noexcept
+	static void dispatch (task &t, F &f) noexcept
 	{
 		f(task_ptr{&t});
 	}
@@ -87,14 +86,12 @@ TEST_CASE("async/task_pool")
 	{
 		task &carrier = *pool.try_acquire().release();
 		int calls = 0;
-		// clang-format off
-		carrier.bind<op_recycle>([&calls] (task_ptr &&p) noexcept
+		carrier.bind<op_recycle>([&calls](task_ptr &&p) noexcept
 		{
 			++calls;
 			const auto own = std::move(p);
 		});
-		// clang-format on
-		carrier.complete({}, 0);
+		carrier.complete();
 		CHECK(calls == 1);
 
 		auto t = pool.try_acquire();
@@ -109,13 +106,30 @@ TEST_CASE("async/task_pool")
 		CHECK(t->span().size() == 8);
 	}
 
-	SECTION("borrow() on a pool task is a REQUIRE violation")
+	SECTION("reset_span() restores the payload window without recycling")
+	{
+		auto t = pool.try_acquire();
+		const auto *data = t->span().data();
+		t->span(t->span().subspan(2, 4));
+
+		pool.reset_span(*t);
+		CHECK(t->span().data() == data);
+		CHECK(t->span().size() == default_buffer_size);
+
+		// the task stayed in flight: only the remaining slot is acquirable
+		auto a = pool.try_acquire();
+		CHECK(a != nullptr);
+		CHECK(pool.try_acquire() == nullptr);
+	}
+
+	SECTION("reset_span() on a task from another pool is a REQUIRE violation")
 	{
 		if constexpr (pal::build == pal::build_type::debug)
 		{
+			task_pool<2> other;
 			auto t = pool.try_acquire();
-			auto msg = pal_test::require_terminate([&] { std::ignore = t->borrow(); });
-			CHECK(msg.contains("pool-managed"));
+			auto msg = pal_test::require_terminate([&] { other.reset_span(*t); });
+			CHECK(msg.contains("another pool"));
 		}
 	}
 
@@ -123,14 +137,12 @@ TEST_CASE("async/task_pool")
 	{
 		if constexpr (pal::build == pal::build_type::debug)
 		{
-			// clang-format off
 			auto msg = pal_test::require_terminate([]
 			{
 				task_ptr t;
 				task_pool<1> inner;
 				t = inner.try_acquire();
 			});
-			// clang-format on
 			CHECK(msg.contains("in flight"));
 		}
 	}

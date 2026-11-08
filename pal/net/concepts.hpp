@@ -12,9 +12,6 @@
 namespace pal::net
 {
 
-// clang-format off
-// Requires expression braces: Allman style not applied (see .clang-format TODO #7)
-
 /// Requirements for types used as network protocol template parameters
 template <typename T>
 concept protocol = requires(const T &p)
@@ -68,7 +65,5 @@ concept settable_socket_option = requires(const T &opt, const Protocol &p)
 	{ opt.data(p) } -> std::convertible_to<const void *>;
 	{ opt.size(p) } -> std::same_as<size_t>;
 };
-
-// clang-format on
 
 } // namespace pal::net

@@ -75,7 +75,7 @@ int forward_result::fill (std::string_view h, std::string_view s, const ::addrin
 		return r;
 	}
 
-	for (auto *p = result.get(); p != nullptr && count < max_count; p = p->ai_next, ++count)
+	for (const auto *p = result.get(); p != nullptr && count < max_count; p = p->ai_next, ++count)
 	{
 		if (count == 0 && p->ai_canonname != nullptr)
 		{

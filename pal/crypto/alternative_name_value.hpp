@@ -60,7 +60,7 @@ public:
 
 private:
 
-	enum class kind : uint8_t
+	enum class kind: uint8_t
 	{
 		end,
 		ip,

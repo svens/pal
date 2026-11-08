@@ -13,8 +13,6 @@
 namespace pal::crypto::algorithm
 {
 
-// clang-format off
-
 // X(tag, name, digest_size)
 #define __pal_crypto_digest_algorithm(X) \
 	X(md5, MD5, 16) \
@@ -35,7 +33,7 @@ namespace pal::crypto::algorithm
 			~hash() noexcept; \
 			\
 			hash(hash &&) noexcept; \
-			hash &operator=(hash &&) noexcept; \
+			hash &operator= (hash &&) noexcept; \
 			\
 			void update(std::span<const std::byte> input) noexcept; \
 			void finish(std::span<std::byte, digest_size> digest) noexcept; \
@@ -51,7 +49,7 @@ namespace pal::crypto::algorithm
 			~hmac() noexcept; \
 			\
 			hmac(hmac &&) noexcept; \
-			hmac &operator=(hmac &&) noexcept; \
+			hmac &operator= (hmac &&) noexcept; \
 			\
 			void update(std::span<const std::byte> input) noexcept; \
 			void finish(std::span<std::byte, digest_size> digest) noexcept; \
@@ -64,7 +62,5 @@ namespace pal::crypto::algorithm
 
 __pal_crypto_digest_algorithm(__pal_crypto_define_algorithm)
 #undef __pal_crypto_define_algorithm
-
-// clang-format on
 
 } // namespace pal::crypto::algorithm

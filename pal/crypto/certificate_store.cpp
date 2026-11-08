@@ -15,7 +15,6 @@ namespace fs = std::filesystem;
 
 bool is_pkcs12_extension (const fs::path &p) noexcept
 {
-	// clang-format off
 
 	using value_type = fs::path::value_type;
 	static constexpr std::array<value_type, 4> pfx{'.', 'p', 'f', 'x'};
@@ -28,14 +27,13 @@ bool is_pkcs12_extension (const fs::path &p) noexcept
 	}
 
 	std::array<value_type, 4> tail{};
-	std::ranges::transform(native.end() - tail.size(), native.end(), tail.begin(), [] (value_type c)
+	std::ranges::transform(native.end() - tail.size(), native.end(), tail.begin(), [](value_type c)
 	{
 		return (c >= 'A' && c <= 'Z') ? static_cast<value_type>(c + ('a' - 'A')) : c;
 	});
 
 	return tail == pfx || tail == p12;
 
-	// clang-format on
 }
 
 result<void> read_file (const fs::path &path, std::span<std::byte> buf) noexcept
@@ -70,7 +68,7 @@ result<std::vector<fs::path>> collect_pkcs12_paths (const fs::path &dir)
 		}
 	}
 
-	std::ranges::sort(paths, [] (const fs::path &a, const fs::path &b) { return a.filename() < b.filename(); });
+	std::ranges::sort(paths, [](const fs::path &a, const fs::path &b) { return a.filename() < b.filename(); });
 	return paths;
 }
 
@@ -117,14 +115,12 @@ certificate_store::const_iterator certificate_store::begin () const noexcept
 
 result<certificate_store> certificate_store::from_pkcs12 (const fs::path &path) noexcept
 {
-	// clang-format off
 
-	return load_one(path).and_then([] (certificate::impl_ptr head) -> result<certificate_store>
+	return load_one(path).and_then([](certificate::impl_ptr head) -> result<certificate_store>
 	{
 		return pal::make_shared<certificate_store::impl_type>(std::move(head)).transform(to_api);
 	});
 
-	// clang-format on
 }
 
 result<certificate_store> certificate_store::from_cert_dir (const fs::path &dir) noexcept

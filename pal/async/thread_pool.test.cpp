@@ -5,8 +5,8 @@
 #include <algorithm>
 #include <atomic>
 #include <chrono>
+#include <system_error>
 #include <thread>
-#include <tuple>
 
 namespace
 {
@@ -25,17 +25,9 @@ TEST_CASE("async/thread_pool")
 
 TEST_CASE("async/thread_pool make contract")
 {
-	if constexpr (pal::build == pal::build_type::debug)
-	{
-		// clang-format off
-		auto msg = pal_test::require_terminate([]
-		{
-			std::ignore = make_thread_pool(0);
-		});
-		// clang-format on
-
-		CHECK(msg.contains("worker threads"));
-	}
+	auto pool = make_thread_pool(0);
+	REQUIRE_FALSE(pool);
+	CHECK(pool.error() == std::errc::invalid_argument);
 }
 
 // Handlers are lambdas except where one must re-post with itself (*this) -- a lambda cannot name itself.
@@ -49,7 +41,7 @@ struct round_trip
 	{
 		if (++*rounds < 3)
 		{
-			pool->post(*loop, std::move(t), [] (task &) noexcept {}, *this);
+			pool->post(std::move(t), *loop, [](task &) noexcept {}, *this);
 		}
 	}
 };
@@ -86,19 +78,17 @@ TEST_CASE("async/thread_pool offload")
 		std::thread::id handler_thread{};
 		task *got = nullptr;
 
-		// clang-format off
-		pool->post(*loop, t.borrow(),
-			[&] (task &) noexcept
+		pool->post(t.borrow(), *loop,
+			[&](task &) noexcept
 			{
 				work_thread = std::this_thread::get_id();
 			},
-			[&] (task_ptr &&p) noexcept
+			[&](task_ptr &&p) noexcept
 			{
 				handler_thread = std::this_thread::get_id();
 				got = p.get();
 			}
 		);
-		// clang-format on
 
 		auto n = loop->run_for(5s);
 		REQUIRE(n);
@@ -106,7 +96,6 @@ TEST_CASE("async/thread_pool offload")
 		CHECK(work_thread != std::this_thread::get_id());
 		CHECK(handler_thread == std::this_thread::get_id());
 		CHECK(got == &t);
-		CHECK(loop->stats().completions == 1);
 	}
 
 	SECTION("post: result through scratch")
@@ -119,18 +108,16 @@ TEST_CASE("async/thread_pool offload")
 		task t;
 		int seen = 0;
 
-		// clang-format off
-		pool->post(*loop, t.borrow(),
-			[] (task &w) noexcept
+		pool->post(t.borrow(), *loop,
+			[](task &w) noexcept
 			{
 				w.scratch_as<answer>().value = 42;
 			},
-			[&] (task_ptr &&p) noexcept
+			[&](task_ptr &&p) noexcept
 			{
 				seen = p->scratch_as<answer>().value;
 			}
 		);
-		// clang-format on
 
 		run_until(*loop, 1);
 		CHECK(seen == 42);
@@ -141,21 +128,19 @@ TEST_CASE("async/thread_pool offload")
 		task t;
 		bool intact = false;
 
-		// clang-format off
-		pool->post(*loop, t.borrow(),
-			[] (task &w) noexcept
+		pool->post(t.borrow(), *loop,
+			[](task &w) noexcept
 			{
 				std::ranges::fill(w.scratch(), std::byte{0xa5});
 			},
-			[&] (task_ptr &&p) noexcept
+			[&](task_ptr &&p) noexcept
 			{
-				intact = std::ranges::all_of(p->scratch(), [] (std::byte b)
+				intact = std::ranges::all_of(p->scratch(), [](std::byte b)
 				{
 					return b == std::byte{0xa5};
 				});
 			}
 		);
-		// clang-format on
 
 		run_until(*loop, 1);
 		CHECK(intact);
@@ -166,18 +151,16 @@ TEST_CASE("async/thread_pool offload")
 		task t;
 		int ran = 0;
 
-		// clang-format off
-		pool->post(*loop, t.borrow(),
-			[] (task &) noexcept
+		pool->post(t.borrow(), *loop,
+			[](task &) noexcept
 			{
 				std::this_thread::sleep_for(20ms);
 			},
-			[&] (task_ptr &&) noexcept
+			[&](task_ptr &&) noexcept
 			{
 				++ran;
 			}
 		);
-		// clang-format on
 
 		// run_for() blocks in poll() until the worker's post-back wake() unblocks it, well before the timeout
 		const auto before = event_loop::clock::now();
@@ -186,22 +169,21 @@ TEST_CASE("async/thread_pool offload")
 		CHECK(*n == 1);
 		CHECK(ran == 1);
 		CHECK(event_loop::clock::now() - before < 5s);
-		CHECK(loop->stats().wakeups >= 1);
 	}
 
 	SECTION("post: multiple tasks")
 	{
 		task a, b, c;
 		int ran = 0;
-		const auto work = [] (task &) noexcept {};
-		const auto done = [&ran] (task_ptr &&) noexcept
+		const auto work = [](task &) noexcept {};
+		const auto done = [&ran](task_ptr &&) noexcept
 		{
 			++ran;
 		};
 
-		pool->post(*loop, a.borrow(), work, done);
-		pool->post(*loop, b.borrow(), work, done);
-		pool->post(*loop, c.borrow(), work, done);
+		pool->post(a.borrow(), *loop, work, done);
+		pool->post(b.borrow(), *loop, work, done);
+		pool->post(c.borrow(), *loop, work, done);
 
 		run_until(*loop, 3);
 		CHECK(ran == 3);
@@ -214,10 +196,10 @@ TEST_CASE("async/thread_pool offload")
 
 		task a, b;
 		int fired = 0, other_fired = 0;
-		const auto work = [] (task &) noexcept {};
+		const auto work = [](task &) noexcept {};
 
-		pool->post(*loop, a.borrow(), work, [&fired] (task_ptr &&) noexcept { ++fired; });
-		pool->post(*other, b.borrow(), work, [&other_fired] (task_ptr &&) noexcept { ++other_fired; });
+		pool->post(a.borrow(), *loop, work, [&fired](task_ptr &&) noexcept { ++fired; });
+		pool->post(b.borrow(), *other, work, [&other_fired](task_ptr &&) noexcept { ++other_fired; });
 
 		run_until(*loop, 1);
 		CHECK(fired == 1);
@@ -232,12 +214,10 @@ TEST_CASE("async/thread_pool offload")
 		task t;
 		int rounds = 0;
 
-		// clang-format off
-		pool->post(*loop, t.borrow(),
-			[] (task &) noexcept {},
+		pool->post(t.borrow(), *loop,
+			[](task &) noexcept {},
 			round_trip{.pool = &*pool, .loop = &*loop, .rounds = &rounds}
 		);
-		// clang-format on
 
 		run_until(*loop, 3);
 		CHECK(rounds == 3);
@@ -253,23 +233,21 @@ TEST_CASE("async/thread_pool destructor contract")
 		static task first, second;
 		static std::atomic<bool> release = false;
 
-		// clang-format off
 		auto msg = pal_test::require_terminate([]
 		{
 			auto loop = make_loop().value();
 			auto pool = make_thread_pool(1).value();
-			const auto work = [] (task &) noexcept
+			const auto work = [](task &) noexcept
 			{
 				while (!release)
 				{
 					std::this_thread::yield();
 				}
 			};
-			const auto done = [] (task_ptr &&) noexcept {};
-			pool.post(loop, first.borrow(), work, done);
-			pool.post(loop, second.borrow(), work, done);
+			const auto done = [](task_ptr &&) noexcept {};
+			pool.post(first.borrow(), loop, work, done);
+			pool.post(second.borrow(), loop, work, done);
 		});
-		// clang-format on
 
 		// unblock the leaked worker (the trapped terminate leaked the pool without joining it)
 		release = true;

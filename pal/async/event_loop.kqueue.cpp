@@ -2,141 +2,158 @@
 
 #if __pal_os_macos
 
-#include <pal/async/event_loop.hpp>
+#include <pal/async/__event_loop.hpp>
 #include <pal/error.hpp>
 
-#include <atomic>
+#include <array>
 #include <cerrno>
-#include <chrono>
+#include <cstddef>
+#include <cstdint>
 #include <fcntl.h>
 #include <new>
+#include <span>
 #include <sys/event.h>
-#include <unistd.h>
+#include <sys/socket.h>
+#include <utility>
 
-namespace pal::async
+namespace pal::async::__event_loop
 {
 
-namespace __event_loop
+std::error_code impl_type::poll (clock::duration timeout) noexcept
 {
-
-namespace
-{
-
-struct kqueue_loop: impl_type
-{
-	int kq = -1;
-	std::atomic<bool> signaled = false;
-
-	~kqueue_loop () noexcept
-	{
-		::close(kq);
-	}
-};
-
-constexpr uintptr_t wake_ident = 1;
-
-constexpr ::timespec to_timespec (impl_type::clock::duration d) noexcept
-{
-	const auto wait = (d < impl_type::clock::duration::zero()) ? impl_type::clock::duration::zero() : d;
-	const auto secs = std::chrono::duration_cast<std::chrono::seconds>(wait);
-	const auto nsecs = std::chrono::duration_cast<std::chrono::nanoseconds>(wait - secs);
-	return {
-		.tv_sec = static_cast<::time_t>(secs.count()),
-		.tv_nsec = static_cast<long>(nsecs.count()),
-	};
-}
-
-size_t kqueue_poll (impl_type &base, impl_type::clock::duration timeout) noexcept
-{
-	auto &self = static_cast<kqueue_loop &>(base);
-
 	::timespec ts{};
-	const ::timespec *tsp = nullptr;
-	if (timeout != impl_type::clock::duration::max())
-	{
-		ts = to_timespec(timeout);
-		tsp = &ts;
-	}
+	const auto *tsp = to_timespec(timeout, ts);
 
-	struct ::kevent event{};
 	int r = 0;
 	do
 	{
-		r = ::kevent(self.kq, nullptr, 0, &event, 1, tsp);
+		r = ::kevent(
+			kq,
+			nullptr,
+			0,
+			events.data(),
+			static_cast<int>(config_.poll_batch),
+			tsp
+		);
 	} while (r < 0 && errno == EINTR);
 
-	if (r > 0)
+	if (r < 0)
 	{
-		self.signaled.store(false, std::memory_order_release);
-		self.stats_.wakeups++;
+		return pal::this_thread::last_system_error();
 	}
 
-	return 0;
-}
-
-impl_type::clock::time_point kqueue_now (impl_type &) noexcept
-{
-	return impl_type::clock::now();
-}
-
-void kqueue_wake (impl_type &base) noexcept
-{
-	auto &self = static_cast<kqueue_loop &>(base);
-	if (!self.signaled.exchange(true, std::memory_order_acq_rel))
+	for (const auto &event: std::span{events}.first(static_cast<size_t>(r)))
 	{
-		struct ::kevent trigger{};
-		EV_SET(&trigger, wake_ident, EVFILT_USER, 0, NOTE_TRIGGER, 0, nullptr);
-		std::ignore = ::kevent(self.kq, &trigger, 1, nullptr, 0, nullptr);
+		if (event.udata == nullptr)
+		{
+			wake.drain(*this);
+		}
+		else if (event.filter == EVFILT_READ)
+		{
+			auto &state = *static_cast<socket_state *>(event.udata);
+			on_socket_event(state, state.receive);
+		}
+		else if (event.filter == EVFILT_WRITE)
+		{
+			auto &state = *static_cast<socket_state *>(event.udata);
+			on_socket_event(state, state.send);
+		}
+	}
+	return {};
+}
+
+std::error_code impl_type::register_socket (socket_state &s) const noexcept
+{
+	std::array<struct ::kevent, 2> reg{};
+	EV_SET(&reg[0], static_cast<uintptr_t>(s.handle), EVFILT_READ, EV_ADD | EV_CLEAR, 0, 0, &s);
+	EV_SET(&reg[1], static_cast<uintptr_t>(s.handle), EVFILT_WRITE, EV_ADD | EV_CLEAR, 0, 0, &s);
+	if (::kevent(kq, reg.data(), static_cast<int>(reg.size()), nullptr, 0, nullptr) == -1)
+	{
+		return pal::this_thread::last_system_error();
+	}
+	return {};
+}
+
+void impl_type::drain (socket_state &s, socket_state::direction &d) noexcept
+{
+	const bool send = &d == &s.send;
+	for (size_t i = 0; i < config_.drain_batch && d.actionable(); ++i)
+	{
+		auto &t = *d.pending.head();
+		auto &op = io(t);
+
+		::iovec buffer{.iov_base = t.span().data(), .iov_len = t.span().size()};
+		::msghdr message{};
+		message.msg_name = (op.endpoint_size != 0) ? op.endpoint.data() : nullptr;
+		message.msg_namelen = op.endpoint_size;
+		message.msg_iov = &buffer;
+		message.msg_iovlen = 1;
+
+		ssize_t r = 0;
+		do
+		{
+			r = send
+				? ::sendmsg(static_cast<int>(s.handle), &message, 0)
+				: ::recvmsg(static_cast<int>(s.handle), &message, 0);
+		} while (r < 0 && errno == EINTR);
+
+		if (r < 0)
+		{
+			if (errno == EAGAIN || errno == EWOULDBLOCK)
+			{
+				d.ready = false;
+				return;
+			}
+			op.native_error = errno;
+		}
+		else
+		{
+			op.bytes = static_cast<size_t>(r);
+			if (!send)
+			{
+				op.endpoint_size = message.msg_namelen;
+				op.truncated = (message.msg_flags & MSG_TRUNC) != 0;
+			}
+		}
+		ready_.push(*d.pending.pop());
 	}
 }
 
-void kqueue_destroy (impl_type *base) noexcept
+result<impl_ptr> make_backend (const event_loop_config &config) noexcept
 {
-	delete static_cast<kqueue_loop *>(base);
-}
-
-} // namespace
-
-} // namespace __event_loop
-
-result<event_loop> make_loop (const event_loop_config &config) noexcept
-{
-	using namespace __event_loop;
-
-	const int kq = ::kqueue();
-	if (kq == -1)
+	unique_fd kq{::kqueue()};
+	if (!kq)
 	{
 		return unexpected{pal::this_thread::last_system_error()};
 	}
 	::fcntl(kq, F_SETFD, ::fcntl(kq, F_GETFD, 0) | FD_CLOEXEC);
 
-	struct ::kevent reg{};
-	EV_SET(&reg, wake_ident, EVFILT_USER, EV_ADD | EV_CLEAR, 0, 0, nullptr);
-	if (::kevent(kq, &reg, 1, nullptr, 0, nullptr) == -1)
+	auto wake = wake_channel::make();
+	if (!wake)
 	{
-		const auto error = pal::this_thread::last_system_error();
-		::close(kq);
-		return unexpected{error};
+		return unexpected{wake.error()};
 	}
 
-	auto *self = new (std::nothrow) kqueue_loop{};
+	struct ::kevent reg{};
+	EV_SET(&reg, static_cast<uintptr_t>(wake->read), EVFILT_READ, EV_ADD | EV_CLEAR, 0, 0, nullptr);
+	if (::kevent(kq, &reg, 1, nullptr, 0, nullptr) == -1)
+	{
+		return unexpected{pal::this_thread::last_system_error()};
+	}
+
+	impl_ptr self{new (std::nothrow) impl_type{}};
 	if (self == nullptr)
 	{
-		::close(kq);
 		return make_unexpected(std::errc::not_enough_memory);
 	}
 
-	self->kq = kq;
-	self->poll_fn = &kqueue_poll;
-	self->wake_fn = &kqueue_wake;
-	self->now_fn = &kqueue_now;
-	self->destroy_fn = &kqueue_destroy;
+	self->kq = std::move(kq);
+	self->wake = std::move(*wake);
 	self->config_ = config;
-	self->now_ = kqueue_now(*self);
 
-	return event_loop{impl_ptr{self}};
+	return self;
 }
 
-} // namespace pal::async
+} // namespace pal::async::__event_loop
 
 #endif // __pal_os_macos

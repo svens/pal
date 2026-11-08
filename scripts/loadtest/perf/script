@@ -1,0 +1,22 @@
+#!/bin/sh
+## Turn perf-<name>.data into the gzipped text the workstation folds
+## see docs/profile.md, Folding happens on the workstation
+#
+# usage: script <name>
+
+set -e
+
+name=$1
+if [ -z "$name" ]; then
+	echo "usage: $(basename "$0") <name>" >&2
+	exit 2
+fi
+
+cd "$(dirname "$0")"
+if [ ! -r "perf-${name}.data" ]; then
+	echo "no perf-${name}.data here: run 'capture' first" >&2
+	exit 1
+fi
+
+perf script --inline --input "perf-${name}.data" | gzip -c > "perf-${name}.txt.gz"
+echo "wrote $(pwd)/perf-${name}.txt.gz"

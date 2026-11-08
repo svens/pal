@@ -1,0 +1,40 @@
+#cloud-config
+
+# Provisioning for the Linux loadtest VMs. The admin account and its SSH key
+# come from the bicep template's osProfile, so nothing here creates users.
+
+ssh_pwauth: no
+
+package_update: true
+package_upgrade: true
+packages:
+- bpftrace
+- ethtool
+- linux-tools-azure
+- tmux
+
+write_files:
+# Per-session kernel resources: the image defaults would cap the session count before the load does
+- path: /etc/security/limits.d/90-loadtest.conf
+  content: |
+    * soft nofile 1048576
+    * hard nofile 1048576
+    * soft memlock unlimited
+    * hard memlock unlimited
+
+# Prevent nf_conntrack installed by waagent (see also runcmd nft and modprobe)
+- path: /etc/modprobe.d/90-loadtest.conf
+  content: |
+    install nf_conntrack /bin/false
+
+runcmd:
+- systemctl mask --now unattended-upgrades.service apt-daily.timer apt-daily-upgrade.timer
+- snap refresh --hold || true
+- apt -y remove walinuxagent
+- nft delete table ip security || true
+- modprobe -r xt_conntrack nf_conntrack nf_defrag_ipv4 nf_defrag_ipv6 || true
+
+power_state:
+  mode: reboot
+  condition: ['test', '-e', '/var/run/reboot-required']
+  message: rebooting onto the upgraded kernel

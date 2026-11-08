@@ -76,7 +76,7 @@ struct socket_option_storage<bool>: socket_option_storage<int>
 		return value();
 	}
 
-	constexpr bool operator!() const noexcept
+	constexpr bool operator! () const noexcept
 	{
 		return !value();
 	}
@@ -129,12 +129,27 @@ struct socket_option: socket_option_storage<T>
 /// \defgroup socket_option Socket options
 /// \{
 
-// clang-format off
-
 /// Non-blocking I/O
 using non_blocking_io = socket_option<bool,
 	socket_option_level::lib,
 	socket_option_name::non_blocking_io
+>;
+
+/// CPU whose incoming datagrams this socket receives.
+///
+/// Sockets with different values can bind the same address. Each one receives the datagrams that the stack
+/// processed on its own CPU. A flow is one local and remote endpoint pair. All datagrams of a flow are
+/// processed on the same CPU, so they all reach the same socket.
+///
+/// Set it before \ref basic_socket::bind; setting it later may fail or be ignored. Datagram sockets only.
+///
+/// Platform reach:
+/// - Linux: shares and steers; readable back
+/// - macOS: shares only, \c value ignored; not readable back
+/// - Windows: shares and steers, \c value capped at one processor group; not readable back
+using receive_cpu = socket_option<uint16_t,
+	socket_option_level::lib,
+	socket_option_name::receive_cpu
 >;
 
 /// Permit sending broadcast messages, if supported by protocol
@@ -272,8 +287,6 @@ using send_timeout = io_timeout<
 	socket_option_level{SOL_SOCKET},
 	socket_option_name{SO_SNDTIMEO}
 >;
-
-// clang-format on
 
 /// \}
 

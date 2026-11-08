@@ -28,10 +28,8 @@ namespace pal::net::ip
 	Impl(stun, 3478) \
 	Impl(stuns, 5349)
 
-// clang-format off
-
 /// IP port number in host byte order
-enum class port_type : uint16_t
+enum class port_type: uint16_t
 {
 	#define __pal_net_ip_port_type_enum(Name, Value) Name = (Value),
 		__pal_net_ip_port_type(__pal_net_ip_port_type_enum)
@@ -49,8 +47,6 @@ constexpr std::string_view to_string_view (port_type port) noexcept
 	}
 	return {};
 }
-
-// clang-format on
 
 /// Return \a port + \a n
 template <std::integral T>

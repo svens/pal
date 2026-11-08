@@ -1,0 +1,72 @@
+ninja_required_version = 1.1
+
+# Standalone: nothing at repository level references this file, and it references
+# nothing there. Run it from this directory, which the action paths are relative
+# to.
+
+rule action
+  command = cmake -P azure/$name.cmake
+  description = $name
+  pool = console
+
+build help: action
+  name = help
+
+build validate: action
+  name = validate
+
+build deploy: action
+  name = deploy
+
+build show: action
+  name = show
+
+build config: action
+  name = config
+
+build start: action
+  name = start
+
+build stop: action
+  name = stop
+
+build deallocate: action
+  name = deallocate
+
+build destroy: action
+  name = destroy
+
+build ship: action
+  name = ship
+
+build tune: action
+  name = tune
+
+build start-relay: action
+  name = start-relay
+
+build stop-relay: action
+  name = stop-relay
+
+build run: action
+  name = run
+
+build sweep: action
+  name = sweep
+
+build profile-ship: action
+  name = profile-ship
+
+build profile: action
+  name = profile
+
+build profile-baseline: action
+  name = profile-baseline
+
+build profile-compare: action
+  name = profile-compare
+
+build profile-clear: action
+  name = profile-clear
+
+default help

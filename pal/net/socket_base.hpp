@@ -106,6 +106,10 @@ private:
 /// Open and return new native socket
 [[nodiscard]] result<native_socket> open (int family, int type, int protocol) noexcept;
 
+/// Take ownership of an existing OS \a handle of socket \a type, applying the same per-socket setup as
+/// \ref open
+[[nodiscard]] native_socket adopt (native_socket::handle_type handle, int family, int type) noexcept;
+
 namespace __socket
 {
 
@@ -113,7 +117,7 @@ namespace __socket
 template <typename Socket>
 constexpr auto to_api () noexcept
 {
-	return [] (native_socket &&socket) noexcept
+	return [](native_socket &&socket) noexcept
 	{
 		return Socket{std::move(socket)};
 	};
@@ -130,7 +134,7 @@ public:
 	using native_handle_type = native_socket::handle_type;
 
 	/// Bitmask flags for send/receive operations
-	enum message_flags : int
+	enum message_flags: int
 	{
 		/// Peek at incoming message, without removing it from queue
 		message_peek = MSG_PEEK,
@@ -146,7 +150,7 @@ public:
 	};
 
 	/// Socket state change waiting types
-	enum wait_type : int
+	enum wait_type: int
 	{
 		/// Wait for socket to become readable
 		wait_read = POLLIN,
@@ -159,7 +163,7 @@ public:
 	};
 
 	/// Socket shutdown types
-	enum shutdown_type : int
+	enum shutdown_type: int
 	{
 		/// Disable further receive operations
 		shutdown_receive = SHUT_RD,

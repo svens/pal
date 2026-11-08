@@ -64,7 +64,7 @@ const result<void> &init () noexcept
 
 		static auto load_ex (void *fn, GUID id) noexcept
 		{
-			return [=] (native_socket &&socket)
+			return [=](native_socket &&socket)
 			{
 				return load_ex_impl(fn, id, std::move(socket));
 			};
@@ -76,7 +76,7 @@ const result<void> &init () noexcept
 				.and_then(load_ex(&ConnectEx, WSAID_CONNECTEX))
 				.and_then(load_ex(&AcceptEx, WSAID_ACCEPTEX))
 				.and_then(load_ex(&GetAcceptExSockaddrs, WSAID_GETACCEPTEXSOCKADDRS))
-				.transform([] (auto &&) { /* result<native_socket> -> result<void> */ });
+				.transform([](auto &&) { /* result<native_socket> -> result<void> */ });
 		}
 
 		static result<void> load () noexcept
@@ -94,13 +94,45 @@ namespace
 
 const auto &lib_init = init();
 
+__socket::handle_type init (__socket::handle_type h, int type) noexcept
+{
+	::SetFileCompletionNotificationModes(
+		reinterpret_cast<::HANDLE>(to_sys(h)),
+		FILE_SKIP_COMPLETION_PORT_ON_SUCCESS | FILE_SKIP_SET_EVENT_ON_HANDLE
+	);
+
+	if (type == SOCK_DGRAM)
+	{
+		bool new_behaviour = false;
+		DWORD ignored;
+		::WSAIoctl(
+			to_sys(h),
+			SIO_UDP_CONNRESET,
+			&new_behaviour,
+			sizeof(new_behaviour),
+			nullptr,
+			0,
+			&ignored,
+			nullptr,
+			nullptr
+		);
+	}
+
+	return h;
+}
+
 } // namespace
+
+native_socket adopt (native_socket::handle_type handle, int family, int type) noexcept
+{
+	return native_socket{init(handle, type), family};
+}
 
 result<native_socket> open (int family, int type, int protocol) noexcept
 {
 	if (auto h = from_sys(::socket(family, type, protocol)); h != __socket::handle_type::invalid)
 	{
-		return native_socket{h, family};
+		return native_socket{init(h, type), family};
 	}
 
 	// Library public API deals with Protocol types/instances, translate
@@ -152,33 +184,6 @@ bool make_any (int family, void *endpoint, int *endpoint_size) noexcept
 	}
 
 	return false;
-}
-
-__socket::handle_type init (__socket::handle_type h, int type) noexcept
-{
-	::SetFileCompletionNotificationModes(
-		reinterpret_cast<::HANDLE>(to_sys(h)),
-		FILE_SKIP_COMPLETION_PORT_ON_SUCCESS | FILE_SKIP_SET_EVENT_ON_HANDLE
-	);
-
-	if (type == SOCK_DGRAM)
-	{
-		bool new_behaviour = false;
-		DWORD ignored;
-		::WSAIoctl(
-			to_sys(h),
-			SIO_UDP_CONNRESET,
-			&new_behaviour,
-			sizeof(new_behaviour),
-			nullptr,
-			0,
-			&ignored,
-			nullptr,
-			nullptr
-		);
-	}
-
-	return h;
 }
 
 } // namespace
@@ -416,6 +421,37 @@ result<void> get_native_non_blocking (__socket::handle_type, int &) noexcept
 	return __socket::sys_error(WSAEOPNOTSUPP);
 }
 
+result<void> get_receive_cpu (__socket::handle_type, uint16_t &) noexcept
+{
+	return __socket::sys_error(WSAEOPNOTSUPP);
+}
+
+result<void> set_receive_cpu (__socket::handle_type handle, uint16_t cpu) noexcept
+{
+	#if !defined(SIO_CPU_AFFINITY)
+		constexpr auto SIO_CPU_AFFINITY = _WSAIOW(IOC_VENDOR, 21);
+	#endif
+
+	::DWORD bytes = 0;
+	auto value = cpu;
+	const auto r = ::WSAIoctl(
+		to_sys(handle),
+		SIO_CPU_AFFINITY,
+		&value,
+		sizeof(value),
+		nullptr,
+		0,
+		&bytes,
+		nullptr,
+		nullptr
+	);
+	if (r == 0)
+	{
+		return {};
+	}
+	return __socket::sys_error();
+}
+
 result<void> set_native_non_blocking (__socket::handle_type handle, bool mode) noexcept
 {
 	unsigned long arg = mode ? 1 : 0;
@@ -440,6 +476,8 @@ result<void> native_socket::get_option (int level, int name, void *data, size_t 
 		{
 			case __socket::option_name::non_blocking_io:
 				return get_native_non_blocking(handle_, *static_cast<int *>(data));
+			case __socket::option_name::receive_cpu:
+				return get_receive_cpu(handle_, *static_cast<uint16_t *>(data));
 			default:
 				break;
 		}
@@ -468,6 +506,8 @@ result<void> native_socket::set_option (int level, int name, const void *data, s
 		{
 			case __socket::option_name::non_blocking_io:
 				return set_native_non_blocking(handle_, *static_cast<const int *>(data));
+			case __socket::option_name::receive_cpu:
+				return set_receive_cpu(handle_, *static_cast<const uint16_t *>(data));
 			default:
 				break;
 		}

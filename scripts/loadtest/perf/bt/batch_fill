@@ -1,0 +1,51 @@
+#!/usr/bin/env bpftrace
+/*
+ * ## How full each recvmmsg and sendmmsg batch runs
+ * ## see docs/profile.md, Syscalls per packet
+ *
+ * usage: bt/batch_fill [seconds, default 30]
+ *
+ * The distribution behind the average. Stable syscall tracepoints only. The exit
+ * field is the count of messages the call returned, or a negative errno.
+ */
+
+BEGIN
+{
+	@seconds = $1 > 0 ? $1 : 30;
+	@elapsed = 0;
+}
+
+tracepoint:syscalls:sys_exit_recvmmsg /args.ret >= 0/
+{
+	@recvmmsg_messages = hist(args.ret);
+}
+
+tracepoint:syscalls:sys_exit_recvmmsg /args.ret < 0/
+{
+	@recvmmsg_failures = count();
+}
+
+tracepoint:syscalls:sys_exit_sendmmsg /args.ret >= 0/
+{
+	@sendmmsg_messages = hist(args.ret);
+}
+
+tracepoint:syscalls:sys_exit_epoll_pwait2 /args.ret >= 0/
+{
+	@epoll_events = hist(args.ret);
+}
+
+interval:s:1
+{
+	@elapsed++;
+	if (@elapsed >= @seconds)
+	{
+		exit();
+	}
+}
+
+END
+{
+	clear(@seconds);
+	clear(@elapsed);
+}

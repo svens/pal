@@ -75,13 +75,11 @@ public:
 	/// Compute digest of all \a inputs in a single step with \a key.
 	static result<digest_type> one_shot (const_buffer auto const &key, const_buffer auto const &...inputs) noexcept
 	{
-		// clang-format off
-		return make(key).transform([&] (auto h)
+		return make(key).transform([&](auto h)
 		{
 			(h.update(inputs), ...);
 			return h.finish();
 		});
-		// clang-format on
 	}
 
 private:

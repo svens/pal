@@ -1,4 +1,5 @@
 ## Build and smoke-test one preset
+## depends: style-check
 get_filename_component(project_root "${CMAKE_CURRENT_LIST_DIR}/../.." ABSOLUTE)
 
 if(CMAKE_HOST_SYSTEM_NAME STREQUAL "Windows")

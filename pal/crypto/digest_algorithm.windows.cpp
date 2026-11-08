@@ -2,12 +2,10 @@
 
 #if __pal_crypto_windows
 
-// clang-format off
 #include <pal/crypto/digest_algorithm.hpp>
 #include <bcrypt.h>
 #include <memory>
 #include <tuple>
-// clang-format on
 
 namespace pal::crypto::algorithm
 {
@@ -90,8 +88,6 @@ struct impl_base
 };
 
 } // namespace
-
-// clang-format off
 
 //
 // Hash
@@ -188,8 +184,6 @@ __pal_crypto_digest_algorithm(__pal_crypto_impl_hash)
 
 __pal_crypto_digest_algorithm(__pal_crypto_impl_hmac)
 #undef __pal_crypto_impl_hmac
-
-// clang-format off
 
 } // namespace pal::crypto::algorithm
 

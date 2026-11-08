@@ -116,7 +116,7 @@ struct blocking_pair //{{{1
 	void close () noexcept
 	{
 		{
-			const std::scoped_lock lock{mutex};
+			const std::lock_guard lock{mutex};
 			closed = true;
 		}
 		cv.notify_all();
@@ -141,7 +141,7 @@ struct blocking_pair //{{{1
 			}
 			auto bytes = std::as_bytes(std::span{buf});
 			{
-				const std::scoped_lock lock{pair.mutex};
+				const std::lock_guard lock{pair.mutex};
 				sink.append_range(bytes);
 			}
 			pair.cv.notify_all();
@@ -183,7 +183,6 @@ struct blocking_pair //{{{1
 	}
 };
 
-// clang-format off
 static_assert(
 	io_device<
 		blocking_pair<transport_type::stream>::half_device,
@@ -198,7 +197,6 @@ static_assert(
 		std::span<std::byte>
 	>
 );
-// clang-format on
 
 connected_pair<connected_channel>
 pump_handshake (handshake_channel &client_handshake, handshake_channel &server_handshake) //{{{1
@@ -216,7 +214,7 @@ pump_handshake (handshake_channel &client_handshake, handshake_channel &server_h
 	std::optional<connected_channel> client_channel;
 	std::optional<connected_channel> server_channel;
 
-	auto step = [&] (handshake_channel &handshake, std::optional<connected_channel> &channel, wire &in, wire &out)
+	auto step = [&](handshake_channel &handshake, std::optional<connected_channel> &channel, wire &in, wire &out)
 	{
 		if (channel || !handshake)
 		{
@@ -281,7 +279,7 @@ connected_pair<session> make_session_pair ( //{{{1
 	return {.server = std::move(*server_session), .client = std::move(*client_session)};
 }
 
-// concept checks — namespace scope because local classes can't have template members {{{1
+// concept checks -- namespace scope because local classes can't have template members {{{1
 
 struct good_device
 {
@@ -399,7 +397,6 @@ TEMPLATE_TEST_CASE("crypto/session", "", stream, datagram) //{{{1
 
 		result<session> server_session = make_unexpected(std::errc::not_connected);
 
-		// clang-format off
 		std::thread server_thread([&]
 		{
 			if (auto server_handshake = server_accept(*server_factory))
@@ -407,7 +404,6 @@ TEMPLATE_TEST_CASE("crypto/session", "", stream, datagram) //{{{1
 				server_session = session::run_handshake(server_device, *server_handshake);
 			}
 		});
-		// clang-format on
 
 		auto client_handshake = client_factory->connect({.peer_name = "server.pal.alt.ee"});
 		REQUIRE(client_handshake);
@@ -446,7 +442,7 @@ TEMPLATE_TEST_CASE("crypto/session", "", stream, datagram) //{{{1
 
 	SECTION("close_notify")
 	{
-		const auto check_close_error = [] (const std::error_code &ec)
+		const auto check_close_error = [](const std::error_code &ec)
 		{
 			// After a close, the peer's next receive errors out. Stream and OpenSSL-datagram emit a real
 			// close_notify so the peer reports `closed`; SChannel cannot generate a DTLS close_notify, so

@@ -24,12 +24,10 @@ namespace cert = pal_test::cert;
 
 using pal_test::connected_pair;
 
-// clang-format off
 constexpr crypto::connector_handshake_options default_opts
 {
 	.peer_name = "server.pal.alt.ee"
 };
-// clang-format on
 
 // transport traits {{{1
 
@@ -134,14 +132,12 @@ template <typename Traits>
 connected_pair<typename Traits::secure_socket_type> make_connected_pair (
 	const typename Traits::acceptor &server_factory,
 	const typename Traits::connector &client_factory,
-	const crypto::connector_handshake_options &connect_opts = default_opts
-)
+	const crypto::connector_handshake_options &connect_opts = default_opts)
 {
 	auto ctx = Traits::prepare();
 
 	std::optional<typename Traits::secure_socket_type> server_socket;
 
-	// clang-format off
 	std::thread server_thread([&]
 	{
 		if (auto tls = net::make_secure_socket(Traits::server_socket(ctx), server_factory))
@@ -149,7 +145,6 @@ connected_pair<typename Traits::secure_socket_type> make_connected_pair (
 			server_socket = std::move(*tls);
 		}
 	});
-	// clang-format on
 
 	auto client_socket = net::make_secure_socket(Traits::client_socket(ctx), client_factory, connect_opts);
 	server_thread.join();
@@ -220,7 +215,7 @@ TEMPLATE_TEST_CASE("net/basic_secure_socket", "", stream, datagram) //{{{1
 		// SChannel cannot generate a DTLS close_notify, so its datagram close is a no-op and the peer's
 		// receive instead errors out at the transport (a timeout). For datagram the guarantee is just
 		// that the receive returns an error rather than blocking; stream still requires `closed`.
-		const auto check_closed = [] (const auto &receive)
+		const auto check_closed = [](const auto &receive)
 		{
 			REQUIRE_FALSE(receive);
 			if constexpr (
@@ -418,12 +413,10 @@ TEMPLATE_TEST_CASE("net/basic_secure_socket", "", stream, datagram) //{{{1
 	{
 		auto ctx = TestType::prepare();
 
-		// clang-format off
 		std::thread server_thread([&]
 		{
 			std::ignore = net::make_secure_socket(TestType::server_socket(ctx), server_factory);
 		});
-		// clang-format on
 
 		auto c = net::make_secure_socket(
 			TestType::client_socket(ctx), client_factory, {.peer_name = "wrong.name"}
@@ -441,12 +434,10 @@ TEMPLATE_TEST_CASE("net/basic_secure_socket", "", stream, datagram) //{{{1
 
 		auto ctx = TestType::prepare();
 
-		// clang-format off
 		std::thread server_thread([&]
 		{
 			std::ignore = net::make_secure_socket(TestType::server_socket(ctx), server_factory);
 		});
-		// clang-format on
 
 		auto c = net::make_secure_socket(TestType::client_socket(ctx), *untrusted, default_opts);
 		server_thread.join();
@@ -461,12 +452,10 @@ TEMPLATE_TEST_CASE("net/basic_secure_socket", "", stream, datagram) //{{{1
 		{
 			auto ctx = TestType::prepare();
 
-			// clang-format off
 			std::thread server_thread([&]
 			{
 				std::ignore = net::make_secure_socket(TestType::server_socket(ctx), server_factory);
 			});
-			// clang-format on
 
 			auto bad = net::make_secure_socket(
 				TestType::client_socket(ctx), client_factory, {.peer_name = "wrong.name"}
@@ -480,7 +469,6 @@ TEMPLATE_TEST_CASE("net/basic_secure_socket", "", stream, datagram) //{{{1
 			std::optional<typename TestType::secure_socket_type> server_socket;
 			auto ctx = TestType::prepare();
 
-			// clang-format off
 			std::thread server_thread([&]
 			{
 				if (auto tls = net::make_secure_socket(TestType::server_socket(ctx), server_factory))
@@ -488,7 +476,6 @@ TEMPLATE_TEST_CASE("net/basic_secure_socket", "", stream, datagram) //{{{1
 					server_socket = std::move(*tls);
 				}
 			});
-			// clang-format on
 
 			auto good = net::make_secure_socket(TestType::client_socket(ctx), client_factory, default_opts);
 			server_thread.join();

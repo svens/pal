@@ -69,6 +69,15 @@ public:
 		return task_ptr{freelist_.try_pop()};
 	}
 
+	/// Restore \a t's payload window to its slot's full buffer without recycling, for operation
+	/// chains that reuse a held task in place (receive -> send -> receive). \a t must have been
+	/// acquired from this pool.
+	void reset_span (task &t) noexcept
+	{
+		pal_require(__task::attorney::recycler_of(t) == this, "reset_span() on task from another pool");
+		t.span(reinterpret_cast<slot *>(&t)->buffer);
+	}
+
 private:
 
 	struct alignas(cache_line_size) slot
@@ -100,8 +109,7 @@ private:
 	static void recycle (__task::recycler &recycle, task &t) noexcept
 	{
 		auto &self = static_cast<task_pool &>(recycle);
-		auto &s = *reinterpret_cast<slot *>(&t);
-		t.span(s.buffer);
+		self.reset_span(t);
 		self.freelist_.push(t);
 	}
 

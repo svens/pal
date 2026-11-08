@@ -14,7 +14,7 @@ namespace pal
 	Impl(__0, "internal placeholder for not an error")
 
 /// PAL errors
-enum class errc : int
+enum class errc: int
 {
 #define __pal_errc_enum(Code, Message) Code,
 	__pal_errc(__pal_errc_enum)

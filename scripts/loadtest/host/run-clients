@@ -1,0 +1,23 @@
+#!/bin/sh
+## launch the loadtest process on a client VM and wait for it
+#
+# Invoked over ssh by azure/run.cmake, detached, so that every client VM
+# generates load at the same time. Writes a log and an exit status, then a 'done'
+# marker, which is what the caller polls for -- cmake script mode cannot wait on
+# several remote commands at once.
+#
+# usage: run-clients <loadtest-arg>...
+
+root=$(cd "$(dirname "$0")/.." && pwd)
+
+if [ ! -x "$root/loadtest" ]; then
+	echo "$root/loadtest not found: ship it first" >&2
+	exit 1
+fi
+
+rm -f "$root/run.log" "$root/run.status" "$root/done"
+
+"$root/loadtest" "$@" > "$root/run.log" 2>&1
+echo $? > "$root/run.status"
+
+touch "$root/done"

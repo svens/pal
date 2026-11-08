@@ -7,7 +7,7 @@
  * \internal distinguished_name::impl_type is embedded by value inside
  * certificate::impl_type rather than holding a certificate::impl_ptr owner
  * like other property types. This allows subject_name()/issuer_name() to use
- * the shared_ptr aliasing constructor — zero extra allocation. DN is always
+ * the shared_ptr aliasing constructor -- zero extra allocation. DN is always
  * present in a valid certificate and always accessed, making eager embedding
  * the right tradeoff. Optional/lazy properties (alternative_name, key) use
  * the owner pattern instead.
@@ -62,12 +62,25 @@ struct pkey_deleter
 };
 using pkey_ptr = std::unique_ptr<::EVP_PKEY, pkey_deleter>;
 
+inline size_t asn1_string_length (const ::ASN1_STRING *s) noexcept
+{
+	#if OPENSSL_VERSION_PREREQ(4, 1)
+	{
+		return ::ASN1_STRING_get_length(s);
+	}
+	#else
+	{
+		return static_cast<size_t>(::ASN1_STRING_length(s));
+	}
+	#endif
+}
+
 struct distinguished_name::impl_type
 {
-	::X509_NAME *name;
+	const ::X509_NAME *name;
 	const int count;
 
-	explicit impl_type (::X509_NAME *n) noexcept
+	explicit impl_type (const ::X509_NAME *n) noexcept
 		: name{n}
 		, count{::X509_NAME_entry_count(n)}
 	{

@@ -32,7 +32,7 @@ constexpr size_t io_vector_max_size = 4;
 
 #if __pal_net_posix //{{{1
 
-enum class handle_type : int
+enum class handle_type: int
 {
 	invalid = -1,
 };
@@ -69,7 +69,7 @@ struct message: ::msghdr
 		static_assert(sizeof...(Buffers) <= io_vector_max_size);
 		msg_iovlen = 0;
 		msg_iov = iov.data();
-		auto fill = [&] (auto &&b) noexcept
+		auto fill = [&](auto &&b) noexcept
 		{
 			iov[msg_iovlen++] = {
 				.iov_base = const_cast<void *>(static_cast<const void *>(std::data(b))),
@@ -93,7 +93,7 @@ struct message: ::msghdr
 
 #elif __pal_net_winsock //{{{1
 
-enum class handle_type : ::SOCKET
+enum class handle_type: ::SOCKET
 {
 	invalid = INVALID_SOCKET,
 };
@@ -133,7 +133,7 @@ struct message
 	{
 		static_assert(sizeof...(Buffers) <= io_vector_max_size);
 		msg_iovlen = 0;
-		auto fill = [&] (auto &&b) noexcept
+		auto fill = [&](auto &&b) noexcept
 		{
 			msg_iov[msg_iovlen++] = {
 				.len = static_cast<ULONG>(std::size(b) * sizeof(*std::data(b))),
@@ -157,11 +157,9 @@ struct message
 	}
 };
 
-// clang-format off
 #define SHUT_RD SD_RECEIVE
 #define SHUT_WR SD_SEND
 #define SHUT_RDWR SD_BOTH
-// clang-format on
 
 extern ::LPFN_CONNECTEX ConnectEx;
 extern ::LPFN_ACCEPTEX AcceptEx;
@@ -187,16 +185,17 @@ constexpr int reuse_port =
 #else
 	-1
 #endif
-	;
+;
 
-enum option_level : int
+enum option_level: int
 {
 	lib = -1,
 };
 
-enum option_name : int
+enum option_name: int
 {
 	non_blocking_io,
+	receive_cpu,
 };
 
 } // namespace pal::net::__socket

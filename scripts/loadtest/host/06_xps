@@ -1,0 +1,61 @@
+#!/bin/sh
+## Transmit Packet Steering -- one transmit queue per CPU
+## see docs/tune_linux.md, Transmit queue mapping
+
+. "$(dirname "$0")/_common.sh"
+require_verb show apply
+
+nic=$(get_nic)
+report "nic" "$nic"
+
+cpus=$(nproc --all)
+cpu=0
+matches_target=yes
+unavailable=""
+assignments=""
+
+for queue in "/sys/class/net/${nic}/queues"/tx-*; do
+	[ -d "$queue" ] || continue
+	mask=$(cpu_mask $cpu)
+	held=$(mask_value "${queue}/xps_cpus")
+	report "$(basename "$queue") xps_cpus" "${held:-<unavailable>}"
+	assignments="${assignments} ${queue}=${mask}"
+
+	if [ -z "$held" ]; then
+		unavailable=yes
+	elif [ "$held" != "$mask" ]; then
+		matches_target=no
+	fi
+	cpu=$(((cpu + 1) % cpus))
+done
+
+if [ -n "$unavailable" ]; then
+	report "verdict" "unavailable: the kernel reports no map for this device"
+elif [ "$matches_target" = yes ]; then
+	report "verdict" "already one queue per CPU; apply would write the same map"
+else
+	report "verdict" "not one queue per CPU; apply would rewrite it"
+fi
+
+if [ "$verb" = apply ]; then
+	require_root
+	echo
+	if [ -n "$unavailable" ]; then
+		verify "xps_cpus" "" ""
+	else
+		for pair in $assignments; do
+			queue=${pair%%=*}
+			mask=${pair#*=}
+			echo "$mask" > "${queue}/xps_cpus" || \
+				echo "warning: $(basename "$queue") rejected mask $mask" >&2
+		done
+
+		echo
+		for pair in $assignments; do
+			queue=${pair%%=*}
+			verify "$(basename "$queue")" "${pair#*=}" \
+				"$(mask_value "${queue}/xps_cpus")"
+		done
+	fi
+	verify_exit
+fi

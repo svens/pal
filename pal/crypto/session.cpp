@@ -83,7 +83,8 @@ struct session::impl_type //{{{1
 		{
 			const auto chunk = (transport == transport_type::datagram)
 				? data.subspan(sent_total, dtls_record_size(data.subspan(sent_total)))
-				: data.subspan(sent_total);
+				: data.subspan(sent_total)
+			;
 			auto sent = dev.send(chunk);
 			if (!sent)
 			{
@@ -127,12 +128,10 @@ session::operator bool () const noexcept
 
 result<session> session::from (connected_channel &&channel, transport_type transport) noexcept //{{{1
 {
-	// clang-format off
-	return pal::make_unique<impl_type>(std::move(channel), transport).transform([] (auto p)
+	return pal::make_unique<impl_type>(std::move(channel), transport).transform([](auto p)
 	{
 		return session{std::move(p)};
 	});
-	// clang-format on
 }
 
 result<session> session::run_handshake_impl ( //{{{1

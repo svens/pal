@@ -38,7 +38,7 @@ result<std::string_view> unwrap (std::string_view pem) noexcept
 std::string_view strip_whitespace (std::string_view src, std::span<std::byte> out) noexcept
 {
 	auto *data = reinterpret_cast<char *>(out.data());
-	const auto [_, end] = std::ranges::copy_if(src, data, [] (unsigned char c) { return !std::isspace(c); });
+	const auto [_, end] = std::ranges::copy_if(src, data, [](unsigned char c) { return !std::isspace(c); });
 	return {data, static_cast<size_t>(end - data)};
 }
 
@@ -55,8 +55,7 @@ result<std::span<const std::byte>> decode (std::string_view b64, std::span<std::
 
 result<certificate> certificate::from_pem (std::string_view pem) noexcept
 {
-	// clang-format off
-	return unwrap(pem).and_then([] (std::string_view b64_view) noexcept -> result<certificate>
+	return unwrap(pem).and_then([](std::string_view b64_view) noexcept -> result<certificate>
 	{
 		static constexpr size_t der_stack_size = 2048;
 		static constexpr size_t b64_stack_size = (der_stack_size * 4 / 3 + 1023) / 1024 * 1024;
@@ -75,7 +74,6 @@ result<certificate> certificate::from_pem (std::string_view pem) noexcept
 		const auto b64 = strip_whitespace(b64_view, b64_buf.get());
 		return decode(b64, der_buf.get()).and_then(import_der);
 	});
-	// clang-format on
 }
 
 const alternative_name_value &certificate::subject_alternative_name_value () const noexcept

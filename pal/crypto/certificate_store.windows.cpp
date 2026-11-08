@@ -127,15 +127,13 @@ result<certificate::impl_ptr> certificate_store::import_pkcs12_chain (std::span<
 
 result<certificate_store> certificate_store::import_pkcs12 (std::span<const std::byte> data) noexcept
 {
-	// clang-format off
 
-	return import_pkcs12_chain(data).and_then([] (certificate::impl_ptr head) -> result<certificate_store>
+	return import_pkcs12_chain(data).and_then([](certificate::impl_ptr head) -> result<certificate_store>
 	{
 		return pal::make_shared<certificate_store::impl_type>(std::move(head))
 			.transform(certificate_store::to_api);
 	});
 
-	// clang-format on
 }
 
 void certificate_store::advance (certificate &cert) noexcept
@@ -171,7 +169,7 @@ result<certificate_store> certificate_store::from_user_identities () noexcept
 			(*node)->private_key = pkey;
 
 			// Borrowed from the user's MY store: free the handle only if we acquired our own copy
-			// (caller_must_free); never erase — the persisted key belongs to the user.
+			// (caller_must_free); never erase -- the persisted key belongs to the user.
 			(*node)->private_key_disposal =
 				caller_must_free ? certificate::impl_type::free : certificate::impl_type::keep;
 		}

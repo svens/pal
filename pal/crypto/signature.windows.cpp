@@ -18,7 +18,7 @@ namespace __signature
 namespace
 {
 
-enum class operation_type : uint8_t
+enum class operation_type: uint8_t
 {
 	sign,
 	verify

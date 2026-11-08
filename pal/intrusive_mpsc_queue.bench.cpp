@@ -66,25 +66,25 @@ struct locked
 
 	task *alloc () noexcept
 	{
-		const std::scoped_lock lock{pool_mutex};
+		const std::lock_guard lock{pool_mutex};
 		return pool.try_pop();
 	}
 
 	static void release (task &task) noexcept
 	{
-		const std::scoped_lock lock{task.owner->pool_mutex};
+		const std::lock_guard lock{task.owner->pool_mutex};
 		task.owner->pool.push(task);
 	}
 
 	static void enqueue (task_queue &queue, task &task) noexcept
 	{
-		const std::scoped_lock lock{queue_mutex};
+		const std::lock_guard lock{queue_mutex};
 		queue.push(task);
 	}
 
 	static task *dequeue (task_queue &queue) noexcept
 	{
-		const std::scoped_lock lock{queue_mutex};
+		const std::lock_guard lock{queue_mutex};
 		return queue.try_pop();
 	}
 };
@@ -120,8 +120,6 @@ void run_bench (Catch::Benchmark::Chronometer &meter, size_t producer_count)
 
 	std::atomic<bool> running = true;
 	std::barrier start_barrier{std::ssize(producers) + 2}, end_barrier{std::ssize(producers) + 2};
-
-	// clang-format off
 
 	for (auto &producer: producers)
 	{
@@ -186,12 +184,10 @@ void run_bench (Catch::Benchmark::Chronometer &meter, size_t producer_count)
 		end_barrier.arrive_and_wait();
 	});
 
-	// clang-format on
-
 	running = false;
 	start_barrier.arrive_and_wait();
 
-	std::ranges::for_each(producers, [] (auto &producer) { producer.thread.join(); });
+	std::ranges::for_each(producers, [](auto &producer) { producer.thread.join(); });
 	consumer.join();
 }
 

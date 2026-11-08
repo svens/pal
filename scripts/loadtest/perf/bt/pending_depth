@@ -1,0 +1,70 @@
+#!/usr/bin/env bpftrace
+/*
+ * ## How deep the pending queues run and how often a drain empties them
+ * ## see docs/profile.md, Pending flow
+ *
+ * usage: run from the directory holding the relay binary, since the uprobes name
+ * it by relative path:
+ *
+ *   cd ~/work && ./perf/bt/pending_depth [seconds, default 30]
+ *
+ * @requested is how many slots pal offered recvmmsg: one per queued operation,
+ * capped at drain_batch. It saturates at the cap whenever the task pool has
+ * spare tasks, which is most of the time, so it measures the pool rather than
+ * the socket. How many datagrams were actually waiting is the return value, in
+ * bt/batch_fill.
+ *
+ * The uprobes name our own symbols, so a kernel upgrade cannot break them. A
+ * rebuild that inlines or renames a function shows up as an absent count.
+ */
+
+BEGIN
+{
+	@seconds = $1 > 0 ? $1 : 30;
+	@elapsed = 0;
+}
+
+tracepoint:syscalls:sys_enter_recvmmsg
+{
+	@requested = hist(args.vlen);
+}
+
+tracepoint:syscalls:sys_enter_sendmmsg
+{
+	@sent_requested = hist(args.vlen);
+}
+
+tracepoint:syscalls:sys_exit_sendmmsg /args.ret < 0/
+{
+	@send_would_block = count();
+}
+
+/*
+ * impl_type::drain_actionable is not probed: its symbol survives but the code is
+ * inlined at its only call site, so a uprobe attaches and counts nothing. The two
+ * below are called through the backend's function-pointer table.
+ */
+uprobe:./udp_relay:*epoll_drain_receive*
+{
+	@drain_receive_calls = count();
+}
+
+uprobe:./udp_relay:*epoll_drain_send*
+{
+	@drain_send_calls = count();
+}
+
+interval:s:1
+{
+	@elapsed++;
+	if (@elapsed >= @seconds)
+	{
+		exit();
+	}
+}
+
+END
+{
+	clear(@seconds);
+	clear(@elapsed);
+}

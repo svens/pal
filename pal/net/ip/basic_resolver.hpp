@@ -34,7 +34,7 @@ template <typename InternetProtocol>
 class basic_resolver;
 
 /// Resolver error codes
-enum class resolver_errc : int
+enum class resolver_errc: int
 {
 	host_not_found = EAI_NONAME,
 	service_not_found = EAI_SERVICE,
@@ -142,7 +142,7 @@ public:
 		return entry_;
 	}
 
-	[[nodiscard]] pointer operator->() const noexcept
+	[[nodiscard]] pointer operator-> () const noexcept
 	{
 		return &entry_;
 	}
@@ -337,7 +337,7 @@ public:
 
 private:
 
-	static constexpr auto to_results = [] (__resolver::result_storage_ptr &&ptr)
+	static constexpr auto to_results = [](__resolver::result_storage_ptr &&ptr)
 	{
 		return results_type{std::move(ptr)};
 	};

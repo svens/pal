@@ -81,15 +81,15 @@ std::span<const std::byte> certificate::impl_type::init_bytes (std::span<const s
 std::span<const uint8_t> certificate::impl_type::init_serial_number () const noexcept
 {
 	const auto *sn = ::X509_get0_serialNumber(x509.get());
-	return {::ASN1_STRING_get0_data(sn), static_cast<size_t>(::ASN1_STRING_length(sn))};
+	return {::ASN1_STRING_get0_data(sn), asn1_string_length(sn)};
 }
 
 std::string_view certificate::impl_type::init_common_name () const noexcept
 {
-	auto *subject = ::X509_get_subject_name(x509.get());
+	const auto *subject = ::X509_get_subject_name(x509.get());
 	for (int i = 0; i < ::X509_NAME_entry_count(subject); ++i)
 	{
-		auto *entry = ::X509_NAME_get_entry(subject, i);
+		const auto *entry = ::X509_NAME_get_entry(subject, i);
 		if (::OBJ_obj2nid(::X509_NAME_ENTRY_get_object(entry)) == NID_commonName)
 		{
 			return reinterpret_cast<const char *>(
@@ -110,22 +110,20 @@ alternative_name_value certificate::impl_type::init_san_value () const noexcept
 		return result;
 	}
 
-	// clang-format off
-
-	static constexpr auto to_dns_view = [] (const ASN1_STRING *s) noexcept -> std::string_view
+	static constexpr auto to_dns_view = [](const ASN1_STRING *s) noexcept -> std::string_view
 	{
 		return
 		{
 			reinterpret_cast<const char *>(::ASN1_STRING_get0_data(s)),
-			static_cast<size_t>(::ASN1_STRING_length(s))
+			asn1_string_length(s)
 		};
 	};
 
 	std::array<char, net::ip::address_v6::max_string_length + 1> buf{};
-	const auto to_ip_view = [&buf] (const ASN1_STRING *s) noexcept -> std::string_view
+	const auto to_ip_view = [&buf](const ASN1_STRING *s) noexcept -> std::string_view
 	{
 		const auto *bytes = reinterpret_cast<const uint8_t *>(::ASN1_STRING_get0_data(s));
-		const auto size = static_cast<size_t>(::ASN1_STRING_length(s));
+		const auto size = asn1_string_length(s);
 		const char *end = nullptr;
 		if (size == sizeof(net::ip::address_v4::bytes_type))
 		{
@@ -141,8 +139,6 @@ alternative_name_value certificate::impl_type::init_san_value () const noexcept
 		}
 		return {};
 	};
-
-	// clang-format on
 
 	auto *p = result.data_.data();
 	const auto count = sk_GENERAL_NAME_num(names.get());

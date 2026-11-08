@@ -12,8 +12,6 @@
 namespace
 {
 
-// clang-format off
-
 template <typename C>
 constexpr std::string_view codec_alphabet{};
 
@@ -74,7 +72,5 @@ TEMPLATE_TEST_CASE("codec", "[!benchmark]",
 		meter.measure([&] { return pal::convert(TestType{}, dst, std::string_view{src.data(), size}); });
 	};
 }
-
-// clang-format on
 
 } // namespace

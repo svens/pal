@@ -1,0 +1,273 @@
+#!/bin/sh
+## receive-path counters and the figures derived from them
+#
+# The relay-side half of the measurement. The load generator reports loss and rtt
+# as a receiver sees them, which cannot separate "the relay was slow" from "the
+# kernel dropped it first" from "we ran out of CPU". These can.
+#
+# usage:
+#   counters show                     dump every counter
+#   counters snapshot <file>          "key value" lines
+#   counters delta <before> <after>   what moved, and the rates and costs that
+#                                     follow, as "<kind> <name> <value>" rows
+#
+# 'delta' owns every derived figure: elapsed, receive rate, machine busy, the
+# per-packet cost, and which counters moved in a way that means the load never
+# reached the relay. A window it cannot derive those from is not a measurement,
+# so it exits nonzero rather than reporting a figure it does not have.
+#
+# What to read, and what it means when it moves:
+#
+#   UdpRcvbufErrors    the socket buffer was full: the relay was not reading fast
+#                      enough, or SO_RCVBUF was clamped by rmem_max (see 05_sysctl)
+#   UdpInErrors        malformed or unroutable datagrams
+#   UdpNoPorts         nothing bound to the destination port
+#   softnet.dropped    the per-CPU backlog overflowed before softirq processing;
+#                      netdev_max_backlog is the ceiling
+#   softnet.squeezed   a softirq pass ran out of budget with work still queued.
+#                      Rising with dropped flat means netdev_budget, not backlog
+#   nic.*discard*      the NIC had nowhere to put a packet: ring too small, or the
+#                      queue's CPU could not keep up (02_ethtool_ring)
+#   machine.cpu        machine-wide busy share, and how much of it is softirq.
+#                      High softirq means the kernel's receive path dominates and
+#                      application work will not move the limit; high process time
+#                      with low softirq means the opposite
+#   cpu steal_pct      CPU the hypervisor took. Anything sustained means the run
+#                      measured the neighbours
+#   relay.cpu          relay process CPU time, which excludes softirq -- always
+#                      lower than machine.cpu, and the gap is the point
+#
+# The relay is found by name, so this reports on udp_relay specifically.
+
+. "$(dirname "$0")/_common.sh"
+require_verb show snapshot delta
+
+relay_process=udp_relay
+
+emit()
+{
+	printf '%s %s\n' "$1" "$2"
+}
+
+collect()
+{
+	emit meta.nic "$(get_nic)"
+	emit meta.cpus "$(nproc --all)"
+
+	# One VM size is served from more than one host generation, so the row's own
+	# hardware travels with every measurement.
+	cpu_model=$(sed -n 's/^model name[[:space:]]*: //p' /proc/cpuinfo | head -n 1 | tr -s ' ')
+	[ -n "$cpu_model" ] || cpu_model=$(uname -m)
+	emit meta.cpu_model "$cpu_model"
+
+	emit meta.clk_tck "$(getconf CLK_TCK)"
+	emit meta.kernel "$(uname -r)"
+
+	# Wall clock, so a delta can be turned into a rate.
+	emit time.uptime "$(cut -d' ' -f1 /proc/uptime)"
+
+	# Machine-wide CPU in jiffies. /proc/<pid>/stat below cannot see softirq time,
+	# which grows with packet rate, so the process figure understates the load
+	# exactly where it matters. steal comes from the same line.
+	awk '/^cpu /{
+		printf "cpu.user %d\n", $2
+		printf "cpu.nice %d\n", $3
+		printf "cpu.system %d\n", $4
+		printf "cpu.idle %d\n", $5
+		printf "cpu.iowait %d\n", $6
+		printf "cpu.irq %d\n", $7
+		printf "cpu.softirq %d\n", $8
+		printf "cpu.steal %d\n", $9
+		exit
+	}' /proc/stat
+
+	# -az reports absolute values without resetting the running history file, which
+	# two snapshots on one baseline require.
+	nstat -az 2>/dev/null | awk '
+		/^(Udp|Ip)/ { printf "nstat.%s %s\n", $1, $2 }
+	'
+
+	# Columns are hex, per CPU: 1 processed, 2 dropped, 3 time_squeeze. Parsed by
+	# hand because strtonum is a gawk extension and Ubuntu ships mawk.
+	awk '
+		function hex(s)
+		{
+			n = 0
+			s = tolower(s)
+			for (i = 1; i <= length(s); i++)
+			{
+				c = index("0123456789abcdef", substr(s, i, 1))
+				if (c == 0) { return n }
+				n = n * 16 + (c - 1)
+			}
+			return n
+		}
+		{
+			processed += hex($1)
+			dropped += hex($2)
+			squeezed += hex($3)
+		}
+		END {
+			printf "softnet.processed %d\n", processed
+			printf "softnet.dropped %d\n", dropped
+			printf "softnet.squeezed %d\n", squeezed
+		}
+	' /proc/net/softnet_stat
+
+	nic_discards | sed 's/^/nic./'
+
+	pid=$(pidof "$relay_process" 2>/dev/null | cut -d' ' -f1)
+	if [ -n "$pid" ]; then
+		# Fields 14 and 15 of /proc/<pid>/stat are utime and stime. The process name
+		# can contain spaces inside parentheses, so count from the closing one.
+		emit relay.pid "$pid"
+		awk '{
+			for (i = 1; i <= NF; i++)
+			{
+				if ($i ~ /\)$/)
+				{
+					printf "relay.cpu_ticks %d\n", $(i + 12) + $(i + 13)
+					exit
+				}
+			}
+		}' "/proc/${pid}/stat"
+		emit relay.threads "$(ls "/proc/${pid}/task" | wc -l)"
+	else
+		emit relay.pid none
+		emit relay.cpu_ticks 0
+	fi
+}
+
+case $verb in
+show)
+	collect
+	;;
+
+snapshot)
+	target=$2
+	if [ -z "$target" ]; then
+		echo "usage: $(basename "$0") snapshot <file>" >&2
+		exit 2
+	fi
+	collect > "$target"
+	;;
+
+delta)
+	before=$2
+	after=$3
+	if [ ! -r "$before" ] || [ ! -r "$after" ]; then
+		echo "usage: $(basename "$0") delta <before> <after>" >&2
+		exit 2
+	fi
+
+	awk '
+		# Faults are the counters meaning the packet never reached the relay.
+		# UdpRcvbufErrors is the service saturating, which is what is being
+		# measured, and softnet.squeezed is ordinary at high packet rates, so
+		# neither is one. A few stolen jiffies are ordinary on a shared host;
+		# a whole percent means the hypervisor took enough to make the numbers
+		# fiction.
+		function fault(text)
+		{
+			faults[++fault_count] = text
+		}
+
+		function row(kind, name, value)
+		{
+			printf "%s\t%s\t%s\n", kind, name, value
+		}
+
+		NR == FNR { first[$1] = $2; next }
+
+		{
+			key = $1
+			if (key ~ /^meta\./)
+			{
+				# Printed whole: a model name is the one value here that
+				# carries spaces.
+				value = $0
+				sub(/^[^ ]+[ ]+/, "", value)
+				if (key == "meta.cpus") { cpus = value + 0 }
+				if (key == "meta.clk_tck") { tck = value + 0 }
+				row("meta", substr(key, 6), value)
+				next
+			}
+			if (!(key in first)) { next }
+
+			if (key == "time.uptime")
+			{
+				elapsed = $2 - first[key]
+				next
+			}
+			if (key == "relay.pid")
+			{
+				relay_before = first[key]
+				relay_after = $2
+				next
+			}
+			if ($2 !~ /^[0-9]+$/) { next }
+			diff = $2 - first[key]
+
+			if (key == "relay.cpu_ticks") { ticks = diff; next }
+			if (key ~ /^cpu\./)
+			{
+				cpu[key] = diff
+				cpu_total += diff
+				next
+			}
+
+			if (key == "nstat.UdpInDatagrams") { packets = diff }
+			if (key == "nstat.IpExtInOctets") { octets = diff }
+			if (diff > 0 && (key ~ /^nic\./ || key == "softnet.dropped"))
+			{
+				fault(sprintf("%s +%d", key, diff))
+			}
+			if (diff != 0) { row("counter", key, diff) }
+		}
+
+		END {
+			busy = cpu_total - cpu["cpu.idle"] - cpu["cpu.iowait"]
+
+			# Packets come from UdpInDatagrams, which is the workload exactly.
+			# Octets come from IpExtInOctets, which is IP level and counts other
+			# traffic on the machine as well: ssh and ARP.
+			if (elapsed <= 0 || packets <= 0 || octets <= 0 ||
+				cpu_total <= 0 || busy <= 0 || tck <= 0)
+			{
+				printf "%s: no measurement in this window (elapsed %s, packets %s, octets %s, jiffies %s of them %s busy, clk_tck %s)\n",
+					"counters delta", elapsed, packets, octets, cpu_total, busy, tck > "/dev/stderr"
+				exit 1
+			}
+
+			row("elapsed", "seconds", sprintf("%.1f", elapsed))
+			row("rate", "kpps", sprintf("%.1f", packets / elapsed / 1000))
+			row("rate", "mbps", sprintf("%.1f", octets * 8 / elapsed / 1000000))
+			row("cpu", "busy_pct", sprintf("%.1f", 100 * busy / cpu_total))
+			row("cpu", "softirq_pct", sprintf("%.0f", 100 * cpu["cpu.softirq"] / busy))
+
+			# Nanoseconds of machine CPU one received datagram cost.
+			row("cost", "ns_per_packet",
+				sprintf("%.0f", busy * 1000000000 / (tck * packets)))
+
+			# A whole percent or more is a fault; below that it is ordinary on a
+			# shared host and warning every run would train the warning away.
+			steal_pct = 100 * cpu["cpu.steal"] / cpu_total
+			row("cpu", "steal_pct", sprintf("%.1f", steal_pct))
+			if (steal_pct >= 1) { fault(sprintf("cpu.steal %.1f%%", steal_pct)) }
+
+			# Absent when the relay did not survive the window as one pid.
+			if (relay_after != "none" && relay_after == relay_before)
+			{
+				seconds = ticks / tck
+				row("relay", "cpu_seconds", sprintf("%.1f", seconds))
+				row("relay", "core_pct", sprintf("%.0f", 100 * seconds / elapsed))
+			}
+
+			for (i = 1; i <= fault_count; i++)
+			{
+				printf "fault\t%s\n", faults[i]
+			}
+		}
+	' "$before" "$after"
+	;;
+esac

@@ -36,7 +36,7 @@ namespace pal
 /// \note N need not be a power of two; with compile-time N the compiler
 /// performs strength reduction on the modulo regardless. A power-of-two
 /// capacity produces a single AND instruction instead of a
-/// multiply-by-reciprocal sequence — negligible for typical use but worth
+/// multiply-by-reciprocal sequence -- negligible for typical use but worth
 /// preferring when the choice is free.
 ///
 template <typename T, size_t N>
@@ -98,7 +98,6 @@ private:
 
 	value_type *slots_[N]{};
 
-	// clang-format off
 	__pal_diagnostic(push)
 	__pal_diagnostic_suppress(__pal_aligned_struct_padding)
 
@@ -106,7 +105,6 @@ private:
 	alignas(cache_line_size) std::atomic<size_t> head_;
 
 	__pal_diagnostic(pop)
-	// clang-format on
 };
 
 } // namespace pal

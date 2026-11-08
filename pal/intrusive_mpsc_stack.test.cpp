@@ -69,8 +69,6 @@ TEST_CASE("intrusive_mpsc_stack")
 		std::array<foo, 10'000> data;
 		std::atomic<bool> producer_done{};
 
-		// clang-format off
-
 		auto consumer = std::thread([&]
 		{
 			while (!producer_done || !stack.empty())
@@ -95,8 +93,6 @@ TEST_CASE("intrusive_mpsc_stack")
 			std::this_thread::yield();
 		}
 		producer_done = true;
-
-		// clang-format on
 
 		consumer.join();
 

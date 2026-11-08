@@ -57,7 +57,7 @@ namespace pal::crypto
 	Impl(closed, "secure channel is closed") \
 	Impl(invalid_configuration, "invalid secure channel configuration")
 
-enum class secure_channel_errc : int
+enum class secure_channel_errc: int
 {
 #define __pal_secure_channel_errc_enum(Code, Message) Code,
 	__pal_secure_channel_errc(__pal_secure_channel_errc_enum)
@@ -140,8 +140,6 @@ struct connector_handshake_options
 
 // peer_token {{{1
 
-// clang-format off
-
 /// A type that yields DTLS anti-amplification token bytes through an ADL `to_peer_token(source, out)`,
 /// which writes the identity bytes into \a out and returns the count written (0 to decline). Lets callers
 /// pass a domain type (e.g. a network endpoint) wherever a `peer_token` is formed, without the crypto
@@ -152,13 +150,11 @@ concept peer_token_source = requires(const T &t, std::span<std::byte> out)
 	{ to_peer_token(t, out) } -> std::same_as<size_t>;
 };
 
-// clang-format on
-
 /// Opaque, owning, bounded per-peer identity that binds the DTLS anti-amplification cookie
 /// (HelloVerifyRequest) to a single peer. The crypto layer never interprets the bytes.
 ///
 /// The bytes MUST be a stable, unique-per-peer identifier that is byte-identical across handshake
-/// retries — e.g. a canonical serialization of the peer's address and port, never raw OS sockaddr
+/// retries -- e.g. a canonical serialization of the peer's address and port, never raw OS sockaddr
 /// memory (which carries non-deterministic padding and the IPv6 flow label). Distinct peers MUST map
 /// to distinct tokens; a collision lets a forged source replay another peer's cookie.
 ///
@@ -273,7 +269,7 @@ struct channel_result
 	bool want_output = false;
 
 	/// `decrypt()` observed a peer `close_notify`. Further reads from peer are not expected, and any
-	/// ciphertext following the alert will be ignored (RFC 8446 §6.1). A caller may therefore treat
+	/// ciphertext following the alert will be ignored (RFC 8446 section 6.1). A caller may therefore treat
 	/// `peer_closed` as terminal without risk of dropping data.
 	bool peer_closed = false;
 };
@@ -459,11 +455,16 @@ private:
 	result<handshake_result> step_impl (std::span<const std::byte> in, std::span<std::byte> out) noexcept;
 
 	friend result<handshake_channel> __secure_channel::make_channel (
-		const __secure_channel::context_ptr &, const acceptor_handshake_options &, const peer_token &
+		const __secure_channel::context_ptr &,
+		const acceptor_handshake_options &,
+		const peer_token &
 	) noexcept;
+
 	friend result<handshake_channel> __secure_channel::make_channel (
-		const __secure_channel::context_ptr &, const connector_handshake_options &
+		const __secure_channel::context_ptr &,
+		const connector_handshake_options &
 	) noexcept;
+
 	friend struct __secure_channel::attorney;
 	friend class connected_channel;
 };

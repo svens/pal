@@ -1,7 +1,9 @@
 #include <pal/crypto/tls_wire.hpp>
 #include <pal/crypto/secure_channel.hpp>
 #include <catch2/catch_test_macros.hpp>
+#include <algorithm>
 #include <array>
+#include <initializer_list>
 #include <vector>
 
 namespace
@@ -77,7 +79,7 @@ TEST_CASE("crypto/tls_wire")
 			CHECK(sniff_stream(std::span{hello}.first(5)) == wire_protocol::need_more);
 
 			// Corrupt one gated header field at a time; each demotes an otherwise-valid record to plain.
-			const auto corrupt = [&] (size_t i, uint8_t v)
+			const auto corrupt = [&](size_t i, uint8_t v)
 			{
 				auto bytes = hello;
 				bytes[i] = std::byte{v};
@@ -115,7 +117,7 @@ TEST_CASE("crypto/tls_wire")
 			CHECK(sniff_datagram(std::span{hello}.first(12)) == wire_protocol::plain);
 
 			// Corrupt one gated header field at a time; each demotes an otherwise-valid record to plain.
-			const auto corrupt = [&] (size_t i, uint8_t v)
+			const auto corrupt = [&](size_t i, uint8_t v)
 			{
 				auto bytes = hello;
 				bytes[i] = std::byte{v};
@@ -139,7 +141,7 @@ TEST_CASE("crypto/tls_wire")
 	SECTION("dtls_record_size")
 	{
 		// DTLS 1.2 record header is 13 bytes with a 16-bit length at offset 11.
-		const auto make_record = [] (uint16_t length, size_t total)
+		const auto make_record = [](uint16_t length, size_t total)
 		{
 			std::vector<std::byte> bytes(total, std::byte{0});
 			if (total > 12)
@@ -180,6 +182,57 @@ TEST_CASE("crypto/tls_wire")
 		{
 			// claims 113, only 17 present
 			const auto bytes = make_record(100, 17);
+			CHECK(dtls_record_size(bytes) == bytes.size());
+		}
+
+		SECTION("empty_buffer")
+		{
+			CHECK(dtls_record_size(std::span<const std::byte>{}) == 0);
+		}
+	}
+
+	SECTION("dtls_record_size: DTLS 1.3 unified header")
+	{
+		const auto make_record = [](std::initializer_list<unsigned char> header)
+		{
+			std::vector<std::byte> bytes(30, std::byte{0});
+			std::ranges::transform(header, bytes.begin(), [](unsigned char b) { return std::byte{b}; });
+			return bytes;
+		};
+
+		SECTION("seq16_first_of_many")
+		{
+			const auto bytes = make_record({0x2c, 0x00, 0x01, 0x00, 0x04});
+			CHECK(dtls_record_size(bytes) == 9);
+		}
+
+		SECTION("seq8_first_of_many")
+		{
+			const auto bytes = make_record({0x24, 0x01, 0x00, 0x04});
+			CHECK(dtls_record_size(bytes) == 8);
+		}
+
+		SECTION("short_header")
+		{
+			const std::array bytes{std::byte{0x2c}, std::byte{0x00}, std::byte{0x01}};
+			CHECK(dtls_record_size(bytes) == bytes.size());
+		}
+
+		SECTION("length_overruns")
+		{
+			const auto bytes = make_record({0x2c, 0x00, 0x01, 0x00, 0x64});
+			CHECK(dtls_record_size(bytes) == bytes.size());
+		}
+
+		SECTION("no_length_field")
+		{
+			const auto bytes = make_record({0x28, 0x00, 0x01});
+			CHECK(dtls_record_size(bytes) == bytes.size());
+		}
+
+		SECTION("connection_id")
+		{
+			const auto bytes = make_record({0x3c, 0x00, 0x01, 0x00, 0x04});
 			CHECK(dtls_record_size(bytes) == bytes.size());
 		}
 	}

@@ -1,0 +1,72 @@
+#!/bin/sh
+## IRQ affinity -- one receive queue's interrupt per CPU
+## see docs/tune_linux.md, Interrupt affinity
+
+. "$(dirname "$0")/_common.sh"
+require_verb show apply
+
+nic=$(get_nic)
+irq_list=$(get_irq)
+
+report "nic" "$nic"
+report "irqbalance" "$(pidof irqbalance >/dev/null 2>&1 && echo running || echo stopped)"
+
+if [ -z "$irq_list" ]; then
+	echo "$nic has no interrupts of its own" >&2
+	echo "a synthetic device without a VF is the usual reason: it has no hardware" >&2
+	echo "queues to raise them, and there is nothing here to spread" >&2
+	exit 1
+fi
+
+# The per-CPU counts, not just the mask: a mask says where an interrupt may be
+# delivered, these say where it was, which is what "several on one CPU while
+# others idle" actually looks like.
+for irq in $irq_list; do
+	counts=$(awk -v irq="${irq}:" '$1 == irq {
+		line = ""
+		for (i = 2; i <= NF && $i ~ /^[0-9]+$/; i++)
+		{
+			line = line sprintf("cpu%d=%s ", i - 2, $i)
+		}
+		print line
+	}' /proc/interrupts)
+	if irq_is_queue "$irq"; then
+		role=""
+	else
+		role=" -- not a queue, left alone by apply"
+	fi
+	report "irq $irq" "mask $(cat "/proc/irq/${irq}/smp_affinity"), ${counts}$(irq_name "$irq")${role}"
+done
+
+if [ "$verb" = apply ]; then
+	require_root
+	service irqbalance stop 2>/dev/null || systemctl stop irqbalance 2>/dev/null || true
+
+	# Only the interrupts that carry packets get a CPU. Counting an async or
+	# command interrupt into the round-robin shifts every queue one CPU along, so
+	# on a four-CPU machine the last queue lands back on the first one's CPU.
+	assignments=""
+	cpu=0
+	cpus=$(nproc --all)
+	for irq in $irq_list; do
+		if ! irq_is_queue "$irq"; then
+			continue
+		fi
+		assignments="${assignments} ${irq}=$(cpu_mask $cpu)"
+		cpu=$(((cpu + 1) % cpus))
+	done
+
+	for pair in $assignments; do
+		irq=${pair%%=*}
+		mask=${pair#*=}
+		echo "$mask" > "/proc/irq/${irq}/smp_affinity" || \
+			echo "warning: irq $irq rejected mask $mask (managed by the driver?)" >&2
+	done
+
+	echo
+	for pair in $assignments; do
+		irq=${pair%%=*}
+		verify "irq $irq" "${pair#*=}" "$(mask_value "/proc/irq/${irq}/smp_affinity")"
+	done
+	verify_exit
+fi

@@ -18,7 +18,7 @@ namespace pal::crypto
 // transport_type {{{1
 
 /// Selects stream (TLS) or datagram (DTLS) protocol for factory and session templates.
-enum class transport_type : int
+enum class transport_type: int
 {
 	stream,
 	datagram,
@@ -30,7 +30,7 @@ enum class transport_type : int
 ///
 /// Default `none` requires strict trust-chain verification. Bits enable
 /// specific deviations; combine with bitwise operators.
-enum class verify_relax : unsigned
+enum class verify_relax: unsigned
 {
 	none = 0,
 
@@ -49,7 +49,7 @@ constexpr verify_relax operator& (verify_relax a, verify_relax b) noexcept
 	return static_cast<verify_relax>(std::to_underlying(a) & std::to_underlying(b));
 }
 
-constexpr verify_relax operator~(verify_relax a) noexcept
+constexpr verify_relax operator~ (verify_relax a) noexcept
 {
 	return static_cast<verify_relax>(~std::to_underlying(a));
 }
@@ -169,18 +169,31 @@ constexpr wire_protocol sniff_datagram (const_buffer auto const &input) noexcept
 
 /// Return the byte length of the first DTLS record in \a bytes.
 ///
-/// If \a bytes is shorter than the 13-byte DTLS record header, returns \c bytes.size() (partial header).
-/// If the claimed payload length would exceed \a bytes, also returns \c bytes.size() (truncated record).
-///
-/// \note Assumes DTLS 1.0/1.2 fixed-size record headers.
-/// \todo DTLS 1.3 (RFC 9147) uses a variable-length unified header and is not handled here.
-///       Revisit when a 1.3-capable backend lands; the decrypt_multi_record test is the trip-wire.
+/// Handles both the fixed 13-byte DTLSPlaintext header (DTLS 1.0/1.2, and unencrypted DTLS 1.3 records)
+/// and the DTLS 1.3 unified header (RFC 9147). Returns \c bytes.size() when the record's extent cannot be
+/// determined from \a bytes: a partial header, a claimed length exceeding \a bytes (truncated record), or a
+/// unified header without a length field or with a connection ID (the record then spans the datagram).
 constexpr size_t dtls_record_size (const_buffer auto const &input) noexcept
 {
-	constexpr size_t header_size = 13;
-	constexpr size_t length_offset = 11;
-
 	const auto bytes = std::as_bytes(std::span{input});
+	if (bytes.empty())
+	{
+		return 0;
+	}
+
+	size_t header_size = 13;
+	size_t length_offset = 11;
+
+	if (const auto first = std::to_integer<uint8_t>(bytes[0]); (first & 0xe0U) == 0x20U)
+	{
+		constexpr uint8_t cid_bit = 0x10U, seq16_bit = 0x08U, length_bit = 0x04U;
+		if ((first & cid_bit) != 0 || (first & length_bit) == 0)
+		{
+			return bytes.size();
+		}
+		length_offset = 1 + ((first & seq16_bit) != 0 ? 2 : 1);
+		header_size = length_offset + 2;
+	}
 
 	if (bytes.size() < header_size)
 	{
@@ -189,7 +202,8 @@ constexpr size_t dtls_record_size (const_buffer auto const &input) noexcept
 
 	// 16-bit big-endian record length
 	const auto length = (std::to_integer<size_t>(bytes[length_offset]) << 8U)
-		| (std::to_integer<size_t>(bytes[length_offset + 1]));
+		| (std::to_integer<size_t>(bytes[length_offset + 1]))
+	;
 
 	const auto claimed = length + header_size;
 	return claimed > bytes.size() ? bytes.size() : claimed;

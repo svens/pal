@@ -1,0 +1,86 @@
+#!/bin/sh
+## NIC interrupt moderation, and the offload flags never written
+## see docs/tune_linux.md, Interrupt coalescing
+
+. "$(dirname "$0")/_common.sh"
+require_verb show apply
+
+nic=$(get_nic)
+report "nic" "$nic"
+
+# Fixed rather than adaptive, so that two rungs at the same load are comparable.
+usecs=512
+frames=512
+
+# ethtool separates a field name from its value with a tab, and reports a field
+# the driver does not have as 'n/a'. Both accessors return empty for such a
+# field, so an unsupported knob is never asked for and never verified against.
+coalesce_field()
+{
+	ethtool -c "$nic" 2>/dev/null | sed -n "s/^$1:[[:space:]]*//p" |
+		awk 'NR == 1 && $1 != "n/a" { print $1 }'
+}
+
+adaptive_field()
+{
+	ethtool -c "$nic" 2>/dev/null | awk -v side="$1" '
+		$1 == "Adaptive" {
+			value = (side == "rx" ? $3 : $5)
+			if (value != "n/a") print value
+			exit
+		}
+	'
+}
+
+add_arg()
+{
+	if [ -n "$2" ]; then
+		args="${args} $1 $3"
+	fi
+}
+
+echo "-- coalescing"
+ethtool --show-coalesce "$nic" 2>/dev/null || echo "  <unsupported>"
+
+if [ -z "$(coalesce_field 'rx-usecs')" ]; then
+	report "verdict" "unavailable: this driver reports no coalescing"
+else
+	report "target" "adaptive off, rx/tx $usecs usecs, $frames frames"
+fi
+
+echo
+echo "-- offloads (reported, never written: see the documented reason)"
+for flag in generic-receive-offload large-receive-offload rx-gro-hw rx-gro-list \
+	rx-udp-gro-forwarding tx-udp-segmentation
+do
+	state=$(ethtool -k "$nic" 2>/dev/null | sed -n "s/^${flag}: //p")
+	report "$flag" "${state:-<not reported by this driver>}"
+done
+report "coalesced for this relay" "no: nothing arrives coalesced until a socket sets UDP_GRO"
+
+if [ "$verb" = apply ]; then
+	require_root
+	echo
+	args=""
+	add_arg adaptive-rx "$(adaptive_field rx)" off
+	add_arg adaptive-tx "$(adaptive_field tx)" off
+	add_arg rx-usecs "$(coalesce_field 'rx-usecs')" "$usecs"
+	add_arg rx-frames "$(coalesce_field 'rx-frames')" "$frames"
+	add_arg tx-usecs "$(coalesce_field 'tx-usecs')" "$usecs"
+	add_arg tx-frames "$(coalesce_field 'tx-frames')" "$frames"
+
+	if [ -z "$args" ]; then
+		verify "coalescing" "" ""
+	else
+		ethtool --coalesce "$nic" $args ||
+			echo "warning: coalescing rejected on $nic" >&2
+
+		verify "adaptive-rx" off "$(adaptive_field rx)"
+		verify "adaptive-tx" off "$(adaptive_field tx)"
+		verify "rx-usecs" "$usecs" "$(coalesce_field 'rx-usecs')"
+		verify "rx-frames" "$frames" "$(coalesce_field 'rx-frames')"
+		verify "tx-usecs" "$usecs" "$(coalesce_field 'tx-usecs')"
+		verify "tx-frames" "$frames" "$(coalesce_field 'tx-frames')"
+	fi
+	verify_exit
+fi

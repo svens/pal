@@ -110,7 +110,7 @@ TEST_CASE("net/ip/network_v4")
 
 		SECTION("from_chars")
 		{
-			auto check_fail = [] (std::string_view s)
+			auto check_fail = [](std::string_view s)
 			{
 				network_v4 n;
 				CHECK(n.from_chars(s.data(), s.data() + s.size()).ec == std::errc::invalid_argument);
@@ -134,7 +134,6 @@ TEST_CASE("net/ip/network_v4")
 		A outside;
 	};
 
-	// clang-format off
 	auto expected = GENERATE(values<case_t>({
 		{
 			.text = "0.0.0.0/0",
@@ -192,7 +191,6 @@ TEST_CASE("net/ip/network_v4")
 			.outside = B{192, 168, 1, 0}
 		},
 	}));
-	// clang-format on
 
 	CAPTURE(expected.text);
 

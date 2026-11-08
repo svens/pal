@@ -18,8 +18,6 @@
 namespace pal_test
 {
 
-// clang-format off
-
 //
 // Protocol fixture types
 //
@@ -99,7 +97,7 @@ struct v6_only_of: Base
 {
 	static auto make_socket () noexcept
 	{
-		return Base::make_socket().and_then([] (auto s) -> decltype(Base::make_socket())
+		return Base::make_socket().and_then([](auto s) -> decltype(Base::make_socket())
 		{
 			return s.set_option(pal::net::ip::v6_only{true}).transform([&]
 			{
@@ -117,7 +115,7 @@ struct tcp_v6_only: v6_only_of<tcp_v6>
 {
 	static auto make_acceptor () noexcept
 	{
-		return tcp_v6::make_acceptor().and_then([] (auto a) -> decltype(tcp_v6::make_acceptor())
+		return tcp_v6::make_acceptor().and_then([](auto a) -> decltype(tcp_v6::make_acceptor())
 		{
 			return a.set_option(pal::net::ip::v6_only{true}).transform([&]
 			{
@@ -237,7 +235,7 @@ bool has_expected_family (const pal::net::ip::address &addr) noexcept
 }
 
 //
-// Port allocation — random base to avoid TIME_WAIT collisions across runs
+// Port allocation -- random base to avoid TIME_WAIT collisions across runs
 //
 
 inline pal::net::ip::port_type base_port ()
@@ -278,7 +276,5 @@ void close_native_handle (const Socket &socket) noexcept
 {
 	pal::net::native_socket::close(socket.native_socket().handle());
 }
-
-// clang-format on
 
 } // namespace pal_test

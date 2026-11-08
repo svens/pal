@@ -23,7 +23,7 @@ struct pkey_ctx_deleter
 };
 using pkey_ctx_ptr = std::unique_ptr<::EVP_PKEY_CTX, pkey_ctx_deleter>;
 
-enum class operation_type : uint8_t
+enum class operation_type: uint8_t
 {
 	sign,
 	verify
@@ -65,7 +65,8 @@ struct context
 		if (scheme_id == scheme::pss::id)
 		{
 			return ::EVP_PKEY_CTX_set_rsa_padding(impl.get(), RSA_PKCS1_PSS_PADDING) == 1
-				&& ::EVP_PKEY_CTX_set_rsa_pss_saltlen(impl.get(), RSA_PSS_SALTLEN_DIGEST) == 1;
+				&& ::EVP_PKEY_CTX_set_rsa_pss_saltlen(impl.get(), RSA_PSS_SALTLEN_DIGEST) == 1
+			;
 		}
 		return false;
 	}

@@ -129,7 +129,7 @@ protected:
 
 	static auto resize (auto &obj, auto... args) noexcept
 	{
-		return [... args = args, &obj] () noexcept
+		return [... args = args, &obj]() noexcept
 		{
 			return obj.resize(args...);
 		};

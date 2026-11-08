@@ -2,157 +2,179 @@
 
 #if __pal_os_linux
 
-#include <pal/async/event_loop.hpp>
+#include <pal/async/__event_loop.hpp>
 #include <pal/error.hpp>
 
-#include <atomic>
 #include <cerrno>
-#include <chrono>
-#include <cstdint>
+#include <cstddef>
 #include <new>
+#include <span>
 #include <sys/epoll.h>
-#include <sys/eventfd.h>
-#include <unistd.h>
+#include <sys/socket.h>
+#include <utility>
 
-namespace pal::async
+namespace pal::async::__event_loop
 {
 
-namespace __event_loop
+std::error_code impl_type::poll (clock::duration timeout) noexcept
 {
+	::timespec ts{};
+	const auto *tsp = to_timespec(timeout, ts);
+
+	int r = 0;
+	do
+	{
+		r = ::epoll_pwait2(
+			epoll,
+			events.data(),
+			static_cast<int>(config_.poll_batch),
+			tsp,
+			nullptr
+		);
+	} while (r < 0 && errno == EINTR);
+
+	if (r < 0)
+	{
+		return pal::this_thread::last_system_error();
+	}
+
+	for (const auto &event: std::span{events}.first(static_cast<size_t>(r)))
+	{
+		if (event.data.ptr == nullptr)
+		{
+			wake.drain(*this);
+			continue;
+		}
+		auto &state = *static_cast<socket_state *>(event.data.ptr);
+		if ((event.events & (EPOLLIN | EPOLLERR | EPOLLHUP)) != 0)
+		{
+			on_socket_event(state, state.receive);
+		}
+		if ((event.events & (EPOLLOUT | EPOLLERR | EPOLLHUP)) != 0)
+		{
+			on_socket_event(state, state.send);
+		}
+	}
+	return {};
+}
+
+std::error_code impl_type::register_socket (socket_state &s) const noexcept
+{
+	::epoll_event event{.events = EPOLLIN | EPOLLOUT | EPOLLET, .data = {.ptr = &s}};
+	if (::epoll_ctl(epoll, EPOLL_CTL_ADD, static_cast<int>(s.handle), &event) == -1)
+	{
+		return pal::this_thread::last_system_error();
+	}
+	return {};
+}
 
 namespace
 {
 
-struct epoll_loop: impl_type
+unsigned make_mmsg (impl_type &loop, socket_state::direction &d) noexcept
 {
-	int epoll = -1;
-	int wake = -1;
-	std::atomic<bool> signaled = false;
-
-	~epoll_loop () noexcept
+	unsigned count = 0;
+	for (auto &t: d.pending)
 	{
-		::close(wake);
-		::close(epoll);
+		if (count == loop.config_.drain_batch)
+		{
+			break;
+		}
+		auto &op = io(t);
+		loop.buffers[count] = {.iov_base = t.span().data(), .iov_len = t.span().size()};
+		loop.messages[count].msg_hdr.msg_name = (op.endpoint_size != 0) ? op.endpoint.data() : nullptr;
+		loop.messages[count].msg_hdr.msg_namelen = op.endpoint_size;
+		++count;
 	}
-};
-
-constexpr ::timespec to_timespec (impl_type::clock::duration d) noexcept
-{
-	const auto wait = (d < impl_type::clock::duration::zero()) ? impl_type::clock::duration::zero() : d;
-	const auto secs = std::chrono::duration_cast<std::chrono::seconds>(wait);
-	const auto nsecs = std::chrono::duration_cast<std::chrono::nanoseconds>(wait - secs);
-	return {
-		.tv_sec = static_cast<::time_t>(secs.count()),
-		.tv_nsec = static_cast<long>(nsecs.count()),
-	};
-}
-
-void drain_wake_channel (epoll_loop &self) noexcept
-{
-	uint64_t counter{};
-	std::ignore = ::read(self.wake, &counter, sizeof(counter));
-	self.signaled.store(false, std::memory_order_release);
-	self.stats_.wakeups++;
-}
-
-size_t epoll_poll (impl_type &base, impl_type::clock::duration timeout) noexcept
-{
-	auto &self = static_cast<epoll_loop &>(base);
-
-	::timespec ts{};
-	const ::timespec *tsp = nullptr;
-	if (timeout != impl_type::clock::duration::max())
-	{
-		ts = to_timespec(timeout);
-		tsp = &ts;
-	}
-
-	::epoll_event event{};
-	int r = 0;
-	do
-	{
-		r = ::epoll_pwait2(self.epoll, &event, 1, tsp, nullptr);
-	} while (r < 0 && errno == EINTR);
-
-	if (r > 0)
-	{
-		drain_wake_channel(self);
-	}
-
-	return 0;
-}
-
-impl_type::clock::time_point epoll_now (impl_type &) noexcept
-{
-	return impl_type::clock::now();
-}
-
-void epoll_wake (impl_type &base) noexcept
-{
-	auto &self = static_cast<epoll_loop &>(base);
-	if (!self.signaled.exchange(true, std::memory_order_acq_rel))
-	{
-		const uint64_t one = 1;
-		std::ignore = ::write(self.wake, &one, sizeof(one));
-	}
-}
-
-void epoll_destroy (impl_type *base) noexcept
-{
-	delete static_cast<epoll_loop *>(base);
+	return count;
 }
 
 } // namespace
 
-} // namespace __event_loop
-
-result<event_loop> make_loop (const event_loop_config &config) noexcept
+void impl_type::drain (socket_state &s, socket_state::direction &d) noexcept
 {
-	using namespace __event_loop;
+	const bool send = &d == &s.send;
+	const auto count = make_mmsg(*this, d);
 
-	const int epoll = ::epoll_create1(EPOLL_CLOEXEC);
-	if (epoll == -1)
+	int r = 0;
+	do
+	{
+		r = send
+			? ::sendmmsg(static_cast<int>(s.handle), messages.data(), count, 0)
+			: ::recvmmsg(static_cast<int>(s.handle), messages.data(), count, 0, nullptr);
+	} while (r < 0 && errno == EINTR);
+
+	if (r < 0)
+	{
+		if (errno == EAGAIN || errno == EWOULDBLOCK)
+		{
+			d.ready = false;
+		}
+		else
+		{
+			// batch error attribution: -1 belongs to the head-of-FIFO op
+			task *t = d.pending.pop();
+			io(*t).native_error = errno;
+			ready_.push(*t);
+		}
+		return;
+	}
+
+	for (int i = 0; i < r; ++i)
+	{
+		task *t = d.pending.pop();
+		auto &op = io(*t);
+		op.bytes = messages[i].msg_len;
+		if (!send)
+		{
+			op.endpoint_size = messages[i].msg_hdr.msg_namelen;
+			op.truncated = (messages[i].msg_hdr.msg_flags & MSG_TRUNC) != 0;
+		}
+		ready_.push(*t);
+	}
+	// Partial return: the flag stays set. A deferred mid-batch outcome (EAGAIN or a per-message error --
+	// mmsg reports neither on the partial call) surfaces on the revisit's syscall.
+}
+
+result<impl_ptr> make_backend (const event_loop_config &config) noexcept
+{
+	unique_fd epoll{::epoll_create1(EPOLL_CLOEXEC)};
+	if (!epoll)
 	{
 		return unexpected{pal::this_thread::last_system_error()};
 	}
 
-	const int wake = ::eventfd(0, EFD_NONBLOCK | EFD_CLOEXEC);
-	if (wake == -1)
+	auto wake = wake_channel::make();
+	if (!wake)
 	{
-		const auto error = pal::this_thread::last_system_error();
-		::close(epoll);
-		return unexpected{error};
+		return unexpected{wake.error()};
 	}
 
 	::epoll_event event{.events = EPOLLIN | EPOLLET, .data = {}};
-	if (::epoll_ctl(epoll, EPOLL_CTL_ADD, wake, &event) == -1)
+	if (::epoll_ctl(epoll, EPOLL_CTL_ADD, wake->read, &event) == -1)
 	{
-		const auto error = pal::this_thread::last_system_error();
-		::close(wake);
-		::close(epoll);
-		return unexpected{error};
+		return unexpected{pal::this_thread::last_system_error()};
 	}
 
-	auto *self = new (std::nothrow) epoll_loop{};
+	impl_ptr self{new (std::nothrow) impl_type{}};
 	if (self == nullptr)
 	{
-		::close(wake);
-		::close(epoll);
 		return make_unexpected(std::errc::not_enough_memory);
 	}
 
-	self->epoll = epoll;
-	self->wake = wake;
-	self->poll_fn = &epoll_poll;
-	self->wake_fn = &epoll_wake;
-	self->now_fn = &epoll_now;
-	self->destroy_fn = &epoll_destroy;
-	self->config_ = config;
-	self->now_ = epoll_now(*self);
+	for (size_t i = 0; i < config.drain_batch; ++i)
+	{
+		self->messages[i].msg_hdr.msg_iov = &self->buffers[i];
+		self->messages[i].msg_hdr.msg_iovlen = 1;
+	}
 
-	return event_loop{impl_ptr{self}};
+	self->epoll = std::move(epoll);
+	self->wake = std::move(*wake);
+	self->config_ = config;
+
+	return self;
 }
 
-} // namespace pal::async
+} // namespace pal::async::__event_loop
 
 #endif // __pal_os_linux

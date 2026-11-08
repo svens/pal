@@ -30,7 +30,7 @@ public:
 	/// The PKCS#12 must contain a leaf certificate with a private key; the leaf
 	/// is placed first in the store and is the only certificate for which
 	/// private_key() succeeds. Returns std::errc::invalid_argument if the blob
-	/// is malformed or contains no identity (certs-only PKCS#12 is rejected —
+	/// is malformed or contains no identity (certs-only PKCS#12 is rejected --
 	/// use from_system() to load trust anchors).
 	static result<certificate_store> from_pkcs12 (const_buffer auto const &pkcs12) noexcept
 	{
@@ -164,7 +164,7 @@ public:
 		return entry_;
 	}
 
-	[[nodiscard]] pointer operator->() const noexcept
+	[[nodiscard]] pointer operator-> () const noexcept
 	{
 		return &entry_;
 	}
