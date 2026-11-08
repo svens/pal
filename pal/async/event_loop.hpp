@@ -21,7 +21,15 @@ class thread_pool;
 template <typename T>
 class handle;
 
-/// Backend tuning knobs. Nothing here selects which resource runs next.
+namespace __event_loop
+{
+
+using clock = std::chrono::steady_clock;
+
+} // namespace __event_loop
+
+/// Loop construction parameters: backend tuning knobs and the time source. Nothing here selects which
+/// resource runs next.
 struct event_loop_config
 {
 	/// Maximum readiness events harvested per backend poll.
@@ -34,6 +42,16 @@ struct event_loop_config
 	/// Must be in [1, \ref max_drain_batch].
 	static constexpr size_t max_drain_batch = 256;
 	size_t drain_batch = 64;
+
+	/// Time source behind \ref event_loop::now and \ref event_loop::post_after deadlines, called with
+	/// \ref now_context at \ref make_loop and on each loop iteration. Null selects
+	/// \ref event_loop::clock::now. It must not go backwards, or timers expire late. Poll timeouts are
+	/// computed from it but waited in real time, so a virtual source frozen between advances is driven with
+	/// \ref event_loop::run_once.
+	__event_loop::clock::time_point (*now)(void *context) noexcept = nullptr;
+
+	/// Argument passed to \ref now
+	void *now_context = nullptr;
 };
 
 /// Per-loop observability counters. Only the loop thread mutates them.
@@ -54,8 +72,6 @@ struct event_loop_stats
 
 namespace __event_loop
 {
-
-using clock = std::chrono::steady_clock;
 
 struct impl_type;
 

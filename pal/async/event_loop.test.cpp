@@ -492,4 +492,78 @@ TEST_CASE("async/event_loop")
 	}
 }
 
+struct virtual_clock
+{
+	event_loop::clock::time_point value{1h};
+
+	static event_loop::clock::time_point read (void *self) noexcept
+	{
+		return static_cast<virtual_clock *>(self)->value;
+	}
+};
+
+TEST_CASE("async/event_loop: virtual time")
+{
+	virtual_clock source{};
+	auto loop = make_loop({.now = &virtual_clock::read, .now_context = &source});
+	REQUIRE(loop);
+
+	SECTION("now: seeded from the source at make_loop")
+	{
+		CHECK(loop->now() == source.value);
+	}
+
+	SECTION("now: follows the source on each iteration")
+	{
+		source.value += 5min;
+		REQUIRE(loop->run_once());
+		CHECK(loop->now() == source.value);
+	}
+
+	SECTION("post_after: fires as the source passes each deadline")
+	{
+		task a, b, c;
+		std::array<int, 4> order{};
+		size_t count = 0;
+
+		loop->post_after(a.borrow(), 30min, [&](task_ptr &&) noexcept { order[count++] = 1; });
+		loop->post_after(b.borrow(), 10min, [&](task_ptr &&) noexcept { order[count++] = 2; });
+		loop->post_after(c.borrow(), 20min, [&](task_ptr &&) noexcept { order[count++] = 3; });
+
+		REQUIRE(loop->run_once());
+		CHECK(count == 0);
+
+		source.value += 15min;
+		REQUIRE(loop->run_once());
+		REQUIRE(count == 1);
+		CHECK(order[0] == 2);
+
+		source.value += 10min;
+		REQUIRE(loop->run_once());
+		REQUIRE(count == 2);
+		CHECK(order[1] == 3);
+
+		source.value += 1h;
+		REQUIRE(loop->run_once());
+		REQUIRE(count == 3);
+		CHECK(order[2] == 1);
+	}
+
+	SECTION("post_after: frozen source fires nothing as real time passes")
+	{
+		task t;
+		int fired = 0;
+
+		loop->post_after(t.borrow(), 1ms, [&fired](task_ptr &&) noexcept { ++fired; });
+		std::this_thread::sleep_for(5ms);
+
+		REQUIRE(loop->run_once());
+		CHECK(fired == 0);
+
+		source.value += 1ms;
+		REQUIRE(loop->run_once());
+		CHECK(fired == 1);
+	}
+}
+
 } // namespace

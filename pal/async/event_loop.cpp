@@ -34,6 +34,16 @@ constexpr size_t max_rounds_per_poll = 4;
 	;
 }
 
+clock::time_point system_now (void *) noexcept
+{
+	return clock::now();
+}
+
+clock::time_point read_now (const impl_type &loop) noexcept
+{
+	return loop.config_.now(loop.config_.now_context);
+}
+
 // Armed timer's op state: https://en.wikipedia.org/wiki/Pairing_heap node. No decrease-key/removal: there
 // is no cancellation, deadline moves use the lazy re-arm idiom.
 struct timer_state
@@ -155,14 +165,14 @@ size_t iterate (impl_type &loop, clock::duration timeout) noexcept
 	}
 	else if (loop.timer_root_ != nullptr)
 	{
-		loop.now_ = clock::now();
+		loop.now_ = read_now(loop);
 		const auto &deadline = timer(*loop.timer_root_).deadline;
 		timeout = (std::min)(timeout, deadline > loop.now_ ? deadline - loop.now_ : clock::duration::zero());
 	}
 
 	loop.poll(timeout);
 
-	loop.now_ = clock::now();
+	loop.now_ = read_now(loop);
 
 	expire_timers(loop);
 	auto n = drain_posted(loop);
@@ -307,8 +317,15 @@ result<event_loop> make_loop (const event_loop_config &config) noexcept
 		return make_unexpected(std::errc::invalid_argument);
 	}
 
-	return make_backend(config).transform([](impl_ptr impl) noexcept
+	auto effective = config;
+	if (effective.now == nullptr)
 	{
+		effective.now = &system_now;
+	}
+
+	return make_backend(effective).transform([](impl_ptr impl) noexcept
+	{
+		impl->now_ = read_now(*impl);
 		return event_loop{std::move(impl)};
 	});
 }

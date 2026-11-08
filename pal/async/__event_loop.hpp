@@ -183,7 +183,7 @@ struct wake_channel
 
 struct impl_type
 {
-	clock::time_point now_ = clock::now();
+	clock::time_point now_{};
 	const std::thread::id loop_thread_ = std::this_thread::get_id();
 	task *timer_root_ = nullptr;
 	std::atomic<size_t> posts_in_flight_ = 0;
