@@ -83,8 +83,8 @@ void impl_type::drain (socket_state &s, socket_state::direction &d) noexcept
 
 		::iovec buffer{.iov_base = t.span().data(), .iov_len = t.span().size()};
 		::msghdr message{};
-		message.msg_name = op.endpoint.data();
-		message.msg_namelen = send ? op.endpoint_size : io_state::endpoint_capacity;
+		message.msg_name = (op.endpoint_size != 0) ? op.endpoint.data() : nullptr;
+		message.msg_namelen = op.endpoint_size;
 		message.msg_iov = &buffer;
 		message.msg_iovlen = 1;
 

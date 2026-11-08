@@ -164,6 +164,9 @@ void arm_socket_op (impl_type &loop, task &t, socket_state &state, socket_state:
 	n.send = send;
 	n.self = &t;
 
+	auto *endpoint = (op.endpoint_size != 0) ? reinterpret_cast<::sockaddr *>(op.endpoint.data()) : nullptr;
+	n.endpoint_size = static_cast<::INT>(op.endpoint_size);
+
 	int r = 0;
 	if (send)
 	{
@@ -173,23 +176,22 @@ void arm_socket_op (impl_type &loop, task &t, socket_state &state, socket_state:
 			1,
 			&n.bytes,
 			0,
-			reinterpret_cast<const ::sockaddr *>(op.endpoint.data()),
-			static_cast<::INT>(op.endpoint_size),
+			endpoint,
+			n.endpoint_size,
 			&n,
 			nullptr
 		);
 	}
 	else
 	{
-		n.endpoint_size = static_cast<::INT>(io_state::endpoint_capacity);
 		r = ::WSARecvFrom(
 			to_socket(state),
 			&n.buffer,
 			1,
 			&n.bytes,
 			&n.flags,
-			reinterpret_cast<::sockaddr *>(op.endpoint.data()),
-			&n.endpoint_size,
+			endpoint,
+			(endpoint != nullptr) ? &n.endpoint_size : nullptr,
 			&n,
 			nullptr
 		);

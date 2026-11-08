@@ -70,7 +70,7 @@ std::error_code impl_type::register_socket (socket_state &s) const noexcept
 namespace
 {
 
-unsigned make_mmsg (impl_type &loop, socket_state::direction &d, bool send) noexcept
+unsigned make_mmsg (impl_type &loop, socket_state::direction &d) noexcept
 {
 	unsigned count = 0;
 	for (auto &t: d.pending)
@@ -79,9 +79,10 @@ unsigned make_mmsg (impl_type &loop, socket_state::direction &d, bool send) noex
 		{
 			break;
 		}
+		auto &op = io(t);
 		loop.buffers[count] = {.iov_base = t.span().data(), .iov_len = t.span().size()};
-		loop.messages[count].msg_hdr.msg_name = io(t).endpoint.data();
-		loop.messages[count].msg_hdr.msg_namelen = send ? io(t).endpoint_size : io_state::endpoint_capacity;
+		loop.messages[count].msg_hdr.msg_name = (op.endpoint_size != 0) ? op.endpoint.data() : nullptr;
+		loop.messages[count].msg_hdr.msg_namelen = op.endpoint_size;
 		++count;
 	}
 	return count;
@@ -92,7 +93,7 @@ unsigned make_mmsg (impl_type &loop, socket_state::direction &d, bool send) noex
 void impl_type::drain (socket_state &s, socket_state::direction &d) noexcept
 {
 	const bool send = &d == &s.send;
-	const auto count = make_mmsg(*this, d, send);
+	const auto count = make_mmsg(*this, d);
 
 	int r = 0;
 	do

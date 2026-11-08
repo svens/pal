@@ -28,6 +28,8 @@ using sync_socket = pal::net::basic_datagram_socket<udp>;
 using async_socket = pal::async::handle<sync_socket>;
 using receive_result = pal::result<async_socket::receive_from_result>;
 using send_result = pal::result<async_socket::send_to_result>;
+using connected_receive_result = pal::result<async_socket::receive_result>;
+using connected_send_result = pal::result<async_socket::send_result>;
 
 using pal::net::ip::port_type;
 
@@ -42,6 +44,15 @@ pal::result<async_socket> make_async_socket (event_loop &loop)
 {
 	auto socket = make_sync_socket<Fixture>();
 	REQUIRE(socket);
+	return loop.make_handle(std::move(*socket));
+}
+
+template <typename Fixture>
+pal::result<async_socket> make_connected_async_socket (event_loop &loop, const endpoint &peer)
+{
+	auto socket = make_sync_socket<Fixture>();
+	REQUIRE(socket);
+	REQUIRE(socket->connect(peer));
 	return loop.make_handle(std::move(*socket));
 }
 
@@ -514,6 +525,124 @@ TEMPLATE_TEST_CASE("async/datagram_socket", "", udp_v4, udp_v6)
 		run_until(*loop, [&] { return received == 1 && replied == 1; });
 
 		CHECK(expect_datagram(*peer, payload) == *socket_endpoint);
+	}
+
+	SECTION("connected: send and receive")
+	{
+		auto connected = make_connected_async_socket<TestType>(*loop, *peer_endpoint);
+		REQUIRE(connected);
+		auto connected_endpoint = connected->local_endpoint();
+		REQUIRE(connected_endpoint);
+
+		std::array<std::byte, 64> send_storage{};
+		task send_task{send_storage};
+		std::memcpy(send_storage.data(), payload.data(), payload.size());
+		send_task.span(as_span(send_storage).first(payload.size()));
+
+		std::array<std::byte, 64> receive_storage{};
+		task receive_task{receive_storage};
+
+		int sent = 0, received = 0;
+		bool truncated = true;
+
+		connected->start_send(send_task.borrow(), [&](task_ptr &&, connected_send_result &&r) noexcept
+		{
+			REQUIRE(r);
+			++sent;
+		});
+		connected->start_receive(receive_task.borrow(), [&](task_ptr &&, connected_receive_result &&r) noexcept
+		{
+			REQUIRE(r);
+			truncated = r->truncated;
+			++received;
+		});
+
+		run_until(*loop, [&] { return sent == 1; });
+		CHECK(expect_datagram(*peer, payload) == *connected_endpoint);
+
+		REQUIRE(peer->send_to(*connected_endpoint, payload));
+		run_until(*loop, [&] { return received == 1; });
+
+		CHECK_FALSE(truncated);
+		CHECK(std::ranges::equal(receive_task.span(), std::as_bytes(std::span{payload})));
+	}
+
+	SECTION("connected: receive truncation")
+	{
+		auto connected = make_connected_async_socket<TestType>(*loop, *peer_endpoint);
+		REQUIRE(connected);
+		auto connected_endpoint = connected->local_endpoint();
+		REQUIRE(connected_endpoint);
+
+		std::array<std::byte, 64> receive_storage{};
+		task receive_task{receive_storage};
+		receive_task.span(as_span(receive_storage).first(4));
+
+		int received = 0;
+		bool truncated = false;
+
+		connected->start_receive(receive_task.borrow(), [&](task_ptr &&, connected_receive_result &&r) noexcept
+		{
+			REQUIRE(r);
+			truncated = r->truncated;
+			++received;
+		});
+
+		REQUIRE(peer->send_to(*connected_endpoint, std::string_view{"12345678"}));
+		run_until(*loop, [&] { return received == 1; });
+
+		CHECK(truncated);
+		CHECK(std::ranges::equal(receive_task.span(), std::as_bytes(std::span{std::string_view{"1234"}})));
+	}
+
+	SECTION("connected: receive mixed with receive_from in one drain")
+	{
+		std::array<std::byte, 64> from_storage{}, plain_storage{};
+		task from_task{from_storage}, plain_task{plain_storage};
+
+		int received = 0;
+		endpoint source{};
+
+		socket->start_receive_from(from_task.borrow(), [&](task_ptr &&, receive_result &&r) noexcept
+		{
+			REQUIRE(r);
+			source = r->endpoint;
+			++received;
+		});
+		socket->start_receive(plain_task.borrow(), [&](task_ptr &&, connected_receive_result &&r) noexcept
+		{
+			REQUIRE(r);
+			CHECK_FALSE(r->truncated);
+			++received;
+		});
+
+		REQUIRE(peer->send_to(*socket_endpoint, payload));
+		REQUIRE(peer->send_to(*socket_endpoint, payload));
+		run_until(*loop, [&] { return received == 2; });
+
+		CHECK(source == *peer_endpoint);
+		CHECK(std::ranges::equal(from_task.span(), std::as_bytes(std::span{payload})));
+		CHECK(std::ranges::equal(plain_task.span(), std::as_bytes(std::span{payload})));
+	}
+
+	SECTION("connected: send on unconnected socket fails")
+	{
+		std::array<std::byte, 64> send_storage{};
+		task send_task{send_storage};
+		send_task.span(as_span(send_storage).first(payload.size()));
+
+		int failed = 0;
+		std::error_code ec{};
+
+		socket->start_send(send_task.borrow(), [&](task_ptr &&, connected_send_result &&r) noexcept
+		{
+			REQUIRE_FALSE(r);
+			ec = r.error();
+			++failed;
+		});
+
+		run_until(*loop, [&] { return failed == 1; });
+		CHECK((ec == std::errc::destination_address_required || ec == std::errc::not_connected));
 	}
 
 	SECTION("both-async: send and receive drains share one loop")

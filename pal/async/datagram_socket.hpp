@@ -38,8 +38,67 @@ struct send_to_result
 {
 };
 
+/// Completion payload of an asynchronous receive on a connected datagram socket (see \c start_receive in
+/// \ref handle<net::basic_datagram_socket<Protocol>>).
+template <typename Protocol>
+struct receive_result
+{
+	/// True if the datagram was larger than the payload window and cut to it
+	bool truncated;
+};
+
+/// Completion payload of an asynchronous send on a connected datagram socket (see \c start_send in
+/// \ref handle<net::basic_datagram_socket<Protocol>>).
+template <typename Protocol>
+struct send_result
+{
+};
+
 namespace __datagram_socket
 {
+
+template <typename Result>
+struct op_send
+{
+	using result_type = Result;
+	using signature = void(task_ptr &&, result<result_type> &&) noexcept;
+
+	template <typename F>
+	static void dispatch (task &t, F &f) noexcept
+	{
+		const auto &op = __event_loop::io(t);
+		task_ptr p{&t};
+		if (op.native_error)
+		{
+			f(std::move(p), unexpected{std::error_code{op.native_error, std::system_category()}});
+		}
+		else
+		{
+			f(std::move(p), result_type{});
+		}
+	}
+};
+
+template <typename Protocol>
+struct op_receive
+{
+	using result_type = receive_result<Protocol>;
+	using signature = void(task_ptr &&, result<result_type> &&) noexcept;
+
+	template <typename F>
+	static void dispatch (task &t, F &f) noexcept
+	{
+		const auto &op = __event_loop::io(t);
+		task_ptr p{&t};
+		if (op.native_error)
+		{
+			f(std::move(p), unexpected{std::error_code{op.native_error, std::system_category()}});
+			return;
+		}
+		t.span(t.span().first(op.bytes));
+		f(std::move(p), result_type{.truncated = op.truncated});
+	}
+};
 
 template <typename Protocol>
 struct op_receive_from
@@ -72,28 +131,6 @@ struct op_receive_from
 			return *reinterpret_cast<const typename Protocol::endpoint *>(op.endpoint.data());
 		}
 		#endif
-	}
-};
-
-template <typename Protocol>
-struct op_send_to
-{
-	using result_type = send_to_result<Protocol>;
-	using signature = void(task_ptr &&, result<result_type> &&) noexcept;
-
-	template <typename F>
-	static void dispatch (task &t, F &f) noexcept
-	{
-		const auto &op = __event_loop::io(t);
-		task_ptr p{&t};
-		if (op.native_error)
-		{
-			f(std::move(p), unexpected{std::error_code{op.native_error, std::system_category()}});
-		}
-		else
-		{
-			f(std::move(p), result_type{});
-		}
 	}
 };
 
@@ -134,6 +171,7 @@ public:
 	void start_receive_from (task_ptr &&t, H handler) noexcept
 		requires __async::handler<H, void(task_ptr &&, result<receive_from_result> &&) noexcept>
 	{
+		__event_loop::io(*t).endpoint_size = __event_loop::io_state::endpoint_capacity;
 		t->bind<__datagram_socket::op_receive_from<Protocol>>(std::move(handler));
 		__event_loop::start_receive(*state_, std::move(t));
 	}
@@ -151,7 +189,7 @@ public:
 		auto &op = __event_loop::io(*t);
 		std::memcpy(op.endpoint.data(), recipient.data(), sizeof(endpoint_type));
 		op.endpoint_size = static_cast<uint32_t>(recipient.size());
-		t->bind<__datagram_socket::op_send_to<Protocol>>(std::move(handler));
+		t->bind<__datagram_socket::op_send<send_to_result>>(std::move(handler));
 		__event_loop::start_send(*state_, std::move(t));
 	}
 
@@ -163,7 +201,38 @@ public:
 	void start_reply (task_ptr &&t, H handler) noexcept
 		requires __async::handler<H, void(task_ptr &&, result<send_to_result> &&) noexcept>
 	{
-		t->bind<__datagram_socket::op_send_to<Protocol>>(std::move(handler));
+		t->bind<__datagram_socket::op_send<send_to_result>>(std::move(handler));
+		__event_loop::start_send(*state_, std::move(t));
+	}
+
+	/// Completion payload of \ref start_receive
+	using receive_result = pal::async::receive_result<Protocol>;
+
+	/// Queue an asynchronous receive into \a t's payload window (\ref task::span) without reporting the
+	/// datagram's source: for a socket connected through pal/net before \ref event_loop::make_handle, whose
+	/// kernel delivers only the connected peer's datagrams. An ICMP error from that peer completes the next
+	/// receive with the matching error. Otherwise behaves like \ref start_receive_from.
+	template <typename H>
+	void start_receive (task_ptr &&t, H handler) noexcept
+		requires __async::handler<H, void(task_ptr &&, result<receive_result> &&) noexcept>
+	{
+		__event_loop::io(*t).endpoint_size = 0;
+		t->bind<__datagram_socket::op_receive<Protocol>>(std::move(handler));
+		__event_loop::start_receive(*state_, std::move(t));
+	}
+
+	/// Completion payload of \ref start_send
+	using send_result = pal::async::send_result<Protocol>;
+
+	/// Queue an asynchronous send of \a t's payload window (\ref task::span) to the peer the socket was
+	/// connected to through pal/net before \ref event_loop::make_handle. On an unconnected socket the
+	/// operation completes with the platform's error. Otherwise behaves like \ref start_send_to.
+	template <typename H>
+	void start_send (task_ptr &&t, H handler) noexcept
+		requires __async::handler<H, void(task_ptr &&, result<send_result> &&) noexcept>
+	{
+		__event_loop::io(*t).endpoint_size = 0;
+		t->bind<__datagram_socket::op_send<send_result>>(std::move(handler));
 		__event_loop::start_send(*state_, std::move(t));
 	}
 
