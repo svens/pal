@@ -16,6 +16,10 @@
 #include <tuple>
 #include <vector>
 
+#if __pal_os_linux
+	#include <sys/mman.h>
+#endif
+
 namespace
 {
 
@@ -125,6 +129,23 @@ TEMPLATE_TEST_CASE("async/datagram_socket", "", udp_v4, udp_v6)
 		REQUIRE_FALSE(h);
 		CHECK(h.error() == std::errc::bad_file_descriptor);
 	}
+
+	#if __pal_os_linux
+	{
+		SECTION("make_handle: backend registration failure")
+		{
+			const auto fd = ::memfd_create("pal_test", MFD_CLOEXEC);
+			REQUIRE(fd != -1);
+
+			auto file = pal::net::make_datagram_socket(TestType::protocol_v, pal::net::__socket::from_sys(fd));
+			REQUIRE(file);
+
+			auto h = loop->make_handle(std::move(*file));
+			REQUIRE_FALSE(h);
+			CHECK(h.error() == std::errc::operation_not_permitted);
+		}
+	}
+	#endif
 
 	SECTION("make_handle: adopted native socket completes each op once")
 	{
@@ -733,6 +754,31 @@ TEMPLATE_TEST_CASE("async/datagram_socket", "", udp_v4, udp_v6)
 		{
 			CHECK(seen[i]);
 		}
+	}
+
+	SECTION("cancel: destruction with a connected receive in flight")
+	{
+		std::array<std::byte, 64> receive_storage{};
+		task receive_task{receive_storage};
+
+		int canceled = 0;
+		std::error_code ec{};
+
+		{
+			auto doomed = make_connected_async_socket<TestType>(*loop, *peer_endpoint);
+			REQUIRE(doomed);
+
+			doomed->start_receive(receive_task.borrow(), [&](task_ptr &&, connected_receive_result &&r) noexcept
+			{
+				REQUIRE_FALSE(r);
+				ec = r.error();
+				++canceled;
+			});
+		}
+
+		REQUIRE(loop->settle());
+		CHECK(canceled == 1);
+		CHECK(ec == std::errc::operation_canceled);
 	}
 
 	SECTION("cancel: destruction with ops in flight")
