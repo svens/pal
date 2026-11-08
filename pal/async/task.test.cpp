@@ -257,7 +257,7 @@ static_assert(!__async::handler<too_big, carrier_op::signature>);
 
 struct over_aligned
 {
-	alignas(alignof(std::max_align_t) * 2) std::byte b;
+	alignas(__async::closure_alignment * 2) std::byte b;
 	void operator() (int) const noexcept
 	{
 	}

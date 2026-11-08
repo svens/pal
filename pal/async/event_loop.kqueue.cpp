@@ -19,7 +19,7 @@
 namespace pal::async::__event_loop
 {
 
-void impl_type::poll (clock::duration timeout) noexcept
+std::error_code impl_type::poll (clock::duration timeout) noexcept
 {
 	::timespec ts{};
 	const auto *tsp = to_timespec(timeout, ts);
@@ -37,9 +37,9 @@ void impl_type::poll (clock::duration timeout) noexcept
 		);
 	} while (r < 0 && errno == EINTR);
 
-	if (r <= 0)
+	if (r < 0)
 	{
-		return;
+		return pal::this_thread::last_system_error();
 	}
 
 	for (const auto &event: std::span{events}.first(static_cast<size_t>(r)))
@@ -59,6 +59,7 @@ void impl_type::poll (clock::duration timeout) noexcept
 			on_socket_event(state, state.send);
 		}
 	}
+	return {};
 }
 
 std::error_code impl_type::register_socket (socket_state &s) const noexcept

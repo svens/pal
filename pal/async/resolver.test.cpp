@@ -18,7 +18,7 @@ using resolver = udp::resolver;
 using endpoint = udp::endpoint;
 using pal::net::ip::port_type;
 using pal::net::ip::resolver_base;
-using resolve_result = pal::result<pal::async::resolve_result<udp>>;
+using resolve_result = pal::result<pal::async::handle<pal::net::ip::basic_resolver<udp>>::resolve_result>;
 
 constexpr auto numeric = resolver_base::numeric_host | resolver_base::numeric_service;
 
@@ -102,13 +102,14 @@ TEST_CASE("async/resolver")
 	SECTION("start_resolve: overload without flags")
 	{
 		size_t count = 0;
-		bool loopback = true;
+		bool loopback = true, truncated = true;
 
 		h->start_resolve(t.borrow(), "127.0.0.1", "7", [&](task_ptr &&, resolve_result &&r) noexcept
 		{
 			if (r)
 			{
 				count = r->endpoints.size();
+				truncated = r->truncated;
 				for (const auto &ep: r->endpoints)
 				{
 					loopback = loopback && ep.address().is_loopback();
@@ -119,6 +120,7 @@ TEST_CASE("async/resolver")
 		REQUIRE(loop->settle());
 		REQUIRE(count >= 1);
 		CHECK(loopback);
+		CHECK_FALSE(truncated);
 	}
 
 	SECTION("start_resolve: excess results dropped at payload capacity")
@@ -126,7 +128,7 @@ TEST_CASE("async/resolver")
 		t.span(t.span().first(sizeof(endpoint) / 2));
 
 		size_t count = SIZE_MAX;
-		bool had_value = false;
+		bool had_value = false, truncated = false;
 
 		h->start_resolve(t.borrow(), "127.0.0.1", "7", numeric, [&](task_ptr &&, resolve_result &&r) noexcept
 		{
@@ -134,12 +136,14 @@ TEST_CASE("async/resolver")
 			if (r)
 			{
 				count = r->endpoints.size();
+				truncated = r->truncated;
 			}
 		});
 
 		REQUIRE(loop->settle());
 		CHECK(had_value);
 		CHECK(count == 0);
+		CHECK(truncated);
 	}
 
 	SECTION("start_resolve: host not found")
@@ -195,7 +199,7 @@ TEST_CASE("async/resolver")
 		task blocker;
 
 		// occupy the single worker so the resolve stays queued while we observe the gauge
-		pool->post(*loop, blocker.borrow(),
+		pool->post(blocker.borrow(), *loop,
 			[&release](task &) noexcept
 			{
 				while (!release)

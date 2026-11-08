@@ -15,8 +15,8 @@ namespace pal::async
 
 class thread_pool;
 
-/// Create a pool of \a threads worker threads (at least one; zero is a precondition violation).
-/// Errors: thread or memory resource exhaustion.
+/// Create a pool of \a threads worker threads.
+/// Errors: zero \a threads, or thread or memory resource exhaustion.
 result<thread_pool> make_thread_pool (size_t threads) noexcept;
 
 namespace __thread_pool
@@ -108,7 +108,7 @@ public:
 	///
 	/// Worker completion delivery follows \ref event_loop::post backpressure rules.
 	template <typename Work, typename Handler>
-	void post (event_loop &loop, task_ptr &&t, Work work, Handler handler) noexcept
+	void post (task_ptr &&t, event_loop &loop, Work work, Handler handler) noexcept
 		requires __async::handler<Work, void(task &) noexcept>
 		&& __async::handler<Handler, void(task_ptr &&) noexcept>
 	{

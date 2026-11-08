@@ -18,42 +18,6 @@
 namespace pal::async
 {
 
-/// Completion payload of an asynchronous datagram receive (see \c start_receive_from in
-/// \ref handle<net::basic_datagram_socket<Protocol>>).
-template <typename Protocol>
-struct receive_from_result
-{
-	/// Datagram source, referencing storage inside the task: valid until the task's next
-	/// \c start_*, copy to retain
-	const Protocol::endpoint &endpoint;
-
-	/// True if the datagram was larger than the payload window and cut to it
-	bool truncated;
-};
-
-/// Completion payload of an asynchronous datagram send (see \c start_send_to in
-/// \ref handle<net::basic_datagram_socket<Protocol>>).
-template <typename Protocol>
-struct send_to_result
-{
-};
-
-/// Completion payload of an asynchronous receive on a connected datagram socket (see \c start_receive in
-/// \ref handle<net::basic_datagram_socket<Protocol>>).
-template <typename Protocol>
-struct receive_result
-{
-	/// True if the datagram was larger than the payload window and cut to it
-	bool truncated;
-};
-
-/// Completion payload of an asynchronous send on a connected datagram socket (see \c start_send in
-/// \ref handle<net::basic_datagram_socket<Protocol>>).
-template <typename Protocol>
-struct send_result
-{
-};
-
 namespace __datagram_socket
 {
 
@@ -79,10 +43,10 @@ struct op_send
 	}
 };
 
-template <typename Protocol>
+template <typename Result>
 struct op_receive
 {
-	using result_type = receive_result<Protocol>;
+	using result_type = Result;
 	using signature = void(task_ptr &&, result<result_type> &&) noexcept;
 
 	template <typename F>
@@ -100,10 +64,10 @@ struct op_receive
 	}
 };
 
-template <typename Protocol>
+template <typename Protocol, typename Result>
 struct op_receive_from
 {
-	using result_type = receive_from_result<Protocol>;
+	using result_type = Result;
 	using signature = void(task_ptr &&, result<result_type> &&) noexcept;
 
 	template <typename F>
@@ -161,7 +125,15 @@ public:
 	}
 
 	/// Completion payload of \ref start_receive_from
-	using receive_from_result = pal::async::receive_from_result<Protocol>;
+	struct receive_from_result
+	{
+		/// Datagram source, referencing storage inside the task: valid until the task's next
+		/// \c start_*, copy to retain
+		const endpoint_type &endpoint;
+
+		/// True if the datagram was larger than the payload window and cut to it
+		bool truncated;
+	};
 
 	/// Queue an asynchronous receive_from into \a t's payload window (\ref task::span). On completion the
 	/// window is adjusted to the bytes retained; a datagram
@@ -172,12 +144,14 @@ public:
 		requires __async::handler<H, void(task_ptr &&, result<receive_from_result> &&) noexcept>
 	{
 		__event_loop::io(*t).endpoint_size = __event_loop::io_state::endpoint_capacity;
-		t->bind<__datagram_socket::op_receive_from<Protocol>>(std::move(handler));
+		t->bind<__datagram_socket::op_receive_from<Protocol, receive_from_result>>(std::move(handler));
 		__event_loop::start_receive(*state_, std::move(t));
 	}
 
 	/// Completion payload of \ref start_send_to
-	using send_to_result = pal::async::send_to_result<Protocol>;
+	struct send_to_result
+	{
+	};
 
 	/// Queue an asynchronous send_to of \a t's payload window (\ref task::span) to \a recipient. The window
 	/// itself stays untouched: a datagram send is all-or-nothing. \a handler runs on the owning loop's
@@ -206,7 +180,11 @@ public:
 	}
 
 	/// Completion payload of \ref start_receive
-	using receive_result = pal::async::receive_result<Protocol>;
+	struct receive_result
+	{
+		/// True if the datagram was larger than the payload window and cut to it
+		bool truncated;
+	};
 
 	/// Queue an asynchronous receive into \a t's payload window (\ref task::span) without reporting the
 	/// datagram's source: for a socket connected through pal/net before \ref event_loop::make_handle, whose
@@ -217,12 +195,14 @@ public:
 		requires __async::handler<H, void(task_ptr &&, result<receive_result> &&) noexcept>
 	{
 		__event_loop::io(*t).endpoint_size = 0;
-		t->bind<__datagram_socket::op_receive<Protocol>>(std::move(handler));
+		t->bind<__datagram_socket::op_receive<receive_result>>(std::move(handler));
 		__event_loop::start_receive(*state_, std::move(t));
 	}
 
 	/// Completion payload of \ref start_send
-	using send_result = pal::async::send_result<Protocol>;
+	struct send_result
+	{
+	};
 
 	/// Queue an asynchronous send of \a t's payload window (\ref task::span) to the peer the socket was
 	/// connected to through pal/net before \ref event_loop::make_handle. On an unconnected socket the
@@ -249,14 +229,14 @@ public:
 	}
 
 	/// \copydoc net::basic_socket::get_option
-	template <typename GettableSocketOption>
+	template <net::gettable_socket_option<protocol_type> GettableSocketOption>
 	[[nodiscard]] result<void> get_option (GettableSocketOption &option) const noexcept
 	{
 		return socket_.get_option(option);
 	}
 
 	/// \copydoc net::basic_socket::set_option
-	template <typename SettableSocketOption>
+	template <net::settable_socket_option<protocol_type> SettableSocketOption>
 	[[nodiscard]] result<void> set_option (const SettableSocketOption &option) noexcept
 	{
 		return socket_.set_option(option);

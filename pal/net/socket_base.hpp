@@ -106,6 +106,10 @@ private:
 /// Open and return new native socket
 [[nodiscard]] result<native_socket> open (int family, int type, int protocol) noexcept;
 
+/// Take ownership of an existing OS \a handle of socket \a type, applying the same per-socket setup as
+/// \ref open
+[[nodiscard]] native_socket adopt (native_socket::handle_type handle, int family, int type) noexcept;
+
 namespace __socket
 {
 

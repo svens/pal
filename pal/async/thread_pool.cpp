@@ -90,7 +90,10 @@ result<thread_pool> make_thread_pool (size_t threads) noexcept
 {
 	using namespace __thread_pool;
 
-	pal_require(threads > 0, "thread_pool with no worker threads");
+	if (threads == 0)
+	{
+		return make_unexpected(std::errc::invalid_argument);
+	}
 
 	auto *self = new (std::nothrow) impl_type{};
 	if (self == nullptr)

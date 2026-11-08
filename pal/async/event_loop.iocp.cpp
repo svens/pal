@@ -10,6 +10,7 @@
 #include <cstdint>
 #include <new>
 #include <span>
+#include <system_error>
 #include <tuple>
 #include <utility>
 #include <winsock2.h>
@@ -35,7 +36,7 @@ struct native_op: ::OVERLAPPED
 };
 
 static_assert(sizeof(native_op) <= io_state::native_capacity);
-static_assert(alignof(native_op) <= alignof(std::max_align_t));
+static_assert(alignof(native_op) <= task::scratch_alignment);
 
 native_op &native (::OVERLAPPED *overlapped) noexcept
 {
@@ -129,10 +130,10 @@ size_t harvest (impl_type &loop, const ::OVERLAPPED_ENTRY &entry) noexcept
 	return 0;
 }
 
-void harvest_batch (impl_type &loop, ::DWORD timeout) noexcept
+std::error_code harvest_batch (impl_type &loop, ::DWORD timeout) noexcept
 {
 	::ULONG count = 0;
-	std::ignore = ::GetQueuedCompletionStatusEx(
+	const auto ok = ::GetQueuedCompletionStatusEx(
 		loop.port,
 		loop.events.data(),
 		static_cast<::ULONG>(loop.config_.poll_batch),
@@ -140,6 +141,14 @@ void harvest_batch (impl_type &loop, ::DWORD timeout) noexcept
 		timeout,
 		FALSE
 	);
+	if (!ok)
+	{
+		const auto error = ::GetLastError();
+		if (error != WAIT_TIMEOUT)
+		{
+			return {static_cast<int>(error), std::system_category()};
+		}
+	}
 
 	size_t posts = 0;
 	for (const auto &event: std::span{loop.events}.first(count))
@@ -150,6 +159,7 @@ void harvest_batch (impl_type &loop, ::DWORD timeout) noexcept
 	{
 		loop.posts_in_flight_.fetch_sub(posts, std::memory_order_relaxed);
 	}
+	return {};
 }
 
 void arm_socket_op (impl_type &loop, task &t, socket_state &state, socket_state::direction &d) noexcept
@@ -225,9 +235,9 @@ void arm_socket_op (impl_type &loop, task &t, socket_state &state, socket_state:
 
 } // namespace
 
-void impl_type::poll (clock::duration timeout) noexcept
+std::error_code impl_type::poll (clock::duration timeout) noexcept
 {
-	harvest_batch(*this, to_milliseconds(timeout));
+	return harvest_batch(*this, to_milliseconds(timeout));
 }
 
 void impl_type::post (task &t) const noexcept
@@ -271,7 +281,7 @@ void impl_type::quiesce (socket_state &s) noexcept
 
 	while (s.armed > 0)
 	{
-		harvest_batch(*this, INFINITE);
+		std::ignore = harvest_batch(*this, INFINITE);
 	}
 }
 

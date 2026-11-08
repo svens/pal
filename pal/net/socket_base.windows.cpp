@@ -123,6 +123,11 @@ __socket::handle_type init (__socket::handle_type h, int type) noexcept
 
 } // namespace
 
+native_socket adopt (native_socket::handle_type handle, int family, int type) noexcept
+{
+	return native_socket{init(handle, type), family};
+}
+
 result<native_socket> open (int family, int type, int protocol) noexcept
 {
 	if (auto h = from_sys(::socket(family, type, protocol)); h != __socket::handle_type::invalid)

@@ -19,15 +19,6 @@
 namespace pal::async
 {
 
-/// Completion payload of an asynchronous forward name resolution (see \c start_resolve in
-/// \ref handle<net::ip::basic_resolver<Protocol>>).
-template <typename Protocol>
-struct resolve_result
-{
-	/// Resolved endpoints, viewing the task's payload storage: valid until that storage is reused
-	std::span<const typename Protocol::endpoint> endpoints;
-};
-
 namespace __resolver
 {
 
@@ -40,6 +31,7 @@ struct op_state
 	net::ip::resolver_base::flags flags;
 	std::error_code ec;
 	size_t count;
+	bool truncated;
 };
 
 } // namespace __resolver
@@ -59,7 +51,14 @@ public:
 	using flags = net::ip::resolver_base::flags;
 
 	/// Completion payload of \ref start_resolve
-	using resolve_result = pal::async::resolve_result<Protocol>;
+	struct resolve_result
+	{
+		/// Resolved endpoints, viewing the task's payload storage: valid until that storage is reused
+		std::span<const endpoint_type> endpoints;
+
+		/// True if more endpoints resolved than the payload storage holds; \ref endpoints has the first ones
+		bool truncated;
+	};
 
 	handle (handle &&) noexcept = default;
 	handle &operator= (handle &&) noexcept = default;
@@ -78,8 +77,8 @@ public:
 	/// \a f; socket type and protocol come from \a Protocol.
 	///
 	/// Endpoints are written into the task's payload storage (\ref task::span, which itself stays
-	/// untouched); \ref resolve_result::endpoints views them and caps at the payload capacity -- excess
-	/// results are silently dropped, as with the synchronous resolver's max_size().
+	/// untouched); \ref resolve_result::endpoints views them and caps at the payload capacity, with
+	/// \ref resolve_result::truncated set when results were dropped.
 	///
 	/// Contracts: loop-thread-only, like \ref event_loop::post_after. \a name and \a service must
 	/// outlive the operation -- the worker reads them when it runs. Task payload storage must be aligned for
@@ -103,6 +102,7 @@ public:
 			.flags = f,
 			.ec = {},
 			.count = 0,
+			.truncated = false,
 		};
 
 		__thread_pool::submit(*pool_, *loop_, std::move(t), do_resolve(), on_ready(std::move(handler)));
@@ -145,6 +145,7 @@ private:
 				{
 					if (op.count == capacity)
 					{
+						op.truncated = true;
 						break;
 					}
 					std::memcpy(
@@ -175,7 +176,7 @@ private:
 			else
 			{
 				const auto *first = reinterpret_cast<const endpoint_type *>(p->span().data());
-				h(std::move(p), resolve_result{.endpoints = {first, op.count}});
+				h(std::move(p), resolve_result{.endpoints = {first, op.count}, .truncated = op.truncated});
 			}
 		};
 	}

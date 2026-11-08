@@ -1,5 +1,6 @@
 #include <pal/async/datagram_socket.hpp>
 #include <pal/async/task_pool.hpp>
+#include <pal/net/__socket.hpp>
 #include <pal/net/test.hpp>
 #include <pal/test.hpp>
 #include <catch2/catch_test_macros.hpp>
@@ -123,6 +124,54 @@ TEMPLATE_TEST_CASE("async/datagram_socket", "", udp_v4, udp_v6)
 		auto h = loop->make_handle(std::move(*dead));
 		REQUIRE_FALSE(h);
 		CHECK(h.error() == std::errc::bad_file_descriptor);
+	}
+
+	SECTION("make_handle: adopted native socket completes each op once")
+	{
+		static constexpr size_t count = 16;
+
+		const auto protocol = TestType::protocol_v;
+		const auto native = pal::net::__socket::from_sys(::socket(protocol.family(), protocol.type(), protocol.protocol()));
+		REQUIRE(native != pal::net::__socket::handle_type::invalid);
+
+		auto adopted_sync = pal::net::make_datagram_socket(protocol, native);
+		REQUIRE(adopted_sync);
+		REQUIRE(adopted_sync->bind(TestType::loopback_endpoint()));
+		auto adopted = loop->make_handle(std::move(*adopted_sync));
+		REQUIRE(adopted);
+		auto adopted_endpoint = adopted->local_endpoint();
+		REQUIRE(adopted_endpoint);
+
+		for (size_t i = 0; i < count; ++i)
+		{
+			REQUIRE(peer->send_to(*adopted_endpoint, payload));
+		}
+
+		std::array<std::array<std::byte, 64>, count> receive_storage{}, send_storage{};
+		std::array<task, count> receive_tasks, send_tasks;
+		size_t received = 0, sent = 0;
+
+		for (size_t i = 0; i < count; ++i)
+		{
+			receive_tasks[i].span(as_span(receive_storage[i]));
+			adopted->start_receive_from(receive_tasks[i].borrow(), [&](task_ptr &&, receive_result &&r) noexcept
+			{
+				REQUIRE(r);
+				++received;
+			});
+
+			send_tasks[i].span(as_span(send_storage[i]).first(1));
+			adopted->start_send_to(send_tasks[i].borrow(), *peer_endpoint, [&](task_ptr &&, send_result &&r) noexcept
+			{
+				REQUIRE(r);
+				++sent;
+			});
+		}
+
+		run_until(*loop, [&] { return received == count && sent == count; });
+		REQUIRE(loop->run_for(10ms));
+		CHECK(received == count);
+		CHECK(sent == count);
 	}
 
 	SECTION("receive: armed before the datagram arrives")

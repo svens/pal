@@ -208,7 +208,7 @@ struct impl_type
 		poll_array events{};
 	#endif
 
-	void poll (clock::duration timeout) noexcept;
+	std::error_code poll (clock::duration timeout) noexcept;
 	void post (task &t) const noexcept;
 
 	[[nodiscard]] std::error_code register_socket (socket_state &s) const noexcept;

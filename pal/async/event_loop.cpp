@@ -110,6 +110,32 @@ void expire_timers (impl_type &loop) noexcept
 	}
 }
 
+void drop_timers (impl_type &loop) noexcept
+{
+	auto *pending = std::exchange(loop.timer_root_, nullptr);
+	if (pending != nullptr)
+	{
+		timer(*pending).sibling = nullptr;
+	}
+
+	while (pending != nullptr)
+	{
+		auto *t = pending;
+		pending = timer(*t).sibling;
+		if (auto *child = timer(*t).child; child != nullptr)
+		{
+			auto *last = child;
+			while (timer(*last).sibling != nullptr)
+			{
+				last = timer(*last).sibling;
+			}
+			timer(*last).sibling = pending;
+			pending = child;
+		}
+		task_ptr{t}.reset();
+	}
+}
+
 size_t drain_posted (impl_type &loop) noexcept
 {
 	size_t n = 0;
@@ -157,7 +183,7 @@ size_t dispatch_ready (impl_type &loop) noexcept
 	return n;
 }
 
-size_t iterate (impl_type &loop, clock::duration timeout) noexcept
+result<size_t> iterate (impl_type &loop, clock::duration timeout) noexcept
 {
 	if (!loop.posted_.empty() || !loop.ready_.empty() || !loop.actionable_.empty())
 	{
@@ -170,7 +196,10 @@ size_t iterate (impl_type &loop, clock::duration timeout) noexcept
 		timeout = (std::min)(timeout, deadline > loop.now_ ? deadline - loop.now_ : clock::duration::zero());
 	}
 
-	loop.poll(timeout);
+	if (auto error = loop.poll(timeout))
+	{
+		return unexpected{error};
+	}
 
 	loop.now_ = read_now(loop);
 
@@ -228,6 +257,7 @@ void post_after (impl_type &loop, task_ptr &&t, clock::duration delay) noexcept
 
 void impl_deleter::operator() (impl_type *loop) const noexcept
 {
+	drop_timers(*loop);
 	delete loop;
 }
 
@@ -345,7 +375,12 @@ result<size_t> event_loop::run () noexcept
 	size_t total = 0;
 	while (__event_loop::has_work(*impl_))
 	{
-		total += __event_loop::iterate(*impl_, (clock::duration::max)());
+		auto n = __event_loop::iterate(*impl_, (clock::duration::max)());
+		if (!n)
+		{
+			return n;
+		}
+		total += *n;
 	}
 	return total;
 }
@@ -365,7 +400,12 @@ result<size_t> event_loop::settle () noexcept
 	size_t total = 0;
 	while (__event_loop::has_counted_work(*impl_))
 	{
-		total += __event_loop::iterate(*impl_, (clock::duration::max)());
+		auto n = __event_loop::iterate(*impl_, (clock::duration::max)());
+		if (!n)
+		{
+			return n;
+		}
+		total += *n;
 	}
 	return total;
 }

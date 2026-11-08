@@ -145,7 +145,7 @@ template <protocol Protocol>
 	const Protocol &protocol,
 	socket_base::native_handle_type handle) noexcept
 {
-	return __socket::to_api<basic_datagram_socket<Protocol>>()(native_socket{handle, protocol.family()});
+	return __socket::to_api<basic_datagram_socket<Protocol>>()(adopt(handle, protocol.family(), protocol.type()));
 }
 
 } // namespace pal::net

@@ -178,9 +178,12 @@ TEST_CASE("async/event_loop")
 	{
 		task t;
 		int fired = 0;
-		loop->post_after(t.borrow(), 1h, [&fired](task_ptr &&) noexcept { ++fired; });
 
-		auto n = loop->settle();
+		auto inner = make_loop();
+		REQUIRE(inner);
+		inner->post_after(t.borrow(), 1h, [&fired](task_ptr &&) noexcept { ++fired; });
+
+		auto n = inner->settle();
 		REQUIRE(n);
 		CHECK(*n == 0);
 		CHECK(fired == 0);
@@ -489,6 +492,35 @@ TEST_CASE("async/event_loop")
 		}
 		// dropped without completing; no destructor REQUIRE trips, the handler never ran
 		CHECK(fired == 0);
+
+		loop->post_after(t.borrow(), 0ms, [&fired](task_ptr &&) noexcept { ++fired; });
+		REQUIRE(loop->run());
+		CHECK(fired == 1);
+	}
+
+	SECTION("post_after: pool-managed tasks pending at loop destruction return to their pool")
+	{
+		task_pool<4, 16> pool;
+		int fired = 0;
+		{
+			auto inner = make_loop();
+			REQUIRE(inner);
+			for (auto delay: {4h, 1h, 3h, 2h})
+			{
+				auto t = pool.try_acquire();
+				REQUIRE(t);
+				inner->post_after(std::move(t), delay, [&fired](task_ptr &&) noexcept { ++fired; });
+			}
+			REQUIRE_FALSE(pool.try_acquire());
+		}
+		CHECK(fired == 0);
+
+		std::array<task_ptr, 4> back;
+		for (auto &t: back)
+		{
+			t = pool.try_acquire();
+			CHECK(t);
+		}
 	}
 }
 

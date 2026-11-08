@@ -22,12 +22,15 @@ namespace pal::async
 namespace __async
 {
 
-/// Inline closure storage budget for a \ref completion, in bytes: a cache line (64) minus one alignment quantum --
-/// the gap the jump from \c thunk_ (pointer-sized) to a \c max_align_t-aligned \c storage_ costs, regardless of
-/// how few of those bytes \c thunk_ itself occupies -- so \c completion<Carrier> fits one cache line exactly (see
-/// static_assert below). Named separately from the per-op scratch budget of \ref pal::async::task so "closure
-/// too big" and "op scratch grew" are distinct compile errors.
-inline constexpr size_t closure_capacity = 64 - alignof(std::max_align_t);
+/// Alignment of a \ref completion's inline closure storage: pointer alignment on every platform, so the closures
+/// a \ref handler accepts do not depend on the toolchain's \c max_align_t.
+inline constexpr size_t closure_alignment = alignof(void *);
+
+/// Inline closure storage budget for a \ref completion, in bytes: a cache line minus the pointer-sized \c thunk_
+/// in front of it, so \c completion<Carrier> fits one cache line exactly (see static_assert below). Named
+/// separately from the per-op scratch budget of \ref pal::async::task so "closure too big" and "op scratch grew"
+/// are distinct compile errors.
+inline constexpr size_t closure_capacity = cache_line_size - closure_alignment;
 
 template <typename F, typename Signature>
 struct signature_t;
@@ -47,7 +50,7 @@ concept handler = requires
 	requires std::is_trivially_copyable_v<F>;
 	requires std::is_trivially_destructible_v<F>;
 	requires sizeof(F) <= closure_capacity;
-	requires alignof(F) <= alignof(std::max_align_t);
+	requires alignof(F) <= closure_alignment;
 	requires signature_t<F, Signature>::value;
 };
 
@@ -105,7 +108,7 @@ private:
 	}
 
 	thunk_type thunk_ = nullptr;
-	alignas(std::max_align_t) std::array<std::byte, closure_capacity> storage_;
+	alignas(closure_alignment) std::array<std::byte, closure_capacity> storage_;
 };
 
 static_assert(sizeof(completion<std::max_align_t>) == cache_line_size);
@@ -169,9 +172,18 @@ struct task_deleter
 using task_ptr = std::unique_ptr<task, task_deleter>;
 
 /// Per-operation state carrier: result(s) in \ref scratch, completion callback via \ref bind.
+///
+/// A task carries one operation at a time: from \c start_*, \c post or \c post_after until its handler is
+/// invoked, the operation owns the task. Starting another operation on it (e.g. via a second \ref borrow of
+/// an app-managed task), or destroying the task or its payload storage before then, is undefined behavior,
+/// not checked. Inside the handler the operation is over, so the handler may start the next one on the
+/// same task.
 class task
 {
 public:
+
+	/// Alignment of the op scratch storage, the same on every platform (see \ref scratch_as).
+	static constexpr size_t scratch_alignment = 16;
 
 	/// Minimum op scratch; the actual budget rounds up to fill the task's last cache line.
 	static constexpr size_t min_scratch_capacity = 128;
@@ -226,7 +238,7 @@ public:
 	[[nodiscard]] T &scratch_as () noexcept
 	{
 		static_assert(sizeof(T) <= scratch_capacity, "T does not fit the scratch budget");
-		static_assert(alignof(T) <= alignof(std::max_align_t), "T over-aligned for scratch");
+		static_assert(alignof(T) <= scratch_alignment, "T over-aligned for scratch");
 		#ifdef __cpp_lib_start_lifetime_as
 		{
 			return *std::start_lifetime_as<T>(scratch_.data());
@@ -291,7 +303,7 @@ private:
 	std::span<std::byte> span_{};
 
 	// Last member so it absorbs the task's tail padding into usable space (see \ref scratch_capacity).
-	alignas(std::max_align_t) std::array<std::byte, scratch_capacity> scratch_{};
+	alignas(scratch_alignment) std::array<std::byte, scratch_capacity> scratch_{};
 
 	friend struct task_deleter;
 	friend struct __task::attorney;

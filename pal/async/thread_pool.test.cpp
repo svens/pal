@@ -5,8 +5,8 @@
 #include <algorithm>
 #include <atomic>
 #include <chrono>
+#include <system_error>
 #include <thread>
-#include <tuple>
 
 namespace
 {
@@ -25,15 +25,9 @@ TEST_CASE("async/thread_pool")
 
 TEST_CASE("async/thread_pool make contract")
 {
-	if constexpr (pal::build == pal::build_type::debug)
-	{
-		auto msg = pal_test::require_terminate([]
-		{
-			std::ignore = make_thread_pool(0);
-		});
-
-		CHECK(msg.contains("worker threads"));
-	}
+	auto pool = make_thread_pool(0);
+	REQUIRE_FALSE(pool);
+	CHECK(pool.error() == std::errc::invalid_argument);
 }
 
 // Handlers are lambdas except where one must re-post with itself (*this) -- a lambda cannot name itself.
@@ -47,7 +41,7 @@ struct round_trip
 	{
 		if (++*rounds < 3)
 		{
-			pool->post(*loop, std::move(t), [](task &) noexcept {}, *this);
+			pool->post(std::move(t), *loop, [](task &) noexcept {}, *this);
 		}
 	}
 };
@@ -84,7 +78,7 @@ TEST_CASE("async/thread_pool offload")
 		std::thread::id handler_thread{};
 		task *got = nullptr;
 
-		pool->post(*loop, t.borrow(),
+		pool->post(t.borrow(), *loop,
 			[&](task &) noexcept
 			{
 				work_thread = std::this_thread::get_id();
@@ -114,7 +108,7 @@ TEST_CASE("async/thread_pool offload")
 		task t;
 		int seen = 0;
 
-		pool->post(*loop, t.borrow(),
+		pool->post(t.borrow(), *loop,
 			[](task &w) noexcept
 			{
 				w.scratch_as<answer>().value = 42;
@@ -134,7 +128,7 @@ TEST_CASE("async/thread_pool offload")
 		task t;
 		bool intact = false;
 
-		pool->post(*loop, t.borrow(),
+		pool->post(t.borrow(), *loop,
 			[](task &w) noexcept
 			{
 				std::ranges::fill(w.scratch(), std::byte{0xa5});
@@ -157,7 +151,7 @@ TEST_CASE("async/thread_pool offload")
 		task t;
 		int ran = 0;
 
-		pool->post(*loop, t.borrow(),
+		pool->post(t.borrow(), *loop,
 			[](task &) noexcept
 			{
 				std::this_thread::sleep_for(20ms);
@@ -187,9 +181,9 @@ TEST_CASE("async/thread_pool offload")
 			++ran;
 		};
 
-		pool->post(*loop, a.borrow(), work, done);
-		pool->post(*loop, b.borrow(), work, done);
-		pool->post(*loop, c.borrow(), work, done);
+		pool->post(a.borrow(), *loop, work, done);
+		pool->post(b.borrow(), *loop, work, done);
+		pool->post(c.borrow(), *loop, work, done);
 
 		run_until(*loop, 3);
 		CHECK(ran == 3);
@@ -204,8 +198,8 @@ TEST_CASE("async/thread_pool offload")
 		int fired = 0, other_fired = 0;
 		const auto work = [](task &) noexcept {};
 
-		pool->post(*loop, a.borrow(), work, [&fired](task_ptr &&) noexcept { ++fired; });
-		pool->post(*other, b.borrow(), work, [&other_fired](task_ptr &&) noexcept { ++other_fired; });
+		pool->post(a.borrow(), *loop, work, [&fired](task_ptr &&) noexcept { ++fired; });
+		pool->post(b.borrow(), *other, work, [&other_fired](task_ptr &&) noexcept { ++other_fired; });
 
 		run_until(*loop, 1);
 		CHECK(fired == 1);
@@ -220,7 +214,7 @@ TEST_CASE("async/thread_pool offload")
 		task t;
 		int rounds = 0;
 
-		pool->post(*loop, t.borrow(),
+		pool->post(t.borrow(), *loop,
 			[](task &) noexcept {},
 			round_trip{.pool = &*pool, .loop = &*loop, .rounds = &rounds}
 		);
@@ -251,8 +245,8 @@ TEST_CASE("async/thread_pool destructor contract")
 				}
 			};
 			const auto done = [](task_ptr &&) noexcept {};
-			pool.post(loop, first.borrow(), work, done);
-			pool.post(loop, second.borrow(), work, done);
+			pool.post(first.borrow(), loop, work, done);
+			pool.post(second.borrow(), loop, work, done);
 		});
 
 		// unblock the leaked worker (the trapped terminate leaked the pool without joining it)

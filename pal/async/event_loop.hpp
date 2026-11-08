@@ -21,13 +21,6 @@ class thread_pool;
 template <typename T>
 class handle;
 
-namespace __event_loop
-{
-
-using clock = std::chrono::steady_clock;
-
-} // namespace __event_loop
-
 /// Loop construction parameters: backend tuning knobs and the time source. Nothing here selects which
 /// resource runs next.
 struct event_loop_config
@@ -48,7 +41,7 @@ struct event_loop_config
 	/// \ref event_loop::clock::now. It must not go backwards, or timers expire late. Poll timeouts are
 	/// computed from it but waited in real time, so a virtual source frozen between advances is driven with
 	/// \ref event_loop::run_once.
-	__event_loop::clock::time_point (*now)(void *context) noexcept = nullptr;
+	std::chrono::steady_clock::time_point (*now)(void *context) noexcept = nullptr;
 
 	/// Argument passed to \ref now
 	void *now_context = nullptr;
@@ -73,6 +66,8 @@ struct event_loop_stats
 namespace __event_loop
 {
 
+using clock = std::chrono::steady_clock;
+
 struct impl_type;
 
 struct impl_deleter
@@ -95,7 +90,7 @@ struct io_state
 {
 	static constexpr size_t endpoint_capacity = 32;
 
-	alignas(std::max_align_t) std::array<std::byte, endpoint_capacity> endpoint;
+	alignas(task::scratch_alignment) std::array<std::byte, endpoint_capacity> endpoint;
 	uint32_t endpoint_size;
 
 	int native_error;
@@ -107,7 +102,7 @@ struct io_state
 	// - OVERLAPPED and WSABUF in event_loop.iocp.cpp
 	// - unused by reactor backends
 	static constexpr size_t native_capacity = 72;
-	alignas(std::max_align_t) std::array<std::byte, native_capacity> native;
+	alignas(task::scratch_alignment) std::array<std::byte, native_capacity> native;
 };
 
 [[nodiscard]] inline io_state &io (task &t) noexcept
@@ -137,7 +132,7 @@ struct op_post
 class event_loop;
 
 /// Create an event loop with the default backend for this platform.
-/// Errors: invalid \a config, no backend for the platform, or resource exhaustion.
+/// Errors: invalid \a config, or resource exhaustion.
 ///
 /// The calling thread becomes the loop's thread. \ref event_loop::make_handle, \ref event_loop::post_after,
 /// every start_* on a handle, handle destruction and driving the loop must run on it, as must moving and
@@ -164,23 +159,25 @@ public:
 	/// Per-loop observability counters.
 	[[nodiscard]] const event_loop_stats &stats () const noexcept;
 
-	/// Run iterations until no work remains (immediate and delayed posts); returns the number of completions
-	/// dispatched.
+	/// Run iterations until every operation started on this loop has completed (its handler has run); returns
+	/// the number of completions dispatched. An operation that may never complete, such as a receive no peer
+	/// sends to, keeps it running, so a long-lived server drives \ref run_for instead.
+	/// Errors: backend poll failure.
 	result<size_t> run () noexcept;
 
 	/// Poll without blocking: dispatch pending completions; returns the count (0 if none were ready).
+	/// Errors: backend poll failure.
 	result<size_t> run_once () noexcept;
 
 	/// Run one iteration, blocking at most \a timeout; returns the count. May return 0 before \a timeout
 	/// elapses (e.g. on a wake whose work was already dispatched by an earlier iteration): 0 means nothing
 	/// was dispatched this iteration, not that the full \a timeout was consumed.
+	/// Errors: backend poll failure.
 	result<size_t> run_for (clock::duration timeout) noexcept;
 
-	/// Run iterations until counted work drains -- posts in flight, poller-plane I/O and offloads;
-	/// returns the number of completions dispatched. Armed timers neither count as work nor keep settle()
-	/// alive; one expiring while settling is dispatched normally. The teardown quiesce step: destroy
-	/// handles, settle(), destroy the loop, then the thread pool. Blocks as long as the slowest in-flight
-	/// operation.
+	/// Like \ref run, except that armed timers neither count nor keep it running; one expiring while settling
+	/// is dispatched normally. The teardown quiesce step: destroy handles, settle(), destroy the loop, then
+	/// the thread pool. Blocks as long as the slowest in-flight operation.
 	result<size_t> settle () noexcept;
 
 	/// Run the completion \a handler for \a t on this loop's thread (thread-safe).
@@ -204,8 +201,8 @@ public:
 	///
 	/// There is no cancellation: to move the due time, keep the authoritative deadline in app state and, when
 	/// the handler fires early, re-arm for the remainder (lazy re-arm). A task still armed when the loop is
-	/// destroyed is dropped without completing; its storage remains app property, but the task stays bound and
-	/// must not be reused.
+	/// destroyed is dropped without completing: a pool-managed task returns to its pool, which must still
+	/// exist; an app-managed task is left to the app, reusable.
 	template <typename H>
 	void post_after (task_ptr &&t, clock::duration delay, H handler) noexcept
 		requires __async::handler<H, void(task_ptr &&) noexcept>
