@@ -57,7 +57,7 @@ struct socket_state
 	const std::intptr_t handle;
 	direction receive{}, send{};
 	bool queued = false;
-	const socket_kind kind;
+	socket_kind kind;
 	size_t armed = 0;
 	intrusive_queue_hook<socket_state> hook{};
 
@@ -213,6 +213,7 @@ struct impl_type
 	void post (task &t) const noexcept;
 
 	[[nodiscard]] std::error_code register_socket (socket_state &s) const noexcept;
+	void connect (socket_state &s, task &t) noexcept;
 	void drain (socket_state &s, socket_state::direction &d) noexcept;
 	void quiesce (socket_state &s) noexcept;
 };
@@ -228,6 +229,27 @@ inline void impl_type::post (task &t) const noexcept
 
 inline void impl_type::quiesce (socket_state &) noexcept
 {
+}
+
+inline void impl_type::connect (socket_state &s, task &t) noexcept
+{
+	auto &op = io(t);
+	const auto *endpoint = reinterpret_cast<const ::sockaddr *>(op.endpoint.data());
+	if (::connect(static_cast<int>(s.handle), endpoint, op.endpoint_size) == 0)
+	{
+		ready_.push(t);
+	}
+	else if (errno == EINPROGRESS)
+	{
+		s.kind = socket_kind::connecting;
+		s.send.ready = false;
+		s.send.pending.push(t);
+	}
+	else
+	{
+		op.native_error = errno;
+		ready_.push(t);
+	}
 }
 
 inline void wake_channel::drain (impl_type &loop) const noexcept
@@ -308,6 +330,34 @@ inline void drain_stream (impl_type &loop, socket_state &s, socket_state::direct
 		}
 		loop.ready_.push(*d.pending.pop());
 	}
+}
+
+inline void drain_connecting (impl_type &loop, socket_state &s, socket_state::direction &d) noexcept
+{
+	const auto fd = static_cast<int>(s.handle);
+	auto &op = io(*d.pending.head());
+
+	int error = 0;
+	::socklen_t error_size = sizeof(error);
+	std::ignore = ::getsockopt(fd, SOL_SOCKET, SO_ERROR, &error, &error_size);
+	if (error == 0)
+	{
+		::sockaddr_storage peer{};
+		::socklen_t peer_size = sizeof(peer);
+		if (::getpeername(fd, reinterpret_cast<::sockaddr *>(&peer), &peer_size) == -1)
+		{
+			if (errno == ENOTCONN)
+			{
+				d.ready = false;
+				return;
+			}
+			error = errno;
+		}
+	}
+
+	op.native_error = error;
+	s.kind = socket_kind::stream;
+	loop.ready_.push(*d.pending.pop());
 }
 
 inline const ::timespec *to_timespec (clock::duration d, ::timespec &storage) noexcept

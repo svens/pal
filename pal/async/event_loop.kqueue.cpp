@@ -135,6 +135,9 @@ void impl_type::drain (socket_state &s, socket_state::direction &d) noexcept
 		case socket_kind::stream:
 			drain_stream(*this, s, d);
 			return;
+		case socket_kind::connecting:
+			drain_connecting(*this, s, d);
+			return;
 	}
 }
 

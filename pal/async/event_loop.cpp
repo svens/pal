@@ -336,6 +336,15 @@ void start_send (socket_state &s, task_ptr &&t) noexcept
 	start_op(s, std::move(t), s.send);
 }
 
+void start_connect (socket_state &s, task_ptr &&t) noexcept
+{
+	auto &op = io(*t);
+	op.owner = &s;
+	op.native_error = 0;
+	++s.loop->stats_.io_in_flight;
+	s.loop->connect(s, *t.release());
+}
+
 } // namespace __event_loop
 
 result<event_loop> make_loop (const event_loop_config &config) noexcept

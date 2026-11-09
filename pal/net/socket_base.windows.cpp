@@ -11,9 +11,9 @@ namespace pal::net
 using __socket::from_sys;
 using __socket::to_sys;
 
-::LPFN_CONNECTEX ConnectEx{};
-::LPFN_ACCEPTEX AcceptEx{};
-::LPFN_GETACCEPTEXSOCKADDRS GetAcceptExSockaddrs{};
+::LPFN_CONNECTEX __socket::ConnectEx{};
+::LPFN_ACCEPTEX __socket::AcceptEx{};
+::LPFN_GETACCEPTEXSOCKADDRS __socket::GetAcceptExSockaddrs{};
 
 const result<void> &init () noexcept
 {
@@ -73,9 +73,9 @@ const result<void> &init () noexcept
 		static result<void> load_mswsock_extensions () noexcept
 		{
 			return open(AF_INET, SOCK_STREAM, 0)
-				.and_then(load_ex(&ConnectEx, WSAID_CONNECTEX))
-				.and_then(load_ex(&AcceptEx, WSAID_ACCEPTEX))
-				.and_then(load_ex(&GetAcceptExSockaddrs, WSAID_GETACCEPTEXSOCKADDRS))
+				.and_then(load_ex(&__socket::ConnectEx, WSAID_CONNECTEX))
+				.and_then(load_ex(&__socket::AcceptEx, WSAID_ACCEPTEX))
+				.and_then(load_ex(&__socket::GetAcceptExSockaddrs, WSAID_GETACCEPTEXSOCKADDRS))
 				.transform([](auto &&) { /* result<native_socket> -> result<void> */ });
 		}
 

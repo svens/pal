@@ -4,6 +4,7 @@
 
 #include <pal/async/__event_loop.hpp>
 #include <pal/error.hpp>
+#include <pal/net/__socket.hpp>
 
 #include <chrono>
 #include <cstddef>
@@ -14,6 +15,7 @@
 #include <tuple>
 #include <utility>
 #include <winsock2.h>
+#include <mswsock.h>
 #include <windows.h>
 
 namespace pal::async::__event_loop
@@ -32,6 +34,7 @@ struct native_op: ::OVERLAPPED
 	::DWORD flags;
 	::INT endpoint_size;
 	bool send;
+	bool connect;
 	task *self;
 };
 
@@ -102,6 +105,26 @@ void on_failure (io_state &op, native_op &n, const socket_state &state) noexcept
 	op.native_error = error;
 }
 
+void finish_connect (io_state &op, native_op &n, socket_state &state, bool completed) noexcept
+{
+	state.kind = socket_kind::stream;
+
+	if (!completed)
+	{
+		::DWORD bytes = 0, flags = 0;
+		if (!::WSAGetOverlappedResult(to_socket(state), &n, &bytes, FALSE, &flags))
+		{
+			op.native_error = ::WSAGetLastError();
+			return;
+		}
+	}
+
+	if (::setsockopt(to_socket(state), SOL_SOCKET, SO_UPDATE_CONNECT_CONTEXT, nullptr, 0) == SOCKET_ERROR)
+	{
+		op.native_error = ::WSAGetLastError();
+	}
+}
+
 size_t harvest (impl_type &loop, const ::OVERLAPPED_ENTRY &entry) noexcept
 {
 	if (entry.lpCompletionKey == wake_key)
@@ -116,6 +139,13 @@ size_t harvest (impl_type &loop, const ::OVERLAPPED_ENTRY &entry) noexcept
 	auto &op = io(t);
 
 	--state.armed;
+
+	if (n.connect)
+	{
+		finish_connect(op, n, state, entry.lpOverlapped->Internal == 0);
+		loop.ready_.push(t);
+		return 0;
+	}
 
 	if (entry.lpOverlapped->Internal == 0)
 	{
@@ -233,6 +263,63 @@ void arm_socket_op (impl_type &loop, task &t, socket_state &state, socket_state:
 	loop.ready_.push(t);
 }
 
+[[nodiscard]] int bind_if_unbound (const socket_state &state, ::ADDRESS_FAMILY family, int size) noexcept
+{
+	::sockaddr_storage local{};
+	int local_size = sizeof(local);
+	if (::getsockname(to_socket(state), reinterpret_cast<::sockaddr *>(&local), &local_size) == 0)
+	{
+		return 0;
+	}
+
+	const auto error = ::WSAGetLastError();
+	if (error != WSAEINVAL)
+	{
+		return error;
+	}
+
+	local = {};
+	local.ss_family = family;
+	if (::bind(to_socket(state), reinterpret_cast<const ::sockaddr *>(&local), size) == SOCKET_ERROR)
+	{
+		return ::WSAGetLastError();
+	}
+	return 0;
+}
+
+void arm_connect (impl_type &loop, task &t, socket_state &state) noexcept
+{
+	auto &op = io(t);
+	auto &n = *new (op.native.data()) native_op{};
+	n.connect = true;
+	n.self = &t;
+
+	const auto *endpoint = reinterpret_cast<const ::sockaddr *>(op.endpoint.data());
+	const auto endpoint_size = static_cast<int>(op.endpoint_size);
+
+	auto error = bind_if_unbound(state, endpoint->sa_family, endpoint_size);
+	if (error == 0)
+	{
+		if (net::__socket::ConnectEx(to_socket(state), endpoint, endpoint_size, nullptr, 0, nullptr, &n))
+		{
+			finish_connect(op, n, state, true);
+			loop.ready_.push(t);
+			return;
+		}
+
+		error = ::WSAGetLastError();
+		if (error == WSA_IO_PENDING)
+		{
+			++state.armed;
+			return;
+		}
+	}
+
+	state.kind = socket_kind::stream;
+	op.native_error = error;
+	loop.ready_.push(t);
+}
+
 } // namespace
 
 std::error_code impl_type::poll (clock::duration timeout) noexcept
@@ -260,8 +347,25 @@ std::error_code impl_type::register_socket (socket_state &s) const noexcept
 	return {};
 }
 
+void impl_type::connect (socket_state &s, task &t) noexcept
+{
+	s.kind = socket_kind::connecting;
+	s.send.pending.push(t);
+	if (!s.queued)
+	{
+		s.queued = true;
+		actionable_.push(s);
+	}
+}
+
 void impl_type::drain (socket_state &s, socket_state::direction &d) noexcept
 {
+	if (s.kind == socket_kind::connecting)
+	{
+		arm_connect(*this, *d.pending.pop(), s);
+		return;
+	}
+
 	while (auto *t = d.pending.try_pop())
 	{
 		arm_socket_op(*this, *t, s, d);

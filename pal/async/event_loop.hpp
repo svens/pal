@@ -82,6 +82,7 @@ enum class socket_kind: uint8_t
 {
 	datagram,
 	stream,
+	connecting,
 };
 
 struct socket_state;
@@ -129,6 +130,7 @@ struct io_state
 ) noexcept;
 void start_receive (socket_state &s, task_ptr &&t) noexcept;
 void start_send (socket_state &s, task_ptr &&t) noexcept;
+void start_connect (socket_state &s, task_ptr &&t) noexcept;
 void post (impl_type &loop, task_ptr &&t) noexcept;
 void post_after (impl_type &loop, task_ptr &&t, clock::duration delay) noexcept;
 

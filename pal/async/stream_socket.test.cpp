@@ -3,16 +3,17 @@
 #include <pal/net/socket_option.hpp>
 #include <pal/net/test.hpp>
 #include <pal/test.hpp>
+#include <pal/version.hpp>
 #include <catch2/catch_test_macros.hpp>
 #include <catch2/catch_template_test_macros.hpp>
 #include <algorithm>
 #include <array>
 #include <chrono>
-#include <cstddef>
 #include <optional>
 #include <span>
 #include <string>
 #include <string_view>
+#include <type_traits>
 #include <utility>
 #include <vector>
 
@@ -33,14 +34,37 @@ using sync_socket = pal::net::basic_stream_socket<tcp>;
 using async_socket = pal::async::handle<sync_socket>;
 using receive_result = pal::result<async_socket::receive_result>;
 using send_result = pal::result<async_socket::send_result>;
+using connect_result = pal::result<async_socket::connect_result>;
 
 using pal::net::ip::port_type;
 
 template <typename Fixture>
-std::pair<sync_socket, sync_socket> make_connected_pair ()
+auto make_listener ()
 {
 	auto acceptor = Fixture::make_acceptor();
 	REQUIRE(acceptor);
+	REQUIRE(acceptor->bind(Fixture::loopback_endpoint()));
+	REQUIRE(acceptor->listen());
+	return std::move(*acceptor);
+}
+
+template <typename Fixture>
+tcp::endpoint make_closed_endpoint ()
+{
+	auto closed = Fixture::make_acceptor();
+	REQUIRE(closed);
+	REQUIRE(closed->bind(Fixture::loopback_endpoint()));
+	auto endpoint = closed->local_endpoint();
+	REQUIRE(endpoint);
+	return *endpoint;
+}
+
+template <typename Fixture>
+std::pair<sync_socket, sync_socket> make_throttled_pair ()
+{
+	auto acceptor = Fixture::make_acceptor();
+	REQUIRE(acceptor);
+	REQUIRE(acceptor->set_option(pal::net::receive_buffer_size{4096}));
 	REQUIRE(acceptor->bind(Fixture::loopback_endpoint()));
 	REQUIRE(acceptor->listen());
 	auto acceptor_endpoint = acceptor->local_endpoint();
@@ -48,9 +72,28 @@ std::pair<sync_socket, sync_socket> make_connected_pair ()
 
 	auto client = Fixture::make_socket();
 	REQUIRE(client);
+	constexpr int send_buffer = (pal::os == pal::os_type::windows) ? 0 : 4096;
+	REQUIRE(client->set_option(pal::net::send_buffer_size{send_buffer}));
 	REQUIRE(client->connect(*acceptor_endpoint));
 
 	auto server = acceptor->accept();
+	REQUIRE(server);
+
+	return {std::move(*client), std::move(*server)};
+}
+
+template <typename Fixture>
+std::pair<sync_socket, sync_socket> make_connected_pair ()
+{
+	auto acceptor = make_listener<Fixture>();
+	auto acceptor_endpoint = acceptor.local_endpoint();
+	REQUIRE(acceptor_endpoint);
+
+	auto client = Fixture::make_socket();
+	REQUIRE(client);
+	REQUIRE(client->connect(*acceptor_endpoint));
+
+	auto server = acceptor.accept();
 	REQUIRE(server);
 
 	return {std::move(*client), std::move(*server)};
@@ -159,6 +202,136 @@ TEMPLATE_TEST_CASE("async/stream_socket", "", tcp_v4, tcp_v6)
 		}
 	}
 	#endif
+
+	SECTION("connect: unbound socket")
+	{
+		auto listener = make_listener<TestType>();
+		auto target = listener.local_endpoint();
+		REQUIRE(target);
+
+		auto client_sync = TestType::make_socket();
+		REQUIRE(client_sync);
+		auto client = loop->make_handle(std::move(*client_sync));
+		REQUIRE(client);
+
+		task connect_task;
+		int connected = 0;
+		client->start_connect(connect_task.borrow(), *target, [&](task_ptr &&, connect_result &&r) noexcept
+		{
+			REQUIRE(r);
+			++connected;
+		});
+
+		run_until(*loop, [&] { return connected == 1; });
+		CHECK(loop->stats().io_in_flight == 0);
+
+		auto remote = client->remote_endpoint();
+		REQUIRE(remote);
+		CHECK(*remote == *target);
+
+		auto server = listener.accept();
+		REQUIRE(server);
+
+		std::array<std::byte, 64> storage{};
+		std::ranges::copy(std::as_bytes(std::span{payload}), storage.begin());
+		task send_task{as_span(storage).first(payload.size())};
+
+		int sent = 0;
+		client->start_send(send_task.borrow(), [&](task_ptr &&, send_result &&r) noexcept
+		{
+			REQUIRE(r);
+			++sent;
+		});
+		run_until(*loop, [&] { return sent == 1; });
+
+		std::array<char, 64> wire{};
+		auto n = server->receive(wire);
+		REQUIRE(n);
+		CHECK(std::string_view{wire.data(), *n} == payload);
+	}
+
+	SECTION("connect: bound socket keeps its local endpoint")
+	{
+		auto listener = make_listener<TestType>();
+		auto target = listener.local_endpoint();
+		REQUIRE(target);
+
+		auto client_sync = TestType::make_socket();
+		REQUIRE(client_sync);
+		REQUIRE(client_sync->bind(TestType::loopback_endpoint()));
+		auto bound = client_sync->local_endpoint();
+		REQUIRE(bound);
+		auto client = loop->make_handle(std::move(*client_sync));
+		REQUIRE(client);
+		REQUIRE(loop->run_once());
+
+		task connect_task;
+		int connected = 0;
+		client->start_connect(connect_task.borrow(), *target, [&](task_ptr &&, connect_result &&r) noexcept
+		{
+			REQUIRE(r);
+			++connected;
+		});
+
+		run_until(*loop, [&] { return connected == 1; });
+		auto local_endpoint = client->local_endpoint();
+		REQUIRE(local_endpoint);
+		CHECK(*local_endpoint == *bound);
+	}
+
+	SECTION("connect: address family mismatch fails")
+	{
+		using other_family = std::conditional_t<std::is_same_v<TestType, tcp_v4>, tcp_v6, tcp_v4>;
+
+		auto client_sync = TestType::make_socket();
+		REQUIRE(client_sync);
+		auto client = loop->make_handle(std::move(*client_sync));
+		REQUIRE(client);
+
+		task connect_task;
+		int failed = 0;
+		const auto target = other_family::loopback_endpoint();
+		client->start_connect(connect_task.borrow(), target, [&](task_ptr &&, connect_result &&r) noexcept
+		{
+			REQUIRE_FALSE(r);
+			++failed;
+		});
+
+		run_until(*loop, [&] { return failed == 1; });
+		CHECK(loop->stats().io_in_flight == 0);
+	}
+
+	SECTION("connect: refused, then send fails")
+	{
+		const auto target = make_closed_endpoint<TestType>();
+
+		auto client_sync = TestType::make_socket();
+		REQUIRE(client_sync);
+		auto client = loop->make_handle(std::move(*client_sync));
+		REQUIRE(client);
+
+		task connect_task;
+		std::error_code ec{};
+		client->start_connect(connect_task.borrow(), target, [&](task_ptr &&, connect_result &&r) noexcept
+		{
+			REQUIRE_FALSE(r);
+			ec = r.error();
+		});
+
+		run_until(*loop, [&] { return ec != std::error_code{}; });
+		CHECK(ec == std::errc::connection_refused);
+		CHECK(loop->stats().io_in_flight == 0);
+
+		std::array<std::byte, 1> storage{};
+		task send_task{storage};
+		int failed = 0;
+		client->start_send(send_task.borrow(), [&](task_ptr &&, send_result &&r) noexcept
+		{
+			REQUIRE_FALSE(r);
+			++failed;
+		});
+		run_until(*loop, [&] { return failed == 1; });
+	}
 
 	SECTION("receive: armed before data arrives")
 	{
@@ -438,13 +611,16 @@ TEMPLATE_TEST_CASE("async/stream_socket", "", tcp_v4, tcp_v6)
 	{
 		static constexpr size_t size = size_t{1024} * 1024;
 
-		REQUIRE(socket->set_option(pal::net::send_buffer_size{4096}));
+		auto [throttled_local, throttled_peer] = make_throttled_pair<TestType>();
+		std::optional<sync_socket> throttled_peer_holder{std::move(throttled_peer)};
+		auto throttled = loop->make_handle(std::move(throttled_local));
+		REQUIRE(throttled);
 
 		std::vector<std::byte> storage(size);
 		task t{storage};
 
 		int failed = 0;
-		socket->start_send(t.borrow(), [&](task_ptr &&, send_result &&r) noexcept
+		throttled->start_send(t.borrow(), [&](task_ptr &&, send_result &&r) noexcept
 		{
 			REQUIRE_FALSE(r);
 			++failed;
@@ -453,8 +629,8 @@ TEMPLATE_TEST_CASE("async/stream_socket", "", tcp_v4, tcp_v6)
 		REQUIRE(loop->run_once());
 		CHECK(failed == 0);
 
-		REQUIRE(peer.set_option(pal::net::linger{true, 0s}));
-		peer_holder.reset();
+		REQUIRE(throttled_peer_holder->set_option(pal::net::linger{true, 0s}));
+		throttled_peer_holder.reset();
 
 		run_until(*loop, [&] { return failed == 1; });
 		CHECK(t.span().size() == size);
@@ -600,14 +776,44 @@ TEMPLATE_TEST_CASE("async/stream_socket", "", tcp_v4, tcp_v6)
 		CHECK(loop->stats().io_in_flight == 0);
 	}
 
+	SECTION("cancel: destruction with a pending connect")
+	{
+		const auto target = make_closed_endpoint<TestType>();
+
+		auto client_sync = TestType::make_socket();
+		REQUIRE(client_sync);
+		std::optional<async_socket> doomed{loop->make_handle(std::move(*client_sync)).value()};
+
+		task connect_task;
+		int canceled = 0;
+		std::error_code ec{};
+		doomed->start_connect(connect_task.borrow(), target, [&](task_ptr &&, connect_result &&r) noexcept
+		{
+			REQUIRE_FALSE(r);
+			ec = r.error();
+			++canceled;
+		});
+		if constexpr (pal::os == pal::os_type::windows)
+		{
+			REQUIRE(loop->run_once());
+		}
+		CHECK(canceled == 0);
+		CHECK(loop->stats().io_in_flight == 1);
+		doomed.reset();
+
+		REQUIRE(loop->settle());
+		CHECK(canceled == 1);
+		CHECK(ec == std::errc::operation_canceled);
+		CHECK(loop->stats().io_in_flight == 0);
+	}
+
 	SECTION("cancel: destruction with a partially sent op")
 	{
-		REQUIRE(socket->set_option(pal::net::send_buffer_size{4096}));
+		auto [throttled_local, throttled_peer] = make_throttled_pair<TestType>();
+		std::optional<async_socket> doomed{loop->make_handle(std::move(throttled_local)).value()};
 
 		std::vector<std::byte> storage(size_t{1024} * 1024);
 		task t{storage};
-
-		std::optional<async_socket> doomed{std::move(*socket)};
 
 		int canceled = 0;
 		std::error_code ec{};

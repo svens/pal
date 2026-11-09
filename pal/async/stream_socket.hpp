@@ -9,7 +9,8 @@
 #include <pal/net/basic_stream_socket.hpp>
 #include <pal/net/socket_option.hpp>
 #include <pal/result.hpp>
-#include <cstdint>
+#include <cstring>
+#include <type_traits>
 #include <utility>
 
 namespace pal::async
@@ -64,8 +65,9 @@ struct op_receive
 } // namespace __stream_socket
 
 /// Asynchronous stream socket: completing on the owning loop's thread, plus a curated subset of the synchronous
-/// socket's own API. The socket arrives at \ref event_loop::make_handle already connected via the pal/net API;
-/// make_handle switches it to non-blocking and registers it with the loop's backend.
+/// socket's own API. The socket arrives at \ref event_loop::make_handle opened via the pal/net API, either already
+/// connected there or left for \ref start_connect; make_handle switches it to non-blocking and registers it with the
+/// loop's backend.
 ///
 /// Half-close has no member: shut down the send direction through \ref native_socket only after every
 /// \ref start_send has completed, or queued data is cut off behind the FIN.
@@ -88,6 +90,25 @@ public:
 	~handle () noexcept
 	{
 		state_.reset();
+	}
+
+	/// Completion payload of \ref start_connect
+	struct connect_result
+	{
+	};
+
+	/// Queue an asynchronous connect to \a endpoint for a socket not yet connected. An unbound socket is bound
+	/// implicitly, as by a synchronous connect. Start no other operation on this socket until the connect has
+	/// completed. \a handler runs on the owning loop's thread, from a subsequent run().
+	template <typename H>
+	void start_connect (task_ptr &&t, const endpoint_type &endpoint, H handler) noexcept
+		requires __async::handler<H, void(task_ptr &&, result<connect_result> &&) noexcept>
+	{
+		auto &op = __event_loop::io(*t);
+		std::memcpy(op.endpoint.data(), endpoint.data(), sizeof(endpoint_type));
+		op.endpoint_size = static_cast<uint32_t>(endpoint.size());
+		t->bind<__stream_socket::op_send<connect_result>>(std::move(handler));
+		__event_loop::start_connect(*state_, std::move(t));
 	}
 
 	/// Completion payload of \ref start_receive
@@ -161,6 +182,9 @@ public:
 	}
 
 private:
+
+	static_assert(std::is_trivially_copyable_v<endpoint_type>);
+	static_assert(sizeof(endpoint_type) <= __event_loop::io_state::endpoint_capacity);
 
 	__event_loop::socket_state_ptr state_;
 	net::basic_stream_socket<Protocol> socket_;
