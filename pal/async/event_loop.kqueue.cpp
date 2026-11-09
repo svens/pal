@@ -74,10 +74,13 @@ std::error_code impl_type::register_socket (socket_state &s) const noexcept
 	return {};
 }
 
-void impl_type::drain (socket_state &s, socket_state::direction &d) noexcept
+namespace
+{
+
+void drain_datagram (impl_type &loop, socket_state &s, socket_state::direction &d) noexcept
 {
 	const bool send = &d == &s.send;
-	for (size_t i = 0; i < config_.drain_batch && d.actionable(); ++i)
+	for (size_t i = 0; i < loop.config_.drain_batch && d.actionable(); ++i)
 	{
 		auto &t = *d.pending.head();
 		auto &op = io(t);
@@ -99,7 +102,8 @@ void impl_type::drain (socket_state &s, socket_state::direction &d) noexcept
 
 		if (r < 0)
 		{
-			if (errno == EAGAIN || errno == EWOULDBLOCK)
+			static_assert(EAGAIN == EWOULDBLOCK);
+			if (errno == EAGAIN)
 			{
 				d.ready = false;
 				return;
@@ -115,7 +119,22 @@ void impl_type::drain (socket_state &s, socket_state::direction &d) noexcept
 				op.truncated = (message.msg_flags & MSG_TRUNC) != 0;
 			}
 		}
-		ready_.push(*d.pending.pop());
+		loop.ready_.push(*d.pending.pop());
+	}
+}
+
+} // namespace
+
+void impl_type::drain (socket_state &s, socket_state::direction &d) noexcept
+{
+	switch (s.kind)
+	{
+		case socket_kind::datagram:
+			drain_datagram(*this, s, d);
+			return;
+		case socket_kind::stream:
+			drain_stream(*this, s, d);
+			return;
 	}
 }
 

@@ -23,13 +23,13 @@
 	#include <cerrno>
 	#include <chrono>
 	#include <fcntl.h>
+	#include <sys/socket.h>
 	#include <time.h>
 	#include <unistd.h>
 #endif
 
 #if __pal_os_linux
 	#include <sys/epoll.h>
-	#include <sys/socket.h>
 #elif __pal_os_macos
 	#include <sys/event.h>
 #elif __pal_os_windows
@@ -57,6 +57,7 @@ struct socket_state
 	const std::intptr_t handle;
 	direction receive{}, send{};
 	bool queued = false;
+	const socket_kind kind;
 	size_t armed = 0;
 	intrusive_queue_hook<socket_state> hook{};
 
@@ -262,6 +263,50 @@ inline void on_socket_event (socket_state &s, socket_state::direction &d) noexce
 	{
 		s.queued = true;
 		s.loop->actionable_.push(s);
+	}
+}
+
+inline void drain_stream (impl_type &loop, socket_state &s, socket_state::direction &d) noexcept
+{
+	const bool send = &d == &s.send;
+	const auto fd = static_cast<int>(s.handle);
+	for (size_t i = 0; i < loop.config_.drain_batch && d.actionable(); ++i)
+	{
+		auto &t = *d.pending.head();
+		auto &op = io(t);
+		const auto window = t.span();
+
+		ssize_t r = 0;
+		do
+		{
+			r = send
+				? ::send(fd, window.data() + op.bytes, window.size() - op.bytes, MSG_NOSIGNAL)
+				: ::recv(fd, window.data(), window.size(), 0);
+		} while (r < 0 && errno == EINTR);
+
+		if (r < 0)
+		{
+			static_assert(EAGAIN == EWOULDBLOCK);
+			if (errno == EAGAIN)
+			{
+				d.ready = false;
+				return;
+			}
+			op.native_error = errno;
+		}
+		else if (send)
+		{
+			op.bytes += static_cast<size_t>(r);
+			if (op.bytes < window.size())
+			{
+				continue;
+			}
+		}
+		else
+		{
+			op.bytes = static_cast<size_t>(r);
+		}
+		loop.ready_.push(*d.pending.pop());
 	}
 }
 

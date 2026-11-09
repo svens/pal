@@ -150,8 +150,8 @@ size_t drain_posted (impl_type &loop) noexcept
 
 void drain_actionable (impl_type &loop) noexcept
 {
-	// Terminates: each drain visit either completes at least one pending op (finite supply -- no
-	// handlers run here to add more) or clears the readiness flag of every direction it visited.
+	// Terminates: each drain visit either makes progress on finite pending work (no handlers run here
+	// to add more) or clears the readiness flag of every direction it visited.
 	while (auto *s = loop.actionable_.try_pop())
 	{
 		s->queued = false;
@@ -261,9 +261,9 @@ void impl_deleter::operator() (impl_type *loop) const noexcept
 	delete loop;
 }
 
-result<socket_state_ptr> make_socket_state (impl_type &loop, std::intptr_t handle) noexcept
+result<socket_state_ptr> make_socket_state (impl_type &loop, std::intptr_t handle, socket_kind kind) noexcept
 {
-	socket_state_ptr state{new (std::nothrow) socket_state{.loop = &loop, .handle = handle}};
+	socket_state_ptr state{new (std::nothrow) socket_state{.loop = &loop, .handle = handle, .kind = kind}};
 	if (state == nullptr)
 	{
 		return make_unexpected(std::errc::not_enough_memory);

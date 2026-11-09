@@ -102,14 +102,8 @@ namespace
 
 constexpr bool is_blocking_error (int error) noexcept
 {
-	if constexpr (EAGAIN != EWOULDBLOCK)
-	{
-		return error == EAGAIN || error == EWOULDBLOCK;
-	}
-	else
-	{
-		return error == EAGAIN;
-	}
+	static_assert(EAGAIN == EWOULDBLOCK);
+	return error == EAGAIN;
 }
 
 constexpr bool is_connection_error (int error) noexcept

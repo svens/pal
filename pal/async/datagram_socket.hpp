@@ -12,7 +12,6 @@
 #include <cstdint>
 #include <cstring>
 #include <memory>
-#include <system_error>
 #include <utility>
 
 namespace pal::async
@@ -34,7 +33,7 @@ struct op_send
 		task_ptr p{&t};
 		if (op.native_error)
 		{
-			f(std::move(p), unexpected{std::error_code{op.native_error, std::system_category()}});
+			f(std::move(p), unexpected{__event_loop::error(op)});
 		}
 		else
 		{
@@ -56,7 +55,7 @@ struct op_receive
 		task_ptr p{&t};
 		if (op.native_error)
 		{
-			f(std::move(p), unexpected{std::error_code{op.native_error, std::system_category()}});
+			f(std::move(p), unexpected{__event_loop::error(op)});
 			return;
 		}
 		t.span(t.span().first(op.bytes));
@@ -77,7 +76,7 @@ struct op_receive_from
 		task_ptr p{&t};
 		if (op.native_error)
 		{
-			f(std::move(p), unexpected{std::error_code{op.native_error, std::system_category()}});
+			f(std::move(p), unexpected{__event_loop::error(op)});
 			return;
 		}
 		t.span(t.span().first(op.bytes));
@@ -266,7 +265,8 @@ private:
 
 		auto state = __event_loop::make_socket_state(
 			loop,
-			static_cast<std::intptr_t>(net::__socket::to_sys(socket.native_socket().handle()))
+			static_cast<std::intptr_t>(net::__socket::to_sys(socket.native_socket().handle())),
+			__event_loop::socket_kind::datagram
 		);
 		if (!state)
 		{
