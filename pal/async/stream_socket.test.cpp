@@ -563,6 +563,58 @@ TEMPLATE_TEST_CASE("async/stream_socket", "", tcp_v4, tcp_v6)
 		CHECK(loop->stats().io_in_flight == 0);
 	}
 
+	SECTION("send: queued sends across partial writes")
+	{
+		static constexpr size_t count = 8;
+		static constexpr size_t size = size_t{64} * 1024 + 1;
+
+		REQUIRE(socket->set_option(pal::net::send_buffer_size{4096}));
+		REQUIRE(peer.set_option(pal::net::non_blocking_io{true}));
+
+		std::vector<std::byte> storage(count * size);
+		std::ranges::generate(storage, [i = 0u]() mutable { return static_cast<std::byte>(i++ * 31u); });
+		std::array<task, count> tasks;
+
+		size_t sent = 0;
+		for (size_t i = 0; i < count; ++i)
+		{
+			tasks[i].span(std::span{storage}.subspan(i * size, size));
+			socket->start_send(tasks[i].borrow(), [&](task_ptr &&, send_result &&r) noexcept
+			{
+				REQUIRE(r);
+				++sent;
+			});
+		}
+
+		std::vector<std::byte> wire;
+		wire.reserve(storage.size());
+		const auto deadline = event_loop::clock::now() + 10s;
+		while (sent < count || wire.size() < storage.size())
+		{
+			REQUIRE(event_loop::clock::now() < deadline);
+			REQUIRE(loop->run_for(1ms));
+			drain_available(peer, wire);
+		}
+
+		CHECK(std::ranges::equal(wire, storage));
+		CHECK(loop->stats().io_in_flight == 0);
+	}
+
+	SECTION("send: empty window completes")
+	{
+		task t;
+
+		int sent = 0;
+		socket->start_send(t.borrow(), [&](task_ptr &&, send_result &&r) noexcept
+		{
+			REQUIRE(r);
+			++sent;
+		});
+
+		run_until(*loop, [&] { return sent == 1; });
+		CHECK(loop->stats().io_in_flight == 0);
+	}
+
 	SECTION("send: queued sends across partial writes under a one-op quantum")
 	{
 		static constexpr size_t size = size_t{256} * 1024;
@@ -617,14 +669,17 @@ TEMPLATE_TEST_CASE("async/stream_socket", "", tcp_v4, tcp_v6)
 		REQUIRE(throttled);
 
 		std::vector<std::byte> storage(size);
-		task t{storage};
+		task first{storage}, second{storage};
 
 		int failed = 0;
-		throttled->start_send(t.borrow(), [&](task_ptr &&, send_result &&r) noexcept
+		for (auto *t: {&first, &second})
 		{
-			REQUIRE_FALSE(r);
-			++failed;
-		});
+			throttled->start_send(t->borrow(), [&](task_ptr &&, send_result &&r) noexcept
+			{
+				REQUIRE_FALSE(r);
+				++failed;
+			});
+		}
 
 		REQUIRE(loop->run_once());
 		CHECK(failed == 0);
@@ -632,9 +687,82 @@ TEMPLATE_TEST_CASE("async/stream_socket", "", tcp_v4, tcp_v6)
 		REQUIRE(throttled_peer_holder->set_option(pal::net::linger{true, 0s}));
 		throttled_peer_holder.reset();
 
-		run_until(*loop, [&] { return failed == 1; });
-		CHECK(t.span().size() == size);
+		run_until(*loop, [&] { return failed == 2; });
+		CHECK(first.span().size() == size);
+		CHECK(second.span().size() == size);
 		CHECK(loop->stats().io_in_flight == 0);
+	}
+
+	SECTION("send: started while the socket is queued for drain")
+	{
+		std::array<std::byte, 64> receive_storage{}, send_storage{};
+		std::ranges::copy(std::as_bytes(std::span{payload}), send_storage.begin());
+		task receive_task{receive_storage}, send_task{as_span(send_storage).first(payload.size())}, post_task;
+
+		REQUIRE(peer.send(payload));
+		const auto deadline = event_loop::clock::now() + 5s;
+		while (socket->native_socket().available().value_or(0) < payload.size())
+		{
+			REQUIRE(event_loop::clock::now() < deadline);
+		}
+		REQUIRE(loop->run_once());
+
+		int received = 0, sent = 0;
+		socket->start_receive(receive_task.borrow(), [&](task_ptr &&, receive_result &&r) noexcept
+		{
+			REQUIRE(r);
+			++received;
+		});
+
+		loop->post(post_task.borrow(), [&](task_ptr &&) noexcept
+		{
+			socket->start_send(send_task.borrow(), [&](task_ptr &&, send_result &&r) noexcept
+			{
+				REQUIRE(r);
+				++sent;
+			});
+		});
+
+		run_until(*loop, [&] { return received == 1 && sent == 1; });
+		CHECK(as_string_view(receive_task.span()) == payload);
+
+		std::array<char, 64> wire{};
+		auto n = peer.receive(wire);
+		REQUIRE(n);
+		CHECK(std::string_view{wire.data(), *n} == payload);
+	}
+
+	SECTION("receive: completes while a send is parked on a full buffer")
+	{
+		std::vector<std::byte> send_storage(size_t{1024} * 1024);
+		std::array<std::byte, 64> receive_storage{};
+		task send_task{send_storage}, receive_task{receive_storage};
+
+		auto [throttled_local, throttled_peer] = make_throttled_pair<TestType>();
+		std::optional<async_socket> throttled{loop->make_handle(std::move(throttled_local)).value()};
+
+		int sent = 0, received = 0;
+		throttled->start_send(send_task.borrow(), [&](task_ptr &&, send_result &&) noexcept
+		{
+			++sent;
+		});
+		REQUIRE(loop->run_once());
+		REQUIRE(sent == 0);
+
+		throttled->start_receive(receive_task.borrow(), [&](task_ptr &&, receive_result &&r) noexcept
+		{
+			REQUIRE(r);
+			++received;
+		});
+		REQUIRE(throttled_peer.send(payload));
+
+		run_until(*loop, [&] { return received == 1; });
+		CHECK(sent == 0);
+		CHECK(as_string_view(receive_task.span()) == payload);
+
+		throttled.reset();
+		REQUIRE(loop->settle());
+		CHECK(sent == 1);
 	}
 
 	SECTION("send: queued sends keep start order")

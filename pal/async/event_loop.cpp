@@ -162,7 +162,7 @@ void drain_actionable (impl_type &loop) noexcept
 				loop.drain(*s, *d);
 			}
 		}
-		if (!s->queued && s->actionable())
+		if (s->actionable())
 		{
 			// one fairness quantum consumed; round-robin to the tail
 			s->queued = true;

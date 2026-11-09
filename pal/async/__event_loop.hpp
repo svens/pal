@@ -22,8 +22,10 @@
 	#include <bit>
 	#include <cerrno>
 	#include <chrono>
+	#include <climits>
 	#include <fcntl.h>
 	#include <sys/socket.h>
+	#include <sys/uio.h>
 	#include <time.h>
 	#include <unistd.h>
 #endif
@@ -171,10 +173,14 @@ struct wake_channel
 
 #endif
 
+#if __pal_os_linux || __pal_os_macos
+	static_assert(event_loop_config::max_drain_batch <= IOV_MAX);
+	using io_vector_array = std::array<::iovec, event_loop_config::max_drain_batch>;
+#endif
+
 #if __pal_os_linux
 	using poll_array = std::array<::epoll_event, event_loop_config::max_poll_batch>;
 	using mmsg_array = std::array<::mmsghdr, event_loop_config::max_drain_batch>;
-	using mmsg_buffers_array = std::array<::iovec, event_loop_config::max_drain_batch>;
 #elif __pal_os_macos
 	using poll_array = std::array<struct ::kevent, event_loop_config::max_poll_batch>;
 #elif __pal_os_windows
@@ -199,11 +205,12 @@ struct impl_type
 		wake_channel wake{};
 		poll_array events{};
 		mmsg_array messages{};
-		mmsg_buffers_array buffers{};
+		io_vector_array buffers{};
 	#elif __pal_os_macos
 		unique_fd kq{};
 		wake_channel wake{};
 		poll_array events{};
+		io_vector_array buffers{};
 	#elif __pal_os_windows
 		unique_port port{};
 		poll_array events{};
@@ -288,9 +295,65 @@ inline void on_socket_event (socket_state &s, socket_state::direction &d) noexce
 	}
 }
 
-inline void drain_stream (impl_type &loop, socket_state &s, socket_state::direction &d) noexcept
+inline void drain_stream_send (impl_type &loop, socket_state &s, socket_state::direction &d) noexcept
 {
-	const bool send = &d == &s.send;
+	size_t count = 0;
+	for (auto &t: d.pending)
+	{
+		if (count == loop.config_.drain_batch)
+		{
+			break;
+		}
+		const auto window = t.span().subspan(io(t).bytes);
+		loop.buffers[count++] = {.iov_base = window.data(), .iov_len = window.size()};
+	}
+
+	::msghdr message{};
+	message.msg_iov = loop.buffers.data();
+	message.msg_iovlen = static_cast<decltype(message.msg_iovlen)>(count);
+
+	ssize_t r = 0;
+	do
+	{
+		r = ::sendmsg(static_cast<int>(s.handle), &message, MSG_NOSIGNAL);
+	} while (r < 0 && errno == EINTR);
+
+	if (r < 0)
+	{
+		static_assert(EAGAIN == EWOULDBLOCK);
+		if (errno == EAGAIN)
+		{
+			d.ready = false;
+		}
+		else
+		{
+			task *t = d.pending.pop();
+			io(*t).native_error = errno;
+			loop.ready_.push(*t);
+		}
+		return;
+	}
+
+	auto sent = static_cast<size_t>(r);
+	for (size_t i = 0; i < count; ++i)
+	{
+		auto &t = *d.pending.head();
+		auto &op = io(t);
+		const auto left = t.span().size() - op.bytes;
+		if (sent < left)
+		{
+			op.bytes += sent;
+			return;
+		}
+		sent -= left;
+		loop.ready_.push(*d.pending.pop());
+	}
+}
+
+// TODO(svens): one recvmsg across all pending receives, like drain_stream_send, if apps start keeping several
+// receives armed; not done because the typical app validates each chunk before re-arming its single receive
+inline void drain_stream_receive (impl_type &loop, socket_state &s, socket_state::direction &d) noexcept
+{
 	const auto fd = static_cast<int>(s.handle);
 	for (size_t i = 0; i < loop.config_.drain_batch && d.actionable(); ++i)
 	{
@@ -301,9 +364,7 @@ inline void drain_stream (impl_type &loop, socket_state &s, socket_state::direct
 		ssize_t r = 0;
 		do
 		{
-			r = send
-				? ::send(fd, window.data() + op.bytes, window.size() - op.bytes, MSG_NOSIGNAL)
-				: ::recv(fd, window.data(), window.size(), 0);
+			r = ::recv(fd, window.data(), window.size(), 0);
 		} while (r < 0 && errno == EINTR);
 
 		if (r < 0)
@@ -316,19 +377,23 @@ inline void drain_stream (impl_type &loop, socket_state &s, socket_state::direct
 			}
 			op.native_error = errno;
 		}
-		else if (send)
-		{
-			op.bytes += static_cast<size_t>(r);
-			if (op.bytes < window.size())
-			{
-				continue;
-			}
-		}
 		else
 		{
 			op.bytes = static_cast<size_t>(r);
 		}
 		loop.ready_.push(*d.pending.pop());
+	}
+}
+
+inline void drain_stream (impl_type &loop, socket_state &s, socket_state::direction &d) noexcept
+{
+	if (&d == &s.send)
+	{
+		drain_stream_send(loop, s, d);
+	}
+	else
+	{
+		drain_stream_receive(loop, s, d);
 	}
 }
 
