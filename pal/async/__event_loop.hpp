@@ -22,14 +22,16 @@
 	#include <bit>
 	#include <cerrno>
 	#include <chrono>
+	#include <climits>
 	#include <fcntl.h>
+	#include <sys/socket.h>
+	#include <sys/uio.h>
 	#include <time.h>
 	#include <unistd.h>
 #endif
 
 #if __pal_os_linux
 	#include <sys/epoll.h>
-	#include <sys/socket.h>
 #elif __pal_os_macos
 	#include <sys/event.h>
 #elif __pal_os_windows
@@ -57,6 +59,7 @@ struct socket_state
 	const std::intptr_t handle;
 	direction receive{}, send{};
 	bool queued = false;
+	socket_kind kind;
 	size_t armed = 0;
 	intrusive_queue_hook<socket_state> hook{};
 
@@ -170,10 +173,14 @@ struct wake_channel
 
 #endif
 
+#if __pal_os_linux || __pal_os_macos
+	static_assert(event_loop_config::max_drain_batch <= IOV_MAX);
+	using io_vector_array = std::array<::iovec, event_loop_config::max_drain_batch>;
+#endif
+
 #if __pal_os_linux
 	using poll_array = std::array<::epoll_event, event_loop_config::max_poll_batch>;
 	using mmsg_array = std::array<::mmsghdr, event_loop_config::max_drain_batch>;
-	using mmsg_buffers_array = std::array<::iovec, event_loop_config::max_drain_batch>;
 #elif __pal_os_macos
 	using poll_array = std::array<struct ::kevent, event_loop_config::max_poll_batch>;
 #elif __pal_os_windows
@@ -198,11 +205,12 @@ struct impl_type
 		wake_channel wake{};
 		poll_array events{};
 		mmsg_array messages{};
-		mmsg_buffers_array buffers{};
+		io_vector_array buffers{};
 	#elif __pal_os_macos
 		unique_fd kq{};
 		wake_channel wake{};
 		poll_array events{};
+		io_vector_array buffers{};
 	#elif __pal_os_windows
 		unique_port port{};
 		poll_array events{};
@@ -212,6 +220,7 @@ struct impl_type
 	void post (task &t) const noexcept;
 
 	[[nodiscard]] std::error_code register_socket (socket_state &s) const noexcept;
+	void connect (socket_state &s, task &t) noexcept;
 	void drain (socket_state &s, socket_state::direction &d) noexcept;
 	void quiesce (socket_state &s) noexcept;
 };
@@ -227,6 +236,27 @@ inline void impl_type::post (task &t) const noexcept
 
 inline void impl_type::quiesce (socket_state &) noexcept
 {
+}
+
+inline void impl_type::connect (socket_state &s, task &t) noexcept
+{
+	auto &op = io(t);
+	const auto *endpoint = reinterpret_cast<const ::sockaddr *>(op.endpoint.data());
+	if (::connect(static_cast<int>(s.handle), endpoint, op.endpoint_size) == 0)
+	{
+		ready_.push(t);
+	}
+	else if (errno == EINPROGRESS)
+	{
+		s.kind = socket_kind::connecting;
+		s.send.ready = false;
+		s.send.pending.push(t);
+	}
+	else
+	{
+		op.native_error = errno;
+		ready_.push(t);
+	}
 }
 
 inline void wake_channel::drain (impl_type &loop) const noexcept
@@ -263,6 +293,136 @@ inline void on_socket_event (socket_state &s, socket_state::direction &d) noexce
 		s.queued = true;
 		s.loop->actionable_.push(s);
 	}
+}
+
+inline void drain_stream_send (impl_type &loop, socket_state &s, socket_state::direction &d) noexcept
+{
+	size_t count = 0;
+	for (auto &t: d.pending)
+	{
+		if (count == loop.config_.drain_batch)
+		{
+			break;
+		}
+		const auto window = t.span().subspan(io(t).bytes);
+		loop.buffers[count++] = {.iov_base = window.data(), .iov_len = window.size()};
+	}
+
+	::msghdr message{};
+	message.msg_iov = loop.buffers.data();
+	message.msg_iovlen = static_cast<decltype(message.msg_iovlen)>(count);
+
+	ssize_t r = 0;
+	do
+	{
+		r = ::sendmsg(static_cast<int>(s.handle), &message, MSG_NOSIGNAL);
+	} while (r < 0 && errno == EINTR);
+
+	if (r < 0)
+	{
+		static_assert(EAGAIN == EWOULDBLOCK);
+		if (errno == EAGAIN)
+		{
+			d.ready = false;
+		}
+		else
+		{
+			task *t = d.pending.pop();
+			io(*t).native_error = errno;
+			loop.ready_.push(*t);
+		}
+		return;
+	}
+
+	auto sent = static_cast<size_t>(r);
+	for (size_t i = 0; i < count; ++i)
+	{
+		auto &t = *d.pending.head();
+		auto &op = io(t);
+		const auto left = t.span().size() - op.bytes;
+		if (sent < left)
+		{
+			op.bytes += sent;
+			return;
+		}
+		sent -= left;
+		loop.ready_.push(*d.pending.pop());
+	}
+}
+
+// TODO(svens): one recvmsg across all pending receives, like drain_stream_send, if apps start keeping several
+// receives armed; not done because the typical app validates each chunk before re-arming its single receive
+inline void drain_stream_receive (impl_type &loop, socket_state &s, socket_state::direction &d) noexcept
+{
+	const auto fd = static_cast<int>(s.handle);
+	for (size_t i = 0; i < loop.config_.drain_batch && d.actionable(); ++i)
+	{
+		auto &t = *d.pending.head();
+		auto &op = io(t);
+		const auto window = t.span();
+
+		ssize_t r = 0;
+		do
+		{
+			r = ::recv(fd, window.data(), window.size(), 0);
+		} while (r < 0 && errno == EINTR);
+
+		if (r < 0)
+		{
+			static_assert(EAGAIN == EWOULDBLOCK);
+			if (errno == EAGAIN)
+			{
+				d.ready = false;
+				return;
+			}
+			op.native_error = errno;
+		}
+		else
+		{
+			op.bytes = static_cast<size_t>(r);
+		}
+		loop.ready_.push(*d.pending.pop());
+	}
+}
+
+inline void drain_stream (impl_type &loop, socket_state &s, socket_state::direction &d) noexcept
+{
+	if (&d == &s.send)
+	{
+		drain_stream_send(loop, s, d);
+	}
+	else
+	{
+		drain_stream_receive(loop, s, d);
+	}
+}
+
+inline void drain_connecting (impl_type &loop, socket_state &s, socket_state::direction &d) noexcept
+{
+	const auto fd = static_cast<int>(s.handle);
+	auto &op = io(*d.pending.head());
+
+	int error = 0;
+	::socklen_t error_size = sizeof(error);
+	std::ignore = ::getsockopt(fd, SOL_SOCKET, SO_ERROR, &error, &error_size);
+	if (error == 0)
+	{
+		::sockaddr_storage peer{};
+		::socklen_t peer_size = sizeof(peer);
+		if (::getpeername(fd, reinterpret_cast<::sockaddr *>(&peer), &peer_size) == -1)
+		{
+			if (errno == ENOTCONN)
+			{
+				d.ready = false;
+				return;
+			}
+			error = errno;
+		}
+	}
+
+	op.native_error = error;
+	s.kind = socket_kind::stream;
+	loop.ready_.push(*d.pending.pop());
 }
 
 inline const ::timespec *to_timespec (clock::duration d, ::timespec &storage) noexcept

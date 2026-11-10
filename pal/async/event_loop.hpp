@@ -11,6 +11,7 @@
 #include <chrono>
 #include <cstdint>
 #include <memory>
+#include <system_error>
 #include <utility>
 
 namespace pal::async
@@ -77,6 +78,13 @@ struct impl_deleter
 
 using impl_ptr = std::unique_ptr<impl_type, impl_deleter>;
 
+enum class socket_kind: uint8_t
+{
+	datagram,
+	stream,
+	connecting,
+};
+
 struct socket_state;
 
 struct socket_state_deleter
@@ -110,9 +118,19 @@ struct io_state
 	return t.scratch_as<io_state>();
 }
 
-[[nodiscard]] result<socket_state_ptr> make_socket_state (impl_type &loop, std::intptr_t handle) noexcept;
+[[nodiscard]] inline std::error_code error (const io_state &op) noexcept
+{
+	return {op.native_error, std::system_category()};
+}
+
+[[nodiscard]] result<socket_state_ptr> make_socket_state (
+	impl_type &loop,
+	std::intptr_t handle,
+	socket_kind kind
+) noexcept;
 void start_receive (socket_state &s, task_ptr &&t) noexcept;
 void start_send (socket_state &s, task_ptr &&t) noexcept;
+void start_connect (socket_state &s, task_ptr &&t) noexcept;
 void post (impl_type &loop, task_ptr &&t) noexcept;
 void post_after (impl_type &loop, task_ptr &&t, clock::duration delay) noexcept;
 

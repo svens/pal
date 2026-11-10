@@ -89,24 +89,23 @@ unsigned make_mmsg (impl_type &loop, socket_state::direction &d) noexcept
 	return count;
 }
 
-} // namespace
-
-void impl_type::drain (socket_state &s, socket_state::direction &d) noexcept
+void drain_datagram (impl_type &loop, socket_state &s, socket_state::direction &d) noexcept
 {
 	const bool send = &d == &s.send;
-	const auto count = make_mmsg(*this, d);
+	const auto count = make_mmsg(loop, d);
 
 	int r = 0;
 	do
 	{
 		r = send
-			? ::sendmmsg(static_cast<int>(s.handle), messages.data(), count, 0)
-			: ::recvmmsg(static_cast<int>(s.handle), messages.data(), count, 0, nullptr);
+			? ::sendmmsg(static_cast<int>(s.handle), loop.messages.data(), count, 0)
+			: ::recvmmsg(static_cast<int>(s.handle), loop.messages.data(), count, 0, nullptr);
 	} while (r < 0 && errno == EINTR);
 
 	if (r < 0)
 	{
-		if (errno == EAGAIN || errno == EWOULDBLOCK)
+		static_assert(EAGAIN == EWOULDBLOCK);
+		if (errno == EAGAIN)
 		{
 			d.ready = false;
 		}
@@ -115,7 +114,7 @@ void impl_type::drain (socket_state &s, socket_state::direction &d) noexcept
 			// batch error attribution: -1 belongs to the head-of-FIFO op
 			task *t = d.pending.pop();
 			io(*t).native_error = errno;
-			ready_.push(*t);
+			loop.ready_.push(*t);
 		}
 		return;
 	}
@@ -124,16 +123,34 @@ void impl_type::drain (socket_state &s, socket_state::direction &d) noexcept
 	{
 		task *t = d.pending.pop();
 		auto &op = io(*t);
-		op.bytes = messages[i].msg_len;
+		op.bytes = loop.messages[i].msg_len;
 		if (!send)
 		{
-			op.endpoint_size = messages[i].msg_hdr.msg_namelen;
-			op.truncated = (messages[i].msg_hdr.msg_flags & MSG_TRUNC) != 0;
+			op.endpoint_size = loop.messages[i].msg_hdr.msg_namelen;
+			op.truncated = (loop.messages[i].msg_hdr.msg_flags & MSG_TRUNC) != 0;
 		}
-		ready_.push(*t);
+		loop.ready_.push(*t);
 	}
 	// Partial return: the flag stays set. A deferred mid-batch outcome (EAGAIN or a per-message error --
 	// mmsg reports neither on the partial call) surfaces on the revisit's syscall.
+}
+
+} // namespace
+
+void impl_type::drain (socket_state &s, socket_state::direction &d) noexcept
+{
+	switch (s.kind)
+	{
+		case socket_kind::datagram:
+			drain_datagram(*this, s, d);
+			return;
+		case socket_kind::stream:
+			drain_stream(*this, s, d);
+			return;
+		case socket_kind::connecting:
+			drain_connecting(*this, s, d);
+			return;
+	}
 }
 
 result<impl_ptr> make_backend (const event_loop_config &config) noexcept

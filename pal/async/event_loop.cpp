@@ -150,8 +150,8 @@ size_t drain_posted (impl_type &loop) noexcept
 
 void drain_actionable (impl_type &loop) noexcept
 {
-	// Terminates: each drain visit either completes at least one pending op (finite supply -- no
-	// handlers run here to add more) or clears the readiness flag of every direction it visited.
+	// Terminates: each drain visit either makes progress on finite pending work (no handlers run here
+	// to add more) or clears the readiness flag of every direction it visited.
 	while (auto *s = loop.actionable_.try_pop())
 	{
 		s->queued = false;
@@ -162,7 +162,7 @@ void drain_actionable (impl_type &loop) noexcept
 				loop.drain(*s, *d);
 			}
 		}
-		if (!s->queued && s->actionable())
+		if (s->actionable())
 		{
 			// one fairness quantum consumed; round-robin to the tail
 			s->queued = true;
@@ -261,9 +261,9 @@ void impl_deleter::operator() (impl_type *loop) const noexcept
 	delete loop;
 }
 
-result<socket_state_ptr> make_socket_state (impl_type &loop, std::intptr_t handle) noexcept
+result<socket_state_ptr> make_socket_state (impl_type &loop, std::intptr_t handle, socket_kind kind) noexcept
 {
-	socket_state_ptr state{new (std::nothrow) socket_state{.loop = &loop, .handle = handle}};
+	socket_state_ptr state{new (std::nothrow) socket_state{.loop = &loop, .handle = handle, .kind = kind}};
 	if (state == nullptr)
 	{
 		return make_unexpected(std::errc::not_enough_memory);
@@ -334,6 +334,15 @@ void start_receive (socket_state &s, task_ptr &&t) noexcept
 void start_send (socket_state &s, task_ptr &&t) noexcept
 {
 	start_op(s, std::move(t), s.send);
+}
+
+void start_connect (socket_state &s, task_ptr &&t) noexcept
+{
+	auto &op = io(*t);
+	op.owner = &s;
+	op.native_error = 0;
+	++s.loop->stats_.io_in_flight;
+	s.loop->connect(s, *t.release());
 }
 
 } // namespace __event_loop
