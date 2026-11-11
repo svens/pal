@@ -57,6 +57,7 @@ struct socket_state
 
 	impl_type *const loop;
 	const std::intptr_t handle;
+	const int family;
 	direction receive{}, send{};
 	bool queued = false;
 	socket_kind kind;
@@ -423,6 +424,44 @@ inline void drain_connecting (impl_type &loop, socket_state &s, socket_state::di
 	op.native_error = error;
 	s.kind = socket_kind::stream;
 	loop.ready_.push(*d.pending.pop());
+}
+
+inline void drain_accept (impl_type &loop, socket_state &s, socket_state::direction &d) noexcept
+{
+	const auto fd = static_cast<int>(s.handle);
+	for (size_t i = 0; i < loop.config_.drain_batch && d.actionable(); ++i)
+	{
+		auto &t = *d.pending.head();
+		auto &op = io(t);
+
+		::socklen_t size = io_state::endpoint_capacity;
+		int r = 0;
+		do
+		{
+			r = ::accept(fd, reinterpret_cast<::sockaddr *>(op.endpoint.data()), &size);
+		} while (r < 0 && errno == EINTR);
+
+		if (r < 0)
+		{
+			static_assert(EAGAIN == EWOULDBLOCK);
+			if (errno == EAGAIN)
+			{
+				d.ready = false;
+				return;
+			}
+			op.native_error = errno;
+		}
+		else if (os == os_type::macos && size == 0)
+		{
+			::close(r);
+			op.native_error = ECONNABORTED;
+		}
+		else
+		{
+			op.accepted = r;
+		}
+		loop.ready_.push(*d.pending.pop());
+	}
 }
 
 inline const ::timespec *to_timespec (clock::duration d, ::timespec &storage) noexcept

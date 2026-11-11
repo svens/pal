@@ -9,6 +9,7 @@
 #include <chrono>
 #include <cstddef>
 #include <cstdint>
+#include <cstring>
 #include <new>
 #include <span>
 #include <system_error>
@@ -27,14 +28,23 @@ namespace
 // Every other completion key is the socket_state the packet belongs to
 constexpr ::ULONG_PTR wake_key = 1;
 
+constexpr auto accept_address_length = static_cast<::DWORD>(accept_address_size);
+
+enum class op_kind: uint8_t
+{
+	receive,
+	send,
+	connect,
+	accept,
+};
+
 struct native_op: ::OVERLAPPED
 {
 	::WSABUF buffer;
 	::DWORD bytes;
 	::DWORD flags;
 	::INT endpoint_size;
-	bool send;
-	bool connect;
+	op_kind kind;
 	task *self;
 };
 
@@ -72,7 +82,7 @@ void on_success (io_state &op, native_op &n, size_t bytes) noexcept
 {
 	op.bytes = bytes;
 	op.truncated = false;
-	if (!n.send)
+	if (n.kind == op_kind::receive)
 	{
 		op.endpoint_size = static_cast<uint32_t>(n.endpoint_size);
 	}
@@ -96,7 +106,7 @@ void on_failure (io_state &op, native_op &n, const socket_state &state) noexcept
 	}
 
 	const auto error = ::WSAGetLastError();
-	if (!n.send && error == WSAEMSGSIZE)
+	if (n.kind == op_kind::receive && error == WSAEMSGSIZE)
 	{
 		on_truncated(op, n);
 		return;
@@ -105,24 +115,67 @@ void on_failure (io_state &op, native_op &n, const socket_state &state) noexcept
 	op.native_error = error;
 }
 
+[[nodiscard]] int overlapped_error (native_op &n, const socket_state &state, bool completed) noexcept
+{
+	::DWORD bytes = 0, flags = 0;
+	if (completed || ::WSAGetOverlappedResult(to_socket(state), &n, &bytes, FALSE, &flags))
+	{
+		return 0;
+	}
+	return ::WSAGetLastError();
+}
+
 void finish_connect (io_state &op, native_op &n, socket_state &state, bool completed) noexcept
 {
 	state.kind = socket_kind::stream;
 
-	if (!completed)
+	op.native_error = overlapped_error(n, state, completed);
+	if (op.native_error != 0)
 	{
-		::DWORD bytes = 0, flags = 0;
-		if (!::WSAGetOverlappedResult(to_socket(state), &n, &bytes, FALSE, &flags))
-		{
-			op.native_error = ::WSAGetLastError();
-			return;
-		}
+		return;
 	}
 
 	if (::setsockopt(to_socket(state), SOL_SOCKET, SO_UPDATE_CONNECT_CONTEXT, nullptr, 0) == SOCKET_ERROR)
 	{
 		op.native_error = ::WSAGetLastError();
 	}
+}
+
+void finish_accept (io_state &op, native_op &n, const socket_state &state, bool completed) noexcept
+{
+	op.native_error = overlapped_error(n, state, completed);
+	if (op.native_error != 0)
+	{
+		return;
+	}
+
+	const auto listener = to_socket(state);
+	const auto accepted = static_cast<::SOCKET>(op.accepted);
+	if (::setsockopt(
+			accepted,
+			SOL_SOCKET,
+			SO_UPDATE_ACCEPT_CONTEXT,
+			reinterpret_cast<const char *>(&listener),
+			sizeof(listener)
+		) == SOCKET_ERROR)
+	{
+		op.native_error = ::WSAGetLastError();
+		return;
+	}
+
+	::sockaddr *local = nullptr, *remote = nullptr;
+	::INT local_size = 0, remote_size = 0;
+	net::__socket::GetAcceptExSockaddrs(
+		n.buffer.buf,
+		0,
+		accept_address_length,
+		accept_address_length,
+		&local,
+		&local_size,
+		&remote,
+		&remote_size
+	);
+	std::memcpy(op.endpoint.data(), remote, static_cast<size_t>(remote_size));
 }
 
 size_t harvest (impl_type &loop, const ::OVERLAPPED_ENTRY &entry) noexcept
@@ -140,20 +193,26 @@ size_t harvest (impl_type &loop, const ::OVERLAPPED_ENTRY &entry) noexcept
 
 	--state.armed;
 
-	if (n.connect)
+	const bool completed = entry.lpOverlapped->Internal == 0;
+	switch (n.kind)
 	{
-		finish_connect(op, n, state, entry.lpOverlapped->Internal == 0);
-		loop.ready_.push(t);
-		return 0;
-	}
-
-	if (entry.lpOverlapped->Internal == 0)
-	{
-		on_success(op, n, entry.dwNumberOfBytesTransferred);
-	}
-	else
-	{
-		on_failure(op, n, state);
+		case op_kind::receive:
+		case op_kind::send:
+			if (completed)
+			{
+				on_success(op, n, entry.dwNumberOfBytesTransferred);
+			}
+			else
+			{
+				on_failure(op, n, state);
+			}
+			break;
+		case op_kind::connect:
+			finish_connect(op, n, state, completed);
+			break;
+		case op_kind::accept:
+			finish_accept(op, n, state, completed);
+			break;
 	}
 
 	loop.ready_.push(t);
@@ -196,19 +255,18 @@ void arm_socket_op (impl_type &loop, task &t, socket_state &state, socket_state:
 {
 	auto &op = io(t);
 	const auto payload = t.span();
-	const bool send = &d == &state.send;
 
 	auto &n = *new (op.native.data()) native_op{};
 	n.buffer.buf = reinterpret_cast<::CHAR *>(payload.data());
 	n.buffer.len = static_cast<::ULONG>(payload.size());
-	n.send = send;
+	n.kind = (&d == &state.send) ? op_kind::send : op_kind::receive;
 	n.self = &t;
 
 	auto *endpoint = (op.endpoint_size != 0) ? reinterpret_cast<::sockaddr *>(op.endpoint.data()) : nullptr;
 	n.endpoint_size = static_cast<::INT>(op.endpoint_size);
 
 	int r = 0;
-	if (send)
+	if (n.kind == op_kind::send)
 	{
 		r = ::WSASendTo(
 			to_socket(state),
@@ -252,7 +310,7 @@ void arm_socket_op (impl_type &loop, task &t, socket_state &state, socket_state:
 		return;
 	}
 
-	if (!send && error == WSAEMSGSIZE)
+	if (n.kind == op_kind::receive && error == WSAEMSGSIZE)
 	{
 		on_truncated(op, n);
 	}
@@ -291,7 +349,7 @@ void arm_connect (impl_type &loop, task &t, socket_state &state) noexcept
 {
 	auto &op = io(t);
 	auto &n = *new (op.native.data()) native_op{};
-	n.connect = true;
+	n.kind = op_kind::connect;
 	n.self = &t;
 
 	const auto *endpoint = reinterpret_cast<const ::sockaddr *>(op.endpoint.data());
@@ -316,6 +374,50 @@ void arm_connect (impl_type &loop, task &t, socket_state &state) noexcept
 	}
 
 	state.kind = socket_kind::stream;
+	op.native_error = error;
+	loop.ready_.push(t);
+}
+
+void arm_accept (impl_type &loop, task &t, socket_state &state) noexcept
+{
+	auto &op = io(t);
+	auto &n = *new (op.native.data()) native_op{};
+	n.kind = op_kind::accept;
+	n.self = &t;
+	n.buffer.buf = reinterpret_cast<::CHAR *>(t.span().data());
+
+	const auto accepted = ::socket(state.family, SOCK_STREAM, IPPROTO_TCP);
+	if (accepted == INVALID_SOCKET)
+	{
+		op.native_error = ::WSAGetLastError();
+		loop.ready_.push(t);
+		return;
+	}
+	op.accepted = static_cast<std::intptr_t>(accepted);
+
+	if (net::__socket::AcceptEx(
+			to_socket(state),
+			accepted,
+			n.buffer.buf,
+			0,
+			accept_address_length,
+			accept_address_length,
+			&n.bytes,
+			&n
+		))
+	{
+		finish_accept(op, n, state, true);
+		loop.ready_.push(t);
+		return;
+	}
+
+	const auto error = ::WSAGetLastError();
+	if (error == WSA_IO_PENDING)
+	{
+		++state.armed;
+		return;
+	}
+
 	op.native_error = error;
 	loop.ready_.push(t);
 }
@@ -363,6 +465,15 @@ void impl_type::drain (socket_state &s, socket_state::direction &d) noexcept
 	if (s.kind == socket_kind::connecting)
 	{
 		arm_connect(*this, *d.pending.pop(), s);
+		return;
+	}
+
+	if (s.kind == socket_kind::acceptor)
+	{
+		while (auto *t = d.pending.try_pop())
+		{
+			arm_accept(*this, *t, s);
+		}
 		return;
 	}
 

@@ -206,6 +206,7 @@ private:
 		auto state = __event_loop::make_socket_state(
 			loop,
 			static_cast<std::intptr_t>(net::__socket::to_sys(socket.native_socket().handle())),
+			socket.native_socket().family(),
 			__event_loop::socket_kind::stream
 		);
 		if (!state)
