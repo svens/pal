@@ -261,9 +261,18 @@ void impl_deleter::operator() (impl_type *loop) const noexcept
 	delete loop;
 }
 
-result<socket_state_ptr> make_socket_state (impl_type &loop, std::intptr_t handle, socket_kind kind) noexcept
+result<socket_state_ptr> make_socket_state (
+	impl_type &loop,
+	std::intptr_t handle,
+	int family,
+	socket_kind kind) noexcept
 {
-	socket_state_ptr state{new (std::nothrow) socket_state{.loop = &loop, .handle = handle, .kind = kind}};
+	socket_state_ptr state{new (std::nothrow) socket_state{
+		.loop = &loop,
+		.handle = handle,
+		.family = family,
+		.kind = kind,
+	}};
 	if (state == nullptr)
 	{
 		return make_unexpected(std::errc::not_enough_memory);
@@ -334,6 +343,12 @@ void start_receive (socket_state &s, task_ptr &&t) noexcept
 void start_send (socket_state &s, task_ptr &&t) noexcept
 {
 	start_op(s, std::move(t), s.send);
+}
+
+void start_accept (socket_state &s, task_ptr &&t) noexcept
+{
+	io(*t).accepted = invalid_accepted;
+	start_op(s, std::move(t), s.receive);
 }
 
 void start_connect (socket_state &s, task_ptr &&t) noexcept

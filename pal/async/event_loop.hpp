@@ -83,6 +83,7 @@ enum class socket_kind: uint8_t
 	datagram,
 	stream,
 	connecting,
+	acceptor,
 };
 
 struct socket_state;
@@ -102,7 +103,11 @@ struct io_state
 	uint32_t endpoint_size;
 
 	int native_error;
-	size_t bytes;
+	union
+	{
+		size_t bytes;
+		std::intptr_t accepted;
+	};
 	bool truncated;
 	socket_state *owner;
 
@@ -112,6 +117,10 @@ struct io_state
 	static constexpr size_t native_capacity = 72;
 	alignas(task::scratch_alignment) std::array<std::byte, native_capacity> native;
 };
+
+constexpr std::intptr_t invalid_accepted = -1;
+constexpr size_t accept_address_size = io_state::endpoint_capacity + 16;
+constexpr size_t accept_window_size = 2 * accept_address_size;
 
 [[nodiscard]] inline io_state &io (task &t) noexcept
 {
@@ -126,11 +135,13 @@ struct io_state
 [[nodiscard]] result<socket_state_ptr> make_socket_state (
 	impl_type &loop,
 	std::intptr_t handle,
+	int family,
 	socket_kind kind
 ) noexcept;
 void start_receive (socket_state &s, task_ptr &&t) noexcept;
 void start_send (socket_state &s, task_ptr &&t) noexcept;
 void start_connect (socket_state &s, task_ptr &&t) noexcept;
+void start_accept (socket_state &s, task_ptr &&t) noexcept;
 void post (impl_type &loop, task_ptr &&t) noexcept;
 void post_after (impl_type &loop, task_ptr &&t, clock::duration delay) noexcept;
 
