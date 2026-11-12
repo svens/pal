@@ -4,7 +4,7 @@
 include("${CMAKE_CURRENT_LIST_DIR}/common.cmake")
 
 function(resolve_login_ip out) #{{{1
-	# Source address for the SSH/RDP rule. An empty or IPv6 answer would build a
+	# Source address for the SSH rule. An empty or IPv6 answer would build a
 	# rule that never matches the address SSH arrives from, so anything unexpected
 	# is fatal.
 	if(DEFINED login_ip)
@@ -74,26 +74,9 @@ function(ssh_public_key out) #{{{1
 	set(${out} "${key}" PARENT_SCOPE)
 endfunction()
 
-function(make_password out) #{{{1
-	# Composed, so Azure's three-of-four-character-classes rule cannot fail by luck.
-	string(RANDOM
-		LENGTH 20
-		ALPHABET abcdefghijkmnpqrstuvwxyzABCDEFGHJKLMNPQRSTUVWXYZ23456789
-		body
-	)
-	set(${out} "Pal${body}9!" PARENT_SCOPE)
-endfunction()
-
 # parameters {{{1
 resolve_login_ip(login_address)
 ssh_public_key(public_key)
-
-# Bicep wants a JSON boolean, not a CMake truth value.
-if(deploy_relay_windows)
-	set(with_windows true)
-else()
-	set(with_windows false)
-endif()
 
 set(deploy_args
 	"location=${location}"
@@ -103,12 +86,6 @@ set(deploy_args
 	"relay_size=${relay_size}"
 	"client_size=${client_size}"
 	"client_count=${client_count}"
-	"deploy_relay_windows=${with_windows}"
 	"client_ports=${client_ports}"
 	"peer_ports=${peer_ports}"
 )
-
-if(deploy_relay_windows)
-	make_password(admin_password)
-	list(APPEND deploy_args "password=${admin_password}")
-endif()

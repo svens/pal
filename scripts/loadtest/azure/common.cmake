@@ -68,7 +68,7 @@ function(write_manifest) #{{{1
 	# what this writes.
 	az_read(text vm list --show-details
 		--resource-group "${resource_group}"
-		--query "[].[name, storageProfile.osDisk.osType, publicIps, privateIps]"
+		--query "[].[name, publicIps, privateIps]"
 		--output tsv
 	)
 	string(REPLACE "\n" ";" rows "${text}")
@@ -83,17 +83,14 @@ function(write_manifest) #{{{1
 	foreach(row IN LISTS rows)
 		string(REPLACE "\t" ";" columns "${row}")
 		list(GET columns 0 name)
-		list(GET columns 1 os)
-		list(GET columns 2 public)
-		list(GET columns 3 private)
+		list(GET columns 1 public)
+		list(GET columns 2 private)
 		if(name MATCHES "^loadtest-")
 			list(APPEND clients "${name}")
 		else()
 			list(APPEND relays "${name}")
 		endif()
-		string(TOLOWER "${os}" os)
 		string(MAKE_C_IDENTIFIER "${name}" id)
-		string(APPEND fields "set(host_${id}_os ${os})\n")
 		string(APPEND fields "set(host_${id}_public ${public})\n")
 		string(APPEND fields "set(host_${id}_private ${private})\n")
 	endforeach()
@@ -113,7 +110,7 @@ function(write_manifest) #{{{1
 endfunction()
 
 macro(load_manifest) #{{{1
-	# Defines cluster_hosts, cluster_clients, cluster_relays and, per VM, the os,
+	# Defines cluster_hosts, cluster_clients, cluster_relays and, per VM, the
 	# public and private fields host_field reads. client_count is a deploy-time
 	# parameter; the manifest is what the later actions address.
 	if(NOT EXISTS "${cluster_manifest}")
@@ -126,7 +123,7 @@ macro(load_manifest) #{{{1
 endmacro()
 
 function(host_field out host field) #{{{1
-	# One of os, public or private, for a host from the loaded manifest.
+	# The public or private address of a host from the loaded manifest.
 	string(MAKE_C_IDENTIFIER "${host}" id)
 	set(${out} "${host_${id}_${field}}" PARENT_SCOPE)
 endfunction()
@@ -177,13 +174,7 @@ endfunction()
 function(wait_for_provisioning) #{{{1
 	# Capped on elapsed time: poll is an ssh per host with a connect timeout.
 	load_manifest()
-	set(pending "")
-	foreach(host IN LISTS cluster_hosts)
-		host_field(os "${host}" os)
-		if(os STREQUAL "linux")
-			list(APPEND pending "${host}")
-		endif()
-	endforeach()
+	set(pending ${cluster_hosts})
 
 	seconds_now(started)
 	set(waited 0)

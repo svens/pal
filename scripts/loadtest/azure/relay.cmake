@@ -22,13 +22,8 @@ endfunction()
 function(relay_command out host) #{{{1
 	# Shared by the start-relay action and by sweep, so a ladder cannot measure a
 	# differently configured relay than one started by hand.
-	host_field(os "${host}" os)
 	string(JOIN " " args ${relay_args})
-	if(os STREQUAL "windows")
-		set(${out} "${remote_dir}\\${relay_process}.exe ${args}" PARENT_SCOPE)
-	else()
-		set(${out} "./${remote_dir}/${relay_process} ${args}" PARENT_SCOPE)
-	endif()
+	set(${out} "./${remote_dir}/${relay_process} ${args}" PARENT_SCOPE)
 endfunction()
 
 function(relay_pid out host) #{{{1

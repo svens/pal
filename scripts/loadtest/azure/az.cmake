@@ -13,24 +13,9 @@ else()
 	set(az_launch "${az_exe}")
 endif()
 
-function(az_command_text out) #{{{1
-	# An az argument list for display, with the generated password masked. Failure
-	# text reaches terminals, ninja logs and pasted bug reports.
-	set(shown "")
-	foreach(arg IN LISTS ARGN)
-		if(arg MATCHES "^password=")
-			list(APPEND shown "password=<redacted>")
-		else()
-			list(APPEND shown "${arg}")
-		endif()
-	endforeach()
-	string(JOIN " " text ${shown})
-	set(${out} "${text}" PARENT_SCOPE)
-endfunction()
-
 macro(az_check result) #{{{1
 	if(${result})
-		az_command_text(command ${ARGN})
+		string(JOIN " " command ${ARGN})
 		message(FATAL_ERROR "az ${command}: exit ${${result}}")
 	endif()
 endmacro()

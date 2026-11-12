@@ -6,10 +6,5 @@ default(verb apply)
 default(host ${relay_host})
 
 load_manifest()
-host_field(os "${host}" os)
-if(NOT os STREQUAL "linux")
-	message(FATAL_ERROR "'${host}' runs ${os}: the tuning stages are Linux only")
-endif()
-
 remote_run("${host}" "sudo ${remote_dir}/host/tune ${verb}")
 message(STATUS "${host}: tune ${verb} done")
