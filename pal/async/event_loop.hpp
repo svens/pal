@@ -3,6 +3,23 @@
 /**
  * \file pal/async/event_loop.hpp
  * Per-thread completion loop: a portable run() layer over a backend poll()/post() primitive
+ *
+ * Operations are completion-based on every platform: IOCP natively, epoll and kqueue by draining ready
+ * sockets into the operation's task. Handlers run only from \ref event_loop::run and its siblings, on the
+ * loop's thread. \c start_* has no synchronous error return: submit failures, inline completions and
+ * cancellations are all delivered as completions from a subsequent run().
+ *
+ * Every handle's \c start_* completion payload is <tt>result<{operation}_result></tt>, a named struct even
+ * when it has no members.
+ *
+ * One loop per thread, sharing nothing: a session is created on the loop that owns it and stays there.
+ * \ref event_loop::post is the only cross-thread handoff (thread rules: \ref make_loop).
+ *
+ * The library does not allocate in run() or while dispatching completions. \ref event_loop::make_handle
+ * and handle destruction may allocate and free.
+ *
+ * Platform tuning (buffer sizes, steering, ...) is a socket option set on the synchronous object before
+ * \ref event_loop::make_handle. \ref event_loop_config carries no such knobs.
  */
 
 #include <pal/async/task.hpp>

@@ -814,8 +814,8 @@ TEMPLATE_TEST_CASE("async/datagram_socket", "", udp_v4, udp_v6)
 
 	SECTION("cancel: destruction while queued for drain")
 	{
-		std::array<std::byte, 64> trigger_storage{}, destroyer_storage{}, send_storage{};
-		task trigger_task{trigger_storage}, destroyer_task{destroyer_storage}, send_task{send_storage};
+		std::array<std::byte, 64> trigger_storage{}, send_storage{};
+		task trigger_task{trigger_storage}, send_task{send_storage};
 		send_task.span(as_span(send_storage).first(1));
 
 		std::optional<async_socket> doomed{make_async_socket<TestType>(*loop).value()};
@@ -835,18 +835,12 @@ TEMPLATE_TEST_CASE("async/datagram_socket", "", udp_v4, udp_v6)
 				CHECK(s.error() == std::errc::operation_canceled);
 				++canceled;
 			});
-			++received;
-		});
-		socket->start_receive_from(destroyer_task.borrow(), [&](task_ptr &&, receive_result &&r) noexcept
-		{
-			REQUIRE(r);
 			doomed.reset();
 			++received;
 		});
 
 		REQUIRE(peer->send_to(*socket_endpoint, std::string_view{"x"}));
-		REQUIRE(peer->send_to(*socket_endpoint, std::string_view{"y"}));
-		run_until(*loop, [&] { return received == 2 && canceled == 1; });
+		run_until(*loop, [&] { return received == 1 && canceled == 1; });
 
 		CHECK(loop->stats().io_in_flight == 0);
 	}

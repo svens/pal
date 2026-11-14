@@ -1,7 +1,7 @@
 @description('Region for every resource.')
 param location string
 
-@description('Address permitted to reach SSH and RDP.')
+@description('Address permitted to reach SSH.')
 param login_ip string
 
 @description('Well-known UDP ports the relay binds.')
@@ -13,12 +13,8 @@ param peer_ports string
 @description('Admin account created on every VM.')
 param username string
 
-@description('Public key installed for the admin account on the Linux VMs.')
+@description('Public key installed for the admin account.')
 param ssh_public_key string
-
-@description('Admin password. Used only by the Windows relay; the Linux VMs disable password login.')
-@secure()
-param password string = ''
 
 param relay_size string
 param client_size string
@@ -27,58 +23,32 @@ param client_size string
 @maxValue(50)
 param client_count int
 
-param deploy_relay_windows bool
-
 var subnet_name = 'default'
 
-var images = {
-	linux: {
-		publisher: 'Canonical'
-		offer: 'ubuntu-26_04-lts'
-		sku: 'server'
-		version: 'latest'
-	}
-	windows: {
-		publisher: 'MicrosoftWindowsServer'
-		offer: 'WindowsServer'
-		sku: '2022-datacenter-core-g2'
-		version: 'latest'
-	}
+var image = {
+	publisher: 'Canonical'
+	offer: 'ubuntu-26_04-lts'
+	sku: 'server'
+	version: 'latest'
 }
 
 // index fixes the last octet of the private address, so that --server values
-// and shell history survive a stop/start cycle and do not shift when the
-// Windows relay is left out:
+// and shell history survive a stop/start cycle:
 //   10.0.0.4  relay-linux
-//   10.0.0.5  relay-windows
-//   10.0.0.6+ loadtest-1..N
-var relays = concat(
-	[
-		{
-			name: 'relay-linux'
-			index: 0
-			size: relay_size
-			windows: false
-		}
-	],
-	deploy_relay_windows ? [
-		{
-			name: 'relay-windows'
-			index: 1
-			size: relay_size
-			windows: true
-		}
-	] : []
-)
+//   10.0.0.5+ loadtest-1..N
+var relay = {
+	name: 'relay-linux'
+	index: 0
+	size: relay_size
+}
 
 var clients = [for i in range(1, client_count): {
 	name: 'loadtest-${i}'
-	index: i + 1
+	index: i
 	size: client_size
-	windows: false
 }]
 
-var vms = concat(relays, clients)
+var vms = concat([relay], clients)
 
 resource nsg 'Microsoft.Network/networkSecurityGroups@2021-03-01' = {
 	name: 'nsg'
@@ -93,10 +63,7 @@ resource nsg 'Microsoft.Network/networkSecurityGroups@2021-03-01' = {
 					direction: 'Inbound'
 					protocol: 'Tcp'
 					destinationAddressPrefix: '*'
-					destinationPortRanges: [
-						'22'
-						'3389'
-					]
+					destinationPortRange: '22'
 					sourceAddressPrefixes: [
 						login_ip
 					]
@@ -198,15 +165,12 @@ resource machine 'Microsoft.Compute/virtualMachines@2021-07-01' = [for (vm, i) i
 		hardwareProfile: {
 			vmSize: vm.size
 		}
-		// Linux logs in by key only; the password exists for the Windows relay,
-		// which has no equivalent. null omits the property entirely.
 		osProfile: {
 			computerName: vm.name
 			adminUsername: username
-			adminPassword: vm.windows ? password : null
-			allowExtensionOperations: vm.windows
-			customData: vm.windows ? null : loadFileAsBase64('cloud-init.yaml')
-			linuxConfiguration: vm.windows ? null : {
+			allowExtensionOperations: false
+			customData: loadFileAsBase64('cloud-init.yaml')
+			linuxConfiguration: {
 				disablePasswordAuthentication: true
 				provisionVMAgent: false
 				ssh: {
@@ -220,7 +184,7 @@ resource machine 'Microsoft.Compute/virtualMachines@2021-07-01' = [for (vm, i) i
 			}
 		}
 		storageProfile: {
-			imageReference: vm.windows ? images.windows : images.linux
+			imageReference: image
 			osDisk: {
 				name: '${vm.name}-disk'
 				createOption: 'FromImage'

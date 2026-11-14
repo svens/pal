@@ -10,12 +10,6 @@ az(deployment sub create
 	--parameters ${deploy_args}
 )
 
-# Printed once and never stored.
-if(deploy_relay_windows)
-	message(STATUS "relay-windows password: ${admin_password}")
-	message(STATUS "rotate with: az vm user update --resource-group ${resource_group} --name relay-windows --username ${admin_user} --password <new>")
-endif()
-
 write_manifest()
 write_ssh_config()
 wait_for_provisioning()

@@ -54,8 +54,8 @@
 ## 5. Access
 
 1. `deploy` generates a passphraseless keypair per cluster in `.ssh/` beside these
-   scripts, not in `~/.ssh`, and installs the public half on the Linux VMs. There is
-   no password login.
+   scripts, not in `~/.ssh`, and installs the public half on every VM. There is no
+   password login.
 2. `deploy` also writes `.ssh/local.conf`, which points `IdentityFile` at that
    key, so reach a VM with `ssh -F .ssh/local.conf relay-linux`.
 3. `-Dssh_public_key_file=<path>` substitutes your own key instead, in which case
@@ -79,14 +79,3 @@
         cmake -Dconfirm=<group name> -P azure/destroy.cmake
 
 5. `destroy` also removes the generated `.ssh/` material and the control sockets.
-
-## 7. Windows relay
-
-`relay-windows` is in the template, gated by `deploy_relay_windows`. Its inbound rules
-are `host/windows-firewall.ps1`, to be run on the VM before traffic arrives.
-
-1. Deploying it is `cmake -Ddeploy_relay_windows=ON -P azure/deploy.cmake`, and the
-   relay actions reach it as `cmake -Dhost=relay-windows -P azure/start-relay.cmake`.
-   The ninja targets address `relay_host`, which is the Linux relay.
-2. It has no SSH-key equivalent, so `deploy` generates a password and prints it
-   once. Rotate it with `az vm user update`.

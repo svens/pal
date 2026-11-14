@@ -13,6 +13,10 @@ TEST_CASE("hash", "[!benchmark]")
 	{
 		return pal::fnv_1a_64(blob);
 	};
+	BENCHMARK("crc32/" + std::to_string(blob.size()))
+	{
+		return pal::crc32(blob);
+	};
 }
 
 } // namespace
