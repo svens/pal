@@ -1,27 +1,80 @@
 #include <pal/net/ip/port_type.hpp>
 #include <catch2/catch_test_macros.hpp>
+#include <catch2/generators/catch_generators_range.hpp>
+#include <span>
+#include <string_view>
 
 namespace
 {
 
 using namespace pal::net::ip;
 
+struct to_port_type_case
+{
+	std::string_view name;
+	port_type port;
+};
+
+constexpr to_port_type_case to_port_type_success[] = {
+	{"HTTP", port_type::http},
+	{"Https", port_type::https},
+	{"sTuN", port_type::stun},
+	{"TURN", port_type::stun},
+	{"Turns", port_type::stuns},
+	{"FTP_DATA", port_type::ftp_data},
+};
+
+constexpr std::string_view to_port_type_failure[] = {
+	"",
+	"htt",
+	"httpx",
+	"http ",
+	"8080",
+	"[ttp",
+	"@ttp",
+};
+
 TEST_CASE("net/ip/port_type")
 {
 
 	SECTION("named values")
 	{
-		#define check_value(Name, Value) static_assert(port_type::Name == port_type{(Value)});
-			__pal_net_ip_port_type(check_value)
-		#undef check_value
+		#define __pal_net_ip_port_type_value(Name, Value) static_assert(port_type::Name == port_type{(Value)});
+		#define __pal_net_ip_port_type_alias(Name, Target) static_assert(port_type::Name == port_type::Target);
+			__pal_net_ip_port_type(__pal_net_ip_port_type_value, __pal_net_ip_port_type_alias)
+		#undef __pal_net_ip_port_type_alias
+		#undef __pal_net_ip_port_type_value
 	}
 
 	SECTION("to_string_view")
 	{
 		CHECK(to_string_view(port_type{8080}).empty());
-		#define check_sv(Name, Value) CHECK(to_string_view(port_type::Name) == #Name);
-			__pal_net_ip_port_type(check_sv)
-		#undef check_sv
+		#define __pal_net_ip_port_type_value(Name, Value) CHECK(to_string_view(port_type::Name) == #Name);
+		#define __pal_net_ip_port_type_alias(Name, Target) CHECK(to_string_view(port_type::Name) == #Target);
+			__pal_net_ip_port_type(__pal_net_ip_port_type_value, __pal_net_ip_port_type_alias)
+		#undef __pal_net_ip_port_type_alias
+		#undef __pal_net_ip_port_type_value
+	}
+
+	SECTION("to_port_type: names")
+	{
+		#define __pal_net_ip_port_type_value(Name, Value) static_assert(to_port_type(#Name) == port_type::Name);
+			__pal_net_ip_port_type(__pal_net_ip_port_type_value, __pal_net_ip_port_type_value)
+		#undef __pal_net_ip_port_type_value
+	}
+
+	SECTION("to_port_type: success")
+	{
+		const auto &[name, port] = GENERATE(from_range(std::span{to_port_type_success}));
+		CAPTURE(name);
+		CHECK(to_port_type(name) == port);
+	}
+
+	SECTION("to_port_type: failure")
+	{
+		const auto &name = GENERATE(from_range(std::span{to_port_type_failure}));
+		CAPTURE(name);
+		CHECK(to_port_type(name) == port_type::unspecified);
 	}
 
 	SECTION("arithmetic")
