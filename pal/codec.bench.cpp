@@ -3,14 +3,18 @@
 #include <catch2/benchmark/catch_benchmark.hpp>
 #include <catch2/catch_template_test_macros.hpp>
 #include <catch2/generators/catch_generators_range.hpp>
+#include <algorithm>
 #include <array>
 #include <chrono>
+#include <concepts>
 #include <random>
 #include <span>
 #include <string_view>
 
 namespace
 {
+
+constexpr size_t max_src = 512;
 
 template <typename C>
 constexpr std::string_view codec_alphabet{};
@@ -47,21 +51,45 @@ void fill_random (std::span<char> buf, std::string_view alpha) noexcept
 	}
 }
 
+void fill_random_percent_encoded (std::span<char> buf) noexcept
+{
+	std::array<char, max_src> raw{};
+	fill_random(raw);
+	std::array<char, pal::percent_encoder::max_size(1)> encoded{};
+	auto out = buf.begin();
+	for (auto in = raw.begin(); out != buf.end(); ++in)
+	{
+		auto [ptr, ec] = pal::convert(pal::percent_encode, encoded, std::span{in, 1});
+		const auto n = static_cast<size_t>(ptr - encoded.data());
+		if (n > static_cast<size_t>(buf.end() - out))
+		{
+			*out++ = 'a';
+			continue;
+		}
+		out = std::copy_n(encoded.data(), n, out);
+	}
+}
+
 TEMPLATE_TEST_CASE("codec", "[!benchmark]",
 	pal::base64_encoder,
 	pal::base64_decoder,
 	pal::hex_encoder,
-	pal::hex_decoder)
+	pal::hex_decoder,
+	pal::percent_encoder,
+	pal::percent_decoder)
 {
 	auto size = size_t{1} << GENERATE(range(2, 10));
 
-	constexpr size_t max_src = 512;
 	std::array<char, max_src> src{};
 	std::array<char, TestType::max_size(max_src)> dst{};
 
 	BENCHMARK_ADVANCED("convert/" + std::to_string(size))(auto meter)
 	{
-		if constexpr (!codec_alphabet<TestType>.empty())
+		if constexpr (std::same_as<TestType, pal::percent_decoder>)
+		{
+			fill_random_percent_encoded(std::span{src}.first(size));
+		}
+		else if constexpr (!codec_alphabet<TestType>.empty())
 		{
 			fill_random(std::span{src}.first(size), codec_alphabet<TestType>);
 		}

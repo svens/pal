@@ -5,6 +5,7 @@ list(APPEND pal_sources
 	pal/codec.hpp
 	pal/codec_base64.cpp
 	pal/codec_hex.cpp
+	pal/codec_percent.cpp
 	pal/error.hpp
 	pal/error.cpp
 	pal/hash.hpp
@@ -48,6 +49,7 @@ list(APPEND pal_fuzz_sources
 	pal/fuzz.hpp
 	pal/codec_base64.fuzz.cpp
 	pal/codec_hex.fuzz.cpp
+	pal/codec_percent.fuzz.cpp
 )
 
 include(pal/async/list.cmake)
