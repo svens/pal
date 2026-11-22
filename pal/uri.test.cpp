@@ -381,6 +381,7 @@ TEST_CASE("uri")
 		const auto consumed = static_cast<size_t>(ptr - text.data());
 		CHECK(text.substr(consumed) == rest);
 		CHECK(host == expected_host(text.substr(0, consumed), ip));
+		CHECK(host.is_valid());
 		CHECK(check_make<pal::uri_host>(text).has_value() == rest.empty());
 
 		const auto formatted = check_to_chars(host);
@@ -400,12 +401,15 @@ TEST_CASE("uri")
 	{
 		const auto &[host, expected] = GENERATE(from_range(std::span{host_format_success}));
 		CAPTURE(expected);
+		CHECK(host.is_valid());
 		CHECK(check_to_chars(host) == expected);
 	}
 
 	SECTION("uri_host: format failure")
 	{
-		check_rejects(GENERATE(from_range(std::span{host_format_failure})));
+		const auto &host = GENERATE(from_range(std::span{host_format_failure}));
+		CHECK_FALSE(host.is_valid());
+		check_rejects(host);
 	}
 }
 

@@ -106,7 +106,7 @@ std::optional<size_t> prefix_size (std::string_view text, uint16_t bits) noexcep
 	return i;
 }
 
-bool is_valid (std::string_view text, uint16_t bits) noexcept
+bool matches_class (std::string_view text, uint16_t bits) noexcept
 {
 	return prefix_size(text, bits) == text.size();
 }
@@ -289,12 +289,11 @@ bool is_valid (const uri_view &uri) noexcept
 	}
 	if (uri.host)
 	{
-		auto host = scan_host(*uri.host);
-		if (!host || host->size != uri.host->size())
+		if (!uri_host::make(*uri.host))
 		{
 			return false;
 		}
-		if (uri.userinfo && !is_valid(*uri.userinfo, userinfo_char))
+		if (uri.userinfo && !matches_class(*uri.userinfo, userinfo_char))
 		{
 			return false;
 		}
@@ -314,9 +313,9 @@ bool is_valid (const uri_view &uri) noexcept
 			return false;
 		}
 	}
-	return is_valid(uri.path, path_char)
-		&& (!uri.query || is_valid(*uri.query, query_fragment_char))
-		&& (!uri.fragment || is_valid(*uri.fragment, query_fragment_char))
+	return matches_class(uri.path, path_char)
+		&& (!uri.query || matches_class(*uri.query, query_fragment_char))
+		&& (!uri.fragment || matches_class(*uri.fragment, query_fragment_char))
 	;
 }
 
@@ -356,14 +355,15 @@ std::from_chars_result uri_host::from_chars (const char *first, const char *last
 
 std::to_chars_result uri_host::to_chars (char *first, char *last) const noexcept
 {
+	if (!is_valid())
+	{
+		return fail(last, std::errc::invalid_argument);
+	}
+
 	writer out{.ptr = first, .last = last};
 
 	if (const auto *reg_name = std::get_if<std::string_view>(&value))
 	{
-		if (is_ipv4(*reg_name) || !is_valid(*reg_name, reg_name_char))
-		{
-			return fail(last, std::errc::invalid_argument);
-		}
 		if (!out.put_text(*reg_name))
 		{
 			return fail(last, std::errc::value_too_large);
@@ -372,11 +372,6 @@ std::to_chars_result uri_host::to_chars (char *first, char *last) const noexcept
 	}
 
 	const auto &address = *std::get_if<net::ip::address>(&value);
-	if (const auto *v6 = address.v6(); v6 != nullptr && v6->scope_id() != 0)
-	{
-		return fail(last, std::errc::invalid_argument);
-	}
-
 	std::array<char, net::ip::address::max_string_length + 1> buf{};
 	const auto text = std::string_view{buf.data(), address.to_chars(buf.data(), buf.data() + buf.size()).ptr};
 	const auto ok = address.is_v4()
@@ -388,6 +383,16 @@ std::to_chars_result uri_host::to_chars (char *first, char *last) const noexcept
 		return fail(last, std::errc::value_too_large);
 	}
 	return {.ptr = out.ptr, .ec = {}};
+}
+
+bool uri_host::is_valid () const noexcept
+{
+	if (const auto *reg_name = std::get_if<std::string_view>(&value))
+	{
+		return !is_ipv4(*reg_name) && matches_class(*reg_name, reg_name_char);
+	}
+	const auto *v6 = std::get_if<net::ip::address>(&value)->v6();
+	return v6 == nullptr || v6->scope_id() == 0;
 }
 
 size_t uri_host::max_size () const noexcept
@@ -416,23 +421,35 @@ result<uri_view> uri_view::make (std::string_view text) noexcept
 std::from_chars_result uri_view::from_chars (const char *first, const char *last) noexcept
 {
 	std::string_view text{first, last};
-	uri_view uri;
+	*this = {};
 
 	if (auto hash = text.find('#'); hash != text.npos)
 	{
-		uri.fragment = tail(text, hash + 1);
+		fragment = tail(text, hash + 1);
+		if (!matches_class(*fragment, query_fragment_char))
+		{
+			return invalid_input(first);
+		}
 		text = head(text, hash);
 	}
 
 	if (auto question = text.find('?'); question != text.npos)
 	{
-		uri.query = tail(text, question + 1);
+		query = tail(text, question + 1);
+		if (!matches_class(*query, query_fragment_char))
+		{
+			return invalid_input(first);
+		}
 		text = head(text, question);
 	}
 
 	if (auto colon = text.find_first_of(":/"); colon != text.npos && text[colon] == ':')
 	{
-		uri.scheme = head(text, colon);
+		scheme = head(text, colon);
+		if (!is_scheme(*scheme))
+		{
+			return invalid_input(first);
+		}
 		text.remove_prefix(colon + 1);
 	}
 
@@ -444,7 +461,11 @@ std::from_chars_result uri_view::from_chars (const char *first, const char *last
 
 		if (auto at = authority.find('@'); at != authority.npos)
 		{
-			uri.userinfo = head(authority, at);
+			userinfo = head(authority, at);
+			if (!matches_class(*userinfo, userinfo_char))
+			{
+				return invalid_input(first);
+			}
 			authority.remove_prefix(at + 1);
 		}
 
@@ -453,28 +474,29 @@ std::from_chars_result uri_view::from_chars (const char *first, const char *last
 		{
 			return invalid_input(first);
 		}
-		uri.host = head(authority, scan->size);
+		host = head(authority, scan->size);
 		authority.remove_prefix(scan->size);
 
 		if (!authority.empty())
 		{
-			auto port_text = tail(authority, 1);
-			auto port_number = parse_port(port_text);
-			if (authority[0] != ':' || (!port_text.empty() && !port_number))
+			if (authority[0] != ':')
 			{
 				return invalid_input(first);
 			}
-			uri.port = port_number;
+			auto port_text = tail(authority, 1);
+			port = parse_port(port_text);
+			if (!port_text.empty() && !port)
+			{
+				return invalid_input(first);
+			}
 		}
 	}
 
-	uri.path = text;
-	if (!is_valid(uri))
+	path = text;
+	if (!matches_class(path, path_char))
 	{
 		return invalid_input(first);
 	}
-
-	*this = uri;
 	return {.ptr = last, .ec = {}};
 }
 

@@ -73,7 +73,8 @@ void reg_name_property (std::string_view text)
 {
 	const pal::uri_host host{.value = text};
 	auto parsed = pal::uri_host::make(text);
-	require(try_roundtrip(host) == (parsed && *parsed == host));
+	auto valid = try_roundtrip(host);
+	require(valid == host.is_valid() && valid == (parsed && *parsed == host));
 }
 
 void host_roundtrip (std::string_view blob)
@@ -87,7 +88,7 @@ void host_roundtrip (std::string_view blob)
 
 	auto consumed = std::string_view{blob.data(), ptr};
 	auto whole = pal::uri_host::make(consumed);
-	require(whole && *whole == host);
+	require(whole && *whole == host && host.is_valid());
 
 	if (const auto *address = std::get_if<pal::net::ip::address>(&host.value))
 	{
