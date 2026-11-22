@@ -2,7 +2,7 @@
 
 /**
  * \file pal/codec.hpp
- * Encoding/decoding codecs (base64, hex)
+ * Encoding/decoding codecs (base64, hex, percent)
  */
 
 #include <concepts>
@@ -169,6 +169,37 @@ struct hex_decoder
 	convert (const std::byte *first, const std::byte *last, std::byte *out, std::byte *out_last) noexcept;
 };
 inline constexpr hex_decoder hex_decode{};
+
+// percent {{{1
+
+/// Percent-encoding codec type (RFC 3986 section 2.1). Leaves unreserved
+/// characters (ALPHA, DIGIT, \c "-._~") as is and escapes every other byte
+/// with uppercase hex digits. Output is valid in any URI component.
+struct percent_encoder
+{
+	static constexpr size_t max_size (size_t n) noexcept
+	{
+		return n * 3;
+	}
+
+	static convert_result<std::byte *>
+	convert (const std::byte *first, const std::byte *last, std::byte *out, std::byte *out_last) noexcept;
+};
+inline constexpr percent_encoder percent_encode{};
+
+/// Percent-decoding codec type. Accepts both upper- and lowercase hex digits
+/// and passes through every byte outside an escape.
+struct percent_decoder
+{
+	static constexpr size_t max_size (size_t n) noexcept
+	{
+		return n;
+	}
+
+	static convert_result<std::byte *>
+	convert (const std::byte *first, const std::byte *last, std::byte *out, std::byte *out_last) noexcept;
+};
+inline constexpr percent_decoder percent_decode{};
 
 // }}}1
 

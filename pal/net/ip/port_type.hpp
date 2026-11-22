@@ -13,39 +13,86 @@
 namespace pal::net::ip
 {
 
-#define __pal_net_ip_port_type(Impl) \
-	Impl(unspecified, 0) \
-	Impl(ftp_data, 20) \
-	Impl(ftp, 21) \
-	Impl(ssh, 22) \
-	Impl(telnet, 23) \
-	Impl(dns, 53) \
-	Impl(http, 80) \
-	Impl(ntp, 123) \
-	Impl(ldap, 389) \
-	Impl(https, 443) \
-	Impl(ldaps, 636) \
-	Impl(stun, 3478) \
-	Impl(stuns, 5349)
+#define __pal_net_ip_port_type(Port, Alias) \
+	Port(unspecified, 0) \
+	Port(ftp_data, 20) \
+	Port(ftp, 21) \
+	Port(ssh, 22) \
+	Port(telnet, 23) \
+	Port(dns, 53) \
+	Port(http, 80) \
+	Port(ntp, 123) \
+	Port(ldap, 389) \
+	Port(https, 443) \
+	Port(ldaps, 636) \
+	Port(stun, 3478) \
+	Alias(turn, stun) \
+	Port(stuns, 5349) \
+	Alias(turns, stuns)
 
 /// IP port number in host byte order
 enum class port_type: uint16_t
 {
-	#define __pal_net_ip_port_type_enum(Name, Value) Name = (Value),
-		__pal_net_ip_port_type(__pal_net_ip_port_type_enum)
-	#undef __pal_net_ip_port_type_enum
+	#define __pal_net_ip_port_type_value(Name, Value) Name = (Value),
+	#define __pal_net_ip_port_type_alias(Name, Target) Name = (Target),
+		__pal_net_ip_port_type(__pal_net_ip_port_type_value, __pal_net_ip_port_type_alias)
+	#undef __pal_net_ip_port_type_alias
+	#undef __pal_net_ip_port_type_value
 };
 
-/// Return string representation of named \a port, or empty if unknown
+/// Return string representation of named \a port, or empty if unknown.
+/// An alias shares its target's value, so the target's name is returned.
 constexpr std::string_view to_string_view (port_type port) noexcept
 {
 	switch (port)
 	{
-		#define __pal_net_ip_port_type_sv(Name, Value) case port_type::Name: return #Name;
-			__pal_net_ip_port_type(__pal_net_ip_port_type_sv)
-		#undef __pal_net_ip_port_type_sv
+		#define __pal_net_ip_port_type_value(Name, Value) case port_type::Name: return #Name;
+		#define __pal_net_ip_port_type_alias(Name, Target)
+			__pal_net_ip_port_type(__pal_net_ip_port_type_value, __pal_net_ip_port_type_alias)
+		#undef __pal_net_ip_port_type_alias
+		#undef __pal_net_ip_port_type_value
 	}
 	return {};
+}
+
+namespace __port_type
+{
+
+constexpr bool iequals (std::string_view text, std::string_view lowercase) noexcept
+{
+	if (text.size() != lowercase.size())
+	{
+		return false;
+	}
+	for (size_t i = 0; i < text.size(); ++i)
+	{
+		auto c = text[i];
+		if (c >= 'A' && c <= 'Z')
+		{
+			c = static_cast<char>(c - 'A' + 'a');
+		}
+		if (c != lowercase[i])
+		{
+			return false;
+		}
+	}
+	return true;
+}
+
+} // namespace __port_type
+
+/// Return port named \a name (case-insensitive), including aliases.
+/// Return port_type::unspecified if \a name is unknown.
+[[nodiscard]] constexpr port_type to_port_type (std::string_view name) noexcept
+{
+	#define __pal_net_ip_port_type_value(Name, Value) \
+		if (__port_type::iequals(name, #Name)) \
+		{ \
+			return port_type::Name; \
+		}
+		__pal_net_ip_port_type(__pal_net_ip_port_type_value, __pal_net_ip_port_type_value)
+	#undef __pal_net_ip_port_type_value
+	return port_type::unspecified;
 }
 
 /// Return \a port + \a n

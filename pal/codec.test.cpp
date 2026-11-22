@@ -29,7 +29,8 @@ struct cases;
 template <>
 struct cases<pal::base64_encoder>
 {
-	static constexpr success_case success[] = {
+	static constexpr success_case success[] =
+	{
 		{.decoded = "", .encoded = ""},
 		{.decoded = "f", .encoded = "Zg=="},
 		{.decoded = "fo", .encoded = "Zm8="},
@@ -39,7 +40,8 @@ struct cases<pal::base64_encoder>
 		{.decoded = "foobar", .encoded = "Zm9vYmFy"},
 	};
 
-	static constexpr bad_size_case bad_size[] = {
+	static constexpr bad_size_case bad_size[] =
+	{
 		{"Z"},
 		{"Zg"},
 		{"Zg="},
@@ -47,7 +49,8 @@ struct cases<pal::base64_encoder>
 		{"Zm9v=="},
 	};
 
-	static constexpr bad_input_case bad_input[] = {
+	static constexpr bad_input_case bad_input[] =
+	{
 		// 'test' -> 'dGVzdA=='
 		{".GVzdA=="},
 		{"d.VzdA=="},
@@ -83,7 +86,8 @@ struct cases<pal::base64_encoder>
 template <>
 struct cases<pal::hex_encoder>
 {
-	static constexpr success_case success[] = {
+	static constexpr success_case success[] =
+	{
 		{.decoded = "", .encoded = ""},
 		{.decoded = "hex_string", .encoded = "6865785f737472696e67"},
 		{.decoded = "HEX_STRING", .encoded = "4845585f535452494e47"},
@@ -91,12 +95,20 @@ struct cases<pal::hex_encoder>
 		{.decoded = "hello, world", .encoded = "68656c6c6f2c20776f726c64"},
 	};
 
-	static constexpr bad_size_case bad_size[] = {
+	static constexpr success_case decode_only[] =
+	{
+		{.decoded = "J", .encoded = "4A"},
+		{.decoded = "\xab\xcd\xef", .encoded = "ABcDEf"},
+	};
+
+	static constexpr bad_size_case bad_size[] =
+	{
 		{"7"},
 		{"746"},
 	};
 
-	static constexpr bad_input_case bad_input[] = {
+	static constexpr bad_input_case bad_input[] =
+	{
 		{"7"},
 		{"746"},
 		{"74657"},
@@ -112,6 +124,45 @@ struct cases<pal::hex_encoder>
 	};
 };
 
+template <>
+struct cases<pal::percent_encoder>
+{
+	static constexpr success_case success[] =
+	{
+		{.decoded = "", .encoded = ""},
+		{.decoded = ":/?#[]@", .encoded = "%3A%2F%3F%23%5B%5D%40"},
+		{.decoded = "a b", .encoded = "a%20b"},
+		{.decoded = "AZaz09-._~", .encoded = "AZaz09-._~"},
+		{.decoded = "!$&'()*+,;=", .encoded = "%21%24%26%27%28%29%2A%2B%2C%3B%3D"},
+		{.decoded = "%\x7f\x80\xff", .encoded = "%25%7F%80%FF"},
+	};
+
+	static constexpr success_case decode_only[] =
+	{
+		{.decoded = "/\xab", .encoded = "%2f%aB"},
+		{.decoded = "a b:/?", .encoded = "a b:/?"},
+		{.decoded = "\x80", .encoded = "\x80"},
+	};
+
+	static constexpr bad_size_case bad_size[] =
+	{
+		{"%"},
+		{"%4"},
+		{"a%"},
+		{"a%4"},
+	};
+
+	static constexpr bad_input_case bad_input[] =
+	{
+		{"%.4"},
+		{"%4."},
+		{"%g4"},
+		{"%4g"},
+		{"%%41"},
+		{"a%20%4"},
+	};
+};
+
 template <typename Encoder, typename Decoder>
 struct codec
 {
@@ -121,8 +172,9 @@ struct codec
 
 using base64 = codec<pal::base64_encoder, pal::base64_decoder>;
 using hex = codec<pal::hex_encoder, pal::hex_decoder>;
+using percent = codec<pal::percent_encoder, pal::percent_decoder>;
 
-TEMPLATE_TEST_CASE("codec", "", base64, hex)
+TEMPLATE_TEST_CASE("codec", "", base64, hex, percent)
 {
 	const typename TestType::encoder encoder{};
 	const typename TestType::decoder decoder{};
@@ -178,6 +230,18 @@ TEMPLATE_TEST_CASE("codec", "", base64, hex)
 		CHECK(std::string_view{buf, ptr} == decoded);
 	}
 
+	if constexpr (requires { Cases::decode_only; })
+	{
+		SECTION("decoder/decode_only")
+		{
+			const auto &[decoded, encoded] = GENERATE(from_range(std::span{Cases::decode_only}));
+			CAPTURE(decoded, encoded);
+			auto [ptr, ec] = pal::convert(decoder, buf, encoded);
+			REQUIRE(ec == std::errc{});
+			CHECK(std::string_view{buf, ptr} == decoded);
+		}
+	}
+
 	SECTION("decoder/bad_size")
 	{
 		const auto &[encoded] = GENERATE(from_range(std::span{Cases::bad_size}));
@@ -217,7 +281,7 @@ TEMPLATE_TEST_CASE("codec", "", base64, hex)
 		std::array<char, TestType::encoder::max_size(n)> encoded{};
 		auto [enc_ptr, enc_ec] = pal::convert(encoder, encoded, src);
 		REQUIRE(enc_ec == std::errc{});
-		CHECK(enc_ptr == encoded.data() + TestType::encoder::max_size(n));
+		CHECK(enc_ptr <= encoded.data() + TestType::encoder::max_size(n));
 
 		constexpr auto dst_max = TestType::decoder::max_size(TestType::encoder::max_size(n));
 		std::array<std::byte, dst_max> dst{};

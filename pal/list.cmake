@@ -5,6 +5,7 @@ list(APPEND pal_sources
 	pal/codec.hpp
 	pal/codec_base64.cpp
 	pal/codec_hex.cpp
+	pal/codec_percent.cpp
 	pal/error.hpp
 	pal/error.cpp
 	pal/hash.hpp
@@ -18,6 +19,8 @@ list(APPEND pal_sources
 	pal/require.cpp
 	pal/result.hpp
 	pal/spsc_bounded_queue.hpp
+	pal/uri.hpp
+	pal/uri.cpp
 	pal/version.hpp
 )
 
@@ -42,12 +45,15 @@ list(APPEND pal_test_sources
 	pal/require.test.cpp
 	pal/result.test.cpp
 	pal/spsc_bounded_queue.test.cpp
+	pal/uri.test.cpp
 )
 
 list(APPEND pal_fuzz_sources
 	pal/fuzz.hpp
 	pal/codec_base64.fuzz.cpp
 	pal/codec_hex.fuzz.cpp
+	pal/codec_percent.fuzz.cpp
+	pal/uri.fuzz.cpp
 )
 
 include(pal/async/list.cmake)
