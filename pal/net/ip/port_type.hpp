@@ -5,9 +5,11 @@
  * IP port number type
  */
 
+#include <charconv>
 #include <concepts>
 #include <cstdint>
 #include <format>
+#include <optional>
 #include <string_view>
 
 namespace pal::net::ip
@@ -35,7 +37,7 @@ enum class port_type: uint16_t
 {
 	#define __pal_net_ip_port_type_value(Name, Value) Name = (Value),
 	#define __pal_net_ip_port_type_alias(Name, Target) Name = (Target),
-		__pal_net_ip_port_type(__pal_net_ip_port_type_value, __pal_net_ip_port_type_alias)
+	__pal_net_ip_port_type(__pal_net_ip_port_type_value, __pal_net_ip_port_type_alias)
 	#undef __pal_net_ip_port_type_alias
 	#undef __pal_net_ip_port_type_value
 };
@@ -48,51 +50,33 @@ constexpr std::string_view to_string_view (port_type port) noexcept
 	{
 		#define __pal_net_ip_port_type_value(Name, Value) case port_type::Name: return #Name;
 		#define __pal_net_ip_port_type_alias(Name, Target)
-			__pal_net_ip_port_type(__pal_net_ip_port_type_value, __pal_net_ip_port_type_alias)
+		__pal_net_ip_port_type(__pal_net_ip_port_type_value, __pal_net_ip_port_type_alias)
 		#undef __pal_net_ip_port_type_alias
 		#undef __pal_net_ip_port_type_value
 	}
 	return {};
 }
 
-namespace __port_type
+/// Return port parsed from decimal \a text in range [0, 65535] or named
+/// \a text (including aliases), or empty if neither.
+[[nodiscard]] constexpr std::optional<port_type> to_port_type (std::string_view text) noexcept
 {
-
-constexpr bool iequals (std::string_view text, std::string_view lowercase) noexcept
-{
-	if (text.size() != lowercase.size())
+	uint16_t value = 0;
+	const auto [ptr, ec] = std::from_chars(text.data(), text.data() + text.size(), value);
+	if (ec == std::errc{} && ptr == text.data() + text.size())
 	{
-		return false;
+		return port_type{value};
 	}
-	for (size_t i = 0; i < text.size(); ++i)
-	{
-		auto c = text[i];
-		if (c >= 'A' && c <= 'Z')
-		{
-			c = static_cast<char>(c - 'A' + 'a');
-		}
-		if (c != lowercase[i])
-		{
-			return false;
-		}
-	}
-	return true;
-}
 
-} // namespace __port_type
-
-/// Return port named \a name (case-insensitive), including aliases.
-/// Return port_type::unspecified if \a name is unknown.
-[[nodiscard]] constexpr port_type to_port_type (std::string_view name) noexcept
-{
 	#define __pal_net_ip_port_type_value(Name, Value) \
-		if (__port_type::iequals(name, #Name)) \
-		{ \
-			return port_type::Name; \
-		}
-		__pal_net_ip_port_type(__pal_net_ip_port_type_value, __pal_net_ip_port_type_value)
+	if (text == #Name) \
+	{ \
+		return port_type::Name; \
+	}
+	__pal_net_ip_port_type(__pal_net_ip_port_type_value, __pal_net_ip_port_type_value)
 	#undef __pal_net_ip_port_type_value
-	return port_type::unspecified;
+
+	return std::nullopt;
 }
 
 /// Return \a port + \a n
